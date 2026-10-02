@@ -118,7 +118,7 @@
   const SHOTS = {
     dsb: {
       width: 360, up: 0.36, eye: { x: 0, y: 40, z: 84 }, look: { x: 0, y: -3, z: 0 }, colour: 0.83, mist: 0.08, haze: [70, 120, 235],
-      build: () => BL.dsbModels.build().root, opts: () => DSB_LIGHT
+      build: () => BL.dsbGeography.build().root, opts: () => DSB_LIGHT
     },
     poker: {
       width: 360, up: 0.42, eye: { x: 0, y: 8.2, z: 33 }, look: { x: 0, y: 1.2, z: 6 }, colour: 0.83, mist: 0.05, haze: [70, 120, 235],
