@@ -2,7 +2,7 @@
 (() => {
   "use strict";
   const BL=window.BL, S=BL.scene;
-  const OVERVIEW={yaw:0,pitch:1.05,dist:218,target:{x:0,y:10,z:0}};
+  const OVERVIEW={yaw:-0.08,pitch:1.22,dist:207,target:{x:-2,y:10,z:-1}};
   const renderOpts={clear:[.48,.69,.78],sky:[.55,.75,.85],ground:[.38,.36,.25],direct:[1,.94,.8],directStrength:.8,ambientFloor:.48,sun:{x:-.4,y:.85,z:.25},shadowCenter:{x:0,y:10,z:0},shadowExtent:110,fog:[.55,.75,.85],fogNear:250,fogFar:600,lights:new Float32Array(BL.glRenderer.POINT_LIGHT_CAPACITY*8),lightCount:0,bloomStrength:.15};
   const scene={id:"dsb",renderOpts};
   let root,camera,land,pilot,crew,avatar,hud,input,fx,gate,world,go,overlayCanvas,panel,context,oldSheet,leaving=false,overview=false;
