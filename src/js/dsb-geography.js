@@ -92,7 +92,7 @@
     const {geo,heightAt}=cached, root=S.createNode(), buildings=[];
     S.addChild(root,S.createNode({geometry:geo}));
     const put=(color,x,y,z,w,h,d,ry=0)=>{const n=S.createNode({geometry:M.box({color}),position:{x,y,z},scale:{x:w,y:h,z:d},rotation:{x:0,y:ry,z:0}});S.addChild(root,n);return n;};
-    put("#347f99",0,-.45,0,650,.3,650);
+    const sea=put("#347f99",0,-.45,0,650,.3,650);
     const place=(row,roads)=>{
       const [name,x,z,w,d,h]=row;let front=closest(roads[0],x,z);
       for(const road of roads.slice(1)){const q=closest(road,x,z);if(q.d<front.d)front=q;}
@@ -121,7 +121,7 @@
       const n=Math.max(1,Math.ceil(Math.hypot(bx-ax,bz-az)/.3)),r=actor?.bodyRadius||.4;let last=heightAt(ax,az);
       for(let i=1;i<=n;i++){const x=ax+(bx-ax)*i/n,z=az+(bz-az)*i/n,h=heightAt(x,z);if(!clearAt(x,z,r)||Math.abs(h-last)>.55)return false;last=h;}return true;
     };
-    return {root,heightAt,supportAt:heightAt,groundAt:heightAt,clearAt,walkable,buildings,marks,trail,waterfront,lanes,coast};
+    return {root,sea,heightAt,supportAt:heightAt,groundAt:heightAt,clearAt,walkable,buildings,marks,trail,waterfront,lanes,coast};
   };
   BL.dsbGeography={build};
 })();

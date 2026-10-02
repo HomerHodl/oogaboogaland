@@ -13,7 +13,7 @@
   renderOpts.fog=renderOpts.horizon;
   // Four structural validation lamps, not street dressing. Keep within even the lowest light tier.
   const LAMP_SPOTS=[[-49,-45],[-57,37],[20,63],[64,49]], lamps=[];
-  let clock;
+  let clock,water;
   const sampleDaylight=()=>{
     daylight.sample(clock.read(),renderOpts,clock.dayOfYear,LATITUDE,clock.continuousDay);
     const k=renderOpts.lampFactor, lights=renderOpts.lights;
@@ -39,6 +39,7 @@
   const enter=ctx=>{
     ({world,go}=ctx);leaving=false;overview=false;
     root=S.createNode();land=BL.dsbGeography.build();S.addChild(root,land.root);
+    water=BL.dsbWater.create(land);S.removeChild(land.root,land.sea);S.addChild(root,water.node);renderOpts.dsbWater=water;
     clock=daylight.createClock({hour:DEBUG?parseFloat(params.get("hour")):NaN,daylen:DEBUG?parseFloat(params.get("daylen")):NaN,day:DEBUG?parseFloat(params.get("day")):NaN,time:DEBUG?params.get("time"):null,now:new Date()});
     const lampGeometry=BL.models.box({w:.24,h:.32,d:.24,color:"#ffcc80"});
     for(const [x,z] of LAMP_SPOTS){
@@ -70,11 +71,11 @@
     panel=document.getElementById("dsb-panel");panel.hidden=true;
     context=document.getElementById("dsb-context");context.textContent="Dial Portara → Bifrost";
     document.body.classList.add("dsb-active");
-    Object.assign(scene,{root,camera,input,debug:{renderOpts,daylight:clock,camera,pilot,crew,controls:pilot.controls,hud,dsb:{land,gate,avatar,phase:"land",overview:OVERVIEW}}});
+    Object.assign(scene,{root,camera,input,debug:{renderOpts,daylight:clock,camera,pilot,crew,controls:pilot.controls,hud,dsb:{land,water,gate,avatar,phase:"land",overview:OVERVIEW}}});
     walk();if(new URLSearchParams(location.search).get("overview")==="1")overviewView();
   };
   const update=(dt,time)=>{
-    if(leaving)return;sampleDaylight();renderOpts.time=time;gate.update();
+    if(leaving)return;sampleDaylight();renderOpts.time=time;if(water)water.update(time);gate.update();
     Object.assign(before,avatar.root.position);before.y+=avatar.bodyHeight/2-avatar.baseY;
     if(!gate.isOpen){pilot.readInput(dt);if(!overview)crew.update(dt,time);pilot.update(dt);}
     Object.assign(after,avatar.root.position);after.y+=avatar.bodyHeight/2-avatar.baseY;
@@ -85,7 +86,7 @@
     if(avatar)world.pilot=avatar.traits.name;
     gate.dispose();pilot.dispose();crew.dispose();fx.dispose();const targets=input.targetCount;input.dispose();hud.el.sheet.hidden=oldSheet;hud.dispose();context.hidden=true;
     document.body.classList.remove("dsb-active");while(root.children.length)S.removeChild(root,root.children[root.children.length-1]);
-    lamps.length=0;renderOpts.lightCount=0;clock=null;
+    lamps.length=0;renderOpts.lightCount=0;clock=null;water=renderOpts.dsbWater=null;
     scene.debug=scene.input=null;land=avatar=crew=pilot=gate=fx=hud=input=null;return {targets};
   };
   Object.assign(scene,{enter,update,leave,onKey:e=>{if(e.key==="Escape"&&!gate.isOpen){overviewView();return true;}return false;},overlay:dt=>{const dpr=Math.min(devicePixelRatio||1,2),w=Math.round(overlayCanvas.clientWidth*dpr),h=Math.round(overlayCanvas.clientHeight*dpr);if(overlayCanvas.width!==w||overlayCanvas.height!==h){overlayCanvas.width=w;overlayCanvas.height=h;}overlayCanvas.getContext("2d").setTransform(dpr,0,0,dpr,0,0);fx.drawOverlay(dt,drawExtra);},stats:()=>({targets:input.targetCount,tweens:0}),liveGeometry:set=>{if(avatar)set.add(avatar.headOpen).add(avatar.headClosed);},onDonation:()=>{},onLootCleared:()=>{}});

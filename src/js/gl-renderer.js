@@ -530,6 +530,7 @@ vec3 waterShade(vec3 lit, vec3 n, out vec3 bright) {
   bright = uSun * glint * 1.2 + vec3(foam * (fall ? 0.15 : 0.05));
   return col;
 }
+${BL.dsbWater.shader}
 // Lava: a dark crust drifting over a hot flow, its cracks glowing into the bloom.
 // Roads (flagged five times over): painted dirt, soft sun-bleached patches at two scales and a scatter of
 // darker and lighter cartoon pebble specks on a 9 cm lattice, all in world space so tiles never show a seam.
@@ -723,7 +724,7 @@ void main() {
   base = mix(base, heat, ember * 0.9);
   float emissive = max(clamp(vColor.a * max(0.0, vParams.x), 0.0, 1.0), ember * 0.9);
   base *= mix(voxelDetail(), 1.0, max(emissive, cloud));
-  if (dot(vLocalNormal, vLocalNormal) > 20.0) {
+  if (dot(vLocalNormal, vLocalNormal) > 20.0 && dot(vLocalNormal, vLocalNormal) < 30.0) {
     // Marching squares on the road grid: each tile corner takes the share of road among the four tiles meeting
     // there (from the eight-neighbour mask in the first instance parameter, stored as 1 + mask); the tile keeps
     // what lies inside the bilinear half line, so staircases read as straight diagonals and curves.
@@ -748,7 +749,8 @@ void main() {
   col = mix(col, vec3(0.84, 1.0, 0.89), tip * 0.88);
   vec3 surfaceBright = vec3(0.0);
   float nl = dot(vLocalNormal, vLocalNormal);
-  if (nl > 12.0 && nl < 20.0) col = lavaShade(surfaceBright);
+  if (nl > 30.0 && nl < 40.0) col = dsbWaterShade(surfaceBright);
+  else if (nl > 12.0 && nl < 20.0) col = lavaShade(surfaceBright);
   else if (nl > 6.0 && nl < 12.0) col = waterShade(col, n, surfaceBright);
   vec3 normalColor = clamp(mix(col, uFog, fog), 0.0, 1.0);
   vec3 normalBright = clamp((col * (emissive * 0.9 + vParams.y * 0.5 + tip * 0.85) + surfaceBright) * (1.0 - fog), 0.0, 1.0);
@@ -1354,6 +1356,7 @@ void main() {
     // Refilled in place every frame (`activeCount` during collect), so its backing store is never dropped and regrown.
     const activeRecords = [];
     let activeCount = 0;
+    let dsbGPU=null;
     const res = { programs: {}, fbo: null, shadow: null, bloom: null, quadVao: null, matrixTexture: null };
     const mirror = { node: null, record: null, geometry: null, program: null, programReady: false, fb: null, tex: null, depth: null, width: 0, height: 0, renderWidth: 0, renderHeight: 0, portal: false, reveal: 0, frontFacing: false, walkThrough: false, captureValid: false, bodyTex: null, bodyState: null, bodyVersion: -1, shards: 0 };
     const environment = { program: null, ready: false, fb: null, tex: null, depth: null, size: 0, next: 0, valid: 0, frame: 0, origin: new Float32Array(3) };
@@ -1433,7 +1436,7 @@ void main() {
       const meshFragment = matrixSampling ? MESH_FS.replace("#version 300 es", "#version 300 es\n#extension GL_OES_shader_multisample_interpolation : require\n#define MATRIX_SAMPLE_INTERPOLATION") : MESH_FS;
       res.programs = {
         image: compile(IMAGE_VS, IMAGE_FS, ["uViewProj", "uRect", "uImage", "uReady", "uClipMaxY"]),
-        mesh: compile(MESH_VS, meshFragment, ["uViewProj", "uLightViewProj", "uEye", "uViewDirection", "uLightDir", "uSky", "uGround", "uSun", "uDirectStrength", "uAmbientFloor", "uDiffuseFloor", "uShadowStrength", "uShadowFloor", "uShadowBias", "uShadow", "uShadowTexel", "uLights", "uLightCount", "uSpotLight", "uFog", "uFogRange", "uMatrixParams", "uMatrixOrigin", "uMatrixGlyph", "uMatrixCave", "uMatrixCaves", "uMatrixCaveBounds", "uMatrixCaveNear", "uMatrixPermanentCave", "uMatrixPermanentPlane", "uMatrixPermanentAperture", "uMatrixLivingGlobal", "uMatrixGlyphTex", "uMatrixSamples", "uClipMinY", "uClipMaxY", "uObjectClip", "uObjectSlab", "uProjective", "uMatrixGlyphOpacity", "uGlassOpacity", "uVoxel", "uWindTime", "uSway", "uSwing", "uGlass", "uLightBeam"]),
+        mesh: compile(MESH_VS, meshFragment, ["uViewProj", "uLightViewProj", "uEye", "uViewDirection", "uLightDir", "uSky", "uGround", "uSun", "uDirectStrength", "uAmbientFloor", "uDiffuseFloor", "uShadowStrength", "uShadowFloor", "uShadowBias", "uShadow", "uShadowTexel", "uLights", "uLightCount", "uSpotLight", "uFog", "uFogRange", "uMatrixParams", "uMatrixOrigin", "uMatrixGlyph", "uMatrixCave", "uMatrixCaves", "uMatrixCaveBounds", "uMatrixCaveNear", "uMatrixPermanentCave", "uMatrixPermanentPlane", "uMatrixPermanentAperture", "uMatrixLivingGlobal", "uMatrixGlyphTex", "uMatrixSamples", "uClipMinY", "uClipMaxY", "uObjectClip", "uObjectSlab", "uProjective", "uMatrixGlyphOpacity", "uGlassOpacity", "uVoxel", "uWindTime", "uSway", "uSwing", "uGlass", "uLightBeam", "uDSBSurface", "uDSBDepth"]),
         shadow: compile(SHADOW_VS, SHADOW_FS, ["uLightViewProj", "uClipMinY", "uClipMaxY", "uObjectClip"]),
         line: compile(LINE_VS, LINE_FS, ["uViewProj", "uViewport", "uWidth", "uClipMaxY", "uObjectClip"]),
         sky: compile(QUAD_VS, SKY_FS, ["uInvViewProj", "uHorizon", "uZenith", "uSun", "uSunDir", "uMoonDir", "uStarMatrix", "uStars", "uTime", "uHazeDrop", "uClouds", "uSea", "uSeaEye"]),
@@ -1893,7 +1896,7 @@ void main() {
         ny /= len;
         nz /= len;
         // Water, lava and roads are flagged the same way, three, four and five times over.
-        const surface = f.water === "lava" ? 4 : f.water ? 3 : f.road ? 5 : 0;
+        const surface = f.water === "aegean" ? 6 : f.water === "lava" ? 4 : f.water ? 3 : f.road ? 5 : 0;
         if (surface) {
           nx *= surface;
           ny *= surface;
@@ -2358,6 +2361,7 @@ void main() {
       forgetMirror();
     };
     const onRestored = () => {
+      dsbGPU=null;
       records.clear();
       activeRecords.length = 0;
       res.fbo = null;
@@ -2929,6 +2933,12 @@ void main() {
         clouds = 0,
         sea = null
       } = opts;
+      if(dsbGPU && dsbGPU.state!==opts.dsbWater){dsbGPU.dispose();dsbGPU=null;}
+      if(opts.dsbWater && !dsbGPU)dsbGPU=BL.dsbWater.gpu(gl,opts.dsbWater);
+      if(dsbGPU)dsbGPU.bind();
+      gl.useProgram(res.programs.mesh.prog);
+      gl.uniform1i(res.programs.mesh.u.uDSBSurface,7);
+      gl.uniform1i(res.programs.mesh.u.uDSBDepth,8);
       const fogColor = fog || NO_FOG, fogA = fog ? fogNear : FOG_OFF, fogB = fog ? fogFar : FOG_OFF + 1;
       gl.useProgram(res.programs.mesh.prog);
       gl.uniform1f(res.programs.mesh.u.uWindTime, performance.now() * 0.001 % 3600);
@@ -3287,6 +3297,7 @@ void main() {
       resize();
     };
     const dispose = () => {
+      if(dsbGPU){dsbGPU.dispose();dsbGPU=null;}
       canvas.removeEventListener("webglcontextlost", onLost);
       canvas.removeEventListener("webglcontextrestored", onRestored);
       destroyRecords();
@@ -3304,6 +3315,7 @@ void main() {
     // Drop unreferenced buffers; they are rebuilt on demand.
     const releaseUnused = (live) => {
       let released = 0;
+      if(dsbGPU && !live.has(dsbGPU.state.geometry)){dsbGPU.dispose();dsbGPU=null;}
       if (mirror.geometry && !live.has(mirror.geometry)) destroyMirror();
       else if (!mirror.geometry && mirror.program) {
         let rippleLive = false;
@@ -3341,7 +3353,7 @@ void main() {
       get stats() {
         let shadowFinite = true;
         for (let i = 0; i < 16; i++) if (!Number.isFinite(lightViewProj[i])) shadowFinite = false;
-        return { records: records.size, active: activeRecords.length, mirrorResources: mirrorDebug.resources, imageTextures, rippleBodyTextures, shadowResources: res.shadow ? 4 : 0, shadowSize: res.shadow ? res.shadow.size : 0, shadowPassCount, shadowFinite, shadowDraws, shadowStatic: shadowStaticValid ? shadowBakedCount : 0, shadowStaticRebuilds, culled, drawn, suppressed, rippleSurfaces, rippleWaves };
+        return { waterTextures: dsbGPU?2:0, records: records.size, active: activeRecords.length, mirrorResources: mirrorDebug.resources, imageTextures, rippleBodyTextures, shadowResources: res.shadow ? 4 : 0, shadowSize: res.shadow ? res.shadow.size : 0, shadowPassCount, shadowFinite, shadowDraws, shadowStatic: shadowStaticValid ? shadowBakedCount : 0, shadowStaticRebuilds, culled, drawn, suppressed, rippleSurfaces, rippleWaves };
       },
       get mirror() {
         return mirrorDebug;

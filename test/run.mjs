@@ -8755,6 +8755,43 @@ const unitChecks = async () => {
   }
 };
 
+
+const dsbWaterCheckpoint = { name: "dsb water checkpoint", why: "contract: Aegean water preserves movement and releases its GPU textures across Portara trips", run: async b => {
+  const r=await b.evaluate(`(() => {
+    const B=__ooga,W=B.dsb.water,first=new Uint8Array(W.pixels);
+    W.update(13);const moved=W.pixels.some((x,i)=>x!==first[i]);
+    W.update(0);const zero=new Uint8Array(W.pixels);W.update(120);
+    const loop=W.pixels.every((x,i)=>x===zero[i]),finite=W.heights.every(Number.isFinite);
+    const start=performance.now();for(let i=0;i<60;i++)W.update(i/60);
+    return {kind:B.renderer.kind,textures:B.renderer.stats.waterTextures,moved,loop,finite,cost:(performance.now()-start)/60,
+      depthNear:W.depthAt(-39,54),depthFar:W.depthAt(250,250),camera:B.dsb.overview};
+  })()`);
+  const canvas=await b.evaluate('new URLSearchParams(location.search).has("canvas2d")');
+  record("DSB FFT: finite, periodic, animated; depth grows offshore; renderer stays available",r.finite&&r.loop&&r.moved&&r.depthFar>r.depthNear&&(canvas?r.kind==="canvas2d":r.kind==="webgl2"&&r.textures===2),JSON.stringify(r));
+  if(!canvas){
+    await b.evaluate(`document.querySelector('[data-action="reset-view"]').click()`);
+    const before=await b.evaluate('({x:__ooga.dsb.avatar.root.position.x,z:__ooga.dsb.avatar.root.position.z})');
+    await b.send("Input.dispatchKeyEvent",{type:"keyDown",key:"s",code:"KeyS"});
+    await b.evaluate('__ooga.advance(.3)');
+    await b.send("Input.dispatchKeyEvent",{type:"keyUp",key:"s",code:"KeyS"});
+    const after=await b.evaluate('({x:__ooga.dsb.avatar.root.position.x,z:__ooga.dsb.avatar.root.position.z})');
+    record("DSB keyboard movement still walks on approved land",Math.hypot(after.x-before.x,after.z-before.z)>.05,JSON.stringify({before,after}));
+  }
+  const name=await b.evaluate('__ooga.dsb.avatar.traits.name');
+  for(let i=0;i<2;i++){
+    const crossed=await b.evaluate(`(() => {const B=__ooga,G=B.dsb.gate;G.receive();return G.traverse({x:-45,y:41.4,z:-46},{x:-45,y:41.4,z:-50},.3);})()`);
+    await untilPage(b,'B.scene==="bifrost"&&!B.transitioning',20000);
+    const released=await b.evaluate('__ooga.renderer.stats.waterTextures');
+    await b.evaluate('__ooga.go("dsb")');
+    await untilPage(b,'B.scene==="dsb"&&!B.transitioning',20000);
+    const returned=await b.evaluate('({name:__ooga.dsb.avatar.traits.name,textures:__ooga.renderer.stats.waterTextures})');
+    record("DSB water trip "+i+": Portara crossing preserves identity and releases textures",crossed&&released===0&&returned.name===name&&returned.textures===(canvas?0:2),JSON.stringify({crossed,released,returned}));
+  }
+}};
+scene("dsb",{label:"water checkpoint",query:"&overview=1",steps:[dsbWaterCheckpoint]});
+scene("dsb",{label:"water checkpoint canvas",query:"&overview=1&canvas2d=1",steps:[dsbWaterCheckpoint]});
+scene("dsb",{label:"water checkpoint phone",query:"&overview=1",opts:{w:390,h:844,mobile:true},steps:[dsbWaterCheckpoint]});
+
 const runTasks = async () => {
   const picked = tasks.filter((t) => (t.perf ? PERF : PICKED.includes(t.scene)));
   if (ONLY && (PICKED.length || PERF) && !picked.length) throw new Error(`No requested scene checks match ONLY=${ONLY}`);
