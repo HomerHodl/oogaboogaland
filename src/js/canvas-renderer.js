@@ -265,6 +265,15 @@
     let eye = { x: 0, y: 0, z: 0 }, near = 0.2, cutawayMaxY = Infinity;
     const lightDir = new Float32Array([0, 1, 0]);
     let directStrength = 1, ambientFloor = 0.3, diffuseFloor = 0, skyLuma = 0.5, groundLuma = 0.2;
+    let spotLight = null;
+    const spotEnergy = (x, y, z, nx, ny, nz) => {
+      if (!spotLight || spotLight[3] <= 0) return 0;
+      const dx = x - spotLight[0], dy = y - spotLight[1], dz = z - spotLight[2], dist = Math.hypot(dx, dy, dz);
+      if (dist < 0.0001 || dist >= spotLight[3]) return 0;
+      const angle = (dx * spotLight[4] + dy * spotLight[5] + dz * spotLight[6]) / dist;
+      const cone = smooth((angle - spotLight[7]) / (spotLight[11] - spotLight[7])), fade = 1 - dist / spotLight[3];
+      return cone * fade * fade * Math.max(0, -(nx * dx + ny * dy + nz * dz) / dist) / (1 + 0.005 * dist * dist);
+    };
     // Fog toward a colour; fogNear/fogFar start at 1e8/1e8+1 so it stays off until a frame sets one.
     const fogRgb = [0, 0, 0];
     let fogNear = 1e8, fogFar = 1e8 + 1;
@@ -324,8 +333,13 @@
       }
       return -1;
     };
+    // A projective geometry's matrices carry a last row, so its transformed points are homogeneous: divide them out.
+    const divideW = (out, m, x, y, z) => {
+      const h = m[3] * x + m[7] * y + m[11] * z + m[15];
+      out[0] /= h; out[1] /= h; out[2] /= h;
+    };
     const shadeNode = (node) => {
-      const opacity = (node.smokeOpacity === undefined ? 1 : node.smokeOpacity) * (node.geometry.cutawayHide ? 1 - cutawayFade : 1);
+      const opacity = (node.smokeOpacity === undefined ? 1 : node.smokeOpacity) * (node.geometry.glassOpacity || node.geometry.glass || 1) * (node.geometry.cutawayHide ? 1 - cutawayFade : 1);
       if (opacity === 0) return;
       if (node.mirrorRippleOnly && !node.mirrorRipples?.active && !node.mirrorBody?.contacts && !node.mirrorBody?.active) return;
       const { verts, faces, lines } = node.geometry;
@@ -338,10 +352,10 @@
       const f = lastF;
       const ember = Math.min(1, node.ember || 0), scorch = 1 - Math.min(1, node.scorch || 0) * 0.88;
       const materialGlow = ember > 0 ? 0 : node.glow;
-      const mirrorFace = !!(node.mirror || node.mirrorPortal || node.mirrorShard || node.mirrorRippleOnly);
+      const mirrorFace = !!(node.mirror || node.mirrorPortal || node.mirrorShard || node.mirrorRippleOnly || node.geometry.reflector);
       const portalFace = !!node.mirrorPortal || !!node.mirrorWalkThrough && mirrorDebug.portal;
       const localMatrixGlyph = !!node.geometry.matrixGlyph;
-      const liquid = !!node.geometry.portalSurface;
+      const liquid = !!node.geometry.portalSurface, projective = !!node.geometry.projective;
       // Every voxel face in a glyph shares this instance plane and basis.
       const glyphLength = localMatrixGlyph ? Math.hypot(w[8], w[9], w[10]) : 1;
       const glyphNx = w[8] / glyphLength, glyphNy = w[9] / glyphLength, glyphNz = w[10] / glyphLength;
@@ -382,6 +396,7 @@
             }
             const displacement = liquid ? BL.oogaPortalModels.liquidHeight(x, z, node.portalTime, node.portalSurge) : 0;
             mat4.transformPoint(V[k], w, x, verts[b + 1] + displacement, z);
+            if (projective) divideW(V[k], w, x, verts[b + 1] + displacement, z);
             centerX += V[k][0];
             centerY += V[k][1];
             centerZ += V[k][2];
@@ -409,6 +424,12 @@
           centerX /= count;
           centerY /= count;
           centerZ /= count;
+          let faceOpacity = opacity;
+          if (node.geometry.lightBeam) {
+            const along = ((centerX - w[12]) * w[0] + (centerY - w[13]) * w[1] + (centerZ - w[14]) * w[2]) / (w[0] * w[0] + w[1] * w[1] + w[2] * w[2]);
+            const fade = Math.max(0, Math.min(1, 1 - along / node.geometry.lightBeam));
+            faceOpacity *= fade * fade;
+          }
           // Mode 5 keeps its own palette in the Matrix; clouds are mode 4.
           const matrixNative = matrixMode > 4.5;
           const matrixCloud = matrixMode > 3.5 && !matrixNative;
@@ -526,6 +547,22 @@
               surface = destination;
               if (surfaceCount < 3) continue;
             }
+            // A slab (n, d) keeps |n.p + d| <= 1: two planes, n.p + d - 1 <= 0 and -n.p - d - 1 <= 0.
+            const slab = node.geometry.clipSlab;
+            if (slab) {
+              if (!surface) {
+                surface = MIRROR_CLIP_IN;
+                for (let k = 0; k < count; k++) {
+                  surface[k * 3] = V[k][0]; surface[k * 3 + 1] = V[k][1]; surface[k * 3 + 2] = V[k][2];
+                }
+              }
+              for (let sign = 1; sign >= -1 && surfaceCount >= 3; sign -= 2) {
+                const destination = surface === MIRROR_CLIP_IN ? MIRROR_CLIP_OUT : MIRROR_CLIP_IN;
+                surfaceCount = clipPlane(surface, surfaceCount, slab[0] * sign, slab[1] * sign, slab[2] * sign, slab[3] * sign - 1, destination);
+                surface = destination;
+              }
+              if (surfaceCount < 3) continue;
+            }
             if (selective) beginCutaway(surface, surfaceCount);
             for (let piece = 0; selective ? nextCutaway() : piece < 1; piece++) {
               if (selective) { surface = cutawaySurface; surfaceCount = cutawayCount; }
@@ -553,7 +590,7 @@
               rec.n = clipped;
               rec.depth = zsum / clipped - (node.depthBias || 0);
               rec.line = false;
-              rec.smokeOpacity = opacity;
+              rec.smokeOpacity = faceOpacity;
               rec.mirror = mirrorFace;
               rec.mirrorNode = mirrorFace ? node : null;
               rec.imageNode = node.geometry.imageSurface ? node : null;
@@ -612,9 +649,10 @@
               const cb = lerp(c[2] * scorch, heat * (0.01 + ember * ember * ember * 0.74), ember * 0.9);
               const tip = node.tip > 1.5 ? 0 : node.tip || 0;
               const fog = localMatrixGlyph ? smooth((glyphDistance - fogNear) / (fogFar - fogNear)) : Math.min(1, Math.max(0, (-rec.depth - fogNear) / (fogFar - fogNear)));
-              let red = lerp(lerp(cr * k, 214, tip * 0.88), fogRgb[0], fog);
-              let green = lerp(lerp(cg * k, 255, tip * 0.88), fogRgb[1], fog);
-              let blue = lerp(lerp(cb * k, 227, tip * 0.88), fogRgb[2], fog);
+              const beam = localMatrixGlyph ? 0 : spotEnergy(centerX, centerY, centerZ, nx, ny, nz) * (1 - Math.min(1, emissive));
+              let red = lerp(lerp(cr * (k + (beam ? beam * spotLight[8] : 0)), 214, tip * 0.88), fogRgb[0], fog);
+              let green = lerp(lerp(cg * (k + (beam ? beam * spotLight[9] : 0)), 255, tip * 0.88), fogRgb[1], fog);
+              let blue = lerp(lerp(cb * (k + (beam ? beam * spotLight[10] : 0)), 227, tip * 0.88), fogRgb[2], fog);
               if (liquid) {
                 const time = node.portalTime, radius = Math.hypot(liquidX, liquidZ);
                 const interference = Math.sin(Math.hypot(liquidX - 0.22, liquidZ + 0.17) * 32 - time * 4)
@@ -665,6 +703,10 @@
           const a = line.i[0] * 3, b = line.i[1] * 3;
           mat4.transformPoint(V[0], w, verts[a], verts[a + 1], verts[a + 2]);
           mat4.transformPoint(V[1], w, verts[b], verts[b + 1], verts[b + 2]);
+          if (projective) {
+            divideW(V[0], w, verts[a], verts[a + 1], verts[a + 2]);
+            divideW(V[1], w, verts[b], verts[b + 1], verts[b + 2]);
+          }
           const objectClip = node.geometry.clipPlane;
           if (objectClip) {
             const da = objectClip[0] * V[0][0] + objectClip[1] * V[0][1] + objectClip[2] * V[0][2] + objectClip[3];
@@ -1375,6 +1417,7 @@
         cutawayPlanes[at + 19] = s * x + c * z - region.halfDepth;
       }
       const { light = DEFAULT_LIGHT, directStrength: strength = 1, ambientFloor: ambient = 0.3, diffuseFloor: diffuse = 0, clear = null, sky = DEFAULT_SKY, ground = DEFAULT_GROUND, horizon = null, zenith = null, fog = null, fogNear: near0 = 0, fogFar: far0 = 0, matrix = null } = opts;
+      spotLight = opts.spotLight || null;
       matrixActive = matrix ? matrix.active : 0;
       matrixRadius = matrix ? matrix.radius : 0;
       matrixTime = matrix ? matrix.time : 0;

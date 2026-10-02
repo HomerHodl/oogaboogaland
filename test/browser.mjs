@@ -75,7 +75,7 @@ export const launch = async ({ w = 1440, h = 900, mobile = false, perf = false, 
     "about:blank"
   ];
   const chrome = spawn(CHROME, args, { stdio: "ignore" });
-  const state = { alive: true, pooled: false, key: keyOf({ w, h, mobile, perf }) };
+  const state = { alive: true, pooled: false, key: keyOf({ w, h, mobile, perf, motion }) };
   chrome.on("exit", () => {
     state.alive = false;
   });

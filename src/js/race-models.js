@@ -7,7 +7,7 @@
   const BL = window.BL = window.BL || {};
   const { hexToRgb, mulberry32 } = BL.math;
   const { createNode, addChild } = BL.scene;
-  const { box, bevelBox, lathe, merge, cached, variants, makeVox: vox, voxelGeometry: voxGeo } = BL.models;
+  const { box, bevelBox, lathe, merge, cached, variants, makeVox: vox, voxelGeometry: voxGeo, moved, turnedX, turnedY, turnedZ } = BL.models;
   const { puff, limb, padNormals, flatInto } = BL.hubModels;
   // Cartoon builders on the hub's kit: `soft()` starts a smooth geometry that bevelled parts join through
   // `flatInto`, `tones(hex)` is one colour in the four bands `puff` takes, and `lump` a rounded stone.
@@ -44,33 +44,8 @@
     }
     return geo;
   };
-  const shift = (geo, dx, dy, dz) => {
-    const p = geo.verts;
-    for (let i = 0; i < p.length; i += 3) {
-      p[i] += dx;
-      p[i + 1] += dy;
-      p[i + 2] += dz;
-    }
-    return geo;
-  };
-  const turn = (geo, yaw, roll = 0, pitch = 0) => {
-    const p = geo.verts;
-    const cy = Math.cos(yaw), sy = Math.sin(yaw), cr = Math.cos(roll), sr = Math.sin(roll), cp = Math.cos(pitch), sp = Math.sin(pitch);
-    for (let i = 0; i < p.length; i += 3) {
-      let x = p[i], y = p[i + 1], z = p[i + 2];
-      let y1 = y * cp - z * sp, z1 = y * sp + z * cp;
-      y = y1;
-      z = z1;
-      const x2 = x * cr - y * sr;
-      y1 = x * sr + y * cr;
-      x = x2;
-      y = y1;
-      p[i] = x * cy + z * sy;
-      p[i + 1] = y;
-      p[i + 2] = z * cy - x * sy;
-    }
-    return geo;
-  };
+  // Pitch about x, then roll about z, then yaw about y.
+  const turn = (geo, yaw, roll = 0, pitch = 0) => turnedY(turnedZ(turnedX(geo, pitch), roll), yaw);
   const noShadow = (geo) => {
     geo.castShadow = false;
     return geo;
@@ -223,7 +198,7 @@
     const parts = [];
     for (const side of [-1, 1]) {
       for (let y = 0; y < GANTRY.height; y += 0.5) parts.push(turn(bevelBox({ w: 0.92 + (rand() - 0.5) * 0.14, h: 0.5, d: 0.92 + (rand() - 0.5) * 0.14, color: stone(), bevel: 0.08, offset: { y: y + 0.25 } }), (rand() - 0.5) * 0.25));
-      for (let k = parts.length - GANTRY.height * 2; k < parts.length; k++) shift(parts[k], side * GANTRY.span / 2, 0, 0);
+      for (let k = parts.length - GANTRY.height * 2; k < parts.length; k++) moved(parts[k], side * GANTRY.span / 2, 0, 0);
       parts.push(bevelBox({ w: 1.3, h: 0.3, d: 1.3, color: "#57504a", bevel: 0.07, offset: { x: side * GANTRY.span / 2, y: GANTRY.height + 0.15 } }));
       for (const y of [GANTRY.height + 0.42, GANTRY.height + 0.68]) parts.push(bevelBox({ w: 0.6, h: 0.08, d: 0.6, color: ROPE, bevel: 0.025, offset: { x: side * (GANTRY.span / 2 - 0.2), y } }));
     }
@@ -356,9 +331,9 @@
     const h = 3.6 + rand() * 1.8, parts = [box({ w: 0.36, h: h * 0.4, d: 0.36, color: "#4e361f", offset: { y: h * 0.2 } })];
     for (let t = 0; t < 4; t++) {
       const y = h * (0.24 + t * 0.19), r = 1.7 - t * 0.35;
-      parts.push(shift(turn(lathe({ profile: [[r, 0], [r * 0.55, h * 0.1], [r * 0.15, h * 0.22], [0, h * 0.25]], segments: 8, color: (k) => k < 0.4 ? "#2f6b3a" : k < 0.7 ? "#3a7a44" : "#3f8248" }), t * 0.4), 0, y, 0));
-      parts.push(shift(turn(lathe({ profile: [[r * 0.85, h * 0.04], [r * 0.4, h * 0.14], [0, h * 0.2]], segments: 8, color: (k) => k < 0.5 ? "#3f8248" : "#4d9455" }), t * 0.4 + 0.4), 0.15, y + 0.05, -0.1));
-      parts.push(shift(turn(lathe({ profile: [[r * 0.6, h * 0.1], [r * 0.15, h * 0.22], [0, h * 0.255]], segments: 8, color: "#eef3f7" }), t * 0.4), 0, y + 0.02, 0));
+      parts.push(moved(turn(lathe({ profile: [[r, 0], [r * 0.55, h * 0.1], [r * 0.15, h * 0.22], [0, h * 0.25]], segments: 8, color: (k) => k < 0.4 ? "#2f6b3a" : k < 0.7 ? "#3a7a44" : "#3f8248" }), t * 0.4), 0, y, 0));
+      parts.push(moved(turn(lathe({ profile: [[r * 0.85, h * 0.04], [r * 0.4, h * 0.14], [0, h * 0.2]], segments: 8, color: (k) => k < 0.5 ? "#3f8248" : "#4d9455" }), t * 0.4 + 0.4), 0.15, y + 0.05, -0.1));
+      parts.push(moved(turn(lathe({ profile: [[r * 0.6, h * 0.1], [r * 0.15, h * 0.22], [0, h * 0.255]], segments: 8, color: "#eef3f7" }), t * 0.4), 0, y + 0.02, 0));
     }
     return merge(...parts);
   });
@@ -367,15 +342,15 @@
     const h = 1.6 + i * 0.7;
     return merge(
       turn(lathe({ profile: [[0.36, 0], [0.42, h * 0.3], [0.18, h * 0.8], [0, h]], segments: 6, color: colors[0], emissive: 0.75 }), i * 0.9),
-      shift(turn(lathe({ profile: [[0.2, 0], [0.24, h * 0.2], [0.1, h * 0.5], [0, h * 0.62]], segments: 5, color: colors[1], emissive: 0.85 }), i * 1.3, 0, 0.35), 0.4, 0, 0.2),
-      shift(turn(lathe({ profile: [[0.16, 0], [0.2, h * 0.15], [0.08, h * 0.4], [0, h * 0.5]], segments: 5, color: colors[0], emissive: 0.75 }), i * 2.1, 0, -0.4), -0.35, 0, -0.25)
+      moved(turn(lathe({ profile: [[0.2, 0], [0.24, h * 0.2], [0.1, h * 0.5], [0, h * 0.62]], segments: 5, color: colors[1], emissive: 0.85 }), i * 1.3, 0, 0.35), 0.4, 0, 0.2),
+      moved(turn(lathe({ profile: [[0.16, 0], [0.2, h * 0.15], [0.08, h * 0.4], [0, h * 0.5]], segments: 5, color: colors[0], emissive: 0.75 }), i * 2.1, 0, -0.4), -0.35, 0, -0.25)
     );
   });
   const iceSpike = variants((i) => {
     const h = 1.2 + i * 0.6;
     return merge(
       turn(lathe({ profile: [[0.5, 0], [0.34, h * 0.4], [0.1, h * 0.85], [0, h]], segments: 5, color: (t) => t < 0.5 ? "#cfe6f5" : "#eef7fb" }), i * 0.8),
-      shift(turn(lathe({ profile: [[0.3, 0], [0.18, h * 0.3], [0, h * 0.55]], segments: 5, color: "#dbeef8" }), i * 1.7), 0.4, 0, 0.3)
+      moved(turn(lathe({ profile: [[0.3, 0], [0.18, h * 0.3], [0, h * 0.55]], segments: 5, color: "#dbeef8" }), i * 1.7), 0.4, 0, 0.3)
     );
   });
   const snowRock = variants((i) => stoneHeap(900 + i, 0.75 + i * 0.3, "#6f7c87", "#586470", "#eef3f7", 0.24));
@@ -383,7 +358,7 @@
     const h = 2 + i * 1.3;
     return merge(
       turn(lathe({ profile: [[0.6, 0.2], [0.48, -h * 0.35], [0.2, -h * 0.75], [0, -h]], segments: 6, color: (t) => t < 0.5 ? "#3a3330" : "#4a413a" }), i * 0.9),
-      shift(turn(lathe({ profile: [[0.3, 0.2], [0.22, -h * 0.25], [0, -h * 0.55]], segments: 5, color: "#2b2724" }), i * 1.6), 0.45, 0, 0.3)
+      moved(turn(lathe({ profile: [[0.3, 0.2], [0.22, -h * 0.25], [0, -h * 0.55]], segments: 5, color: "#2b2724" }), i * 1.6), 0.45, 0, 0.3)
     );
   });
   const rainDrop = cached(() => noShadow(box({ w: 0.025, h: 0.7, d: 0.025, color: "#c9d6e2", emissive: 0.35 })));
@@ -402,5 +377,5 @@
     bevelBox({ w: 0.32, h: 0.3, d: 0.32, color: "#e04a3a", bevel: 0.06, offset: { y: 1.5 } })
   ));
 
-  BL.raceModels = { KART, GANTRY, gantryLampY, DINO_HIDES, kart, kartWheel, dino, gantry, gantryLamp, boostFlame, stalactite, rainDrop, snowFlake, boostPad, itemCrate, rockShot, peel, boulder, snowball, spectator, banner, torchStand, torchFlame, palm, lagoonRock, lavaRock, obsidianSpike, bones, pine, crystal, iceSpike, snowRock, planks, buoy, post, turn, shift, yToX, yToZ };
+  BL.raceModels = { KART, GANTRY, gantryLampY, DINO_HIDES, kart, kartWheel, dino, gantry, gantryLamp, boostFlame, stalactite, rainDrop, snowFlake, boostPad, itemCrate, rockShot, peel, boulder, snowball, spectator, banner, torchStand, torchFlame, palm, lagoonRock, lavaRock, obsidianSpike, bones, pine, crystal, iceSpike, snowRock, planks, buoy, post, turn, yToX, yToZ };
 })();

@@ -19,12 +19,12 @@
 // as one instanced batch), rack, Cold Pool, pad, the three generators and the Crystal Bank, sky hole,
 // workbench, shelves, breaker and lever, the Fan Wall and Box Fan with their blades mounted by
 // `FAN_MOUNT`, the busbar riser, the crystal cell, pool board, trader's stall and price board, banana
-// rock, trophy shelf and the eight trophies, drop marker, lamp, flame and crystal, and the hub mouth's
-// dressing (`hubTrack`, `hubCart`, `hubRack`, in the mouth's local frame with +z out of the cave).
+// rock, trophy shelf and the eight trophies, drop marker, lamp, flame and crystal, and `hubCart`, the cart of
+// glowing ore that stands by the Lightning Factory's switchboard.
 (() => {
   "use strict";
   const BL = window.BL = window.BL || {};
-  const { box, bevelBox, lathe, ring, merge, cached, variants, noShadow } = BL.models;
+  const { box, bevelBox, lathe, ring, merge, cached, variants, noShadow, moved, turnedX, turnedY } = BL.models;
   // The mine's props take the island's cartoon chamfer: every box a bevelled one, except what glows (screens,
   // lights, marks) and anything under 3 cm, which a chamfer would eat. A bevelled box keeps the plain box's outer
   // faces, so whatever sits flush on one still does.
@@ -36,26 +36,8 @@
   const TIMBER = "#6b4a2b", TIMBER_DARK = "#4a331e", METAL = "#4a4f55", METAL_DARK = "#33373c";
   const GREEN = "#6de08a", AMBER = "#f0a83c", COPPER = "#8a5a2b", OIL = "#2f6f8a", BANANA = "#f5c542";
 
-  // Moves a built geometry in place, for parts that are turned before they are merged.
-  const shift = (geo, x, y, z) => {
-    const p = geo.verts;
-    for (let i = 0; i < p.length; i += 3) {
-      p[i] += x;
-      p[i + 1] += y;
-      p[i + 2] += z;
-    }
-    return geo;
-  };
-  const turn = (geo, yaw, pitch = 0) => {
-    const p = geo.verts, cy = Math.cos(yaw), sy = Math.sin(yaw), cp = Math.cos(pitch), sp = Math.sin(pitch);
-    for (let i = 0; i < p.length; i += 3) {
-      const x = p[i], y = p[i + 1] * cp - p[i + 2] * sp, z = p[i + 1] * sp + p[i + 2] * cp;
-      p[i] = x * cy + z * sy;
-      p[i + 1] = y;
-      p[i + 2] = z * cy - x * sy;
-    }
-    return geo;
-  };
+  // Pitch about x, then yaw about y.
+  const turn = (geo, yaw, pitch = 0) => turnedY(turnedX(geo, pitch), yaw);
 
   // Chambers run down -z from the mouth at +z. Each dig opens the next one through the far wall of the
   // last; a tunnel is a gap in that wall `TUNNEL.w` wide.
@@ -256,7 +238,7 @@
       parts.push(bevelBox({ w: 0.36, h: 0.08, d: 0.36, color: METAL_DARK, bevel: 0.02, offset: { x: side * px, y: 0.3 } }));
       parts.push(bevelBox({ w: 0.36, h: 0.1, d: 0.36, color: TIMBER_ROPE, bevel: 0.03, offset: { x: side * px, y: post - 0.2 } }));
       // The knee: a beam 0.9 long leaning 45 degrees in toward the middle, from the post to the cap's underside.
-      parts.push(shift(turn(bevelBox({ w: 0.18, h: 0.9, d: 0.18, color: TIMBER_DARK, bevel: 0.04 }), side * HALF_PI, -Math.PI / 4), side * (px - 0.16 - 0.32), post - 0.33, 0));
+      parts.push(moved(turn(bevelBox({ w: 0.18, h: 0.9, d: 0.18, color: TIMBER_DARK, bevel: 0.04 }), side * HALF_PI, -Math.PI / 4), side * (px - 0.16 - 0.32), post - 0.33, 0));
     }
     parts.push(bevelBox({ w: capW, h: 0.34, d: 0.38, color: TIMBER_DARK, bevel: 0.07, offset: { y: top } }));
     return merge(...parts);
@@ -333,11 +315,11 @@
     return geo;
   });
 
-  // Where each chamber's crates, ore, barrels and sacks stand, as plain numbers the scene also walks round:
+  // Where each chamber's crates, ore and barrels stand, as plain numbers the scene also walks round:
   // against the walls, clear of every spot the sim places, the boulders and the tunnels.
   const DRESS_AT = [];
   CHAMBERS.forEach((c, i) => {
-    const KINDS = ["crate", "coalCrate", "barrel", "sack", "coalCrate", "crate"], spots = [];
+    const KINDS = ["crate", "coalCrate", "barrel", "crate", "coalCrate", "crate"], spots = [];
     for (const [x, turns] of [[c.x0 + 0.62, 1], [c.x1 - 0.62, 3]]) for (let z = c.z1 - 1; z > c.z0 + 1; z -= 1.15) spots.push(x, z, turns);
     for (const [z, turns] of [[c.z0 + 0.62, 0], [c.z1 - 0.62, 2]]) for (let x = c.x0 + 1; x < c.x1 - 1; x += 1.15) if (Math.abs(x) > TUNNEL.w / 2 + 0.8) spots.push(x, z, turns);
     let placed = 0;
@@ -352,7 +334,7 @@
   });
   LAYOUT.DRESS_AT = DRESS_AT;
   // Each chamber dressed from the shared kit: a lantern garland under every timber cap (lanterns over the side
-  // rows, the aisle left clear), bulb festoons along both walls, and crates, ore, barrels and sacks against the
+  // rows, the aisle left clear), bulb festoons along both walls, and crates, ore and barrels against the
   // walls wherever nothing the sim places and no boulder stands. Three draws a chamber.
   const chamberDressing = variants((i) => {
     const c = CHAMBERS[i], set = BL.dressing.set(), y = c.h - 0.45;
@@ -436,7 +418,7 @@
       const x = -0.42 + i * 0.168;
       parts.push(bx({ w: 0.05, h: 0.3, d: 0.42, color: i % 2 ? "#2b2f36" : "#323740", offset: { x, y: 0.21 } }));
       parts.push(bx({ w: 0.055, h: 0.03, d: 0.03, color: i % 2 ? GREEN : AMBER, emissive: 1, offset: { x, y: 0.34, z: 0.2 } }));
-      parts.push(shift(turn(ring({ r: 0.09, thickness: 0.02, segments: 8, color: "#15171b" }), HALF_PI, HALF_PI), x + 0.03, 0.2, 0));
+      parts.push(moved(turn(ring({ r: 0.09, thickness: 0.02, segments: 8, color: "#15171b" }), HALF_PI, HALF_PI), x + 0.03, 0.2, 0));
     }
     parts.push(bx({ w: 0.9, h: 0.03, d: 0.03, color: "#1a1a1a", offset: { y: 0.05, z: -0.22 } }));
     return merge(...parts);
@@ -463,7 +445,7 @@
     ];
     if (look.band) parts.push(bx({ w: 0.74, h: 0.03, d: 0.52, color: look.band, emissive: 0.35, offset: { y: 0.1 } }));
     // Two fan grilles at the back and a row of heatsink fins on top.
-    for (const x of [-0.18, 0.18]) parts.push(shift(turn(ring({ r: 0.085, thickness: 0.018, segments: 8, color: "#101114" }), 0, HALF_PI), x, 0, -0.255));
+    for (const x of [-0.18, 0.18]) parts.push(moved(turn(ring({ r: 0.085, thickness: 0.018, segments: 8, color: "#101114" }), 0, HALF_PI), x, 0, -0.255));
     for (let f = 0; f < 5; f++) parts.push(bx({ w: 0.02, h: 0.03, d: 0.4, color: look.face, offset: { x: -0.24 + f * 0.12, y: 0.125 } }));
     return merge(...parts);
   });
@@ -516,14 +498,14 @@
       const a = i / 8 * Math.PI * 2;
       wheel.push(bx({ w: 0.46, h: 0.08, d: 0.34, color: "#7d5730", offset: { x: Math.cos(a) * 0.76, y: Math.sin(a) * 0.76 } }));
     }
-    return merge(shift(turn(merge(...wheel), 0, HALF_PI), 0, 1.15, 0),
+    return merge(moved(turn(merge(...wheel), 0, HALF_PI), 0, 1.15, 0),
       bx({ w: 1.4, h: 0.3, d: 0.5, color: "#3a3631", offset: { y: 0.15 } }),
       bx({ w: 1.1, h: 0.04, d: 0.36, color: OIL, emissive: 0.35, offset: { y: 0.31 } }),
       bx({ w: 0.12, h: 1.2, d: 0.12, color: TIMBER_DARK, offset: { x: -0.6, y: 0.6 } }),
       bx({ w: 0.12, h: 1.2, d: 0.12, color: TIMBER_DARK, offset: { x: 0.6, y: 0.6 } }));
   });
   const sunLeaves = cached(() => merge(
-    shift(turn(merge(
+    moved(turn(merge(
       bx({ w: 1.5, h: 0.05, d: 1.0, color: "#22402c", emissive: 0.15 }),
       ...[-0.5, 0, 0.5].map((x) => bx({ w: 0.02, h: 0.06, d: 0.98, color: "#6de08a", emissive: 0.4, offset: { x } }))
     ), 0, -0.5), 0, 1.2, 0),
@@ -537,7 +519,7 @@
   // A crystal bank: a crate of charge crystals wired to the circuit.
   const crystalBank = cached(() => merge(
     bx({ w: 1.2, h: 0.7, d: 0.8, color: TIMBER, offset: { y: 0.35 } }),
-    ...[-0.35, 0, 0.35].map((x) => shift(lathe({ profile: [[0, 0], [0.12, 0.1], [0.08, 0.42], [0, 0.52]], segments: 6, color: "#7fe0ff", emissive: 0.8 }), x, 0.68, 0)),
+    ...[-0.35, 0, 0.35].map((x) => moved(lathe({ profile: [[0, 0], [0.12, 0.1], [0.08, 0.42], [0, 0.52]], segments: 6, color: "#7fe0ff", emissive: 0.8 }), x, 0.68, 0)),
     bx({ w: 0.1, h: 0.1, d: 0.6, color: COPPER, offset: { x: 0.65, y: 0.3 } })
   ));
   const POWER_BUILDERS = [waterWheel, sunLeaves, steamVent, crystalBank];
@@ -572,14 +554,14 @@
   const fanWall = cached(() => merge(
     bx({ w: 1.15, h: 2.2, d: 0.45, color: "#3b4046", offset: { y: 1.1 } }),
     bx({ w: 1.0, h: 1.0, d: 0.04, color: "#15171b", offset: { y: 1.2, z: 0.23 } }),
-    shift(turn(ring({ r: 0.5, thickness: 0.05, segments: 16, color: METAL }), 0, HALF_PI), 0, 1.2, 0.26),
+    moved(turn(ring({ r: 0.5, thickness: 0.05, segments: 16, color: METAL }), 0, HALF_PI), 0, 1.2, 0.26),
     bx({ w: 0.12, h: 0.08, d: 0.02, color: GREEN, emissive: 1, offset: { x: 0.42, y: 2.05, z: 0.235 } })
   ));
   const boxFan = cached(() => merge(
     lathe({ profile: [[0, 0], [0.24, 0], [0.24, 0.04], [0, 0.06]], segments: 10, color: "#33373c" }),
     bx({ w: 0.05, h: 0.8, d: 0.05, color: METAL, offset: { y: 0.44 } }),
-    shift(turn(ring({ r: 0.33, thickness: 0.04, segments: 14, color: "#8a9099" }), 0, HALF_PI), 0, 1.0, 0),
-    shift(turn(ring({ r: 0.33, thickness: 0.02, segments: 14, color: "#8a9099" }), 0, HALF_PI), 0, 1.0, 0.1),
+    moved(turn(ring({ r: 0.33, thickness: 0.04, segments: 14, color: "#8a9099" }), 0, HALF_PI), 0, 1.0, 0),
+    moved(turn(ring({ r: 0.33, thickness: 0.02, segments: 14, color: "#8a9099" }), 0, HALF_PI), 0, 1.0, 0.1),
     bx({ w: 0.12, h: 0.14, d: 0.14, color: "#33373c", offset: { y: 1.0, z: -0.08 } })
   ));
   // Where each fan's blades sit in its own frame, and how big they are against fanBlade.
@@ -597,11 +579,11 @@
     bx({ w: 0.7, h: 0.08, d: 0.45, color: TIMBER_DARK, offset: { y: 0.04 } }),
     bx({ w: 0.06, h: 0.7, d: 0.06, color: TIMBER, offset: { x: -0.32, y: 0.39, z: -0.19 } }),
     bx({ w: 0.06, h: 0.7, d: 0.06, color: TIMBER, offset: { x: 0.32, y: 0.39, z: -0.19 } }),
-    shift(lathe({ profile: [[0, 0], [0.14, 0.12], [0.1, 0.44], [0, 0.56]], segments: 6, color: "#7fe0ff", emissive: 0.8 }), -0.15, 0.08, 0),
-    shift(lathe({ profile: [[0, 0], [0.12, 0.1], [0.08, 0.36], [0, 0.46]], segments: 6, color: "#b58cff", emissive: 0.7 }), 0.1, 0.08, 0.05),
-    shift(lathe({ profile: [[0, 0], [0.1, 0.08], [0.07, 0.3], [0, 0.4]], segments: 6, color: "#7fe0ff", emissive: 0.8 }), 0.2, 0.08, -0.1)
+    moved(lathe({ profile: [[0, 0], [0.14, 0.12], [0.1, 0.44], [0, 0.56]], segments: 6, color: "#7fe0ff", emissive: 0.8 }), -0.15, 0.08, 0),
+    moved(lathe({ profile: [[0, 0], [0.12, 0.1], [0.08, 0.36], [0, 0.46]], segments: 6, color: "#b58cff", emissive: 0.7 }), 0.1, 0.08, 0.05),
+    moved(lathe({ profile: [[0, 0], [0.1, 0.08], [0.07, 0.3], [0, 0.4]], segments: 6, color: "#7fe0ff", emissive: 0.8 }), 0.2, 0.08, -0.1)
   ));
-  const fanHub = () => shift(turn(ring({ r: 0.12, thickness: 0.05, segments: 10, color: METAL_DARK }), 0, HALF_PI), 0, 0, 0.02);
+  const fanHub = () => moved(turn(ring({ r: 0.12, thickness: 0.05, segments: 10, color: METAL_DARK }), 0, HALF_PI), 0, 0, 0.02);
   const fanBlade = cached(() => {
     const parts = [fanHub()];
     for (let i = 0; i < 5; i++) {
@@ -614,7 +596,7 @@
   // real fan at twenty turns a second strobes backwards on a sixty-frame screen, so the scene swaps
   // to this above a few turns a second, the way films and games do.
   const fanBlur = cached(() => {
-    const parts = [fanHub(), shift(turn(lathe({ profile: [[0.14, -0.012], [0.62, -0.012], [0.62, 0.012], [0.14, 0.012], [0.14, -0.012]], segments: 16, color: "#474c53" }), 0, HALF_PI), 0, 0, -0.005)];
+    const parts = [fanHub(), moved(turn(lathe({ profile: [[0.14, -0.012], [0.62, -0.012], [0.62, 0.012], [0.14, 0.012], [0.14, -0.012]], segments: 16, color: "#474c53" }), 0, HALF_PI), 0, 0, -0.005)];
     // Three streaks, none alike, so the disc has no symmetry to alias: turned fast it still reads as
     // turning forward instead of standing still or running backwards.
     [[0.38, 0.4, "#9aa1ab"], [0.26, 0.3, "#7b818a"], [0.18, 0.48, "#5f656d"]].forEach(([w, r, color], i) => {
@@ -695,7 +677,7 @@
     () => merge(bx({ w: 0.44, h: 0.4, d: 0.2, color: "#d8892b", offset: { y: 0.24 } }), bx({ w: 0.2, h: 0.12, d: 0.22, color: "#b36f1f", offset: { y: 0.5 } }), bx({ w: 0.14, h: 0.14, d: 0.02, color: BANANA, emissive: 0.3, offset: { y: 0.26, z: 0.11 } })),
     () => merge(bx({ w: 0.3, h: 0.42, d: 0.06, color: "#8a8178", offset: { x: -0.1, y: 0.21 } }), bx({ w: 0.3, h: 0.36, d: 0.06, color: "#9a9188", offset: { x: 0.12, y: 0.18, z: 0.06 } })),
     () => merge(bx({ w: 0.5, h: 0.5, d: 0.08, color: METAL_DARK, offset: { y: 0.25 } }), ring({ r: 0.18, thickness: 0.03, y: 0.25, segments: 10, color: METAL })),
-    () => merge(...[-0.16, 0, 0.16].map((x) => shift(lathe({ profile: [[0.1, 0], [0.1, 0.08], [0.07, 0.14], [0, 0.16]], segments: 7, color: AMBER }), x, 0, 0))),
+    () => merge(...[-0.16, 0, 0.16].map((x) => moved(lathe({ profile: [[0.1, 0], [0.1, 0.08], [0.07, 0.14], [0, 0.16]], segments: 7, color: AMBER }), x, 0, 0))),
     () => merge(bx({ w: 0.42, h: 0.16, d: 0.3, color: "#8fa6b8", offset: { y: 0.08 } }), bx({ w: 0.3, h: 0.06, d: 0.2, color: "#dfeef7", emissive: 0.25, offset: { y: 0.19 } })),
     () => merge(bx({ w: 0.36, h: 0.32, d: 0.3, color: "#4a4f55", offset: { y: 0.16 } }), bx({ w: 0.2, h: 0.14, d: 0.02, color: "#7fe0ff", emissive: 0.9, offset: { y: 0.17, z: 0.16 } }), bx({ w: 0.38, h: 0.03, d: 0.32, color: METAL_DARK, offset: { y: 0.33 } })),
     () => merge(bx({ w: 0.05, h: 0.5, d: 0.05, color: TIMBER_DARK, offset: { y: 0.25 } }), bx({ w: 0.16, h: 0.16, d: 0.04, color: "#e0d6c8", offset: { y: 0.5 } }), bx({ w: 0.08, h: 0.2, d: 0.03, color: "#c8262b", offset: { x: 0.1, y: 0.34 } }), bx({ w: 0.08, h: 0.2, d: 0.03, color: "#2458a6", offset: { x: -0.1, y: 0.34 } })),
@@ -719,49 +701,22 @@
   // A busbar run overhead in the hall, copper that glows faintly when there is power in it.
   LAYOUT.ROCKS = ROCKS;
 
-  // ---- the mine's mouth on the island ----
-  // What the hub dresses the 10 o'clock mouth with, in the mouth's own frame (+z out of the cave):
-  // a track running out of the dark with a cart of glowing ore on it, timber sets down the tunnel, a
-  // lantern, a pickaxe, and a rack of Thunder Boxes blinking further in. The cart and the rack are
-  // their own geometry so the hub can make them solid.
-  const hubTrack = cached(() => {
-    const parts = [];
-    for (const x of [-0.45, 0.45]) parts.push(bx({ w: 0.07, h: 0.07, d: 7.4, color: "#6f757c", offset: { x, y: 0.1, z: -1.8 } }));
-    for (let z = 1.7; z > -5.5; z -= 0.5) parts.push(bx({ w: 1.3, h: 0.06, d: 0.18, color: TIMBER_DARK, offset: { y: 0.04, z } }));
-    for (const z of [-1.1, -3.2]) {
-      parts.push(bx({ w: 0.24, h: 2.8, d: 0.24, color: TIMBER, offset: { x: -1.95, y: 1.4, z } }));
-      parts.push(bx({ w: 0.24, h: 2.8, d: 0.24, color: TIMBER, offset: { x: 1.95, y: 1.4, z } }));
-      parts.push(bx({ w: 4.3, h: 0.26, d: 0.3, color: TIMBER_DARK, offset: { y: 2.86, z } }));
-    }
-    // The lantern off the first timber, the pickaxe against the wall, and a heap of ore by the mouth.
-    parts.push(bx({ w: 0.04, h: 0.4, d: 0.04, color: "#2b2521", offset: { x: -1.5, y: 2.55, z: -1.1 } }));
-    parts.push(bx({ w: 0.2, h: 0.24, d: 0.2, color: "#ffd27a", emissive: 1, offset: { x: -1.5, y: 2.25, z: -1.1 } }));
-    parts.push(shift(turn(bx({ w: 0.06, h: 1.1, d: 0.06, color: TIMBER }), 0, 0.3), -2.1, 0.55, -2.3));
-    parts.push(shift(turn(bx({ w: 0.5, h: 0.08, d: 0.06, color: METAL }), 0, 0.3), -2.1, 1.08, -2.14));
-    for (let i = 0; i < 7; i++) {
-      const a = i * 0.9, r = 0.18 + (i % 3) * 0.12;
-      parts.push(bx({ w: 0.18, h: 0.16 + (i % 2) * 0.1, d: 0.16, color: i % 3 ? STONE_LIGHT : "#7fe0ff", emissive: i % 3 ? 0 : 0.8, offset: { x: 1.6 + Math.cos(a) * r, y: 0.08, z: 1.1 + Math.sin(a) * r } }));
-    }
-    return merge(...parts);
-  });
+  // ---- the ore cart ----
+  // A mine cart of glowing ore on four wheels, its origin on the ground under its middle; one stands by the
+  // Lightning Factory's switchboard.
   const hubCart = cached(() => merge(
     bx({ w: 1.1, h: 0.62, d: 1.3, color: "#4a4f55", offset: { y: 0.55 } }),
     bx({ w: 1.16, h: 0.06, d: 1.36, color: METAL_DARK, offset: { y: 0.88 } }),
-    ...[[-0.42, -0.45], [0.42, -0.45], [-0.42, 0.45], [0.42, 0.45]].map(([x, z]) => shift(turn(ring({ r: 0.16, thickness: 0.05, segments: 10, color: "#2b2d31" }), HALF_PI, HALF_PI), x, 0.2, z)),
+    ...[[-0.42, -0.45], [0.42, -0.45], [-0.42, 0.45], [0.42, 0.45]].map(([x, z]) => moved(turn(ring({ r: 0.16, thickness: 0.05, segments: 10, color: "#2b2d31" }), HALF_PI, HALF_PI), x, 0.2, z)),
     // Ore heaped over the rim, some of it glowing.
     ...[[-0.25, -0.3, "#7fe0ff", 0.7], [0.2, -0.2, STONE_LIGHT, 0], [-0.1, 0.2, "#b58cff", 0.7], [0.3, 0.3, STONE, 0], [0, 0, "#f5c542", 0.7]].map(([x, z, color, emissive]) =>
       bx({ w: 0.36, h: 0.28, d: 0.36, color, emissive, offset: { x, y: 0.98, z } }))
   ));
-  const hubRack = cached(() => {
-    const parts = [rackFrame()];
-    for (let b = 0; b < 6; b++) parts.push(placedCopy(asic(b % 3 === 2 ? 1 : 0), 0, 0.34 + b * 0.27, 0.02, 1, 0));
-    return merge(...parts);
-  });
   const flame = cached(() => BL.hubModels.fireFlame());
   // A charge crystal, the panic power the trader sells by the bag.
   const crystal = cached(() => merge(
     lathe({ profile: [[0, 0], [0.14, 0.12], [0.1, 0.44], [0, 0.56]], segments: 6, color: "#7fe0ff", emissive: 0.8 }),
-    shift(lathe({ profile: [[0, 0], [0.09, 0.08], [0.06, 0.3], [0, 0.38]], segments: 6, color: "#b58cff", emissive: 0.7 }), 0.18, 0, 0.05)
+    moved(lathe({ profile: [[0, 0], [0.09, 0.08], [0.06, 0.3], [0, 0.38]], segments: 6, color: "#b58cff", emissive: 0.7 }), 0.18, 0, 0.05)
   ));
 
   // A Fire Stopper: a red canister on a wall bracket, its hose looped to the nozzle, facing +z.
@@ -806,7 +761,7 @@
   });
   BL.mineModels = {
     dressingLights,
-    LAYOUT, CHART, POOL_CHART, pickaxe, extinguisher, spareBreaker, smokeAlarm, chamberTimber, tunnelFrame, hubTrack, hubCart, hubRack, chartScreen, candle, chartMark, bayLocal, cave, pebbleBox, shinyRocks, thunderBox, asic, ASIC_LOOKS, rackFrame, coldPool, pad, waterWheel, sunLeaves, steamVent,
+    LAYOUT, CHART, POOL_CHART, pickaxe, extinguisher, spareBreaker, smokeAlarm, chamberTimber, tunnelFrame, hubCart, chartScreen, candle, chartMark, bayLocal, cave, pebbleBox, shinyRocks, thunderBox, asic, ASIC_LOOKS, rackFrame, coldPool, pad, waterWheel, sunLeaves, steamVent,
     POWER_BUILDERS, skyHole, workbench, shelves, breakerPanel, breakerLever, fanWall, boxFan, FAN_MOUNT, busbarRiser, crystalCell, fanBlade, fanBlur, poolBoard, traderStall,
     priceBoard, crackRock, trophyShelf, trophy, marker, lamp, flame, crystal, seal, chamberDecor
   };

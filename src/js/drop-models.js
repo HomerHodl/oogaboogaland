@@ -5,7 +5,7 @@
   const { hexToRgb } = BL.math;
   const { createNode, addChild } = BL.scene;
   const { box, bevelBox, lathe, merge } = BL.models;
-  const { kartWheel, yToZ, turn, shift } = BL.raceModels;
+  const { kartWheel, yToZ, turn } = BL.raceModels, { moved } = BL.models;
   const { postSign, puff, limb, flatInto } = BL.hubModels;
   const { mulberry32 } = BL.math;
   const tones = (hex) => { const c = hexToRgb(hex); return [c, c, c, c]; };
@@ -72,7 +72,7 @@
       bevelBox({ w: 2.2, h: 0.1, d: 0.7, color: PLANK, bevel: 0.04, offset: { y: y + 0.1, z: -half + 0.3 } }),
       bevelBox({ w: 0.1, h: 0.9, d: 0.85, color: LEAF, bevel: 0.03, offset: { y: y + 0.58, z: -half + 0.35 } }),
       bevelBox({ w: 0.12, h: 0.3, d: 0.35, color: LEAF_DK, bevel: 0.03, offset: { y: y + 1.05, z: -half + 0.15 } }),
-      shift(turn(bevelBox({ w: 0.1, h: 0.1, d: 0.42, color: BANANA, bevel: 0.03 }), 0, 0, 0.5), 0, y + 1.24, -half + 0.3),
+      moved(turn(bevelBox({ w: 0.1, h: 0.1, d: 0.42, color: BANANA, bevel: 0.03 }), 0, 0, 0.5), 0, y + 1.24, -half + 0.3),
       bevelBox({ w: 0.1, h: 0.4, d: 0.1, color: BONE, bevel: 0.03, offset: { y: 0.2, z: -half + 0.5 } }),
       // The stone engine block the skull sits on.
       bevelBox({ w: 0.52, h: 0.32, d: 0.42, color: "#6b625a", bevel: 0.08, offset: { y: y + 0.42, z: 1.55 } })
@@ -98,7 +98,7 @@
     return merge(
       bevelBox({ w: 0.12, h: 2.4, d: 0.12, color: WOOD_DK, bevel: 0.03, offset: { y: 1.2 } }),
       bevelBox({ w: 0.18, h: 0.06, d: 0.18, color: "#b89760", bevel: 0.02, offset: { y: 2.3 } }),
-      shift(turn(cone, Math.PI / 2), 0.08, 2.3, 0)
+      moved(turn(cone, Math.PI / 2), 0.08, 2.3, 0)
     );
   });
   // Unit-radius hoop in the xz plane; the scene scales each ring's node to its radius.
@@ -161,20 +161,19 @@
   const hole = cached(() => noShadow(lathe({ profile: [[0, 0.03], [0.45, 0.03], [0.62, 0.03], [0.62, -0.02]], segments: 12, color: (t) => t < 0.5 ? "#1a120b" : "#3a2a18" })));
   // Unit-length streak along z; the scene stretches it along the diver's velocity.
   const streak = cached(() => noShadow(box({ w: 0.03, h: 0.03, d: 1, color: "#eef3f7", emissive: 0.35 })));
-  // Plane park spot on the roof over a mouth's room, nose to the meadow; shared by the hub and the scene.
-  // Roof read under both wheels, higher wins; pitch turns about the axle, out.y is the plane origin at that scale.
-  const roofSpot = (island, m, out = {}, scale = 1) => {
+  // Plane park spot on the roof over a mouth's room, nose to the meadow.
+  // Roof read under both wheels, higher wins; pitch turns about the axle, out.y is the plane origin.
+  const roofSpot = (island, m, out) => {
     const ax = Math.sin(m.ry), az = Math.cos(m.ry), rx = Math.cos(m.ry), rz = -Math.sin(m.ry);
     out.x = m.x + ax * ROOF_BACK;
     out.z = m.z + az * ROOF_BACK;
-    const wx = ax * PLANE.wheelZ * scale, wz = az * PLANE.wheelZ * scale;
-    const left = island.surfaceAt(out.x + wx - rx * PLANE.wheelX * scale, out.z + wz - rz * PLANE.wheelX * scale);
-    const right = island.surfaceAt(out.x + wx + rx * PLANE.wheelX * scale, out.z + wz + rz * PLANE.wheelX * scale);
-    out.y = Math.max(left, right) - (PLANE.wheelR * (Math.cos(PARK_PITCH) - 1) - PLANE.wheelZ * Math.sin(PARK_PITCH)) * scale;
+    const wx = ax * PLANE.wheelZ, wz = az * PLANE.wheelZ;
+    const left = island.surfaceAt(out.x + wx - rx * PLANE.wheelX, out.z + wz - rz * PLANE.wheelX);
+    const right = island.surfaceAt(out.x + wx + rx * PLANE.wheelX, out.z + wz + rz * PLANE.wheelX);
+    out.y = Math.max(left, right) - (PLANE.wheelR * (Math.cos(PARK_PITCH) - 1) - PLANE.wheelZ * Math.sin(PARK_PITCH));
     out.ry = m.ry;
     out.ax = ax;
     out.az = az;
-    return out;
   };
-  BL.dropModels = { PLANE, CANOPY, ROOF_BACK, PARK_PITCH, SIGN_AT, roofSign, plane, planeBody, propeller, windsock, hoop, canopy, pack, target, streak, hole, roofSpot };
+  BL.dropModels = { PLANE, CANOPY, PARK_PITCH, SIGN_AT, roofSign, plane, planeBody, propeller, windsock, hoop, canopy, pack, target, streak, hole, roofSpot };
 })();

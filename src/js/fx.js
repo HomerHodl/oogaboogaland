@@ -135,6 +135,20 @@
     };
     const bubbles = [];
     const zzz = [];
+    const damageNumbers = Array.from({ length: 32 }, () => ({ x: 0, y: 0, z: 0, life: 0, text: "" }));
+    let damageCursor = 0, damageCount = 0;
+    const DAMAGE_LIFE = 0.8;
+    const damageNumber = (x, y, z, amount) => {
+      if (!(amount > 0)) return;
+      const number = damageNumbers[damageCursor];
+      damageCursor = (damageCursor + 1) % damageNumbers.length;
+      if (!number.life) damageCount++;
+      number.x = x + (Math.random() - 0.5) * 0.2;
+      number.y = y + (Math.random() - 0.5) * 0.08;
+      number.z = z + (Math.random() - 0.5) * 0.2;
+      number.life = DAMAGE_LIFE;
+      number.text = String(Math.round(amount * 2) / 2);
+    };
     let ticker = null;
     const MAX_BUBBLES = 10;
     const say = (cave, text, dur = 2.4) => {
@@ -212,6 +226,27 @@
       }
       const ctx = overlayCtx;
       ctx.clearRect(0, 0, w, h);
+      if (damageCount) {
+        ctx.save();
+        ctx.font = "bold 12px ui-monospace, monospace";
+        ctx.textAlign = "center";
+        ctx.fillStyle = "#ff4545";
+        ctx.strokeStyle = "#24100e";
+        ctx.lineWidth = 2;
+        ctx.lineJoin = "round";
+        for (let i = 0; i < damageNumbers.length; i++) {
+          const number = damageNumbers[i];
+          if (!number.life) continue;
+          number.life = Math.max(0, number.life - dt);
+          if (!number.life) { number.text = ""; damageCount--; continue; }
+          const pos = project(number.x, number.y + (DAMAGE_LIFE - number.life) * 0.45, number.z);
+          if (!pos) continue;
+          ctx.globalAlpha = Math.min(1, number.life / 0.25);
+          ctx.strokeText(number.text, pos.x, pos.y);
+          ctx.fillText(number.text, pos.x, pos.y);
+        }
+        ctx.restore();
+      }
       for (let i = zzz.length - 1; i >= 0; i--) {
         const p = zzz[i];
         p.t += dt;
@@ -270,13 +305,15 @@
       particlePool.length = 0;
       bubbles.length = 0;
       zzz.length = 0;
+      for (const number of damageNumbers) { number.life = 0; number.text = ""; }
+      damageCursor = damageCount = 0;
       ticker = null;
     };
-    const stats = () => ({ particles: particles.length, pool: particlePool.length, bubbles: bubbles.length, zzz: zzz.length });
+    const stats = () => ({ particles: particles.length, pool: particlePool.length, bubbles: bubbles.length, zzz: zzz.length, damageNumbers: damageCount });
     return {
-      spawnParticle, burst, puff, say, sayAt, zzzAt, showTicker, drawOverlay, warmVisibility, update: stepParticles, trimPool, dispose, stats,
+      spawnParticle, burst, puff, say, sayAt, zzzAt, damageNumber, showTicker, drawOverlay, warmVisibility, warmBlockers: visibility.warm, update: stepParticles, trimPool, dispose, stats,
       get inMotion() {
-        return particles.length > 0;
+        return particles.length > 0 || damageCount > 0;
       }
     };
   };

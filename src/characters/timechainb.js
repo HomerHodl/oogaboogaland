@@ -42,7 +42,7 @@
     handle: "timechainb",
     joined: 1788800921,
     lastCommit: 1788171200,
-    look: { hairless: true, hatY: 12, skin: "#b8703c", hair: "#33200f" },
+    look: { portrait: { min: [-1, -2, 0], max: [7, 11, 8] }, hairless: true, hatY: 12, skin: "#b8703c", hair: "#33200f" },
     dress: {
       // The staff stands upright in the grip.
       club: (k) => ({ voxels: staffVoxels(k.rand), rest: { x: 0.2, z: 0 } }),

@@ -161,5 +161,45 @@
     // Without a separating support plane, an unresolved sliver counts as solid.
     return true;
   };
-  BL.convex = { sweptCylinder };
+  // The walking rig can tilt with a continuous slope. A vertical cylinder
+  // then contains floor below its downhill side; retain the actual swept
+  // convex body instead. Both arrays are caller-owned, including both poses.
+  const hullSupport = (a, b) => {
+    let maximum = -Infinity, minimum = Infinity, ai = 0, bi = 0;
+    for (let i = 0; i < a.length; i += 3) {
+      const dot = a[i] * dx + a[i + 1] * dy + a[i + 2] * dz;
+      if (dot > maximum) { maximum = dot; ai = i; }
+    }
+    for (let i = 0; i < b.length; i += 3) {
+      const dot = b[i] * dx + b[i + 1] * dy + b[i + 2] * dz;
+      if (dot < minimum) { minimum = dot; bi = i; }
+    }
+    const margin = CONTACT / Math.hypot(dx, dy, dz);
+    px = a[ai] - b[bi] - dx * margin;
+    py = a[ai + 1] - b[bi + 1] - dy * margin;
+    pz = a[ai + 2] - b[bi + 2] - dz * margin;
+  };
+  const hullsOverlap = (a, b) => {
+    dx = 1; dy = dz = 0;
+    hullSupport(a, b);
+    if (px <= TOLERANCE) return false;
+    simplex[0] = px; simplex[1] = py; simplex[2] = pz; size = 1;
+    dx = -px; dy = -py; dz = -pz;
+    for (let iteration = 0; iteration < 96; iteration++) {
+      const length = Math.hypot(dx, dy, dz);
+      if (length <= TOLERANCE) return true;
+      dx /= length; dy /= length; dz /= length;
+      hullSupport(a, b);
+      if (px * dx + py * dy + pz * dz <= TOLERANCE) return false;
+      for (let i = 0; i < size * 3; i += 3) {
+        const sx = simplex[i] - px, sy = simplex[i + 1] - py, sz = simplex[i + 2] - pz;
+        if (sx * sx + sy * sy + sz * sz < TOLERANCE * TOLERANCE) return true;
+      }
+      for (let i = size * 3 - 1; i >= 0; i--) simplex[i + 3] = simplex[i];
+      simplex[0] = px; simplex[1] = py; simplex[2] = pz; size++;
+      if (closest()) return true;
+    }
+    return true;
+  };
+  BL.convex = { sweptCylinder, hullsOverlap };
 })();

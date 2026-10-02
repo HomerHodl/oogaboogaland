@@ -261,7 +261,7 @@
   const updateMeter = () => {
     let reloading = 0;
     for (let i = 0; i < crew.list.length; i++) if (crew.list[i].weapon.reloading) reloading++;
-    hud.setMeter(world.level, METER_CAPACITY, reloading ? `${reloading} reloading · 6 shots per banana` : world.level < 1 ? "Waiting for bananas" : "Ready for reloads");
+    hud.setMeter(world.level, METER_CAPACITY, reloading ? `${reloading} reloading · pile unchanged` : world.level < 1 ? "Waiting for bananas" : "Ready for reloads");
   };
   const update = (dt, elapsed) => {
     pilot.readInput(dt);
@@ -366,12 +366,13 @@
     addChild(lab.room, dust.node);
     mark("room");
     hud = hudMod.create({ roster: contributors.activeRoster, catalog: models.SWAG, tierColors: models.TIER_COLORS, renderIcon: hudMod.renderIcon, lootEnabled });
+    hud.setAreaLabel("LAB");
     hooks = {};
     input = interactMod.create({ canvas: ctx.canvas, renderer, camera, hooks });
     pilot = pilotMod.create({ renderer, canvas: ctx.canvas, camera, hud, presets: PRESETS, landing: "pile", pitch: PITCH, dist: DIST, follow: FOLLOW, fly: FLY, clampTarget, clampCamera, ceilingAt: () => 4.3, coarse: COARSE, close: { eyeHeight: 1.1, eyeRatio: 0.95, eyeForward: 0.16, pitch: [-1.35, 1.35], trailingDist: 4, orbitDist: 5, maxStep: 0.6, groundAt: () => 0 } });
     const shared = { root, input, hooks, hud, game, world, renderer, camera, overlay: ctx.overlay, tickerAt: TICKER_AT, buildSpots: BUILD_SPOTS.slice(), walkIn: WALK_IN, clampDrag, viewYaw: PRESETS.pile.yaw, bedrolls: lab.bedrolls, pileScale: 0.45, onShown: (shown) => { lab.equipment.abacus.setValue(shown); meterTimer = 0; }, walkable, reticleTarget: () => "object" };
     shared.onWeaponImpact = (source, hit, dx, dy, dz, power) => {
-      if (hit.owner.kind === "caveman") crew.damage(hit.owner.cave, power);
+      if (hit.owner.kind === "caveman") crew.damage(hit.owner.cave, power, source === crew.player);
     };
     shared.fireReachable = (x, y, z, toX, toY, toZ) => Math.abs(toX) < ROOM_HALF && Math.abs(toZ) < ROOM_HALF && toY > 0 && toY < 4.5;
     fx = shared.fx = fxMod.create(shared);
@@ -470,7 +471,7 @@
         : contributors.activeRoster.find(entry => crew.stateOf(crew.cavemen.get(entry.name)) === "working") || contributors.activeRoster[0];
       const cave = contributor && crew.cavemen.get(contributor.name);
       if (cave) {
-        if (!contributors.debugState && crew.stateOf(cave) !== "working") { cave.override = "working"; crew.refreshStates(true); }
+        if (!contributors.debugState && !contributors.debugRoster && crew.stateOf(cave) !== "working") { cave.override = "working"; crew.refreshStates(true); }
         pilot.possess(cave);
         crew.configureWeapon(cave, preloadedWeapon, preloadedAmmo);
       }

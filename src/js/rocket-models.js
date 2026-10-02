@@ -2,16 +2,15 @@
 //
 // Every part's geometry and `assemble(stack)` (a group at the stack's bottom, a flame under each engine);
 // flame, smoke puff, fireball, plasma streak, splash and heat shell. The launch site (`SITE`, `siteSpot`,
-// `site`, `siteGroundAt`) is a voxel islet with the pad, the tower, the sagging rope bridge and the sign,
-// shared by the hub and the scene. The world sphere keeps its continents away from home (`planet`,
-// `onContinent`).
+// `site`, `siteGroundAt`) is a voxel islet with the pad, the tower, the sagging rope bridge and the sign.
+// The world sphere keeps its continents away from home (`planet`, `onContinent`).
 (() => {
   "use strict";
   const BL = window.BL = window.BL || {};
   const { hexToRgb, mulberry32 } = BL.math;
   const { createNode, addChild } = BL.scene;
   const { box, bevelBox, lathe, ring, merge, cached, noShadow, makeVox, voxelGeometry, pushVert, face } = BL.models;
-  const { turn, shift } = BL.raceModels;
+  const { turn } = BL.raceModels, { moved } = BL.models;
   const { postSign, limb, padNormals, flatInto, puff: hubPuff } = BL.hubModels;
   const { rocketParts, rocket } = BL;
   const keyed = (build) => {
@@ -44,12 +43,7 @@
   // A stick from radius r0 at y0 to radius r1 at y1, at angle a round the axis.
   const stick = (r0, y0, r1, y1, a, width, color) => {
     const len = Math.hypot(r1 - r0, y1 - y0);
-    return turn(shift(turn(box({ w: width, h: len, d: width, color }), 0, Math.atan2(r0 - r1, y1 - y0)), (r0 + r1) / 2, (y0 + y1) / 2, 0), -a);
-  };
-  // A thin box lying along a line in the yz plane, for rails and ropes.
-  const beam = (x, y0, z0, y1, z1, w, h, color) => {
-    const len = Math.hypot(y1 - y0, z1 - z0);
-    return shift(turn(box({ w, h, d: len, color }), 0, 0, -Math.atan2(y1 - y0, z1 - z0)), x, (y0 + y1) / 2, (z0 + z1) / 2);
+    return turn(moved(turn(box({ w: width, h: len, d: width, color }), 0, Math.atan2(r0 - r1, y1 - y0)), (r0 + r1) / 2, (y0 + y1) / 2, 0), -a);
   };
   const hoops = (r, ys) => ys.map((y) => ring({ r, thickness: 0.035, y, segments: 10, color: "#2d241c" }));
 
@@ -75,18 +69,18 @@
       ...Array.from({ length: 12 }, (_, i) => stick(p.r + 0.04, 0.04, 0.12, p.h + 0.22, i / 12 * Math.PI * 2 + 0.13, 0.085, i % 2 ? WOOD : PLANK)),
       ring({ r: p.r - 0.02, thickness: 0.05, y: 0.34, segments: 12, color: ROPE }),
       ring({ r: 0.6, thickness: 0.045, y: 1.06, segments: 12, color: ROPE }),
-      shift(turn(box({ w: 0.42, h: 0.5, d: 0.26, color: LEAF }), 0, 0, -0.45), 0, 1.02, -0.62),
-      shift(turn(box({ w: 0.46, h: 0.08, d: 0.3, color: ROPE }), 0, 0, -0.45), 0, 1.02, -0.62)
+      moved(turn(box({ w: 0.42, h: 0.5, d: 0.26, color: LEAF }), 0, 0, -0.45), 0, 1.02, -0.62),
+      moved(turn(box({ w: 0.46, h: 0.08, d: 0.3, color: ROPE }), 0, 0, -0.45), 0, 1.02, -0.62)
     ),
     gourdpod: (p) => roundMerge(
       roundLatheBy({ profile: [[0, 0], [0.62, 0], [p.r, 0.24], [0.83, 0.6], [0.58, 0.95], [0.42, 1.18], [0.37, 1.34], [0.32, 1.34]], segments: 12, color: (t, s) => t > 0.8 ? "#8a6a2c" : s % 2 ? "#d9a441" : "#c98a2e" }),
-      ...[-1, 1].map((side) => shift(turn(box({ w: 0.09, h: 0.55, d: 0.09, color: WOOD_DK }), 0, side * 0.35), side * 0.42, 1.45, 0)),
-      shift(turn(box({ w: 0.4, h: 0.44, d: 0.24, color: LEAF }), 0, 0, -0.4), 0, 0.82, -0.66),
+      ...[-1, 1].map((side) => moved(turn(box({ w: 0.09, h: 0.55, d: 0.09, color: WOOD_DK }), 0, side * 0.35), side * 0.42, 1.45, 0)),
+      moved(turn(box({ w: 0.4, h: 0.44, d: 0.24, color: LEAF }), 0, 0, -0.4), 0, 0.82, -0.66),
       ring({ r: 0.8, thickness: 0.04, y: 0.5, segments: 12, color: ROPE })
     ),
     leafshield: (p) => roundMerge(
       roundLathe({ profile: [[0, 0.05], [p.r - 0.05, 0.05], [p.r - 0.05, p.h], [0, p.h]], segments: 14, color: LEAF_DK }),
-      ...Array.from({ length: 10 }, (_, i) => turn(shift(box({ w: 0.34, h: 0.05, d: p.r + 0.08, color: i % 2 ? LEAF : "#5f9c45" }), 0, 0.03, (p.r + 0.08) / 2), i / 10 * Math.PI * 2))
+      ...Array.from({ length: 10 }, (_, i) => turn(moved(box({ w: 0.34, h: 0.05, d: p.r + 0.08, color: i % 2 ? LEAF : "#5f9c45" }), 0, 0.03, (p.r + 0.08) / 2), i / 10 * Math.PI * 2))
     ),
     mudshield: (p) => roundMerge(
       roundLatheBy({ profile: [[0, 0], [0.88, 0], [p.r, 0.12], [0.97, 0.26], [0.2, p.h], [0, p.h]], segments: 14, color: (t, s) => (s * 7) % 5 === 0 ? MUD_DK : MUD }),
@@ -111,7 +105,7 @@
     bigbarrel: (p) => roundMerge(
       roundLatheBy({ profile: [[0, 0], [0.84, 0], [0.97, 0.45], [p.r, 1.25], [0.97, 2.05], [0.84, p.h], [0, p.h]], segments: 14, color: (t, s) => s % 2 ? WOOD : PLANK }),
       ...hoops(0.99, [0.45, 1.0, 1.5, 2.05]),
-      shift(turn(box({ w: 0.62, h: 0.16, d: 0.04, color: BANANA, emissive: 0.1 }), 0, 0.5), 0, 1.25, 1.0)
+      moved(turn(box({ w: 0.62, h: 0.16, d: 0.04, color: BANANA, emissive: 0.1 }), 0, 0.5), 0, 1.25, 1.0)
     ),
     pot: (p) => roundMerge(
       roundLatheBy({ profile: [[0, 0.02], [0.62, 0], [p.r, 0.12], [0.5, 0.36], [0.55, 0.6], [0.64, 0.8], [0.6, p.h], [0, p.h]], segments: 12, color: (t) => t > 0.4 && t < 0.6 ? CLAY_DK : CLAY }),
@@ -127,7 +121,7 @@
       ...[0.55, 0.78].map((y) => ring({ r: 0.36 + (y - 0.5) * 0.4, thickness: 0.035, y, segments: 10, color: ROPE }))
     ),
     bamboo: (p) => roundMerge(
-      ...[0, 2.09, 4.19].map((a) => shift(roundLatheBy({ profile: [[0, 0], [0.24, 0], [0.24, 0.18], [0.25, 0.2], [0.24, 0.22], [0.24, 0.9], [0.26, 0.92], [0.24, 0.95], [0.24, 1.7], [0.26, 1.72], [0.24, 1.75], [0.24, p.h], [0, p.h]], segments: 8, color: (t) => t < 0.1 ? "#2b261e" : t % 0.25 < 0.04 ? "#6f8a2f" : "#9bb84a" }), Math.cos(a) * 0.25, 0, Math.sin(a) * 0.25)),
+      ...[0, 2.09, 4.19].map((a) => moved(roundLatheBy({ profile: [[0, 0], [0.24, 0], [0.24, 0.18], [0.25, 0.2], [0.24, 0.22], [0.24, 0.9], [0.26, 0.92], [0.24, 0.95], [0.24, 1.7], [0.26, 1.72], [0.24, 1.75], [0.24, p.h], [0, p.h]], segments: 8, color: (t) => t < 0.1 ? "#2b261e" : t % 0.25 < 0.04 ? "#6f8a2f" : "#9bb84a" }), Math.cos(a) * 0.25, 0, Math.sin(a) * 0.25)),
       ...[0.5, 1.4, 2.3].map((y) => ring({ r: 0.5, thickness: 0.04, y, segments: 10, color: LEAF_DK }))
     ),
     vine: (p) => roundMerge(
@@ -166,7 +160,7 @@
   const tether = cached(() => noShadow(box({ w: 0.05, h: 0.05, d: 1, color: "#f3efe4", emissive: 0.2, offset: { z: 0.5 } })));
   const spaceRock = cached(() => roundMerge(
     roundLatheBy({ profile: [[0, -1], [0.7, -0.85], [1.05, -0.3], [0.95, 0.35], [0.6, 0.85], [0, 1]], segments: 9, color: (t, s) => (s * 5 + Math.floor(t * 7)) % 4 === 0 ? "#4a4541" : "#6b625a" }),
-    ...[[0.3, 0.9, 0.1, 0.5], [-0.5, 0.75, 0.2, -0.3], [0.1, 0.8, -0.55, 0.9]].map(([x, y, z, a]) => shift(turn(box({ w: 0.2, h: 0.55, d: 0.2, color: "#7fe0ff", emissive: 1 }), a, 0.3), x, y, z))
+    ...[[0.3, 0.9, 0.1, 0.5], [-0.5, 0.75, 0.2, -0.3], [0.1, 0.8, -0.55, 0.9]].map(([x, y, z, a]) => moved(turn(box({ w: 0.2, h: 0.55, d: 0.2, color: "#7fe0ff", emissive: 1 }), a, 0.3), x, y, z))
   ));
   const readingLight = cached(() => noShadow(box({ w: 0.12, h: 0.12, d: 0.12, color: "#7fe0ff", emissive: 1 })));
   const measureStick = cached(() => merge(
@@ -227,54 +221,26 @@
       }
     }
     const options = { unit: ISLET_UNIT, palette: ["#5b8a3a", "#4f7d33", "#6b4a2b", STONE, STONE_DK], origin: { x: 0, y: 0, z: 0 } };
-    const geometry = voxelGeometry(v, options);
-    geometry.cutawaySource = BL.terrain.cutawaySourceFromVox(v, options);
-    return geometry;
+    return voxelGeometry(v, options);
   });
   // Stone disc, painted ring, charred trench and four fire posts; its top sits at SITE.padH. The disc's lip rolls
   // over in two chamfers and the posts are bevelled stone with an iron fire bowl, so the pad reads as one chunky
-  // carved piece; the first, plainer build stays its collision shell.
-  const padShell = () => merge(
-    latheBy({ profile: [[0, 0], [SITE.padR, 0], [SITE.padR, SITE.padH - 0.08], [SITE.padR - 0.12, SITE.padH], [0, SITE.padH]], segments: 24, color: (t, s) => s % 3 === 0 ? STONE_DK : "#756b62" }),
-    lathe({ profile: [[SITE.padR - 0.8, SITE.padH + 0.005], [SITE.padR - 1.1, SITE.padH + 0.005]], segments: 24, color: BANANA, emissive: 0.35 }),
-    lathe({ profile: [[1.3, SITE.padH + 0.006], [0, SITE.padH + 0.006]], segments: 12, color: "#241b14" }),
+  // carved piece.
+  const pad = cached(() => merge(
+    latheBy({ profile: [[0, 0], [SITE.padR, 0], [SITE.padR, SITE.padH - 0.16], [SITE.padR - 0.05, SITE.padH - 0.05], [SITE.padR - 0.16, SITE.padH], [0, SITE.padH]], segments: 36, color: (t, s) => t > 0.3 && t < 0.8 ? "#8a8078" : s % 3 === 0 ? STONE_DK : "#756b62" }),
+    lathe({ profile: [[SITE.padR - 0.8, SITE.padH + 0.005], [SITE.padR - 1.1, SITE.padH + 0.005]], segments: 36, color: BANANA, emissive: 0.35 }),
+    lathe({ profile: [[1.3, SITE.padH + 0.006], [0, SITE.padH + 0.006]], segments: 18, color: "#241b14" }),
     ...[0, 1, 2, 3].map((i) => turn(merge(
-      box({ w: 0.36, h: 1.1, d: 0.36, color: STONE_DK, offset: { x: SITE.padR - 0.4, y: SITE.padH + 0.55 } }),
-      box({ w: 0.26, h: 0.2, d: 0.26, color: "#ff9a2a", emissive: 1, offset: { x: SITE.padR - 0.4, y: SITE.padH + 1.2 } })
+      bevelBox({ w: 0.5, h: 0.22, d: 0.5, color: STONE, offset: { x: SITE.padR - 0.4, y: SITE.padH + 0.11 } }),
+      bevelBox({ w: 0.38, h: 0.9, d: 0.38, color: STONE_DK, offset: { x: SITE.padR - 0.4, y: SITE.padH + 0.62 } }),
+      bevelBox({ w: 0.5, h: 0.14, d: 0.5, color: "#3a3531", offset: { x: SITE.padR - 0.4, y: SITE.padH + 1.1 } }),
+      bevelBox({ w: 0.3, h: 0.24, d: 0.3, color: "#ff9a2a", emissive: 1, bevel: 0.06, offset: { x: SITE.padR - 0.4, y: SITE.padH + 1.28 } })
     ), i * Math.PI / 2 + Math.PI / 4))
-  );
-  const pad = cached(() => {
-    const geo = merge(
-      latheBy({ profile: [[0, 0], [SITE.padR, 0], [SITE.padR, SITE.padH - 0.16], [SITE.padR - 0.05, SITE.padH - 0.05], [SITE.padR - 0.16, SITE.padH], [0, SITE.padH]], segments: 36, color: (t, s) => t > 0.3 && t < 0.8 ? "#8a8078" : s % 3 === 0 ? STONE_DK : "#756b62" }),
-      lathe({ profile: [[SITE.padR - 0.8, SITE.padH + 0.005], [SITE.padR - 1.1, SITE.padH + 0.005]], segments: 36, color: BANANA, emissive: 0.35 }),
-      lathe({ profile: [[1.3, SITE.padH + 0.006], [0, SITE.padH + 0.006]], segments: 18, color: "#241b14" }),
-      ...[0, 1, 2, 3].map((i) => turn(merge(
-        bevelBox({ w: 0.5, h: 0.22, d: 0.5, color: STONE, offset: { x: SITE.padR - 0.4, y: SITE.padH + 0.11 } }),
-        bevelBox({ w: 0.38, h: 0.9, d: 0.38, color: STONE_DK, offset: { x: SITE.padR - 0.4, y: SITE.padH + 0.62 } }),
-        bevelBox({ w: 0.5, h: 0.14, d: 0.5, color: "#3a3531", offset: { x: SITE.padR - 0.4, y: SITE.padH + 1.1 } }),
-        bevelBox({ w: 0.3, h: 0.24, d: 0.3, color: "#ff9a2a", emissive: 1, bevel: 0.06, offset: { x: SITE.padR - 0.4, y: SITE.padH + 1.28 } })
-      ), i * Math.PI / 2 + Math.PI / 4))
-    );
-    geo.collisionGeometry = padShell();
-    return geo;
-  });
+  ));
   // Stands beside the pad on +x, behind the rocket from the launch camera. Chunky bevelled timber: four stout
   // legs, a braced ladder of rails, a rope lashing at every joint, a planked top with a banana pennant and two
-  // service arms. The first thin-timber build stays its collision shell.
+  // service arms.
   const TOWER_H = 15;
-  const towerShell = () => {
-    const geos = [];
-    for (const [x, z] of [[-0.65, -0.65], [0.65, -0.65], [-0.65, 0.65], [0.65, 0.65]]) geos.push(box({ w: 0.22, h: TOWER_H, d: 0.22, color: WOOD_DK, offset: { x, y: TOWER_H / 2, z } }));
-    for (let y = 1.5; y < TOWER_H; y += 1.5) {
-      geos.push(box({ w: 1.5, h: 0.14, d: 0.14, color: WOOD, offset: { y, z: -0.65 } }), box({ w: 1.5, h: 0.14, d: 0.14, color: WOOD, offset: { y, z: 0.65 } }));
-      geos.push(box({ w: 0.14, h: 0.14, d: 1.5, color: PLANK, offset: { x: -0.65, y } }), box({ w: 0.14, h: 0.14, d: 1.5, color: PLANK, offset: { x: 0.65, y } }));
-    }
-    geos.push(box({ w: 2.2, h: 0.16, d: 2.2, color: PLANK, offset: { y: TOWER_H } }));
-    geos.push(box({ w: 0.1, h: 2.4, d: 0.1, color: WOOD_DK, offset: { x: 0.9, y: TOWER_H + 1.2, z: 0.9 } }));
-    geos.push(box({ w: 3.6, h: 0.18, d: 0.5, color: WOOD, offset: { x: -2.3, y: TOWER_H * 0.62 } }));
-    geos.push(box({ w: 3.6, h: 0.18, d: 0.5, color: WOOD, offset: { x: -2.3, y: TOWER_H * 0.3 } }));
-    return merge(...geos);
-  };
   const tower = cached(() => {
     const geos = [], LEGS = [[-0.65, -0.65], [0.65, -0.65], [-0.65, 0.65], [0.65, 0.65]];
     for (const [x, z] of LEGS) geos.push(bevelBox({ w: 0.32, h: TOWER_H, d: 0.32, color: WOOD_DK, bevel: 0.06, offset: { x, y: TOWER_H / 2, z } }));
@@ -290,40 +256,17 @@
       geos.push(bevelBox({ w: 3.6, h: 0.22, d: 0.5, color: WOOD, bevel: 0.06, offset: { x: -2.3, y } }));
       geos.push(bevelBox({ w: 0.12, h: 0.3, d: 0.6, color: ROPE, bevel: 0.03, offset: { x: -0.85, y } }));
     }
-    const geo = merge(...geos);
-    geo.collisionGeometry = towerShell();
-    return geo;
-  });
-  // Built in its own frame: z = 0 to z = SITE.span at deck height 0, planks sagging to the middle.
-  const deckY = (z) => -SITE.sag * 4 * (z / SITE.span) * (1 - z / SITE.span);
-  // The first build, planks, posts and square ropes, kept as the drawn bridge's collision shell.
-  const bridgeShell = () => {
-    const geos = [], w = SITE.width, count = Math.round(SITE.span / 0.47);
-    for (let i = 0; i < count; i++) {
-      const z = (i + 0.5) * SITE.span / count;
-      geos.push(bevelBox({ w: w + (i % 3 ? 0 : 0.14), h: 0.2, d: 0.42, color: i % 2 ? "#8f6538" : "#9c7040", bevel: 0.045, offset: { x: 0, y: deckY(z) - 0.1, z } }));
-    }
-    const rail = 1.05;
-    for (const z of [0, SITE.span]) for (const x of [-w / 2 - 0.12, w / 2 + 0.12]) geos.push(bevelBox({ w: 0.34, h: 1.9, d: 0.34, color: WOOD_DK, offset: { x, y: 0.45, z } }));
-    const steps = 12;
-    for (const x of [-w / 2 - 0.05, w / 2 + 0.05]) {
-      for (let i = 0; i < steps; i++) {
-        const z0 = i / steps * SITE.span, z1 = (i + 1) / steps * SITE.span;
-        geos.push(beam(x, deckY(z0) * 1.3 + rail, z0, deckY(z1) * 1.3 + rail, z1, 0.12, 0.12, ROPE));
-        geos.push(beam(x, deckY(z0) - 0.14, z0, deckY(z1) - 0.14, z1, 0.15, 0.15, ROPE));
-      }
-      for (let i = 1; i < steps; i++) {
-        const z = i / steps * SITE.span;
-        geos.push(box({ w: 0.075, h: rail + deckY(z) * 0.3, d: 0.075, color: ROPE, offset: { x, y: deckY(z) + (rail + deckY(z) * 0.3) / 2, z } }));
-      }
-    }
     return merge(...geos);
-  };
-  // Drawn as a cartoon rope bridge: the same bevelled planks and posts, the hand ropes and the ropes under the
+  });
+  // Decking overlaps the rim and the launch islet; the sag stays between the two old bridge heads.
+  const DECK_START = -0.8, DECK_END = SITE.span + 0.8;
+  const deckY = (z) => { const t = Math.max(0, Math.min(1, z / SITE.span)); return -SITE.sag * 4 * t * (1 - t); };
+  // Drawn as a cartoon rope bridge: bevelled planks and posts, the hand ropes and the ropes under the
   // deck as smooth cords you could grip, rope collars lashing them round the post tops.
   const ROPE_RGB = hexToRgb(ROPE), ROPE_DK_RGB = hexToRgb("#9a7a48");
   const bridge = cached(() => {
-    const geo = { verts: [], faces: [], lines: [], smooth: true, normals: [] }, w = SITE.width, count = Math.round(SITE.span / 0.47), rand = mulberry32(913);
+    const geo = { verts: [], faces: [], lines: [], smooth: true, normals: [] }, w = SITE.width;
+    const length = DECK_END - DECK_START, count = Math.ceil(length / 0.47), pitch = length / count, rand = mulberry32(913);
     const rail = 1.05, steps = 16;
     for (const x of [-w / 2 - 0.05, w / 2 + 0.05]) {
       for (let i = 0; i < steps; i++) {
@@ -338,29 +281,28 @@
     }
     padNormals(geo);
     for (let i = 0; i < count; i++) {
-      const z = (i + 0.5) * SITE.span / count;
-      flatInto(geo, bevelBox({ w: w + (i % 3 ? 0 : 0.14), h: 0.2, d: 0.42, color: i % 2 ? "#8f6538" : "#9c7040", bevel: 0.045, offset: { x: 0, y: deckY(z) - 0.1, z } }));
+      const z = DECK_START + (i + 0.5) * pitch;
+      flatInto(geo, bevelBox({ w: w + (i % 3 ? 0 : 0.14), h: 0.2, d: pitch + 0.02, color: i % 2 ? "#8f6538" : "#9c7040", bevel: 0.045, offset: { x: 0, y: deckY(z) - 0.06, z } }));
     }
     for (const z of [0, SITE.span]) for (const x of [-w / 2 - 0.12, w / 2 + 0.12]) {
       flatInto(geo, bevelBox({ w: 0.36, h: 1.9, d: 0.36, color: WOOD_DK, offset: { x, y: 0.45, z } }));
       for (const y of [rail, -0.14]) hubPuff(geo, x, y, z, 0.24, 0.1, 0.24, [ROPE_RGB, ROPE_RGB, ROPE_RGB, ROPE_RGB], rand, 3, 8);
     }
     geo.normals = Float32Array.from(geo.normals);
-    geo.collisionGeometry = bridgeShell();
     return geo;
   });
   const siteSign = cached(() => postSign("Ooga Orbit", 0.42, 0.6));
-  // Nodes under one group placed at the islet's middle; the bridge head is `spot.bridgeZ`.
   // Ground under a site point in world space, or -Infinity: the pad, the islet's top, the bridge deck.
   const siteGroundAt = (spot, x, z) => {
     const dx = x - spot.x, dz = z - spot.z, r = Math.hypot(dx, dz);
     if (r < SITE.padR) return spot.padY;
     if (r < SITE.isletR * 0.92) return spot.y;
     const along = z - spot.bridgeZ;
-    if (Math.abs(x - spot.x) < SITE.width / 2 && along >= 0 && along <= SITE.span) return spot.y + deckY(along);
+    if (Math.abs(x - spot.x) < SITE.width / 2 && along >= DECK_START && along <= DECK_END) return spot.y + deckY(along) + 0.04;
     return -Infinity;
   };
 
+  // One group placed at the islet's middle holding its nodes; the bridge head is `spot.bridgeZ`.
   const site = (spot) => {
     const node = createNode({ position: { x: spot.x, y: spot.y, z: spot.z } });
     const isletNode = createNode({ geometry: islet() });
@@ -371,7 +313,7 @@
     const bridgeNode = createNode({ position: { x: 0, y: 0, z: spot.bridgeZ - spot.z }, geometry: bridge() });
     const signNode = createNode({ position: { x: 1.9, y: 0, z: -SITE.isletR + 2.2 }, rotation: { x: 0, y: Math.PI, z: 0 }, geometry: siteSign() });
     addChild(node, isletNode, padNode, towerNode, bridgeNode, signNode);
-    return { node, islet: isletNode, pad: padNode, tower: towerNode, bridge: bridgeNode, sign: signNode };
+    return node;
   };
 
   // Sphere centred at the origin, radius rocket.R; rings close together near the islands and wider away.

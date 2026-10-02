@@ -7,7 +7,7 @@
 // for carved headline numbers and the jumbotron's 5x7 font for the dense wall panels, turned into
 // bounded run-length quads the same way the big board does it.
 //
-// The island stands on the 4 o'clock `BEARING`, placed to miss the cave mouths in `terrain.js`'s
+// The island stands between the 3 o'clock cave and the HQ ramp hill, clear of `terrain.js`'s
 // CLOCKS, the gate trail on spoke(0) at 12 and the launch bridge on spoke(PI) at 6. Everything is
 // built in a local frame whose +z points back at the home island, which `rotation.y = -bearing` maps
 // inward, as the terrain turns its own mouths: the voxel islet, the vine bridge, three canopy heights
@@ -32,9 +32,9 @@
   const BL = window.BL = window.BL || {};
   const { models, math } = BL;
   const { createNode, addChild } = BL.scene;
-  const { cached, box, bevelBox, lathe, merge, polyline, makeVox, voxelGeometry, noShadow, pushVert, face } = models;
+  const { cached, box, bevelBox, lathe, merge, polyline, makeVox, voxelGeometry, noShadow, pushVert, face, turnedY } = models;
   const { mulberry32, lerp, hexToRgb } = math;
-  const { puff, leafy, pointedLeaf, flower, FLOWER_INKS, limb, padNormals, flatInto, rock } = BL.hubModels;
+  const { puff, leafy, canopySupport, pointedLeaf, flower, FLOWER_INKS, limb, padNormals, flatInto, rock } = BL.hubModels;
 
   // A lathe whose colour varies by ring and segment, as `rocket-models.js` defines for the launch pad.
   const latheBy = ({ profile, segments = 8, color, emissive = 0 }) => {
@@ -61,19 +61,17 @@
   const STONE = "#6f6f6a", STONE_DK = "#54544f", MOSS = "#3c6b40", WET = "#3a4a52", GOLD = "#e8c14a";
   const MOSS_RGB = hexToRgb("#4f7f36"), MOSS_TONES = [MOSS_RGB, MOSS_RGB, MOSS_RGB, MOSS_RGB];
 
-  // 4 o'clock is the one bearing with no cave mouth on it: terrain's CLOCKS fills 11, 10, 9, 7.25, 4.75, 3, 2 and 1,
-  // spoke(0) at 12 carries the gate trail and spoke(PI) at 6 carries the launch bridge.
-  const BEARING = 4 / 12 * Math.PI * 2;
+  // The crossing shares the terrain's grass-topped stair terrace between the hilltops.
+  const APPROACH = BL.terrain.POOL_APPROACH, BEARING = APPROACH.bearing;
   const DIR = { x: Math.sin(BEARING), z: -Math.cos(BEARING) };
-  const SITE = { from: 27.4, span: 17, sag: 0.5, width: 2.3, isletR: 13, isletDepth: 16, caveR: 14, caveH: 8, stationR: 12, shaftR: 2.9, shaftDepth: 8, bearing: BEARING, dir: DIR };
+  const SITE = { approachFrom: APPROACH.from, span: 17, sag: 0.5, width: 5.2, deckStart: -2.5, isletR: 13, isletDepth: 16, caveR: 14, caveH: 8, stationR: 12, shaftR: 2.9, shaftDepth: 8, bearing: BEARING, dir: DIR };
   const UNIT = 0.5;
 
   // Built in a local frame whose +z points back at the home island, which is what `rotation.y = -bearing`
   // maps inward, exactly as the terrain's own cave mouths are turned. The bridge head sits where the
-  // ground under it runs out, at that ground's height, and that height sets both ends.
+  // terrace reaches the rim. Its top sets both ends of the bridge.
   const spot = (island, out = {}) => {
-    let r = SITE.from;
-    while (island.surfaceAt(DIR.x * (r + 0.1), DIR.z * (r + 0.1)) > 0.5) r += 0.1;
+    const r = APPROACH.to;
     out.y = island.surfaceAt(DIR.x * r, DIR.z * r) + 0.02;
     out.rimRadius = r;
     out.bridgeX = DIR.x * r;
@@ -119,14 +117,15 @@
     return geometry;
   });
 
-  // Planks on two slung vines, sagging to the middle. Built in its own frame: z = 0 to z = SITE.span.
-  const deckY = (t) => -SITE.sag * 4 * t * (1 - t);
+  // Bury the islet end inside its scalloped edge, and meet the top tread at the other end.
+  const DECK_START = SITE.deckStart, DECK_END = SITE.span + 0.25;
+  const deckY = (t) => { t = Math.max(0, Math.min(1, t)); return -SITE.sag * 4 * t * (1 - t); };
   // The crossing as it was first built, kept as the bridge's collision shell so walking on it never changes.
   const bridgeShell = cached(() => {
-    const geos = [], w = SITE.width, count = Math.round(SITE.span / 0.46);
+    const geos = [], w = SITE.width, length = DECK_END - DECK_START, count = Math.ceil(length / 0.46), pitch = length / count;
     for (let i = 0; i < count; i++) {
-      const t = (i + 0.5) / count;
-      geos.push(bevelBox({ w, h: 0.18, d: 0.34, color: i % 3 === 0 ? BARK : BARK_LT, bevel: 0.04, offset: { y: deckY(t) - 0.05, z: t * SITE.span } }));
+      const z = DECK_START + (i + 0.5) * pitch;
+      geos.push(bevelBox({ w, h: 0.18, d: pitch + 0.02, color: i % 3 === 0 ? BARK : BARK_LT, bevel: 0.04, offset: { y: deckY(z / SITE.span) - 0.05, z } }));
     }
     const steps = 24;
     for (const side of [-1, 1]) {
@@ -145,11 +144,11 @@
     // A gateway at each end: two posts, a lashed crossbeam and a lantern, so the crossing reads as a way in.
     for (const z of [0, SITE.span]) {
       for (const side of [-1, 1]) {
-        geos.push(bevelBox({ w: 0.36, h: 2.6, d: 0.36, color: BARK, offset: { x: side * (w / 2 + 0.16), y: 1.1, z } }));
-        geos.push(bevelBox({ w: 0.46, h: 0.2, d: 0.46, color: MOSS, offset: { x: side * (w / 2 + 0.16), y: 2.34, z } }));
+        geos.push(bevelBox({ w: 0.36, h: 3.95, d: 0.36, color: BARK, offset: { x: side * (w / 2 + 0.16), y: 1.7, z } }));
+        geos.push(bevelBox({ w: 0.46, h: 0.2, d: 0.46, color: MOSS, offset: { x: side * (w / 2 + 0.16), y: 3.68, z } }));
       }
-      geos.push(bevelBox({ w: w + 0.9, h: 0.3, d: 0.3, color: BARK_LT, offset: { y: 2.52, z } }));
-      geos.push(box({ w: 0.26, h: 0.34, d: 0.26, color: "#ffb347", emissive: 1, offset: { y: 2.18, z } }));
+      geos.push(bevelBox({ w: w + 0.9, h: 0.3, d: 0.3, color: BARK_LT, offset: { y: 3.8, z } }));
+      geos.push(box({ w: 0.26, h: 0.34, d: 0.26, color: "#ffb347", emissive: 1, offset: { y: 3.46, z } }));
     }
     // Vines slung under the deck, following its own sag.
     for (const side of [-1, 1]) {
@@ -169,7 +168,7 @@
   // ropes as thick smooth vines, leaves sprouting along the rails and moss cushions on the post tops.
   const VINE = hexToRgb("#3f6b2a"), VINE_DK = hexToRgb("#2f5424"), LEAF_TONES = ["#2f6b2c", "#3f8a34", "#56a43f", "#74bd52"].map(hexToRgb);
   const bridge = cached(() => {
-    const rand = mulberry32(5561), w = SITE.width, count = Math.round(SITE.span / 0.46);
+    const rand = mulberry32(5561), w = SITE.width, length = DECK_END - DECK_START, count = Math.ceil(length / 0.46), pitch = length / count;
     const geo = { verts: [], faces: [], lines: [], smooth: true, normals: [] };
     const vine = (pts, r0, r1, color) => {
       for (let i = 0; i < pts.length - 1; i++) {
@@ -187,6 +186,7 @@
         deck.push({ x, y: deckY(t) - 0.04, z: t * SITE.span });
         under.push({ x: side * w * 0.32, y: deckY(t) - 0.5 - Math.sin(t * Math.PI) * 0.55, z: t * SITE.span });
       }
+      // End beneath the bridge gateways; tails beyond them emerge through the stair rock.
       vine(rail, 0.075, 0.075, VINE);
       vine(deck, 0.06, 0.06, VINE_DK);
       vine(under, 0.055, 0.055, VINE_DK);
@@ -206,19 +206,24 @@
       }
     }
     for (let i = 0; i < count; i++) {
-      const t = (i + 0.5) / count;
-      flatInto(geo, bevelBox({ w, h: 0.18, d: 0.34, color: i % 3 === 0 ? BARK : BARK_LT, bevel: 0.04, offset: { y: deckY(t) - 0.05, z: t * SITE.span } }));
+      const z = DECK_START + (i + 0.5) * pitch;
+      flatInto(geo, bevelBox({ w, h: 0.18, d: pitch + 0.02, color: i % 3 === 0 ? BARK : BARK_LT, bevel: 0.04, offset: { y: deckY(z / SITE.span) - 0.05, z } }));
+      if (i % 6 === 1 || i % 9 === 5) {
+        const side = i & 1 ? -1 : 1;
+        flatInto(geo, bevelBox({ w: 0.28 + rand() * 0.16, h: 0.025, d: pitch * (0.5 + rand() * 0.25), color: i & 1 ? MOSS : "#4f7f36", bevel: 0.01,
+          offset: { x: side * (w / 2 - 0.27 - rand() * 0.12), y: deckY(z / SITE.span) + 0.045, z: z + (rand() - 0.5) * pitch * 0.25 } }));
+      }
     }
     for (const z of [0, SITE.span]) {
       for (const side of [-1, 1]) {
-        flatInto(geo, bevelBox({ w: 0.36, h: 2.6, d: 0.36, color: BARK, offset: { x: side * (w / 2 + 0.16), y: 1.1, z } }));
-        puff(geo, side * (w / 2 + 0.16), 2.42, z, 0.3, 0.16, 0.3, MOSS_TONES, rand, 4, 8);
+        flatInto(geo, bevelBox({ w: 0.36, h: 3.95, d: 0.36, color: BARK, offset: { x: side * (w / 2 + 0.16), y: 1.7, z } }));
+        puff(geo, side * (w / 2 + 0.16), 3.7, z, 0.3, 0.16, 0.3, MOSS_TONES, rand, 4, 8);
       }
       flatInto(geo,
-        bevelBox({ w: w + 0.9, h: 0.3, d: 0.3, color: BARK_LT, offset: { y: 2.52, z } }),
-        bevelBox({ w: 0.3, h: 0.08, d: 0.3, color: "#3b2a1c", offset: { y: 2.33, z } }),
-        bevelBox({ w: 0.26, h: 0.3, d: 0.26, color: "#ffb347", emissive: 1, bevel: 0.05, offset: { y: 2.13, z } }),
-        bevelBox({ w: 0.3, h: 0.06, d: 0.3, color: "#3b2a1c", offset: { y: 1.96, z } })
+        bevelBox({ w: w + 0.9, h: 0.3, d: 0.3, color: BARK_LT, offset: { y: 3.8, z } }),
+        bevelBox({ w: 0.3, h: 0.08, d: 0.3, color: "#3b2a1c", offset: { y: 3.61, z } }),
+        bevelBox({ w: 0.26, h: 0.3, d: 0.26, color: "#ffb347", emissive: 1, bevel: 0.05, offset: { y: 3.41, z } }),
+        bevelBox({ w: 0.3, h: 0.06, d: 0.3, color: "#3b2a1c", offset: { y: 3.24, z } })
       );
     }
     geo.normals = Float32Array.from(geo.normals);
@@ -284,7 +289,9 @@
       branches.push(branch);
     }
     padNormals(geo);
+    const canopyStart = geo.faces.length;
     for (const [x, y, z, rx, ry] of crowns) leafy(geo, x, y, z, rx, ry, rx, JUNGLE, rand, Math.round(6 + rx * rx * 5), 0.44);
+    const canopyEnd = geo.faces.length;
     for (let k = 1; k < crowns.length; k += 2) {
       const [x, y, z, rx, ry] = crowns[k], a = rand() * Math.PI * 2, x0 = x + Math.cos(a) * rx * 0.5, z0 = z + Math.sin(a) * rx * 0.5;
       let px = x0, py = y - ry * 0.5, pz = z0;
@@ -300,7 +307,7 @@
     // Where the wildlife climbs and perches, in the tree's own frame: the trunk's lean at the top, its height, the
     // five limbs (from the trunk out to each lower crown), and a perch on top of every crown.
     geo.climb = { lean: cx, height, branches, perches: crowns.map(([x, y, z, , ry]) => [x, y + ry * 0.9, z]) };
-    geo.collisionGeometry = canopyShell(seed, height, spread);
+    geo.collisionGeometry = merge(canopyShell(seed, height, spread), canopySupport(geo, canopyStart, canopyEnd));
     return geo;
   });
   const CANOPY = [canopy(71, 7.5, 3.2), canopy(72, 5.4, 2.6), canopy(73, 9.2, 3.8)];
@@ -605,15 +612,7 @@
     return merge(...geos);
   };
   // Turns a part about y so its +x points along angle a (x to cos a, z to sin a), in place.
-  const aim = (geo, a) => {
-    const c = Math.cos(a), s = Math.sin(a), v = geo.verts;
-    for (let i = 0; i < v.length; i += 3) {
-      const x = v[i], z = v[i + 2];
-      v[i] = x * c - z * s;
-      v[i + 2] = x * s + z * c;
-    }
-    return geo;
-  };
+  const aim = (geo, a) => turnedY(geo, -a);
   // Drawn in the cartoon way: the kerb a ring of rounded stones shouldered together under moss cushions, the
   // treads bevelled slabs turned to the shaft's centre on chunky newels, and the torches bevelled posts.
   const KERB = [STONE_DK, STONE, "#7c7b74"].map(mono);

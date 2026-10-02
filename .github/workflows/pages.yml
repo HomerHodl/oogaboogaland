@@ -34,10 +34,7 @@ jobs:
         env:
           OOGATRON_STATS_URL: https://oogatron.ruleswithoutrulers.com/v2/stats
       - name: Build and stage site
-        run: |
-          npm run build
-          mkdir -p _site
-          cp oogaboogaland.html _site/index.html
+        run: node scripts/site.mjs _site
       - name: Upload the built page for the artifact job
         uses: actions/upload-artifact@v4
         with:

@@ -29,6 +29,8 @@
   };
   const INSTANCE_FLOATS = 20;
   const NO_OBJECT_CLIP = new Float32Array([0, 0, 0, -1]);
+  const NO_OBJECT_SLAB = new Float32Array(4);
+  const NO_SPOT_LIGHT = new Float32Array(12);
   // MAX_PIXELS caps the pixel ratio to bound buffer memory.
   const MAX_PIXELS = 2.6e6;
   const DEFAULT_LIGHT = { x: 0.45, y: 0.85, z: 0.3 };
@@ -97,7 +99,7 @@ out vec3 vNormal;
 out vec4 vColor;
 out vec4 vParams;
 out vec4 vShadow;
-out vec3 vWorld;
+out vec4 vWorldH;
 out vec3 vInstanceFacing;
 out vec2 vPortalUV;
 out vec4 vPortalView;
@@ -152,7 +154,7 @@ void main() {
   vSmokeOpacity = aParams.z < 0.0 ? -aParams.z - 1.0 : 1.0;
   vParams.z = max(0.0, aParams.z);
   vShadow = uLightViewProj * w;
-  vWorld = w.xyz;
+  vWorldH = w;
   vLocal = aPos;
   vLocalNormal = aNormal;
   vInstanceFacing = normalize(aM2.xyz);
@@ -201,7 +203,11 @@ in vec3 vNormal;
 in vec4 vColor;
 in vec4 vParams;
 in vec4 vShadow;
-in vec3 vWorld;
+// A projective geometry's matrices carry a last row, so its world position arrives homogeneous; main divides
+// it out under uProjective alone, and every affine draw keeps the position it always had.
+in vec4 vWorldH;
+uniform float uProjective;
+vec3 vWorld;
 in vec3 vInstanceFacing;
 in vec2 vPortalUV;
 in vec4 vPortalView;
@@ -226,12 +232,16 @@ uniform sampler2DShadow uShadow;
 uniform float uShadowTexel;
 uniform vec4 uLights[64];
 uniform int uLightCount;
+uniform vec4 uSpotLight[3];
 ${VIEW_DIRECTION_GLSL}
 uniform vec3 uFog;
 uniform vec2 uFogRange;
 uniform vec4 uMatrixParams;
 uniform vec3 uMatrixOrigin;
 uniform float uMatrixGlyph;
+// Glass: below 1, a geometry drawn in the glass pass is that see-through, and thicker toward its silhouette.
+uniform float uGlass;
+uniform float uLightBeam;
 uniform float uMatrixCave;
 uniform vec4 uMatrixCaves[8];
 uniform vec4 uMatrixCaveBounds[8];
@@ -245,8 +255,11 @@ uniform int uMatrixSamples;
 uniform float uClipMinY;
 uniform float uClipMaxY;
 uniform vec4 uObjectClip;
+// A geometry's clipSlab (n, d) keeps |dot(n, p) + d| <= 1; zeros keep everything.
+uniform vec4 uObjectSlab;
 ${CUTAWAY_GLSL}
 uniform float uMatrixGlyphOpacity;
+uniform float uGlassOpacity;
 uniform vec4 uVoxel;
 uniform float uWindTime;
 #ifdef MATRIX_SAMPLE_INTERPOLATION
@@ -353,7 +366,8 @@ float matrixGlyphAt(vec3 n, float flow, out float glow, out float tip, out float
 #ifdef MATRIX_SAMPLE_INTERPOLATION
   for (int i = 0; i < 4; i++) {
     if (i >= uMatrixSamples) break;
-    vec3 offset = interpolateAtSample(vWorld, i) - vWorld;
+    vec4 sampleWorld = interpolateAtSample(vWorldH, i);
+    vec3 offset = (uProjective > 0.5 ? sampleWorld.xyz / sampleWorld.w : sampleWorld.xyz) - vWorld;
     matrixSampleOffsets[i] = vec2(dot(offset, crossAxis), dot(offset, flowAxis));
   }
 #endif
@@ -396,7 +410,7 @@ float shadowAt(vec3 p, float bias) {
 vec3 lightFactorAt(vec3 n) {
   float lam = dot(n, uLightDir);
   float ndl = max(max(lam, 0.0), uDiffuseFloor);
-  vec3 sp = vShadow.xyz * 0.5 + 0.5;
+  vec3 sp = (uProjective > 0.5 ? vShadow.xyz / vShadow.w : vShadow.xyz) * 0.5 + 0.5;
   float bias = max(uShadowBias * (1.0 - ndl), uShadowBias * 0.32);
   float sh = shadowAt(sp, bias);
   vec3 factor = max(mix(uGround, uSky, n.y * 0.5 + 0.5), vec3(uAmbientFloor));
@@ -416,6 +430,17 @@ vec3 lightFactorAt(vec3 n) {
     float a = clamp(1.0 - dist / lp.w, 0.0, 1.0);
     a *= a;
     factor += uLights[i * 2 + 1].rgb * a * max(dot(n, ld), 0.0) / max(dist, 0.0001);
+  }
+  if (uSpotLight[0].w > 0.0) {
+    vec3 toSurface = vWorld - uSpotLight[0].xyz;
+    float dist = length(toSurface);
+    if (dist > 0.0001 && dist < uSpotLight[0].w) {
+      vec3 direction = toSurface / dist;
+      float cone = smoothstep(uSpotLight[1].w, uSpotLight[2].w, dot(direction, uSpotLight[1].xyz));
+      float fade = 1.0 - dist / uSpotLight[0].w;
+      float energy = cone * fade * fade / (1.0 + 0.005 * dist * dist);
+      factor += uSpotLight[2].rgb * energy * max(dot(n, -direction), 0.0);
+    }
   }
   return factor;
 }
@@ -556,7 +581,8 @@ float matrixPermanentAt(vec3 point, float caveIndex) {
   return depth >= -0.000001 && depth <= bounds.w + voxelReach && abs(across) <= halfWidth + 0.000001 && height >= -0.000001 && height <= ceiling + 0.000001 ? 1.0 : 0.0;
 }
 void main() {
-  if (vWorld.y < uClipMinY || dot(uObjectClip, vec4(vWorld, 1.0)) > 0.0 || cutaway(vWorld, vSmokeOpacity)) discard;
+  vWorld = uProjective > 0.5 ? vWorldH.xyz / vWorldH.w : vWorldH.xyz;
+  if (vWorld.y < uClipMinY || dot(uObjectClip, vec4(vWorld, 1.0)) > 0.0 || abs(dot(uObjectSlab.xyz, vWorld) + uObjectSlab.w) > 1.0 || cutaway(vWorld, vSmokeOpacity)) discard;
   if (vParams.z > 5.5) {
     vec2 p = vPortalUV;
     float time = vParams.x, surge = vParams.y, radius = length(p);
@@ -726,8 +752,21 @@ void main() {
   else if (nl > 6.0 && nl < 12.0) col = waterShade(col, n, surfaceBright);
   vec3 normalColor = clamp(mix(col, uFog, fog), 0.0, 1.0);
   vec3 normalBright = clamp((col * (emissive * 0.9 + vParams.y * 0.5 + tip * 0.85) + surfaceBright) * (1.0 - fog), 0.0, 1.0);
-  oColor = vec4(mix(normalColor, matrixColorResult, front), 1.0);
-  oBright = vec4(mix(normalBright, matrixBrightResult, front), 1.0);
+  float glassAlpha = uGlass < 1.0 ? clamp(uGlass + pow(1.0 - abs(dot(n, normalize(uEye - vWorld))), 2.0) * 0.55, 0.0, 1.0) : 1.0;
+  // Dust scatters faint light without a glass rim; its intensity fades toward the far end.
+  if (uLightBeam > 0.0) {
+    float fade = clamp(1.0 - vLocal.x / uLightBeam, 0.0, 1.0);
+    glassAlpha = uGlass * fade * fade;
+  }
+  if (uGlassOpacity > 0.0) {
+    vec3 view = normalize(viewTowardEye(vWorld));
+    float grazing = pow(1.0 - abs(dot(n, view)), 3.0);
+    float glint = pow(max(dot(reflect(-uLightDir, n), view), 0.0), 36.0);
+    normalColor = mix(normalColor, vec3(0.88, 1.0, 0.98), grazing * 0.7 + glint * 0.35);
+    glassAlpha = mix(uGlassOpacity, 0.72, grazing) + glint * 0.12;
+  }
+  oColor = vec4(mix(normalColor, matrixColorResult, front), glassAlpha);
+  oBright = vec4(mix(normalBright, matrixBrightResult, front), glassAlpha);
 }`;
   const SHADOW_VS = `#version 300 es
 precision highp float;
@@ -921,6 +960,8 @@ uniform vec3 uTint;
 uniform float uPortal;
 uniform float uReveal;
 uniform float uRippleOnly;
+// A shield's or a mirror's glyph crests in a colour of its own; a negative red keeps the Matrix green.
+uniform vec3 uCrestTint;
 uniform float uClipMaxY;
 ${CUTAWAY_GLSL}
 uniform int uRippleActive;
@@ -1046,12 +1087,13 @@ void main() {
         float tip = position == train - 1 ? 1.0 : position == train - 2 ? 0.55 : 0.0;
         vec3 base = (glyph & 1) == 0 ? vec3(24.0, 220.0, 74.0) : vec3(70.0, 255.0, 112.0);
         vec3 green = mix(base / 255.0 * mix(0.78, 1.15, glow), vec3(0.84, 1.0, 0.89), tip * 0.88);
+        vec3 crest = uCrestTint.r < 0.0 ? green : mix(uCrestTint * mix(0.78, 1.15, glow), vec3(0.9, 0.97, 1.0), tip * 0.88);
         if (uRippleOnly > 0.5) {
           // Premultiplied glyphs reveal the actual scene behind this plane;
           // the faint crest adds light without an opaque reflection or tint.
-          color = color * (1.0 - alpha) + green * alpha;
+          color = color * (1.0 - alpha) + crest * alpha;
           effectAlpha = alpha;
-        } else color = mix(color, green, alpha);
+        } else color = mix(color, crest, alpha);
       }
     }
   }
@@ -1291,6 +1333,7 @@ void main() {
     const MIRROR_POINT = new Float32Array(3);
     const MIRROR_CLIP = new Float32Array(4);
     const MIRROR_RECT = new Float32Array(4);
+    const REFLECTOR_CENTER = new Float32Array(3), REFLECTOR_NORMAL = new Float32Array(3);
     const mirrorView = mat4.create();
     const mirrorProj = mat4.create(), mirrorInverseProj = mat4.create(), mirrorClipCorner = new Float32Array(4);
     const mirrorViewProj = mat4.create();
@@ -1298,7 +1341,7 @@ void main() {
     const invViewProj = mat4.create();
     const mirrorInvViewProj = mat4.create();
     const FRUSTUM = new Float32Array(24), LIGHT_FRUSTUM = new Float32Array(24), MIRROR_FRUSTUM = new Float32Array(24);
-    const CENTER = new Float32Array(3);
+    const CENTER = new Float32Array(3), CULL = new Float64Array(4);
     let culled = 0, drawn = 0, suppressed = 0, shadowPassCount = 0, rippleSurfaces = 0, rippleWaves = 0;
     // Static casters live in a cached depth map (res.shadow.staticFb) baked under shadowBaked; the working map
     // starts each frame as a copy of it and takes only the moving casters.
@@ -1308,10 +1351,24 @@ void main() {
     const mirrorTarget = { x: 0, y: 0, z: 0 };
     const mirrorUp = { x: 0, y: 1, z: 0 };
     const records = new Map();
+    // Refilled in place every frame (`activeCount` during collect), so its backing store is never dropped and regrown.
     const activeRecords = [];
+    let activeCount = 0;
     const res = { programs: {}, fbo: null, shadow: null, bloom: null, quadVao: null, matrixTexture: null };
     const mirror = { node: null, record: null, geometry: null, program: null, programReady: false, fb: null, tex: null, depth: null, width: 0, height: 0, renderWidth: 0, renderHeight: 0, portal: false, reveal: 0, frontFacing: false, walkThrough: false, captureValid: false, bodyTex: null, bodyState: null, bodyVersion: -1, shards: 0 };
     const environment = { program: null, ready: false, fb: null, tex: null, depth: null, size: 0, next: 0, valid: 0, frame: 0, origin: new Float32Array(3) };
+    // Reflectors: plain planar mirrors a scene may hold several of (the factory's peer shields), each with a capture
+    // of its own, drawn with the mirror's program and their ripples. The mirror above stays the one mirror with
+    // panels, a body and a portal. The reflector covering most of the screen captures every frame and the others take
+    // turns, one a frame, so a scene pays two reflection passes at most; one waiting its turn shows its last capture.
+    // A reflector needs a geometry of its own, which keys its capture. `reflectorPass` is the record a capture leaves
+    // out (null in the eye's pass, which draws every reflector itself).
+    const reflectorNodes = [], reflectorTargets = new Map();
+    let reflectorTurn = 0, reflectorPass = null;
+    // Glass (`geometry.glass`, its see-through alpha) draws after everything opaque and the sky, blended and leaving
+    // the depth alone, back faces first so a tube shows its far wall through its near one. `glassPass` is set while it
+    // draws; every other pass leaves glass out.
+    let glassPass = false;
     const mirrorDebug = {
       active: false, faux: false, portal: false, reveal: 0, surfaceDrawn: false, captureValid: false, width: 0, height: 0, textureWidth: 0, textureHeight: 0, samples: 0, allocationCount: 0, reflectionPassCount: 0, skippedPassCount: 0, resources: 0, captureExcluded: false, reflectionOnlyCount: 0, planeDistance: 0, ripples: 0, bodyContacts: 0, bodyWaves: 0,
       cameraPosition: new Float32Array(3), cameraTarget: new Float32Array(3), planeCenter: new Float32Array(3), planeNormal: new Float32Array(3), capturedViewProj: mirrorCapturedViewProj, shardsDrawn: 0, environmentPassCount: 0, environmentFaces: 0, environmentSize: 0, environmentResources: 0, skipReason: "none"
@@ -1333,7 +1390,7 @@ void main() {
       gl.attachShader(prog, v);
       gl.attachShader(prog, f);
       gl.linkProgram(prog);
-      return { prog, shaders: [v, f], uniforms: uniforms.concat(["uCutCount", "uCutRegions", "uCutBounds", "uCutawayOpacity"]), u: {}, cutFrame: -1, cutCount: -1, cutOpacity: NaN, clipMinY: NaN, clipMaxY: NaN, objectClip: null, voxel: null, sway: 0, swing: 0, matrixGlyph: NaN, matrixCave: NaN, lineWidth: NaN };
+      return { prog, shaders: [v, f], uniforms: uniforms.concat(["uCutCount", "uCutRegions", "uCutBounds", "uCutawayOpacity"]), u: {}, cutFrame: -1, cutCount: -1, cutOpacity: NaN, clipMinY: NaN, clipMaxY: NaN, objectClip: null, objectSlab: null, projective: NaN, voxel: null, sway: 0, swing: 0, matrixGlyph: NaN, matrixCave: NaN, lineWidth: NaN };
     };
     const finishProgram = (p) => {
       if (!gl.getProgramParameter(p.prog, gl.LINK_STATUS)) {
@@ -1343,6 +1400,11 @@ void main() {
       for (const sh of p.shaders) gl.deleteShader(sh);
       p.shaders = [];
       for (const name of p.uniforms) p.u[name] = gl.getUniformLocation(p.prog, name);
+      // Every mesh is opaque but in the glass pass, which sets its own and puts this back.
+      if (p.u.uGlass) {
+        gl.useProgram(p.prog);
+        gl.uniform1f(p.u.uGlass, 1);
+      }
     };
     const destroyMirrorProgram = () => {
       const p = mirror.program;
@@ -1355,7 +1417,7 @@ void main() {
     };
     const ensureMirrorProgram = () => {
       if (!mirror.program) {
-        mirror.program = compile(MIRROR_VS, MIRROR_FS, ["uViewProj", "uReflectionViewProj", "uMirrorWorld", "uShard", "uReflection", "uReflectionScale", "uTint", "uPortal", "uReveal", "uRippleOnly", "uMatrixGlyphTex", "uRippleActive", "uRippleTime", "uRipples", "uBodyField", "uBodyBounds", "uBodyTexel", "uBodyContacts", "uBodyActive", "uBodyWaves", "uClipMaxY"]);
+        mirror.program = compile(MIRROR_VS, MIRROR_FS, ["uViewProj", "uReflectionViewProj", "uMirrorWorld", "uShard", "uReflection", "uReflectionScale", "uTint", "uPortal", "uReveal", "uRippleOnly", "uCrestTint", "uMatrixGlyphTex", "uRippleActive", "uRippleTime", "uRipples", "uBodyField", "uBodyBounds", "uBodyTexel", "uBodyContacts", "uBodyActive", "uBodyWaves", "uClipMaxY"]);
         mirrorDebug.resources++;
       }
       if (mirror.programReady) return true;
@@ -1371,7 +1433,7 @@ void main() {
       const meshFragment = matrixSampling ? MESH_FS.replace("#version 300 es", "#version 300 es\n#extension GL_OES_shader_multisample_interpolation : require\n#define MATRIX_SAMPLE_INTERPOLATION") : MESH_FS;
       res.programs = {
         image: compile(IMAGE_VS, IMAGE_FS, ["uViewProj", "uRect", "uImage", "uReady", "uClipMaxY"]),
-        mesh: compile(MESH_VS, meshFragment, ["uViewProj", "uLightViewProj", "uEye", "uViewDirection", "uLightDir", "uSky", "uGround", "uSun", "uDirectStrength", "uAmbientFloor", "uDiffuseFloor", "uShadowStrength", "uShadowFloor", "uShadowBias", "uShadow", "uShadowTexel", "uLights", "uLightCount", "uFog", "uFogRange", "uMatrixParams", "uMatrixOrigin", "uMatrixGlyph", "uMatrixCave", "uMatrixCaves", "uMatrixCaveBounds", "uMatrixCaveNear", "uMatrixPermanentCave", "uMatrixPermanentPlane", "uMatrixPermanentAperture", "uMatrixLivingGlobal", "uMatrixGlyphTex", "uMatrixSamples", "uClipMinY", "uClipMaxY", "uObjectClip", "uMatrixGlyphOpacity", "uVoxel", "uWindTime", "uSway", "uSwing"]),
+        mesh: compile(MESH_VS, meshFragment, ["uViewProj", "uLightViewProj", "uEye", "uViewDirection", "uLightDir", "uSky", "uGround", "uSun", "uDirectStrength", "uAmbientFloor", "uDiffuseFloor", "uShadowStrength", "uShadowFloor", "uShadowBias", "uShadow", "uShadowTexel", "uLights", "uLightCount", "uSpotLight", "uFog", "uFogRange", "uMatrixParams", "uMatrixOrigin", "uMatrixGlyph", "uMatrixCave", "uMatrixCaves", "uMatrixCaveBounds", "uMatrixCaveNear", "uMatrixPermanentCave", "uMatrixPermanentPlane", "uMatrixPermanentAperture", "uMatrixLivingGlobal", "uMatrixGlyphTex", "uMatrixSamples", "uClipMinY", "uClipMaxY", "uObjectClip", "uObjectSlab", "uProjective", "uMatrixGlyphOpacity", "uGlassOpacity", "uVoxel", "uWindTime", "uSway", "uSwing", "uGlass", "uLightBeam"]),
         shadow: compile(SHADOW_VS, SHADOW_FS, ["uLightViewProj", "uClipMinY", "uClipMaxY", "uObjectClip"]),
         line: compile(LINE_VS, LINE_FS, ["uViewProj", "uViewport", "uWidth", "uClipMaxY", "uObjectClip"]),
         sky: compile(QUAD_VS, SKY_FS, ["uInvViewProj", "uHorizon", "uZenith", "uSun", "uSunDir", "uMoonDir", "uStarMatrix", "uStars", "uTime", "uHazeDrop", "uClouds", "uSea", "uSeaEye"]),
@@ -1445,6 +1507,44 @@ void main() {
       mirror.fb = mirror.tex = mirror.depth = null;
       mirror.width = mirror.height = mirror.renderWidth = mirror.renderHeight = 0;
       mirrorDebug.width = mirrorDebug.height = mirrorDebug.textureWidth = mirrorDebug.textureHeight = mirrorDebug.samples = 0;
+    };
+    const destroyReflector = (geometry) => {
+      const t = reflectorTargets.get(geometry);
+      if (!t) return;
+      if (t.fb) {
+        gl.deleteTexture(t.tex);
+        gl.deleteRenderbuffer(t.depth);
+        gl.deleteFramebuffer(t.fb);
+        mirrorDebug.resources -= 3;
+      }
+      reflectorTargets.delete(geometry);
+    };
+    const reflectorTarget = (geometry) => {
+      let t = reflectorTargets.get(geometry);
+      if (!t) reflectorTargets.set(geometry, t = { fb: null, tex: null, depth: null, size: 0, renderWidth: 0, renderHeight: 0, viewProj: new Float32Array(16), valid: false, area: 0, record: null });
+      return t;
+    };
+    // One square allocation per reflector at the tier's mirror size, as the mirror keeps.
+    const ensureReflectorTarget = (t) => {
+      const size = settings.mirror;
+      if (t.fb && t.size === size) return;
+      if (t.fb) {
+        gl.deleteTexture(t.tex);
+        gl.deleteRenderbuffer(t.depth);
+        gl.deleteFramebuffer(t.fb);
+        mirrorDebug.resources -= 3;
+      }
+      t.tex = createTexture(size, size, gl.RGBA8, gl.LINEAR);
+      t.depth = createRenderbuffer(size, size, gl.DEPTH_COMPONENT24, 0);
+      t.fb = gl.createFramebuffer();
+      gl.bindFramebuffer(gl.FRAMEBUFFER, t.fb);
+      gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, t.tex, 0);
+      gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.RENDERBUFFER, t.depth);
+      gl.drawBuffers([gl.COLOR_ATTACHMENT0]);
+      gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+      mirrorDebug.resources += 3;
+      t.size = size;
+      t.valid = false;
     };
     const destroyEnvironment = () => {
       if (!environment.fb) return;
@@ -1544,6 +1644,7 @@ void main() {
       environment.size = environment.valid = environment.next = environment.frame = 0;
       mirrorDebug.environmentFaces = mirrorDebug.environmentSize = mirrorDebug.environmentResources = 0;
       mirror.node = mirror.record = mirror.geometry = mirror.program = mirror.fb = mirror.tex = mirror.depth = mirror.bodyTex = mirror.bodyState = null;
+      reflectorTargets.clear();
       mirror.bodyVersion = -1;
       mirror.programReady = false;
       mirror.width = mirror.height = mirror.renderWidth = mirror.renderHeight = 0;
@@ -1846,7 +1947,7 @@ void main() {
       let rec = records.get(geometry);
       if (!rec) {
         const ibo = gl.createBuffer();
-        rec = { geometry, ibo, capacity: 0, mesh: buildMeshPart(geometry, ibo), line: buildLinePart(geometry, ibo), nodes: [], count: 0, drawCount: 0, cameraHiddenCount: 0, active: false, data: null, batch: null, batchVersion: -1, lightVisible: true, mirrorVisible: true, imageTexture: null, rippleBodyTexture: null, rippleBodyState: null, rippleBodyVersion: -1, shadowChanged: 0, shadowSettle: SHADOW_SETTLE, shadowCount: -1, shadowClip: NaN, shadowStatic: false, shadowBake: -1 };
+        rec = { geometry, ibo, capacity: 0, mesh: buildMeshPart(geometry, ibo), line: buildLinePart(geometry, ibo), nodes: [], spheres: new Float64Array(4), count: 0, drawCount: 0, cameraHiddenCount: 0, active: false, data: null, batch: null, batchVersion: -1, lightVisible: true, mirrorVisible: true, imageTexture: null, rippleBodyTexture: null, rippleBodyState: null, rippleBodyVersion: -1, shadowChanged: 0, shadowSettle: SHADOW_SETTLE, shadowCount: -1, shadowClip: NaN, shadowStatic: false, shadowBake: -1 };
         records.set(geometry, rec);
       }
       return rec;
@@ -1869,17 +1970,36 @@ void main() {
       }
       return true;
     };
-    // Camera, shadow and mirror passes test the same world sphere: collect computes it once onto the node.
-    const writeCullSphere = (node) => {
+    // Camera, shadow and mirror passes test the same world sphere: collect computes it once into the record's
+    // `spheres` (x, y, z, r at four times the node's slot, moved with it). Never onto the node: a float field read
+    // or written on the graph's many node shapes boxes a new number every time.
+    const writeCullSphere = (node, out, o) => {
       const b = boundsOf(node.geometry), w = node.world;
       mat4.transformPoint(CENTER, w, b.center[0], b.center[1], b.center[2]);
       const scale = Math.max(w[0] * w[0] + w[1] * w[1] + w[2] * w[2], w[4] * w[4] + w[5] * w[5] + w[6] * w[6], w[8] * w[8] + w[9] * w[9] + w[10] * w[10]);
-      node.cullX = CENTER[0];
-      node.cullY = CENTER[1] + (node.matrixCloud ? Math.min(0, cutawayCloudY - w[13]) * cutawayCloudMix : 0);
-      node.cullZ = CENTER[2];
-      node.cullR = b.radius * Math.sqrt(scale) + CULL_MARGIN;
+      out[o] = CENTER[0];
+      out[o + 1] = CENTER[1] + (node.matrixCloud ? Math.min(0, cutawayCloudY - w[13]) * cutawayCloudMix : 0);
+      out[o + 2] = CENTER[2];
+      out[o + 3] = b.radius * Math.sqrt(scale) + CULL_MARGIN;
     };
-    const nodeInFrustum = (node, planes) => sphereInFrustum(node.cullX, node.cullY, node.cullZ, node.cullR, planes);
+    const slotInFrustum = (s, o, planes) => {
+      const x = s[o], y = s[o + 1], z = s[o + 2], r = s[o + 3];
+      for (let i = 0; i < 24; i += 4) {
+        if (planes[i] * x + planes[i + 1] * y + planes[i + 2] * z + planes[i + 3] < -r) return false;
+      }
+      return true;
+    };
+    // The node in slot i takes the next slot of the draw region, its sphere with it.
+    const drawSlot = (rec, i) => {
+      const j = rec.drawCount++, nodes = rec.nodes, s = rec.spheres, node = nodes[i];
+      nodes[i] = nodes[j];
+      nodes[j] = node;
+      for (let k = 0; k < 4; k++) {
+        const t = s[i * 4 + k];
+        s[i * 4 + k] = s[j * 4 + k];
+        s[j * 4 + k] = t;
+      }
+    };
     // Shadow and mirror draw every instance of a record; one wholly outside that pass's clip volume skips the
     // draw call, partial records draw in full.
     const markLightVisible = () => {
@@ -1887,7 +2007,7 @@ void main() {
         if (rec.geometry.castShadow === false) continue;
         const sphere = rec.batch && rec.batch.cullSphere;
         let visible = rec.batch ? !sphere || sphereInFrustum(sphere[0], sphere[1], sphere[2], sphere[3] + CULL_MARGIN, LIGHT_FRUSTUM) : false;
-        for (let i = 0; !rec.batch && !visible && i < rec.count; i++) visible = nodeInFrustum(rec.nodes[i], LIGHT_FRUSTUM);
+        for (let i = 0; !rec.batch && !visible && i < rec.count; i++) visible = slotInFrustum(rec.spheres, i * 4, LIGHT_FRUSTUM);
         rec.lightVisible = visible;
       }
     };
@@ -1913,7 +2033,7 @@ void main() {
       for (const rec of activeRecords) {
         const sphere = rec.batch && rec.batch.cullSphere;
         let visible = rec.batch ? !sphere || sphereInFrustum(sphere[0], sphere[1], sphere[2], sphere[3] + CULL_MARGIN, MIRROR_FRUSTUM) : false;
-        for (let i = 0; !rec.batch && !visible && i < rec.count; i++) visible = nodeInFrustum(rec.nodes[i], MIRROR_FRUSTUM);
+        for (let i = 0; !rec.batch && !visible && i < rec.count; i++) visible = slotInFrustum(rec.spheres, i * 4, MIRROR_FRUSTUM);
         rec.mirrorVisible = visible;
       }
     };
@@ -1932,12 +2052,16 @@ void main() {
       }
       const rec = recordFor(node.geometry);
       if (node.mirror || node.mirrorPortal) mirror.record = rec;
+      if (node.geometry.reflector) {
+        reflectorNodes.push(node);
+        reflectorTarget(node.geometry).record = rec;
+      }
       if (!rec.active) {
         rec.active = true;
         rec.count = 0;
         rec.drawCount = 0;
         rec.cameraHiddenCount = 0;
-        activeRecords.push(rec);
+        activeRecords[activeCount++] = rec;
       }
       if (node.instanceData) {
         rec.batch = node;
@@ -1950,15 +2074,18 @@ void main() {
       // In-frustum nodes stay in front of the culled ones by swapping into the draw region.
       const idx = rec.count++;
       rec.nodes[idx] = node;
+      if (rec.spheres.length < rec.count * 4) {
+        const grown = new Float64Array(Math.max(rec.count * 4, rec.spheres.length * 2));
+        grown.set(rec.spheres);
+        rec.spheres = grown;
+      }
       // Camera-hidden nodes still cast shadows and appear in the mirror.
-      writeCullSphere(node);
+      writeCullSphere(node, rec.spheres, idx * 4);
       if (node.smokeOpacity === 0 || hiddenFromCamera(node)) {
         rec.cameraHiddenCount++;
         suppressed++;
-      } else if (nodeInFrustum(node, FRUSTUM)) {
-        rec.nodes[idx] = rec.nodes[rec.drawCount];
-        rec.nodes[rec.drawCount++] = node;
-      } else culled++;
+      } else if (slotInFrustum(rec.spheres, idx * 4, FRUSTUM)) drawSlot(rec, idx);
+      else culled++;
     };
     const uploadInstances = (rec) => {
       const need = rec.count * INSTANCE_FLOATS;
@@ -2079,8 +2206,10 @@ void main() {
       mirrorDebug.portal = mirror.portal;
       mirrorDebug.reveal = mirror.reveal;
     };
-    const prepareMirrorCamera = (camera) => {
-      const node = mirror.node, world = node.world, center = mirrorDebug.planeCenter, normal = mirrorDebug.planeNormal;
+    // Readies the reflected camera for the mirror, or for a reflector when `target` is one; only the mirror's own
+    // capture writes the debug readout.
+    const prepareMirrorCamera = (camera, node = mirror.node, target = mirror) => {
+      const own = target === mirror, world = node.world, center = own ? mirrorDebug.planeCenter : REFLECTOR_CENTER, normal = own ? mirrorDebug.planeNormal : REFLECTOR_NORMAL;
       center[0] = world[12];
       center[1] = world[13];
       center[2] = world[14];
@@ -2089,12 +2218,12 @@ void main() {
       normal[1] = world[9] / nlen;
       normal[2] = world[10] / nlen;
       const cameraSide = (camera.position.x - center[0]) * normal[0] + (camera.position.y - center[1]) * normal[1] + (camera.position.z - center[2]) * normal[2];
-      if (cameraSide <= MIRROR_EPSILON) return skipMirrorPass("back-facing");
+      if (cameraSide <= MIRROR_EPSILON) return own && skipMirrorPass("back-facing");
       if (!mirrorRect(node, viewProj) || MIRROR_RECT[2] < -1 || MIRROR_RECT[0] > 1 || MIRROR_RECT[3] < -1 || MIRROR_RECT[1] > 1) {
-        return skipMirrorPass("offscreen");
+        return own && skipMirrorPass("offscreen");
       }
       const area = (Math.min(1, MIRROR_RECT[2]) - Math.max(-1, MIRROR_RECT[0])) * width * 0.5 * (Math.min(1, MIRROR_RECT[3]) - Math.max(-1, MIRROR_RECT[1])) * height * 0.5;
-      if (area < 16) return skipMirrorPass("negligible");
+      if (area < 16) return own && skipMirrorPass("negligible");
       reflectMirrorPoint(mirrorEye, camera.position, center, normal);
       reflectMirrorPoint(mirrorTarget, camera.target, center, normal);
       const up = camera.up || UP, upDot = up.x * normal[0] + up.y * normal[1] + up.z * normal[2];
@@ -2113,10 +2242,12 @@ void main() {
       const cropX = (left + right) * 0.5, cropY = (bottom + top) * 0.5;
       const halfX = (right - left) * 0.5, halfY = (top - bottom) * 0.5;
       const screenWidth = Math.max(1, halfX * width), screenHeight = Math.max(1, halfY * height);
-      const targetWidth = mirror.renderWidth = Math.max(1, Math.min(settings.mirror, Math.ceil(screenWidth * dpr)));
-      const targetHeight = mirror.renderHeight = Math.max(1, Math.min(settings.mirror, Math.ceil(screenHeight * dpr)));
-      mirrorDebug.width = targetWidth;
-      mirrorDebug.height = targetHeight;
+      const targetWidth = target.renderWidth = Math.max(1, Math.min(settings.mirror, Math.ceil(screenWidth * dpr)));
+      const targetHeight = target.renderHeight = Math.max(1, Math.min(settings.mirror, Math.ceil(screenHeight * dpr)));
+      if (own) {
+        mirrorDebug.width = targetWidth;
+        mirrorDebug.height = targetHeight;
+      }
       for (let col = 0; col < 16; col += 4) {
         mirrorProj[col] = (mirrorProj[col] - cropX * mirrorProj[col + 3]) / halfX;
         mirrorProj[col + 1] = (mirrorProj[col + 1] - cropY * mirrorProj[col + 3]) / halfY;
@@ -2146,6 +2277,7 @@ void main() {
       mirrorProj[10] = cz - mirrorProj[11] * 0.998;
       mirrorProj[14] = cw - mirrorProj[15] * 0.998;
       mat4.multiply(mirrorViewProj, mirrorProj, mirrorView);
+      if (!own) return true;
       mirrorDebug.cameraPosition[0] = mirrorEye.x;
       mirrorDebug.cameraPosition[1] = mirrorEye.y;
       mirrorDebug.cameraPosition[2] = mirrorEye.z;
@@ -2154,6 +2286,13 @@ void main() {
       mirrorDebug.cameraTarget[2] = mirrorTarget.z;
       mirrorDebug.skipReason = "none";
       return true;
+    };
+    // How many pixels of the eye's view a reflector's glass covers, facing it; 0 when it faces away or is off screen.
+    const reflectorArea = (node, camera) => {
+      const w = node.world, nlen = Math.hypot(w[8], w[9], w[10]) || 1;
+      if (((camera.position.x - w[12]) * w[8] + (camera.position.y - w[13]) * w[9] + (camera.position.z - w[14]) * w[10]) / nlen <= MIRROR_EPSILON) return 0;
+      if (!mirrorRect(node, viewProj) || MIRROR_RECT[2] < -1 || MIRROR_RECT[0] > 1 || MIRROR_RECT[3] < -1 || MIRROR_RECT[1] > 1) return 0;
+      return (Math.min(1, MIRROR_RECT[2]) - Math.max(-1, MIRROR_RECT[0])) * width * 0.5 * (Math.min(1, MIRROR_RECT[3]) - Math.max(-1, MIRROR_RECT[1])) * height * 0.5;
     };
     const prepareEnvironmentCamera = (camera, face) => {
       const world = mirror.node.world, at = face * 6;
@@ -2197,6 +2336,11 @@ void main() {
     };
     const init = () => {
       parallel = gl.getExtension("KHR_parallel_shader_compile");
+      // Every flat varying is the same at a triangle's three corners, so the first corner draws the same pixels as
+      // GL's default last. Under the default, ANGLE's Metal backend (Safari, Chrome on Apple) rewrites each flat
+      // draw's vertices into index buffers it keeps: about 2.6 GB of GPU memory on the hub.
+      const provoking = gl.getExtension("WEBGL_provoking_vertex");
+      if (provoking) provoking.provokingVertexWEBGL(provoking.FIRST_VERTEX_CONVENTION_WEBGL);
       buildPrograms();
       buildMatrixTexture();
       buildShadow();
@@ -2254,7 +2398,9 @@ void main() {
         imageTextures++;
         gl.bindTexture(gl.TEXTURE_2D, rec.imageTexture);
         gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, image);
-        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+        // Mipmapped, so lettering seen from across a hall stays legible instead of sparkling.
+        gl.generateMipmap(gl.TEXTURE_2D);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
         gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
         gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
         gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
@@ -2271,12 +2417,38 @@ void main() {
       gl.activeTexture(gl.TEXTURE0);
       gl.useProgram(res.programs.mesh.prog);
     };
+    const drawGlass = (cull) => {
+      let any = false;
+      for (let i = 0; i < activeRecords.length; i++) if (activeRecords[i].geometry.glass && activeRecords[i].count) { any = true; break; }
+      if (!any) return;
+      const mesh = res.programs.mesh;
+      gl.useProgram(mesh.prog);
+      gl.enable(gl.BLEND);
+      gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+      gl.depthMask(false);
+      glassPass = true;
+      gl.cullFace(gl.FRONT);
+      drawParts("mesh", "mesh", true, cull);
+      gl.cullFace(gl.BACK);
+      drawParts("mesh", "mesh", true, cull);
+      glassPass = false;
+      gl.uniform1f(mesh.u.uGlass, 1);
+      gl.uniform1f(mesh.u.uLightBeam, 0);
+      gl.depthMask(true);
+      gl.disable(gl.BLEND);
+    };
     // The camera pass draws only the in-frustum front of each record; shadow and mirror draw all.
     const drawParts = (kind, useProgram, excludeMirror = false, cull = false, matrixStage = 0) => {
       for (const rec of activeRecords) {
         if (rec.geometry.mirrorRippleOnly) continue;
         applyCutaway(res.programs[useProgram], rec.geometry);
         if (excludeMirror && (rec === mirror.record || rec.geometry.mirrorSource)) continue;
+        if (rec.geometry.reflector && (reflectorPass === null || rec === reflectorPass)) continue;
+        if (useProgram === "mesh" && !rec.geometry.glass !== !glassPass) continue;
+        if (glassPass) {
+          gl.uniform1f(res.programs.mesh.u.uGlass, rec.geometry.glass);
+          gl.uniform1f(res.programs.mesh.u.uLightBeam, rec.geometry.lightBeam || 0);
+        }
         const part = rec[kind], n = rec.batch && rec.batch.drawInstanceCount !== undefined ? rec.drawCount : cull ? rec.drawCount : rec.count;
         if (!part || !n) continue;
         if (cull && rec.offscreen) continue;
@@ -2289,7 +2461,7 @@ void main() {
         }
         if (useProgram === "shadow") shadowDraws++;
         if (kind === "mesh" && useProgram === "mesh") {
-          const stage = rec.geometry.matrixRevealBacking ? 1 : rec.geometry.matrixGlyph ? 2 : 0;
+          const stage = rec.geometry.matrixRevealBacking ? 1 : rec.geometry.matrixGlyph ? 2 : rec.geometry.glassOpacity ? 3 : 0;
           if (stage !== matrixStage) continue;
           if (rec.geometry.imageSurface) { drawImageSurface(rec, n, cull); continue; }
           const mesh = res.programs.mesh, glyph = stage === 1 ? 3 : stage === 2 ? 1 : rec.geometry.matrixLocalGlyphSurface ? 2 : 0, cave = rec.geometry.matrixCave || 0;
@@ -2298,6 +2470,11 @@ void main() {
             mesh.matrixGlyph = glyph;
           }
           if (stage === 2) gl.uniform1f(mesh.u.uMatrixGlyphOpacity, rec.geometry.matrixGlyphOpacity ?? 1);
+          const glassOpacity = rec.geometry.glassOpacity || 0;
+          if (glassOpacity !== mesh.glassOpacity) {
+            gl.uniform1f(mesh.u.uGlassOpacity, glassOpacity);
+            mesh.glassOpacity = glassOpacity;
+          }
           if (cave !== mesh.matrixCave) {
             gl.uniform1f(mesh.u.uMatrixCave, cave);
             mesh.matrixCave = cave;
@@ -2327,6 +2504,15 @@ void main() {
           if (useProgram === "mesh" && swing !== program.swing) {
             gl.uniform1f(program.u.uSwing, swing);
             program.swing = swing;
+          }
+          const projective = rec.geometry.projective ? 1 : 0, slab = rec.geometry.clipSlab || NO_OBJECT_SLAB;
+          if (useProgram === "mesh" && projective !== program.projective) {
+            gl.uniform1f(program.u.uProjective, projective);
+            program.projective = projective;
+          }
+          if (useProgram === "mesh" && slab !== program.objectSlab) {
+            gl.uniform4fv(program.u.uObjectSlab, slab);
+            program.objectSlab = slab;
           }
         }
         if (kind === "line") {
@@ -2372,15 +2558,18 @@ void main() {
       gl.depthMask(true);
       gl.depthFunc(gl.LESS);
     };
-    const renderMirrorCapture = (clear, sky, ground, direct, directStrength, ambientFloor, diffuseFloor, shadowStrength, shadowFloor, shadowBias, lx, ly, lz, sh, lights, lightCount, skyOn, fog, fogNear, fogFar, matrix, environmentFace = -1) => {
+    const renderMirrorCapture = (clear, sky, ground, direct, directStrength, ambientFloor, diffuseFloor, shadowStrength, shadowFloor, shadowBias, lx, ly, lz, sh, lights, lightCount, skyOn, fog, fogNear, fogFar, matrix, spotLight, environmentFace = -1, target = mirror) => {
       const cube = environmentFace >= 0;
-      if (!cube) ensureMirrorTarget();
+      if (target !== mirror) ensureReflectorTarget(target);
+      else if (!cube) ensureMirrorTarget();
       extractFrustum(mirrorViewProj, MIRROR_FRUSTUM);
       markMirrorVisible();
+      // Every reflector shows in a reflection as its plain glass, but the one being captured.
+      reflectorPass = target.record;
       const pg = res.programs;
-      gl.bindFramebuffer(gl.FRAMEBUFFER, cube ? environment.fb : mirror.fb);
+      gl.bindFramebuffer(gl.FRAMEBUFFER, cube ? environment.fb : target.fb);
       if (cube) gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_CUBE_MAP_POSITIVE_X + environmentFace, environment.tex, 0);
-      const captureWidth = cube ? environment.size : mirror.renderWidth, captureHeight = cube ? environment.size : mirror.renderHeight;
+      const captureWidth = cube ? environment.size : target.renderWidth, captureHeight = cube ? environment.size : target.renderHeight;
       gl.viewport(0, 0, captureWidth, captureHeight);
       gl.enable(gl.SCISSOR_TEST);
       gl.scissor(0, 0, captureWidth, captureHeight);
@@ -2409,6 +2598,7 @@ void main() {
       bindMatrixTexture(pg.mesh);
       if (lights) gl.uniform4fv(pg.mesh.u.uLights, lights);
       gl.uniform1i(pg.mesh.u.uLightCount, lightCount);
+      gl.uniform4fv(pg.mesh.u.uSpotLight, spotLight);
       gl.uniform3fv(pg.mesh.u.uFog, fog);
       gl.uniform2f(pg.mesh.u.uFogRange, fogNear, fogFar);
       // The mirror closes before the retreat reaches the pile; its reflection must still show the same partially
@@ -2426,11 +2616,15 @@ void main() {
       gl.uniform1f(pg.mesh.u.uMatrixLivingGlobal, matrix ? matrix.livingGlobal ?? 1 : 1);
       drawParts("mesh", "mesh", true);
       if (skyOn) drawSky(mirrorInvViewProj, mirrorEye.y);
+      drawGlass(false);
       gl.useProgram(pg.mesh.prog);
       gl.enable(gl.BLEND);
       gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
       drawParts("mesh", "mesh", true, false, 1);
       drawParts("mesh", "mesh", true, false, 2);
+      gl.depthMask(false);
+      drawParts("mesh", "mesh", true, false, 3);
+      gl.depthMask(true);
       gl.disable(gl.BLEND);
       gl.useProgram(pg.line.prog);
       gl.uniformMatrix4fv(pg.line.u.uViewProj, false, mirrorViewProj);
@@ -2438,6 +2632,12 @@ void main() {
       gl.disable(gl.CULL_FACE);
       drawParts("line", "line", true);
       gl.enable(gl.CULL_FACE);
+      reflectorPass = null;
+      if (target !== mirror) {
+        target.viewProj.set(mirrorViewProj);
+        target.valid = true;
+        return;
+      }
       if (cube) {
         environment.valid |= 1 << environmentFace;
         mirrorDebug.environmentFaces = environment.valid;
@@ -2470,6 +2670,8 @@ void main() {
         gl.uniform1f(pg.u.uPortal, mirror.portal ? 1 : 0);
         gl.uniform1f(pg.u.uReveal, mirror.reveal);
         gl.uniform1f(pg.u.uRippleOnly, 0);
+        const tint = mirror.node.rippleTint;
+        gl.uniform3f(pg.u.uCrestTint, tint ? tint[0] : -1, tint ? tint[1] : 0, tint ? tint[2] : 0);
         const ripples = mirror.node.mirrorRipples, body = mirror.node.mirrorBody;
         mirrorDebug.ripples = ripples ? ripples.active : 0;
         gl.uniform1i(pg.u.uRippleActive, mirrorDebug.ripples);
@@ -2533,6 +2735,68 @@ void main() {
       }
       gl.activeTexture(gl.TEXTURE0);
     };
+    // Each reflector facing the eye draws its own last capture, through the matrix it was captured with, and its
+    // ripples in its crest tint.
+    const drawReflectors = (camera) => {
+      if (!reflectorNodes.length || !mirror.programReady) return;
+      const pg = mirror.program;
+      gl.useProgram(pg.prog);
+      gl.uniform1f(pg.u.uClipMaxY, cutawayMaxY);
+      gl.uniformMatrix4fv(pg.u.uViewProj, false, viewProj);
+      gl.uniform1f(pg.u.uShard, 0);
+      gl.uniform3f(pg.u.uTint, 0.56, 0.62, 0.67);
+      gl.uniform1f(pg.u.uPortal, 0);
+      gl.uniform1f(pg.u.uReveal, 0);
+      gl.uniform1f(pg.u.uRippleOnly, 0);
+      gl.uniform1i(pg.u.uBodyContacts, 0);
+      gl.uniform1i(pg.u.uBodyActive, 0);
+      gl.uniform4fv(pg.u.uBodyWaves, NO_MIRROR_BODY_WAVES);
+      bindMatrixTexture(pg);
+      gl.activeTexture(gl.TEXTURE4);
+      gl.bindTexture(gl.TEXTURE_2D, res.matrixTexture);
+      gl.uniform1i(pg.u.uBodyField, 4);
+      gl.activeTexture(gl.TEXTURE2);
+      gl.uniform1i(pg.u.uReflection, 2);
+      for (const node of reflectorNodes) {
+        const t = reflectorTargets.get(node.geometry), rec = t && t.record, w = node.world;
+        if (!rec || !rec.mesh || !rec.drawCount || rec.offscreen || !t.valid) continue;
+        if ((camera.position.x - w[12]) * w[8] + (camera.position.y - w[13]) * w[9] + (camera.position.z - w[14]) * w[10] <= 0) continue;
+        applyCutaway(pg, rec.geometry);
+        gl.uniformMatrix4fv(pg.u.uReflectionViewProj, false, t.viewProj);
+        gl.uniformMatrix4fv(pg.u.uMirrorWorld, false, w);
+        gl.uniform2f(pg.u.uReflectionScale, t.renderWidth / t.size, t.renderHeight / t.size);
+        const tint = node.rippleTint, ripples = node.mirrorRipples, body = node.mirrorBody;
+        const bodyActive = body && (body.contacts || body.active);
+        gl.activeTexture(gl.TEXTURE4);
+        if (bodyActive) {
+          if (!rec.rippleBodyTexture) {
+            rec.rippleBodyTexture = createTexture(body.width, body.height * body.layers, gl.RGBA8, gl.LINEAR);
+            rippleBodyTextures++;
+          }
+          gl.bindTexture(gl.TEXTURE_2D, rec.rippleBodyTexture);
+          if (rec.rippleBodyState !== body || rec.rippleBodyVersion !== body.version) {
+            gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, body.width, body.height * body.layers, gl.RGBA, gl.UNSIGNED_BYTE, body.pixels);
+            rec.rippleBodyState = body; rec.rippleBodyVersion = body.version;
+          }
+          const bounds = boundsOf(node.geometry);
+          gl.uniform4f(pg.u.uBodyBounds, bounds.min[0], bounds.min[1], bounds.max[0] - bounds.min[0], bounds.max[1] - bounds.min[1]);
+          gl.uniform2f(pg.u.uBodyTexel, 1 / body.width, 1 / body.height);
+        } else gl.bindTexture(gl.TEXTURE_2D, res.matrixTexture);
+        gl.uniform1i(pg.u.uBodyContacts, bodyActive ? body.contacts : 0);
+        gl.uniform1i(pg.u.uBodyActive, bodyActive ? body.active : 0);
+        gl.uniform4fv(pg.u.uBodyWaves, body ? body.waves : NO_MIRROR_BODY_WAVES);
+        gl.activeTexture(gl.TEXTURE2);
+        gl.uniform3f(pg.u.uCrestTint, tint ? tint[0] : -1, tint ? tint[1] : 0, tint ? tint[2] : 0);
+        gl.uniform1i(pg.u.uRippleActive, ripples ? ripples.active : 0);
+        gl.uniform1f(pg.u.uRippleTime, bodyActive ? body.time : ripples ? ripples.time : 0);
+        gl.uniform4fv(pg.u.uRipples, ripples ? ripples.waves : NO_MIRROR_RIPPLES);
+        gl.bindTexture(gl.TEXTURE_2D, t.tex);
+        gl.bindVertexArray(rec.mesh.vao);
+        gl.drawArraysInstanced(gl.TRIANGLES, 0, rec.mesh.count, rec.count);
+      }
+      // The passes after this one bind their inputs to unit 0.
+      gl.activeTexture(gl.TEXTURE0);
+    };
     const drawRippleSurfaces = () => {
       let started = false;
       for (const rec of activeRecords) {
@@ -2588,6 +2852,8 @@ void main() {
         gl.uniform1i(pg.u.uRippleActive, ripples ? ripples.active : 0);
         gl.uniform1f(pg.u.uRippleTime, bodyActive ? body.time : ripples ? ripples.time : 0);
         gl.uniform4fv(pg.u.uRipples, ripples ? ripples.waves : NO_MIRROR_RIPPLES);
+        const tint = node.rippleTint;
+        gl.uniform3f(pg.u.uCrestTint, tint ? tint[0] : -1, tint ? tint[1] : 0, tint ? tint[2] : 0);
         gl.bindVertexArray(rec.mesh.vao);
         gl.drawArraysInstanced(gl.TRIANGLES, 0, rec.mesh.count, rec.drawCount);
         rippleSurfaces += rec.drawCount; rippleWaves += ripples ? ripples.active : 0;
@@ -2655,6 +2921,7 @@ void main() {
         time = 0,
         lights,
         lightCount = 0,
+        spotLight = NO_SPOT_LIGHT,
         fog = null,
         fogNear = 0,
         fogFar = 0,
@@ -2714,14 +2981,17 @@ void main() {
       lightProj[12] += (Math.round(P4[0] * shadowSnap) - P4[0] * shadowSnap) / shadowSnap;
       lightProj[13] += (Math.round(P4[1] * shadowSnap) - P4[1] * shadowSnap) / shadowSnap;
       mat4.multiply(lightViewProj, lightProj, lightView);
-      for (const rec of activeRecords) {
+      // Indexed loops: render stays on the baseline compiler, where for-of boxes an iterator result every record.
+      for (let i = 0; i < activeRecords.length; i++) {
+        const rec = activeRecords[i];
         rec.active = false;
         // Drop the references without trimming the backing store the next frame's collect would immediately regrow.
         rec.nodes.fill(null);
         rec.batch = null;
         rec.offscreen = false;
       }
-      activeRecords.length = 0;
+      activeCount = 0;
+      reflectorNodes.length = 0;
       mirror.node = mirror.record = null;
       mirror.portal = mirror.frontFacing = mirror.walkThrough = false;
       mirror.reveal = 0;
@@ -2736,7 +3006,9 @@ void main() {
       shadowFrame++;
       updateWorld(root, null);
       traverseVisible(root, collect);
-      for (const rec of activeRecords) {
+      activeRecords.length = activeCount;
+      for (let i = 0; i < activeRecords.length; i++) {
+        const rec = activeRecords[i];
         if (rec.offscreen) culled += rec.drawCount; else drawn += rec.drawCount;
         if (rec.geometry.mirrorSource && !rec.offscreen) mirror.shards += rec.drawCount;
         uploadInstances(rec);
@@ -2797,16 +3069,43 @@ void main() {
           skipMirrorPass("portal-open");
         } else if (prepareMirrorCamera(camera)) {
           if (!ensureMirrorProgram()) skipMirrorPass("shader-pending");
-          else renderMirrorCapture(clear, sky, ground, direct, directStrength, ambientFloor, diffuseFloor, shadowStrength, shadowFloor, shadowBias, lx, ly, lz, sh, lights, nLights, skyOn, fogColor, fogA, fogB, matrix);
+          else renderMirrorCapture(clear, sky, ground, direct, directStrength, ambientFloor, diffuseFloor, shadowStrength, shadowFloor, shadowBias, lx, ly, lz, sh, lights, nLights, skyOn, fogColor, fogA, fogB, matrix, spotLight);
         }
         if (mirror.shards && ensureShardProgram()) {
           ensureEnvironment(clear);
           if (environment.valid !== 63 || environment.frame++ % settings.environmentCadence === 0) {
             const face = environment.next;
             prepareEnvironmentCamera(camera, face);
-            renderMirrorCapture(clear, sky, ground, direct, directStrength, ambientFloor, diffuseFloor, shadowStrength, shadowFloor, shadowBias, lx, ly, lz, sh, lights, nLights, skyOn, fogColor, fogA, fogB, matrix, face);
+            renderMirrorCapture(clear, sky, ground, direct, directStrength, ambientFloor, diffuseFloor, shadowStrength, shadowFloor, shadowBias, lx, ly, lz, sh, lights, nLights, skyOn, fogColor, fogA, fogB, matrix, spotLight, face);
             environment.next = (face + 1) % 6;
           }
+        }
+      }
+      if (reflectorNodes.length && ensureMirrorProgram()) {
+        // The reflector covering most of the view captures every frame, and one other in turn.
+        const n = reflectorNodes.length;
+        let best = -1, bestArea = 16;
+        for (let i = 0; i < n; i++) {
+          const t = reflectorTarget(reflectorNodes[i].geometry);
+          t.area = reflectorArea(reflectorNodes[i], camera);
+          if (t.area > bestArea) { bestArea = t.area; best = i; }
+        }
+        // One just come into view with nothing captured yet goes first.
+        let turn = -1;
+        for (let i = 0; i < n && turn < 0; i++) {
+          const t = reflectorTargets.get(reflectorNodes[i].geometry);
+          if (i !== best && t.area >= 16 && !t.valid) turn = i;
+        }
+        for (let k = 0; k < n && turn < 0; k++) {
+          const i = (reflectorTurn + k) % n;
+          if (i !== best && reflectorTargets.get(reflectorNodes[i].geometry).area >= 16) turn = i;
+        }
+        if (turn >= 0) reflectorTurn = turn + 1;
+        for (let pass = 0; pass < 2; pass++) {
+          const i = pass ? turn : best;
+          if (i < 0) continue;
+          const node = reflectorNodes[i], t = reflectorTargets.get(node.geometry);
+          if (prepareMirrorCamera(camera, node, t)) renderMirrorCapture(clear, sky, ground, direct, directStrength, ambientFloor, diffuseFloor, shadowStrength, shadowFloor, shadowBias, lx, ly, lz, sh, lights, nLights, skyOn, fogColor, fogA, fogB, matrix, spotLight, -1, t);
         }
       }
       const viewActor = opts.beforeView?.();
@@ -2819,12 +3118,12 @@ void main() {
             if (!node.visible || !node.geometry) continue;
             const rec = records.get(node.geometry);
             if (!rec || !rec.active) continue;
-            writeCullSphere(node);
-            if (hiddenFromCamera(node) || !nodeInFrustum(node, FRUSTUM)) continue;
+            writeCullSphere(node, CULL, 0);
+            if (hiddenFromCamera(node) || !slotInFrustum(CULL, 0, FRUSTUM)) continue;
             for (let i = rec.drawCount; i < rec.count; i++) {
               if (rec.nodes[i] !== node) continue;
-              rec.nodes[i] = rec.nodes[rec.drawCount];
-              rec.nodes[rec.drawCount++] = node;
+              rec.spheres.set(CULL, i * 4);
+              drawSlot(rec, i);
               break;
             }
           }
@@ -2861,6 +3160,7 @@ void main() {
       bindMatrixTexture(pg.mesh);
       if (lights) gl.uniform4fv(pg.mesh.u.uLights, lights);
       gl.uniform1i(pg.mesh.u.uLightCount, nLights);
+      gl.uniform4fv(pg.mesh.u.uSpotLight, spotLight);
       gl.uniform3fv(pg.mesh.u.uFog, fogColor);
       gl.uniform2f(pg.mesh.u.uFogRange, fogA, fogB);
       gl.uniform4f(pg.mesh.u.uMatrixParams, matrix ? matrix.active : 0, matrix ? matrix.radius : 0, matrix ? matrix.time : time, matrix ? matrix.density : 0);
@@ -2876,7 +3176,9 @@ void main() {
       gl.uniform1f(pg.mesh.u.uMatrixLivingGlobal, matrix ? matrix.livingGlobal ?? 1 : 1);
       drawParts("mesh", "mesh", true, true);
       drawMirrorSurface(camera);
+      drawReflectors(camera);
       if (skyOn) drawSky(invViewProj, camera.position.y);
+      drawGlass(true);
       // Ordinary surfaces first, then the effect-only black liner and native voxel glyphs; alpha follows the backing
       // shader's wave, depth still rejects hidden faces.
       gl.useProgram(pg.mesh.prog);
@@ -2884,6 +3186,9 @@ void main() {
       gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
       drawParts("mesh", "mesh", true, true, 1);
       drawParts("mesh", "mesh", true, true, 2);
+      gl.depthMask(false);
+      drawParts("mesh", "mesh", true, true, 3);
+      gl.depthMask(true);
       gl.disable(gl.BLEND);
       drawRippleSurfaces();
       gl.useProgram(pg.line.prog);
@@ -2985,6 +3290,7 @@ void main() {
       canvas.removeEventListener("webglcontextlost", onLost);
       canvas.removeEventListener("webglcontextrestored", onRestored);
       destroyRecords();
+      for (const geometry of [...reflectorTargets.keys()]) destroyReflector(geometry);
       destroyMirror();
       destroyFbo();
       destroyShadow();
@@ -3001,7 +3307,7 @@ void main() {
       if (mirror.geometry && !live.has(mirror.geometry)) destroyMirror();
       else if (!mirror.geometry && mirror.program) {
         let rippleLive = false;
-        for (const geometry of live) if (geometry.mirrorRippleOnly) { rippleLive = true; break; }
+        for (const geometry of live) if (geometry.mirrorRippleOnly || geometry.reflector) { rippleLive = true; break; }
         if (!rippleLive) destroyMirrorProgram();
       }
       for (const geometry of records.keys()) {
@@ -3012,6 +3318,7 @@ void main() {
       return released;
     };
     const releaseGeometry = (geometry) => {
+      destroyReflector(geometry);
       const rec = records.get(geometry);
       if (!rec) return;
       deleteRecord(rec);

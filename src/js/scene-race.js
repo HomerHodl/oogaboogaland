@@ -1,4 +1,4 @@
-// Ooga Rally: the racing scene behind the 9 o'clock cave.
+// Ooga Rally: the racing scene, opened from its Ooga Arcade cabinet or its route.
 //
 // Phases: garage, countdown, racing, paused, finished. A chase camera; lighting from the ten nearest
 // torches; donations; `leave`. The rocket start reads the throttle through the count. Every lap
@@ -58,6 +58,8 @@
   const bestKey = () => selection.mirror ? `${selection.track}-m` : selection.track;
 
   // These are one visit's state: created in enter, dropped in leave.
+  // Where the game exits to: back to Ooga Arcade when a cabinet started it, otherwise the island.
+  let home = "hub";
   let renderer, game, world, go, lootEnabled, testBananas, root, camera, hud, rhud, hooks, input, fx, controls, track, racers, items, audio, weather, agent;
   let phase = "garage", countdown = 0, accumulator = 0, sceneTime = 0, finishedAt = 0;
   let meterTimer = 0, stateTimer = 0, hintTimer = 0;
@@ -714,7 +716,7 @@
       if (phase === "racing") pause(true);
       else if (phase === "paused") pause(false);
       else if (phase === "finished") toGarage();
-      else go("hub");
+      else go(home);
     }
     if (e.key === "e" || e.key === "E" || e.key === "Shift") useItem();
     if (e.key === "0") cam.offset = 0;
@@ -731,6 +733,7 @@
 
   const enter = (ctx) => {
     ({ renderer, game, world, go, lootEnabled, testBananas } = ctx);
+    home = ctx.from === "arcade" ? "arcade" : "hub";
     camera = createCamera({ fov: 50, near: 0.3, far: 280 });
     root = createNode();
     hud = hudMod.create({ roster: contributors.activeRoster, catalog: models.SWAG, tierColors: models.TIER_COLORS, renderIcon: hudMod.renderIcon, lootEnabled });
@@ -818,7 +821,7 @@
       else if (action === "garage") toGarage();
       else if (action === "race-mirror") toggleMirror();
       else if (action === "race-resume") pause(false);
-      else if (action === "leave") go("hub");
+      else if (action === "leave") go(home);
       else if (action === "item") useItem();
       else if (action === "mute") toggleMute();
       else if (action === "tip") demoTip(1200);

@@ -35,7 +35,13 @@
   };
   const isString = (v, max) => typeof v === "string" && v.length <= max;
   const isEntry = (e, catalog) => e && typeof e === "object" && isString(e.id, 40) && catalog.some((c) => c.id === e.itemId) && LOOT_TIERS.some((t) => t.tier === e.tier) && isString(e.donationId, 64) && Number.isFinite(e.at);
-  const defaults = () => ({ inventory: [], assignments: {}, handle: "", message: "", handFed: 0, totalSats: 0, donations: 0, race: { best: {}, cup: null }, drop: { best: null, jumps: 0 }, orbit: { best: null, build: null }, mine: { best: null } });
+  const defaults = () => ({ inventory: [], assignments: {}, handle: "", message: "", handFed: 0, totalSats: 0, donations: 0, race: { best: {}, cup: null }, drop: { best: null, jumps: 0 }, orbit: { best: null, build: null }, mine: { best: null }, arcade: { skee: 0, hoops: 0, shy: 0, claw: 0, hockey: 0, billiards: 0, darts: 0, pinball: 0, ride: 0, invaders: 0, snake: 0, pong: 0, stampede: 0, flap: 0, breaker: 0, dash: 0, stacker: 0, tickets: 0, prizes: [] } });
+  // Ooga Arcade's carnival bests, each capped past the most its game can score (nine doubled 100s; the round games
+  // run on), the retro cabinets' bests (`retro-games.js`, capped past any run), the ticket balance, and the prizes
+  // (`ARCADE_PRIZES` ids) redeemed at the counter.
+  const ARCADE_MAX = { skee: 1800, hoops: 9999, shy: 999, claw: 400, hockey: 200, billiards: 200, darts: 540, pinball: 9999999, ride: 9999,
+    invaders: 50000, snake: 120000, pong: 99999, stampede: 75000, flap: 20000, breaker: 50000, dash: 99999, stacker: 999999 }, TICKETS_MAX = 1e7;
+  const ARCADE_PRIZES = ["banana-plush", "coconut-cup", "bone-kazoo", "gold-sticker", "gorilla-plush", "crown"];
   // A drop best is a landing on your feet: a crash keeps its ring points on the card but is never a best.
   const LANDINGS = ["stand", "stumble"];
   const ORBIT_LANDINGS = ["pad", "islet", "island", "land", "sea", "overpressure", "stuck", "heat", "breakup", "burnup", "splat", "crash", "wreck", "debris"];
@@ -84,6 +90,12 @@
         && MINE_ENDINGS.includes(m.ending) && typeof m.won === "boolean" && Number.isFinite(m.score) && m.score >= 0 && m.score < 1e7) {
         state.mine.best = { sats: Math.floor(m.sats), seconds: Math.floor(m.seconds), ending: m.ending, won: m.won, score: Math.floor(m.score), continued: m.continued === true };
       }
+      const a = parsed.arcade;
+      if (a && typeof a === "object") for (const kind in ARCADE_MAX) {
+        if (Number.isFinite(a[kind]) && a[kind] >= 0 && a[kind] <= ARCADE_MAX[kind]) state.arcade[kind] = Math.floor(a[kind]);
+      }
+      if (a && Number.isFinite(a.tickets) && a.tickets >= 0 && a.tickets <= TICKETS_MAX) state.arcade.tickets = Math.floor(a.tickets);
+      if (a && Array.isArray(a.prizes)) state.arcade.prizes = ARCADE_PRIZES.filter((id) => a.prizes.includes(id));
     } catch {
       return defaults();
     }
@@ -206,6 +218,33 @@
       save(state);
       return true;
     };
+    const recordArcade = (kind, score) => {
+      if (!(kind in ARCADE_MAX) || !(score > state.arcade[kind])) return false;
+      state.arcade[kind] = Math.min(ARCADE_MAX[kind], Math.floor(score));
+      save(state);
+      return true;
+    };
+    const addTickets = (n) => {
+      state.arcade.tickets = Math.min(TICKETS_MAX, state.arcade.tickets + Math.max(0, Math.floor(n)));
+      save(state);
+      return state.arcade.tickets;
+    };
+    // Tickets spent at a machine (the jackpot wheel's spin): false, and nothing spent, when the tickets fall short or
+    // the cost is not a whole number above nothing.
+    const spendTickets = (n) => {
+      if (!Number.isInteger(n) || n <= 0 || state.arcade.tickets < n) return false;
+      state.arcade.tickets -= n;
+      save(state);
+      return true;
+    };
+    // A prize at the counter: false when it is already won or the tickets fall short.
+    const redeem = (id, cost) => {
+      if (!ARCADE_PRIZES.includes(id) || state.arcade.prizes.includes(id) || state.arcade.tickets < cost) return false;
+      state.arcade.tickets -= cost;
+      state.arcade.prizes.push(id);
+      save(state);
+      return true;
+    };
     const setOrbitBuild = (stack) => {
       state.orbit.build = stack.slice();
       save(state);
@@ -226,7 +265,7 @@
       if (seconds < 5400) return `${Math.round(seconds / 60)}m`;
       return `${(seconds / 3600).toFixed(1)}h`;
     };
-    return { state, countOf, lootFor: lootForVisitor, addItem, assign, unassign, itemOf, assignedTo, clearLoot, resetAll, recordDonation, recordHandFed, recordRace, recordCup, recordJump, recordDrop, recordOrbit, recordMine, setOrbitBuild, setIdentity, forecast, formatDuration };
+    return { state, countOf, lootFor: lootForVisitor, addItem, assign, unassign, itemOf, assignedTo, clearLoot, resetAll, recordDonation, recordHandFed, recordRace, recordCup, recordJump, recordDrop, recordOrbit, recordMine, recordArcade, addTickets, spendTickets, redeem, setOrbitBuild, setIdentity, forecast, formatDuration };
   };
   BL.game = { create, LOOT_TIERS, STACK_MAX, SATS_PER_BANANA, tierFor, lootFor, bananasFor, formatLarge };
 })();

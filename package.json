@@ -7,6 +7,10 @@
   "type": "module",
   "scripts": {
     "build": "node scripts/build.mjs",
+    "poker:serve": "node scripts/build.mjs && node server/poker/server.mjs",
+    "poker:verify": "node server/poker/verify.mjs",
+    "site": "node scripts/site.mjs",
+    "cards": "node scripts/build.mjs && node scripts/cards.mjs",
     "serve": "node scripts/serve.mjs",
     "watch": "node scripts/serve.mjs --watch",
     "characters": "node scripts/characters.mjs --list",

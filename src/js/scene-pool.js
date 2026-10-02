@@ -82,7 +82,6 @@
       set.put("crate", cx + sx * 0.9, 0, cz + sz * 0.9, turns + 1, 0);
       set.put("crate", cx + sx * 0.9, 0.75, cz + sz * 0.9, turns, 1);
       set.put("barrel", cx - sx * 0.95, 0, cz - sz * 0.95, 0, 1);
-      set.put("sack", cx - sx * 0.6 - Math.sin(bearing) * 0.8, 0, cz - sz * 0.6 - Math.cos(bearing) * 0.8, turns, 0);
     }
     return set.build();
   });

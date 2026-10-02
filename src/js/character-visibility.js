@@ -7,32 +7,44 @@
   const meshOf = (geometry) => {
     let mesh = meshes.get(geometry);
     if (mesh) return mesh;
-    const vertices = geometry.verts, indices = [], boxes = [], order = [], nodes = [];
+    const vertices = geometry.verts, nodes = [];
+    let count = 0;
+    for (const face of geometry.faces) if (face.i.length > 2) count += face.i.length - 2;
+    const indices = new Uint32Array(count * 3), boxes = new Float64Array(count * 6), order = new Uint32Array(count);
+    let n = 0;
     for (const face of geometry.faces) for (let i = 1; i + 1 < face.i.length; i++) {
       const a = face.i[0] * 3, b = face.i[i] * 3, c = face.i[i + 1] * 3;
-      indices.push(a, b, c); order.push(order.length);
-      for (let axis = 0; axis < 3; axis++) boxes.push(Math.min(vertices[a + axis], vertices[b + axis], vertices[c + axis]));
-      for (let axis = 0; axis < 3; axis++) boxes.push(Math.max(vertices[a + axis], vertices[b + axis], vertices[c + axis]));
+      indices[n * 3] = a; indices[n * 3 + 1] = b; indices[n * 3 + 2] = c; order[n] = n;
+      for (let axis = 0; axis < 3; axis++) boxes[n * 6 + axis] = Math.min(vertices[a + axis], vertices[b + axis], vertices[c + axis]);
+      for (let axis = 0; axis < 3; axis++) boxes[n * 6 + axis + 3] = Math.max(vertices[a + axis], vertices[b + axis], vertices[c + axis]);
+      n++;
     }
-    const keys = new Float64Array(order.length * 3), scratch = BL.math.sortScratch(order.length);
-    for (let i = 0; i < order.length; i++) for (let axis = 0; axis < 3; axis++) keys[i * 3 + axis] = boxes[i * 6 + axis] + boxes[i * 6 + axis + 3];
-    const build = (from, to) => {
-      const box = [Infinity, Infinity, Infinity, -Infinity, -Infinity, -Infinity];
-      for (let i = from; i < to; i++) for (let axis = 0; axis < 3; axis++) {
-        box[axis] = Math.min(box[axis], boxes[order[i] * 6 + axis]); box[axis + 3] = Math.max(box[axis + 3], boxes[order[i] * 6 + axis + 3]);
+    const keys = new Float64Array(count * 3), scratch = BL.math.sortScratch(count);
+    let ordered = true;
+    for (let i = 0; i < count; i++) for (let axis = 0; axis < 3; axis++) { const k = keys[i * 3 + axis] = boxes[i * 6 + axis] + boxes[i * 6 + axis + 3]; if (k !== k) ordered = false; }
+    // `sorted` is the axis the range already lies in order on (its parent's, when no key is NaN), where the stable
+    // sort would move nothing.
+    const build = (from, to, sorted) => {
+      let x0 = Infinity, y0 = Infinity, z0 = Infinity, x1 = -Infinity, y1 = -Infinity, z1 = -Infinity;
+      for (let i = from; i < to; i++) {
+        const o = order[i] * 6;
+        x0 = Math.min(x0, boxes[o]); y0 = Math.min(y0, boxes[o + 1]); z0 = Math.min(z0, boxes[o + 2]);
+        x1 = Math.max(x1, boxes[o + 3]); y1 = Math.max(y1, boxes[o + 4]); z1 = Math.max(z1, boxes[o + 5]);
       }
+      const box = [Infinity, Infinity, Infinity, -Infinity, -Infinity, -Infinity];
+      box[0] = x0; box[1] = y0; box[2] = z0; box[3] = x1; box[4] = y1; box[5] = z1;
       const index = nodes.length, node = { box, from, to, left: -1, right: -1 }; nodes.push(node);
       if (to - from > 12) {
         let axis = 0;
         if (box[4] - box[1] > box[3] - box[0]) axis = 1;
         if (box[5] - box[2] > box[axis + 3] - box[axis]) axis = 2;
-        BL.math.sortByKey(order, from, to, keys, 3, axis, scratch);
-        const middle = (from + to) >>> 1; node.left = build(from, middle); node.right = build(middle, to);
+        if (axis !== sorted) BL.math.sortByKey(order, from, to, keys, 3, axis, scratch);
+        const middle = (from + to) >>> 1, next = ordered ? axis : -1; node.left = build(from, middle, next); node.right = build(middle, to, next);
       }
       return index;
     };
-    if (order.length) build(0, order.length);
-    mesh = { vertices, indices: new Uint32Array(indices), order: new Uint32Array(order), nodes };
+    if (count) build(0, count, -1);
+    mesh = { vertices, indices, order, nodes };
     meshes.set(geometry, mesh); return mesh;
   };
   const create = ({ root, renderer, camera, occluded = null, renderOpts = null }) => {
@@ -420,11 +432,42 @@
       result.x = Math.max(0, Math.min(width, result.x)); result.y = Math.max(0, Math.min(height, result.y));
       return result;
     };
+    // Builds every blocker's mesh ahead in idle slices, so a view that brings many into play at once never builds them
+    // all in one frame: the same meshes `meshOf` would build then, shared across visits. A slice builds only what the
+    // idle time left can hold at the rate measured so far on this device.
+    let warming = 0, msPerTriangle = 0;
+    const warm = () => {
+      if (warming || typeof requestIdleCallback === "undefined") return;
+      const pending = [];
+      const collect = (node) => {
+        const geometry = node.geometry;
+        if (geometry && geometry.faces && geometry.faces.length && !geometry.matrixGlyph && !node.mirrorPortal && !meshes.has(geometry)) pending.push(geometry);
+        for (const child of node.children) collect(child);
+      };
+      collect(root);
+      const slice = (deadline) => {
+        warming = 0;
+        while (pending.length) {
+          const geometry = pending[pending.length - 1];
+          if (meshes.has(geometry)) { pending.pop(); continue; }
+          let triangles = 0;
+          for (const face of geometry.faces) if (face.i.length > 2) triangles += face.i.length - 2;
+          if (triangles * msPerTriangle + 1 > deadline.timeRemaining()) break;
+          const start = performance.now();
+          meshOf(geometry);
+          pending.pop();
+          if (triangles) { const rate = (performance.now() - start) / triangles; msPerTriangle = msPerTriangle ? msPerTriangle * 0.8 + rate * 0.2 : rate; }
+        }
+        if (pending.length) warming = requestIdleCallback(slice);
+      };
+      warming = requestIdleCallback(slice);
+    };
     return {
+      warm,
       begin: () => { frame++; prepared = false; },
       visible: (cave) => query(cave).visible,
       anchor: (cave, out) => { const result = query(cave); if (!result.visible) return false; out.x = result.x; out.y = result.y; return true; },
-      dispose: () => { active.length = candidates.length = candidateCount = 0; records = new WeakMap(); memo = new WeakMap(); hitEntry = null; }
+      dispose: () => { if (warming) cancelIdleCallback(warming); warming = 0; active.length = candidates.length = candidateCount = 0; records = new WeakMap(); memo = new WeakMap(); hitEntry = null; }
     };
   };
   BL.characterVisibility = { create };

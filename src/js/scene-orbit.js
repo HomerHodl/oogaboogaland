@@ -106,7 +106,9 @@
   const leanTarget = (alt) => Math.pow(clamp((alt - LEAN_FROM) / LEAN_OVER, 0, 1), LEAN_CURVE) * LEAN_MAX;
 
   // One visit's state: made in enter, dropped in leave.
-  let renderer, game, world, go, lootEnabled, testBananas, root, camera, island, hud, rhud, hooks, input, fx, controls, audio, clock, spot, site, planet, flight, view, passenger, canopy, heatShell, smoke, plasma, splashNode;
+  // Where the game exits to: back to Ooga Arcade when a cabinet started it, otherwise the island.
+  let home = "hub";
+  let renderer, game, world, go, lootEnabled, testBananas, root, camera, island, hud, rhud, hooks, input, fx, controls, audio, clock, spot, planet, flight, view, passenger, canopy, heatShell, smoke, plasma, splashNode;
   let astro, astroStick, astroLight, rockNode, tetherNode, agent;
   // The rock's place in the pod's frame is drawn per launch (rockE, rockU, rockF), so the walk is a small hunt.
   const eva = { measured: false, back: false, reeling: false, measuring: 0, reading: 0, drift: 0, tumble: 0, spin: 0, e: 0, u: 0, f: 0, ve: 0, vu: 0, vf: 0, yaw: 0, pitch: 0, near: "", puff: 0, air: EVA_AIR, bonus: 0, out: false, rockE: EVA.rockE, rockU: EVA.rockU, rockF: EVA.rockF };
@@ -1850,7 +1852,7 @@
   };
   const onKey = (e) => {
     if (e.key === "Escape") {
-      if (phase === "build") go("hub");
+      if (phase === "build") go(home);
       else toBuild();
     }
     if (e.key === "Enter" && (phase === "build" || phase === "results")) launch();
@@ -1880,6 +1882,7 @@
 
   const enter = (ctx) => {
     ({ renderer, game, world, go, lootEnabled, testBananas } = ctx);
+    home = ctx.from === "arcade" ? "arcade" : "hub";
     camera = createCamera({ fov: 50, near: 0.3, far: 1600 });
     root = createNode();
     clock = daylight.createClock({ hour: hourParam, daylen: daylenParam, day: dayParam, time: timeParam, now: new Date() });
@@ -1901,8 +1904,7 @@
     place(createNode({ position: { x: 0, y: 0.36, z: 0 }, scale: { x: footprint, y: 0.48 * growth, z: footprint }, geometry: models.bananaPileCoreGeometry(0.45 * 6, 0.48 * 6, 0.45), visible: level > 0 }));
     const slab = place(createNode({ geometry: hubModels.altarSlab(), depthBias: 0.15 }));
     setVec(slab.scale, footprint + 0.3, 0.34, footprint + 0.3);
-    site = rocketModels.site(spot);
-    place(site.node);
+    place(rocketModels.site(spot));
     // The Agent paces the islet beside the pad, across from the tower.
     const agentX = spot.x - 5.2, agentZ = spot.z + 1;
     agent = orbitScene.agent = BL.agent.create({ groundAt, form: "code", x: agentX, z: agentZ, heading: Math.PI / 2 });
@@ -1926,7 +1928,7 @@
     canopy = createNode({ geometry: dropModels.canopy(), visible: false });
     heatShell = createNode({ geometry: rocketModels.heatShell(), visible: false, smokeOpacity: 0 });
     mark("orbit world");
-    // An Ooga walked or tapped onto the pad arrives as world.pilot and flies.
+    // The Ooga an arcade cabinet sent in arrives as world.pilot and flies.
     if (world.pilot) {
       selection.pilot = world.pilot;
       world.pilot = null;
@@ -2001,7 +2003,7 @@
       if (action === "orbit-launch" || action === "orbit-again") launch();
       else if (action === "orbit-eva") startEva();
       else if (action === "orbit-build") toBuild();
-      else if (action === "leave") go("hub");
+      else if (action === "leave") go(home);
       else if (action === "act") act();
       else if (action === "mute") toggleMute();
       else if (action === "tip") demoTip(1200);
@@ -2129,7 +2131,7 @@
     phase = "build";
     inputLocked = false;
     astro = astroStick = astroLight = rockNode = tetherNode = agent = null;
-    flight = view = passenger = canopy = heatShell = smoke = plasma = splashNode = site = planet = spot = hud = rhud = hooks = input = fx = controls = audio = clock = island = null;
+    flight = view = passenger = canopy = heatShell = smoke = plasma = splashNode = planet = spot = hud = rhud = hooks = input = fx = controls = audio = clock = island = null;
     orbitScene.input = orbitScene.debug = orbitScene.agent = orbitScene.agentControls = null;
     return { targets: count };
   };

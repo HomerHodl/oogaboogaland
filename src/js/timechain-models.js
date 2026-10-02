@@ -161,13 +161,13 @@
       box({ w: 0.06, h: 4.7, d: 0.5, color: "#ffbd53", emissive: 0.9, offset: { x: side * 2.435, y: 2.4 } })
     ])
   ));
-  // The deck starts on the doorway's threshold, just clear of the floor's trim, so the planks and the floor never
-  // share a plane; the old start sat inside, 4 cm over the floor. Built in the bridge's frame (z = 0 at BRIDGE_Z).
-  const BRIDGE_Z = SITE.radius - 2, DECK = innerReach(0.04) - 0.03 - BRIDGE_Z, GATE = SITE.span - 1;
+  // The raised deck overlaps the floor trim and the home shore, keeping a continuous walk through the doorway.
+  // Coordinates are in the bridge's frame (z = 0 at BRIDGE_Z).
+  const BRIDGE_Z = SITE.radius - 2, DECK = innerReach(0.04) - 0.55 - BRIDGE_Z, DECK_END = SITE.span + 0.5, GATE = SITE.span - 1;
   const POSTS = Array.from({ length: 5 }, (_, i) => DECK + 0.9 + i * (GATE - DECK - 0.9) / 5);
   // Plain boxes as the walking shell: one deck slab, the rail and the posts, so the cartoon pieces never change it.
   const bridgeShell = cached(() => {
-    const length = SITE.span - DECK, middle = (DECK + SITE.span) / 2, geos = [box({ w: SITE.width, h: 0.16, d: length, color: WOOD, offset: { y: -0.04, z: middle } })];
+    const length = DECK_END - DECK, middle = (DECK + DECK_END) / 2, geos = [box({ w: SITE.width, h: 0.16, d: length, color: WOOD, offset: { y: -0.01, z: middle } })];
     for (const side of [-1, 1]) {
       const x = side * (SITE.width / 2 + 0.1);
       geos.push(box({ w: 0.12, h: 0.12, d: GATE - POSTS[0], color: WOOD, offset: { x, y: 0.95, z: (POSTS[0] + GATE) / 2 } }));
@@ -180,9 +180,9 @@
   // Drawn as the island's cartoon crossings are: bevelled planks on two stringers, chunky posts with Bitcoin-orange
   // caps, thick sagging rope rails and a lantern gateway on the shore.
   const bridge = cached(() => {
-    const geo = { verts: [], faces: [], lines: [], smooth: true, normals: [] }, w = SITE.width, length = SITE.span - DECK;
+    const geo = { verts: [], faces: [], lines: [], smooth: true, normals: [] }, w = SITE.width, length = DECK_END - DECK;
     const count = Math.round(length / 0.46), pitch = length / count, rope = BL.math.hexToRgb("#d2ab62");
-    for (let i = 0; i < count; i++) flatInto(geo, bevelBox({ w, h: 0.18, d: pitch - 0.05, color: i % 3 === 0 ? PLANK : WOOD, bevel: 0.04, offset: { y: -0.05, z: DECK + (i + 0.5) * pitch } }));
+    for (let i = 0; i < count; i++) flatInto(geo, bevelBox({ w, h: 0.18, d: pitch + 0.02, color: i % 3 === 0 ? PLANK : WOOD, bevel: 0.04, offset: { y: -0.02, z: DECK + (i + 0.5) * pitch } }));
     for (const side of [-1, 1]) {
       const x = side * (w / 2 + 0.1), stops = [...POSTS, GATE];
       flatInto(geo, bevelBox({ w: 0.22, h: 0.22, d: length, color: POST, offset: { x: side * (w / 2 - 0.2), y: -0.25, z: DECK + length / 2 } }));

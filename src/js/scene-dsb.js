@@ -16,6 +16,8 @@
   const DARK = { clear: [0, 0, 0], sky: [0.12, 0.1, 0.16], ground: [0.04, 0.03, 0.06], sun: [0.18, 0.16, 0.22], bloomStrength: 0.15 };
   let root, camera, input, pilot, hud, renderer, world, game, go, land, transitGate, audio, data, tv, panel, readout, bag, prompt, overlayCanvas, overlayCtx, avatar, crew, fx, playerWorld, zuzu, conversation;
   let exiting = false;
+  // DSB Land returns through its gate to ₿IFRÖST's chamber.
+  const home = "bifrost", HOME_NAME = "₿IFRÖST";
   let phase = "entrance", progress = 0, elapsed = 0, flash = 0, boatAngle = 0, rideAngle = 0, priceTimer = 0, tokens = 20, bread = 0, tomatoes = 0, throwAt = -1, fedUntil = 0, disposed = false, oldSheetHidden = false, oldSheetOpen = "true";
   let arrivalTime = 0, glanceTime = 3, lastCue = -1, glance = 0, gait = 0, avatarView = true;
   let lastPrice = "", lastBag = "", lastPrompt = "", savedRevision = -1, lastHeight = 0, skyPulse = 0;
@@ -171,10 +173,9 @@
   const departGate = () => {
     if (phase !== "land" || exiting) return;
     world.pilot = avatar.traits.name;
-    world.oogaPortalTravel = { from: "dsb", to: "hub", arrival: "pit", name: world.pilot };
-    exiting = true; syncPlayer(); pilot.controls.reset(); input.reset(); go("hub");
+    exiting = true; syncPlayer(); pilot.controls.reset(); input.reset(); go(home);
   };
-  const returnHub = () => { if (phase === "entrance") { exiting = true; syncPlayer(); go("hub"); } else toast("Use the Ooga Portal Dialer, then cross the active gate to return to OogaBoogaLand."); };
+  const returnHub = () => { if (phase === "entrance") { exiting = true; syncPlayer(); go(home); } else toast(`Use the Ooga Portal Dialer, then cross the active gate to return to ${HOME_NAME}.`); };
   const contextAction = () => {
     if (phase === "boat" || phase === "coaster") return "ride";
     if (phase !== "land" || exiting || transitGate.isOpen || tv.isOpen || conversation.isOpen) return "";
@@ -416,8 +417,8 @@
     // Reuse the arrival gate and its existing pedestal, outside the central crossing lane.
     Object.assign(transitGate.dialer.position, { x: transitGate.root.position.x + transitGate.outerRadius + 1.2, y: 0, z: VIEW.position.z + 1 });
     transitGate.dialer.rotation.y = Math.PI;
-    addChild(land.root, transitGate.dialer); register(transitGate.dialer, "ooga-portal-dialer", "Ooga Portal dialer · OogaBoogaLand");
-    transitGate.enableDialer([{ id: "hub", label: "OogaBoogaLand", enabled: true }, ...Array.from({ length: 4 }, (_, i) => ({ id: "quarantine-" + i, label: "Quarantined - Replicator Infestation - Clean Up In Progress", enabled: false }))]);
+    addChild(land.root, transitGate.dialer); register(transitGate.dialer, "ooga-portal-dialer", "Ooga Portal dialer · " + HOME_NAME);
+    transitGate.enableDialer([{ id: home, label: HOME_NAME, enabled: true }, ...Array.from({ length: 4 }, (_, i) => ({ id: "quarantine-" + i, label: "Quarantined - Replicator Infestation - Clean Up In Progress", enabled: false }))]);
     zuzu = BL.dsbAgent.create({ parent: land.root, input, clearAt, landmarks: land.landmarks });
     if (!RAIL_GEOMETRY) {
       RAIL_GEOMETRY = [M.cube("#f05278", 0.5), M.cube("#55e49b", 0.5)];
@@ -451,15 +452,16 @@
     // Local +Y faces inward (-Z); the passage approaches the back from +Z.
     // Seat the lower ring in the floor so standing body centres clear the aperture.
     transitGate = BL.oogaPortal.create({ radius: 2.2, outerRadius: 2.5, position: { x: 0, y: 2.0, z: 0 }, rotation: { x: -Math.PI / 2, y: 0, z: 0 }, receiving: true,
-      menuHint: "Cross the active Ooga Portal from DSB Land to return to OogaBoogaLand.",
+      menuHint: `Cross the active Ooga Portal from DSB Land to return to ${HOME_NAME}.`,
       onMenu: () => { syncPlayer(); pilot.controls.reset(); input.reset(); hud.tooltip.hide(); },
-      onTraverse: id => { if (phase === "entrance") reveal(); else if (id === "hub") departGate(); } });
+      onTraverse: id => { if (phase === "entrance") reveal(); else if (id === home) departGate(); } });
     addChild(root, transitGate.root);
     const playerName = world.pilot || "YellowBrokeIt";
     world.pilot = playerName;
     playerWorld = { level: 0, weapons: new Map(), magazine: { owned: false, count: 0, ammo: 0, carrier: null } };
     overlayCanvas = ctx.overlay; overlayCtx = overlayCanvas.getContext("2d");
     hud = BL.hud.create({ roster: BL.contributors.roster, catalog: BL.models.SWAG, tierColors: BL.models.TIER_COLORS, renderIcon: BL.hud.renderIcon, lootEnabled: false });
+    hud.setAreaLabel("DSB LAND");
     oldSheetHidden = hud.el.sheet.hidden; oldSheetOpen = hud.el.sheet.dataset.open; hud.el.sheet.hidden = true; hud.el.sheet.dataset.open = "false"; hud.setJetpack(false, false, 1); hud.el.act.hidden = true;
     const hooks = {}; input = BL.interact.create({ canvas: ctx.canvas, renderer, camera, hooks });
     pilot = BL.pilot.create({ renderer, canvas: ctx.canvas, camera, hud, presets: { home: VIEW, lookout: { yaw: 0.38, pitch: 0.18, dist: 95, target: { x: 0, y: -4, z: 0 } } }, landing: "home", pitch: [-0.5, 1.2], dist: [3, 95], follow: { y: 1, min: 3, max: 8, pitch: [0.1, 0.8] }, fly: { speed: 5, perDist: 0.1, climb: 4, yMax: 50 }, clampTarget, clampCamera, coarse: matchMedia("(pointer: coarse)").matches, onFreeAction: act, onPlayerAction: playerAction, reloadAnywhere: true, close: { eyeHeight: 1.7, eyeRatio: 0.8, eyeForward: 0, maxStep: 0.6, pitch: [-1.2, 1.2], orbitDist: 12, trailingDist: 5, groundAt: () => 0 } });
@@ -475,6 +477,7 @@
     proximity = document.getElementById("dsb-context");
     panel = document.getElementById("dsb-panel"); panel.dataset.phase = phase; panel.dataset.folded = String(matchMedia("(max-width: 720px)").matches); document.getElementById("dsb-toggle").setAttribute("aria-expanded", String(panel.dataset.folded !== "true")); document.getElementById("dsb-toggle").textContent = panel.dataset.folded === "true" ? "Show DSB menu" : "Hide DSB menu"; readout = document.getElementById("dsb-feed"); bag = document.getElementById("dsb-bag"); prompt = document.getElementById("dsb-prompt");
     document.getElementById("dsb-shop").hidden = true; document.getElementById("dsb-live").setAttribute("aria-pressed", "true"); soundUi();
+    panel.querySelector('.dsb-intro [data-action="leave"]').textContent = "Back to ₿IFRÖST";
     document.body.classList.add("dsb-active", "dsb-entry"); document.addEventListener("visibilitychange", onVisibility); bagText();
     dsbScene.renderOpts = DARK;
     Object.assign(dsbScene, { root, camera, input, debug: { camera, pilot, crew, controls: pilot.controls, hud, audio, dsb: { clearAt, get zuzu() { return zuzu; }, get conversation() { return conversation; }, get gate() { return transitGate; }, get resources() { return { land: !!land, rides: rails.length, tomatoes: shots.length, shop: !!land, tv: !!tv, zuzu: !!zuzu, conversation: !!conversation, data: !!data, visitors: visitors.length, ambience: !!audio.ambience }; }, get phase() { return phase; }, get arrivalTime() { return arrivalTime; }, get glance() { return glance; }, avatar, get progress() { return progress; }, get inventory() { return { tokens, bread, bananas, tomatoes }; }, get shots() { return shots.filter((s) => s.life > 0).length; }, get land() { return land; }, visitors, get data() { return data; }, get tv() { return tv; }, openTv, boatTrip, trainTrip, get rideLook() { return { yaw: rideYaw, pitch: ridePitch }; }, railY, board, buy, eat, throwTomato, stopRide, get fired() { return Array.from(audio.fired); } } } });

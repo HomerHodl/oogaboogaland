@@ -6,9 +6,9 @@
   const { createNode, addChild, removeChild, updateWorld, traverseVisible } = BL.scene;
   const MAX_PROPS = 26;
   const TYPES = {
-    crate: { health: 1, weights: [60, 24, 9, 4, 2], debris: [models.particleGeometry("#805432", 0.07, 0)] },
-    barrel: { health: 2.25, weights: [45, 28, 14, 7, 4], debris: [models.particleGeometry("#67462d", 0.07, 0)] },
-    rock: { health: 4.25, weights: [30, 30, 20, 11, 6], debris: [models.particleGeometry("#88847a", 0.07, 0)] }
+    crate: { health: 4, weights: [60, 24, 9, 4, 2], debris: [models.particleGeometry("#805432", 0.07, 0)] },
+    barrel: { health: 9, weights: [45, 28, 14, 7, 4], debris: [models.particleGeometry("#67462d", 0.07, 0)] },
+    rock: { health: 17, weights: [30, 30, 20, 11, 6], debris: [models.particleGeometry("#88847a", 0.07, 0)] }
   };
   const REWARDS = [
     null,
@@ -89,10 +89,18 @@
       if (ctx.trackMirrorObject) ctx.trackMirrorObject(node, 2);
       rewardCount++;
     };
-    const hit = (source, contact, power = 1) => {
+    const hit = (source, contact, power = 1, showDamage = !!source && source === crew.player) => {
       const owner = contact && contact.owner, record = owner && owner.breakable;
       if (!record || record.broken || !owner.active || !owner.node.visible || !(power > 0)) return false;
-      record.health = Math.max(0, record.health - power);
+      const damage = power * 4;
+      record.health = Math.max(0, record.health - damage);
+      if (showDamage) {
+        const node = owner.node;
+        updateWorld(node, node.parent.world);
+        const bounds = BL.scene.boundsOf(node.geometry), w = node.world, low = bounds.min, high = bounds.max;
+        const top = w[13] + Math.max(w[1] * low[0], w[1] * high[0]) + Math.max(w[5] * low[1], w[5] * high[1]) + Math.max(w[9] * low[2], w[9] * high[2]);
+        fx.damageNumber(w[12], top + 0.15, w[14], damage);
+      }
       fx.burst(contact.x, contact.y, contact.z, record.health ? 2 : 7, record.type.debris, record.health ? 0.8 : 1.5);
       if (record.health) return true;
       if (record.reveal) { record.reveal = 0; revealingCount--; }

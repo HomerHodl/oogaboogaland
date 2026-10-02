@@ -1,4 +1,4 @@
-// Ooga Drop: the skydiving scene launched from the plane on the rally cave roof.
+// Ooga Drop: the skydiving scene; its plane takes off from the roof of the island's 9 o'clock cave.
 //
 // Phases `board`, `climb`, `air`, `down`, `lost`, `results`: the plane's roll, helix climb and jump mark,
 // the course laid on a hands-off reference fall, ring crossings, the streak batch, clouds, the two-axis
@@ -96,6 +96,8 @@
   const selection = { racer: contributors.activeRoster[0]?.name || null };
 
   // One visit's state: made in enter, dropped in leave.
+  // Where the game exits to: back to Ooga Arcade when a cabinet started it, otherwise the island.
+  let home = "hub";
   let renderer, game, world, go, lootEnabled, testBananas, root, camera, island, hud, dhud, hooks, input, fx, controls, audio, clock, diver, plane, streaks, mound, hole, agent, marker;
   let phase = "board", jumpOpenUntil = 0, callStage = 0, markNear = 0, accumulator = 0, sceneTime = 0, flightTime = 0, landedAt = 0, score = 0, ringsHit = 0, pulled = false, jumpOpen = false, result = null;
   // The pull altitude and the sink at touchdown, for the bonuses they earn.
@@ -802,7 +804,7 @@
   const demoTip = (sats) => onDonation({ id: `demo-${Date.now()}`, sats, handle: game.state.handle, message: game.state.message, at: Date.now() });
   const onKey = (e) => {
     if (e.key === "Escape") {
-      if (phase === "board") go("hub");
+      if (phase === "board") go(home);
       else toBoard();
     }
     if (e.key === "Enter" && (phase === "board" || phase === "results")) startFlight();
@@ -834,6 +836,7 @@
 
   const enter = (ctx) => {
     ({ renderer, game, world, go, lootEnabled, testBananas } = ctx);
+    home = ctx.from === "arcade" ? "arcade" : "hub";
     camera = createCamera({ fov: 50, near: 0.4, far: 820 });
     root = createNode();
     clock = daylight.createClock({ hour: hourParam, daylen: daylenParam, day: dayParam, time: timeParam, now: new Date() });
@@ -865,20 +868,22 @@
       place(node);
       clouds.push({ node, speed: 0.3 + rand() * 0.5, wrap: wrapAt });
     }
+    // The roof spot comes from the hub's own cave mouth c9; the plane parks on it, the windsock beside it, and
+    // the palms keep clear of it.
+    const mouth = island.mouths.find((m) => m.id === "c9");
     // The world the jump falls into: islands on the sea, sails and gulls. Nothing here is solid or sighted.
     if (renderer.kind !== "canvas2d") {
       [[25, 260], [95, 330], [160, 240], [215, 300], [290, 280], [340, 360]].forEach(([deg, r], i) => {
         place(createNode({ geometry: BL.dressing.islet(i % 3), position: { x: Math.sin(deg * Math.PI / 180) * r, y: RENDER_OPTS.sea - 2, z: -Math.cos(deg * Math.PI / 180) * r }, rotation: { x: 0, y: deg * 0.7, z: 0 } }));
       });
-      life = { gulls: BL.dressing.flock({ count: 26, radius: [40, 160], height: [20, 200], seed: 11, scale: 2.4 }), boats: BL.dressing.fleet({ sea: RENDER_OPTS.sea, spots: [[140, 0.4, 9], [190, 2.2, 11], [230, 3.9, 10], [170, 5.1, 8], [260, 1.3, 12]] }) };
+      life = { gulls: BL.dressing.flock({ count: 26, radius: [40, 160], height: [20, 200], seed: 11, scale: 2.4 }), boats: BL.dressing.fleet({ sea: RENDER_OPTS.sea, spots: [[140, 0.4, 9], [160, 2.2, 11], [125, 3.9, 10], [150, 5.1, 8], [170, 1.3, 12]] }) };
       place(life.gulls.node);
       for (const node of life.boats.nodes) place(node);
       // Palms on the island below, on level ground clear of the paths, the same three swaying shapes as the hub.
       const prand = mulberry32(SEED + 91);
-      const rally = island.mouths.find((m) => m.id === "c9");
       for (let n = 0, tries = 0; n < 40 && tries < 600; tries++) {
         const a = prand() * Math.PI * 2, r = 8 + prand() * 22, x = Math.sin(a) * r, z = -Math.cos(a) * r, y = island.surfaceAt(x, z);
-        if (!island.onLand(x, z) || island.isPath(x, z) || Math.hypot(x, z) < 6 || Math.hypot(x - rally.x, z - rally.z) < 11) continue;
+        if (!island.onLand(x, z) || island.isPath(x, z) || Math.hypot(x, z) < 6 || Math.hypot(x - mouth.x, z - mouth.z) < 11) continue;
         let level = true;
         for (let i = 0; i < 4 && level; i++) level = Math.abs(island.surfaceAt(x + Math.cos(i * 1.571) * 0.6, z + Math.sin(i * 1.571) * 0.6) - y) < 0.26;
         if (!level) continue;
@@ -886,8 +891,6 @@
         n++;
       }
     }
-    // The roof spot comes from the hub's own cave mouth c9; the plane parks on it, the windsock beside it.
-    const mouth = island.mouths.find((m) => m.id === "c9");
     dropModels.roofSpot(island, mouth, roof);
     plane = dropModels.plane();
     plane.node.quaternion = quat.create();
@@ -904,7 +907,7 @@
     hole = place(createNode({ geometry: dropModels.hole(), visible: false }));
     streaks = { node: place(createNode({ geometry: dropModels.streak(), instanceData: new Float32Array(STREAKS * 20), instanceCount: 0, instanceVersion: 0, fixedInstanceCapacity: true, visible: false })), x: new Float32Array(STREAKS), y: new Float32Array(STREAKS), z: new Float32Array(STREAKS) };
     mark("drop world");
-    // world.pilot: an Ooga walked or tapped into the plane flies it here, and is consumed on the way in.
+    // world.pilot: the Ooga an arcade cabinet sent in flies the plane, and is consumed on the way in.
     if (world.pilot) {
       if (contributors.activeRoster.some((c) => c.name === world.pilot)) selection.racer = world.pilot;
       world.pilot = null;
@@ -971,7 +974,7 @@
     hud.onAction((action) => {
       if (action === "drop-start" || action === "drop-again") startFlight();
       else if (action === "drop-board") toBoard();
-      else if (action === "leave") go("hub");
+      else if (action === "leave") go(home);
       else if (action === "act") act();
       else if (action === "mute") toggleMute();
       else if (action === "tip") demoTip(1200);

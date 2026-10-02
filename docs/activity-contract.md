@@ -85,10 +85,16 @@ BL.contributors.applyActivity([
 `lastCommitAt` is retained for compatibility and represents the latest supported
 contribution, including non-commit events. An omitted `repo` defaults to EntropyLab.
 
-The page remains network-free. Oogatron's worker syncs every ten minutes, and the
-Pages workflow fetches `/v1/stats`, rebuilds the bundled page, and deploys it on the
-same cadence. A visitor receives the newest deployed snapshot; the UI never
-manufactures recent contribution activity when a row has no valid timestamp.
+The page paints from a baked snapshot, then polls. The Pages workflow runs on
+every push to `rock` and every ten minutes: it fetches `/v2/stats` from the
+Oogatron worker, rebuilds the bundled page, and deploys it. While the tab is
+visible, `oogatron-live.js` polls the same `/v2/stats` endpoint once a minute and
+feeds each payload to the jumbotron and `applySnapshot`; a failed poll keeps the
+baked snapshot, and `?oogatron=0` or `?nosim=1` turns polling off. The request is
+a plain read-only GET that sends nothing about the visitor. Oogatron's worker
+syncs from GitHub every minute, so new activity reaches an open page within a
+few minutes. The UI never manufactures recent contribution activity when a row
+has no valid timestamp.
 
 Sources: [Oogatron stats contract](https://github.com/rules-without-rulers/oogatron/blob/rock/worker/src/api/stats.ts),
 [event timestamp tracking](https://github.com/rules-without-rulers/oogatron/blob/rock/worker/src/sync/identity.ts),

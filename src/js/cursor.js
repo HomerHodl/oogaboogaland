@@ -159,7 +159,7 @@
       paint();
       if (active) setHoverButton(targetAtCursor().closest(INTERACTIVE));
     };
-    const nativeControl = (target) => target.matches("input, select, textarea") || !!target.closest("dialog");
+    const nativeControl = (target) => target.matches("input, select, textarea") || !!target.closest("dialog:modal");
     const focusNative = (target) => {
       stop(); unlock();
       target.focus({ preventScroll: true });
@@ -198,7 +198,7 @@
         if (button === 0 && original && (original === under || original.contains(under))) {
           mouse(original, "click", e, 0, held);
           // Modal fields need the native cursor and ordinary text input.
-          if (active && document.querySelector("dialog[open]")) { stop(); unlock(); }
+          if (active && document.querySelector("dialog:modal")) { stop(); unlock(); }
         }
       }
     };

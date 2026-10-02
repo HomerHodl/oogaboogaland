@@ -33,8 +33,9 @@
     const reserve = (source, structure) => {
       const edges = source ? source.capacity || source.count : 0;
       output.structureSourceCount = structure ? structure.count : 0;
-      // Reserve from scene geometry, not from visible objects; keep high-water buffers across camera/actor motion.
-      reserveLines(edges * 4 + (structure ? structure.count * 8 : 0));
+      // Owner slots come from scene geometry; lines only ever hold what lies within RADIUS, so they start small and
+      // keep their high-water size across camera/actor motion.
+      reserveLines(1);
       reserveOwners(source ? source.ownerCapacity || source.nearCount || source.count : 0);
       if (edges > ownerSlots.length) { ownerSlots = grow(ownerSlots, edges); output.bufferGrowths++; }
     };

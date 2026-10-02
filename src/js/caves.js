@@ -10,14 +10,14 @@
   // `theme` picks the facade the hub dresses the mouth with; `soon` marks a sealed cave that already wears one.
   const slots = [
     { ...slot("c11", 11, "lab", "open", "EntropyLab", "oogaboogax/entropylab"), theme: "lab" },
-    // On the lowest tier the hub's ten point lights are spoken for by the other open mouths and the fire
-    // pit, so the mine's torches and lantern glow without casting light of their own.
-    { ...slot("c10", 10, "mine", "open", "Ooga Mine"), glowOnly: true, theme: "mine" },
-    { ...slot("c9", 9, "race", "open", "Ooga Rally", "oogaboogax/oogaboogaland"), theme: "rally" },
+    slot("c10", 10),
+    slot("c9", 9),
     slot("c730", 7.25, null, "headquarters", "Headquarters"),
     { ...slot("c1", 1, null, "mirror", "Ooga Booga Land", "oogaboogax/oogaboogaland"), theme: "matrix" },
-    { ...slot("c2", 2, null, "dark", "Lightning Factory"), theme: "lightning", soon: true },
-    slot("c3", 3),
+    { ...slot("c2", 2, "factory", "open", "Lightning Factory", "drneski/lightning-foundry"), theme: "lightning" },
+    // On the lowest tier the hub's ten point lights are spoken for by the other open mouths and the fire
+    // pit, so the arcade's torches and lantern glow without casting light of their own.
+    { ...slot("c3", 3, "arcade", "open", "Ooga Arcade"), glowOnly: true, theme: "arcade" },
     slot("c5", 4.75, null, "headquarters", "Headquarters")
   ];
   BL.caves = { slots, gate: { name: "The old gate" } };

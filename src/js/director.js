@@ -1,6 +1,6 @@
 (() => {
   "use strict";
-  const { scene, models, donations, glRenderer, canvasRenderer, game: gameMod, pile: pileMod, scenes } = window.BL;
+  const { scene, models, donations, glRenderer, canvasRenderer, game: gameMod, pile: pileMod, router: routerMod, scenes } = window.BL;
   // The optional build-time Oogatron snapshot loads before the director.
   // Activity uses each contributor's timestamp, never the snapshot build time.
   if (window.BL.jumbotronData) window.BL.contributors.applySnapshot(window.BL.jumbotronData);
@@ -133,14 +133,22 @@
     worldClock.dateTime = `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}`;
     worldClock.setAttribute("aria-label", `${Number.isFinite(clockTime) || clockDaylen > 0 ? "Ooga Booga time" : "Local time"} ${text}`);
   };
-  const go = (id) => {
+  const go = (id, place = null, instant = false) => {
     const next = scenes[id];
     if (!next) throw new Error(`Unknown scene "${id}"`);
-    if (transition) return;
-    transition = { next, out: true, t: 0 };
+    if (transition) return false;
+    transition = { next, place, out: true, t: 0, instant };
+    return true;
   };
+  const router = routerMod.create(scenes, window.BL.routes, go);
+  // The logo is the site's home link: from any scene it goes back to the island, as a website's logo goes home.
+  document.querySelector(".home-link").addEventListener("click", (e) => {
+    e.preventDefault();
+    e.currentTarget.blur();
+    if (active && active.id !== "hub") go("hub");
+  });
   const agentPlay = BL.agent.createPlay();
-  const ctx = { renderer, canvas: sceneCanvas, overlay: overlayCanvas, game, world, go, lootEnabled: LOOT_ENABLED, testBananas: TEST_BANANAS, agentPlay, from: null };
+  const ctx = { renderer, canvas: sceneCanvas, overlay: overlayCanvas, game, world, go, lootEnabled: LOOT_ENABLED, testBananas: TEST_BANANAS, agentPlay, from: null, place: null };
   const sceneSections = [...document.querySelectorAll("[data-scene]")];
   // The title cards of the games that have no phase of their own for one: shown on every arrival,
   // closed by their button, Enter, Space or Escape, and nothing else reaches the scene while one shows.
@@ -148,8 +156,9 @@
   const coarse = window.matchMedia("(pointer: coarse)").matches;
   if (coarse) for (const n of document.querySelectorAll("[data-intro] [data-coarse]")) n.textContent = n.dataset.coarse;
   const openIntro = () => intros.find((el) => !el.hidden) || null;
-  const enter = (next) => {
+  const enter = (next, place = null) => {
     ctx.from = active ? active.id : null;
+    ctx.place = place;
     for (const el of sceneSections) el.hidden = el.classList.contains("hub-presets") || el.dataset.scene !== next.id;
     for (const el of intros) el.hidden = el.dataset.intro !== next.id;
     // The page styles by scene too: the games hide the island's sheet, see style.css.
@@ -157,6 +166,7 @@
     next.enter(ctx);
     active = next;
     sceneTime = 0;
+    router.arrive(next.id, place, ctx.from === null);
   };
   const live = new Set();
   const visit = (node) => {
@@ -169,24 +179,41 @@
     active.liveGeometry(live);
     return live;
   };
-  const swap = (next) => {
+  // The page's first AudioContext wakes the browser's audio, about 60 ms on the main thread; every later one costs well
+  // under a millisecond, closed or not. Paid once here, behind the fade, so a scene's first sound never stalls a frame;
+  // only after a gesture, as the scenes' own sound waits for one.
+  let audioAwake = false;
+  const wakeAudio = () => {
+    if (audioAwake || typeof AudioContext === "undefined" || navigator.userActivation && !navigator.userActivation.hasBeenActive) return;
+    audioAwake = true;
+    new AudioContext().close().catch(() => {});
+  };
+  const swap = (next, place) => {
     const leaving = active;
+    wakeAudio();
     agentPlay.stop(true);
     const left = leaving.leave();
     if (DEBUG && leaving.root.children.length) throw new Error(`${leaving.id}.leave left ${leaving.root.children.length} nodes in its root`);
     if (DEBUG && left.targets) throw new Error(`${leaving.id}.leave left ${left.targets} input targets`);
     clearTweens();
     if (DEBUG && tweenCount()) throw new Error(`${tweenCount()} tweens survived clearTweens`);
-    enter(next);
+    enter(next, place);
     renderer.releaseUnused(liveGeometry());
     if (DEBUG && renderer.stats.records > live.size) throw new Error(`${next.id}: ${renderer.stats.records} GPU records for ${live.size} live geometries`);
   };
   const stepTransition = (dt) => {
+    if (transition.instant) {
+      const { next, place } = transition;
+      swap(next, place);
+      transition = null;
+      fade = 0;
+      return;
+    }
     transition.t += dt;
     if (transition.out) {
       fade = Math.min(1, transition.t / FADE);
       if (fade < 1) return;
-      swap(transition.next);
+      swap(transition.next, transition.place);
       transition.out = false;
       transition.t = 0;
       return;
@@ -305,7 +332,12 @@
     step(dt, now);
   };
 
+  let rightShift = false;
+  const clearRightShift = (e) => {
+    if (e.type === "blur" || e.key === "Shift" && (e.code === "ShiftRight" || e.location === 2)) rightShift = false;
+  };
   const onKeyDown = (e) => {
+    if (e.key === "Shift" && (e.code === "ShiftRight" || e.location === 2)) rightShift = true;
     if (e.repeat) return;
     const typing = e.target && (e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA");
     if (typing || (e.target && e.target.closest && e.target.closest("dialog"))) return;
@@ -332,15 +364,17 @@
       return;
     }
     // Game scenes can expose a dedicated Agent. Hub companions are selected
-    // directly; Shift+A never creates another gorilla there.
-    if ((active.agent || active.summonAgent) && e.shiftKey && !e.metaKey && !e.ctrlKey && (e.key === "A" || e.key === "a")) {
+    // directly; Right Shift+A never creates another gorilla there. Left Shift+A runs left.
+    if ((active.agent || active.summonAgent) && e.shiftKey && rightShift
+      && !e.metaKey && !e.ctrlKey && (e.key === "A" || e.key === "a")) {
       e.preventDefault();
       if (transition) return;
       if (agentPlay.active) agentPlay.stop();
       else agentPlay.start(active);
       return;
     }
-    if (e.shiftKey && !e.metaKey && !e.ctrlKey && (e.key === "R" || e.key === "r")) {
+    if (e.shiftKey && rightShift
+      && !e.metaKey && !e.ctrlKey && (e.key === "R" || e.key === "r")) {
       e.preventDefault();
       game.resetAll();
       location.reload();
@@ -361,6 +395,8 @@
     }
   };
   window.addEventListener("keydown", onKeyDown);
+  window.addEventListener("keyup", clearRightShift);
+  window.addEventListener("blur", clearRightShift);
   document.addEventListener("visibilitychange", onVisibility);
   if (params.has("nosim")) donations.config.simulate = false;
   // The live feeds stay off under nosim (the suite) and mempool=0 / oogatron=0 / chain=0;
@@ -444,13 +480,14 @@
   })();
   const housekeepTimer = window.setInterval(housekeep, 6e4);
   // EntropyLab currently lives in its island cave; retain the isolated scene for debug checks only.
-  const requestedScene = params.get("scene") || (WIP !== "1" ? WIP : null);
+  const routed = router.current();
+  const requestedScene = (routed && routed.scene) || params.get("scene") || (WIP !== "1" ? WIP : null);
   const sceneId = requestedScene === "lab" && !DEBUG ? null : requestedScene;
   // Building the first scene holds the main thread with nothing painted yet.
   // Run boot from a task after the first frame so the leaf curtain is on screen, not the previous page.
   const boot = () => {
     const built = performance.now();
-    enter(Object.hasOwn(scenes, sceneId) ? scenes[sceneId] : scenes[Object.keys(scenes)[0]]);
+    enter(Object.hasOwn(scenes, sceneId) ? scenes[sceneId] : scenes[Object.keys(scenes)[0]], routed && routed.place);
     mark("ready");
     tierFromBoot(performance.now() - built);
     raf = window.requestAnimationFrame(frame);
@@ -502,7 +539,7 @@
         return world.level;
       }
     };
-    for (const key of ["slots", "drops", "core", "shell", "delivery", "spillEffect", "cavemen", "crates", "lab", "headquarters", "hud", "applyAllSwag", "renderLocker", "demoTip", "setPileLevel", "refreshStates", "trimPool", "shown", "island", "mouths", "labels", "camera", "cameraCave", "crew", "fx", "controls", "props", "altar", "path", "scenery", "jetpack", "magazine", "mirrorCave", "matrixCave", "matrixGate", "pilot", "renderOpts", "lamps", "entranceLights", "lighting", "fireSeats", "critters", "storm", "daylight", "setHour", "track", "racers", "items", "race", "audio", "weather", "launchers", "drop", "diver", "plane", "course", "jumbotron", "fireworks", "fireworksPending", "orbit", "flight", "site", "agent", "poolIsland", "mine", "dsb", "clankers", "clankerPlay"]) {
+    for (const key of ["slots", "drops", "core", "shell", "delivery", "spillEffect", "cavemen", "crates", "lab", "headquarters", "hud", "applyAllSwag", "renderLocker", "demoTip", "setPileLevel", "refreshStates", "trimPool", "shown", "island", "mouths", "labels", "camera", "cameraCave", "crew", "fx", "controls", "props", "altar", "path", "scenery", "jetpack", "magazine", "mirrorCave", "matrixCave", "matrixGate", "pilot", "renderOpts", "lamps", "entranceLights", "lighting", "fireSeats", "critters", "storm", "daylight", "setHour", "track", "racers", "items", "race", "audio", "weather", "drop", "diver", "plane", "course", "jumbotron", "fireworks", "fireworksPending", "orbit", "flight", "site", "agent", "poolIsland", "mine", "dsb", "clankers", "clankerPlay", "factory", "bifrost", "arcade", "carnival"]) {
       Object.defineProperty(ooga, key, { get: () => active.debug && active.debug[key], enumerable: true });
     }
     window.__ooga = ooga;
@@ -514,10 +551,13 @@
     unsubscribeBlockFeed();
     unsubscribeBlockHeight();
     feedPanel.close();
+    router.dispose();
     mempool.dispose();
     chain.dispose();
     window.BL.oogatronLive.dispose();
     window.removeEventListener("keydown", onKeyDown);
+    window.removeEventListener("keyup", clearRightShift);
+    window.removeEventListener("blur", clearRightShift);
     document.removeEventListener("visibilitychange", onVisibility);
     active.leave();
     renderer.dispose();

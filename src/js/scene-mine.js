@@ -1,4 +1,4 @@
-// Ooga Mine: the 10 o'clock cave, and a mining operation you build with your hands.
+// Ooga Mine: a mining operation you build with your hands.
 //
 // The scene is only ever a view of `mine-sim.js`: it owns no economy of its own. It draws the sim's
 // spot tables from `mineModels.LAYOUT`, turns drags and taps into sim calls, and reads the sim's
@@ -113,6 +113,8 @@
   const fanSpeed = new Float32Array(3);
 
   // One visit's state: made in enter(), dropped in leave().
+  // Where the game exits to: back to Ooga Arcade when a cabinet started it, otherwise the island.
+  let home = "hub";
   let renderer, game, world, go, root, camera, hud, mhud, hooks, input, pilot, fx, audio, crew, clock;
   let sim = null, s = null, cave = null, unsubscribeFeed = null, minuteTimer = 0;
   let phase = "intro", hudTimer = 0, paletteTimer = 0, sunTimer = 0, lightTimer = 0, ripple = 0, cardTimer = 0, saveTimer = 0;
@@ -1617,7 +1619,7 @@
         hud.toast("Back to work. The debts are gone; the score keeps what you mined, and wears no medal.");
       }
     } else if (action === "mute") mhud.setMuted(audio.setMuted(!audio.muted));
-    else if (action === "leave") go("hub");
+    else if (action === "leave") go(home);
     else if (action === "reset-view") setOverview(true, "den");
   };
 
@@ -1677,7 +1679,7 @@
         selection.type = "";
         mhud.showCard(null);
       } else if (phase === "run" && !s.paused) pause(true);
-      else go("hub");
+      else go(home);
       return;
     }
     if (e.repeat) return;
@@ -2022,6 +2024,7 @@
 
   const enter = (ctx) => {
     ({ renderer, game, world, go } = ctx);
+    home = ctx.from === "arcade" ? "arcade" : "hub";
     camera = createCamera({ fov: 58, near: 0.2, far: 120 });
     root = createNode();
     // The run lives on `world` for the page life, so walking out to the island does not end an hour's

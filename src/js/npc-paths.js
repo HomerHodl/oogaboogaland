@@ -27,7 +27,9 @@
     };
     const rebuild = () => {
       version = path.version; count = edgeCount = 0;
-      const radius = path.debug.ringCenterRadius;
+      // Through traffic stays in the outer half in either direction;
+      // the usual right offset separates its two directions within that lane.
+      const radius = path.debug.ringTrafficRadius ?? path.debug.ringCenterRadius;
       if (path.debug.active) {
         const steps = Math.ceil(Math.PI * 2 * radius / SPACING);
         let first = -1, previous = -1;
@@ -48,10 +50,26 @@
           const a = points[n - 1], b = points[n], dx = b.x - a.x, dz = b.z - a.z;
           const steps = Math.ceil(Math.hypot(dx, dz) / SPACING);
           for (let k = n === 1 ? 0 : 1; k <= steps; k++) {
-            const t = k / steps, x = a.x + dx * t, z = a.z + dz * t;
+            const t = k / steps;
+            let x = a.x + dx * t, z = a.z + dz * t;
             // Decorative trails still reach sealed mouths. They cannot be
             // intermediate destinations just because they remain painted.
-            if (Math.hypot(x, z) < radius || !island.isPath(x, z) || pointAllowed && !pointAllowed(x, z)) { previous = -1; continue; }
+            if (Math.hypot(x, z) < radius || pointAllowed && !pointAllowed(x, z)) { previous = -1; continue; }
+            // A rasterized bend can put its mathematical center just outside
+            // a road tile. Snap that sample onto the nearby painted road;
+            // dropping it would disconnect the trail and send traffic across grass.
+            if (!island.isPath(x, z)) {
+              const fromX = x, fromZ = z, y = island.surfaceAt(x, z);
+              let best = Infinity;
+              for (let ox = -2; ox <= 2; ox++) for (let oz = -2; oz <= 2; oz++) {
+                const px = fromX + ox * SPACING / 2, pz = fromZ + oz * SPACING / 2;
+                const distance = (px - fromX) ** 2 + (pz - fromZ) ** 2;
+                if (distance >= best || !island.isPath(px, pz) || Math.hypot(px, pz) < radius
+                  || pointAllowed && !pointAllowed(px, pz) || Math.abs(island.surfaceAt(px, pz) - y) > 0.1) continue;
+                x = px; z = pz; best = distance;
+              }
+              if (!Number.isFinite(best)) { previous = -1; continue; }
+            }
             const i = node(x, z, line + 1);
             if (previous >= 0) connect(previous, i);
             previous = i;
@@ -121,8 +139,8 @@
         }
       }
       if (parents[start] < 0) return;
-      const length = Math.hypot(xs[start] - x, zs[start] - z) + distances[start] + Math.hypot(xs[end] - tx, zs[end] - tz);
-      if (length > Math.hypot(tx - x, tz - z) * 2.5 + 3) return;
+      // Keep a connected trail even when a bend makes it longer than the
+      // direct line. Work traffic should not shortcut across the lawn.
       for (let i = start; ; i = parents[i]) {
         state.route[state.count++] = i;
         if (i === end) break;
@@ -235,6 +253,17 @@
         // A newly closed frontage must not hold a walker on a dead-end
         // waypoint forever. Ordinary local avoidance handles the safe goal.
         if (closed && !found) { state.index = state.count; return; }
+      }
+      // Passing can leave a walker beside the lane. A clear waypoint beyond
+      // an obstacle is not a clear shortcut to it: rejoin the nearby segment
+      // before advancing instead of starting repeated backwards detours.
+      if (walkable && best > 0.02 ** 2 && best < 0.75 ** 2
+        && !walkable(p.x, p.z, x, z, feet, cave.bodyHeight, cave)) {
+        lanePoint(state, index, LANE_A); lanePoint(state, index + 1, LANE_B);
+        const joinX = LANE_A.x + (LANE_B.x - LANE_A.x) * fraction;
+        const joinZ = LANE_A.z + (LANE_B.z - LANE_A.z) * fraction;
+        if ((!pointAllowed || pointAllowed(joinX, joinZ))
+          && walkable(p.x, p.z, joinX, joinZ, feet, cave.bodyHeight, cave)) { state.index = index; x = joinX; z = joinZ; }
       }
       state.targetX = x; state.targetZ = z;
     };

@@ -15,6 +15,41 @@
   const BANANA_COUNT = new Intl.NumberFormat("en-US", { maximumFractionDigits: 0 });
   const MESSAGE_FADE_MS = 300;
   const SHEET_STATE_KEY = "oogaboogaland.sheet.v1";
+  const BOARD_STATE_KEY = "oogaboogaland.oogatron.windows.v1";
+  const MAX_FLOATING_BOARDS = 12;
+  const readBoardState = () => {
+    try {
+      const state = JSON.parse(localStorage.getItem(BOARD_STATE_KEY));
+      if (!state || state.version !== 1 || !Array.isArray(state.windows)) return null;
+      const windows = [];
+      for (const entry of state.windows.slice(0, MAX_FLOATING_BOARDS)) {
+        if (!entry || !Number.isFinite(entry.x) || entry.x < 0 || !Number.isFinite(entry.y) || entry.y < 0
+          || !Number.isFinite(entry.width) || entry.width <= 0 || typeof entry.paused !== "boolean") continue;
+        const screen = entry.screen;
+        if (!screen || !["recent", "totals", "repo", "leaderboard"].includes(screen.name)) continue;
+        const params = {};
+        let valid = true;
+        for (const key of ["name", "repo", "type"]) {
+          const value = screen.params?.[key];
+          if (value === undefined) continue;
+          if (typeof value !== "string" || value.length > 256) { valid = false; break; }
+          params[key] = value;
+        }
+        if (!valid || screen.name === "repo" && !params.name
+          || screen.name === "leaderboard" && !["commits", "prs", "reviews", "issues", "comments"].includes(params.type)) continue;
+        const filters = {};
+        for (const kind of ["repos", "users", "types"]) {
+          const values = entry.filters?.[kind];
+          filters[kind] = Array.isArray(values) ? [...new Set(values.slice(0, kind === "types" ? 6 : 512)
+            .filter((value) => typeof value === "string" && value.length <= 256
+              && (kind !== "types" || ["commit", "pr", "review", "merge", "issue", "comment"].includes(value))))] : null;
+        }
+        windows.push({ x: entry.x, y: entry.y, width: entry.width, paused: entry.paused, screen: { name: screen.name, params }, filters, rollup: entry.rollup === true });
+      }
+      return { windows, lastUsed: Number.isInteger(state.lastUsed) ? state.lastUsed : -1,
+        lastWidth: Number.isFinite(state.lastWidth) && state.lastWidth > 0 ? state.lastWidth : 440 };
+    } catch { return null; }
+  };
   const readSheetState = () => {
     try {
       const state = JSON.parse(localStorage.getItem(SHEET_STATE_KEY));
@@ -87,10 +122,10 @@
   };
   // Draw the carried item's actual geometry, including likenesses and skins.
   // This owns only temporary icon nodes; the character's item is never reparented.
-  const renderPrimaryIcon = (canvas, geometry) => {
+  const renderPrimaryIcon = (canvas, geometry, tall = false) => {
     const renderer = canvasRenderer.createRenderer(canvas, { width: ICON_PX, height: ICON_PX, transparent: true });
     const root = createNode(), pivot = createNode(), item = createNode({ geometry });
-    const bounds = boundsOf(geometry), fit = 0.67 / Math.max(bounds.radius, 0.05);
+    const bounds = boundsOf(geometry), fit = (tall ? 0.52 : 0.67) / Math.max(bounds.radius, 0.05);
     item.scale.x = item.scale.y = item.scale.z = fit;
     item.position.x = -bounds.center[0] * fit;
     item.position.y = -bounds.center[1] * fit;
@@ -150,8 +185,10 @@
       actions: [...document.querySelectorAll("[data-action]")],
       board: $("board-modal"), boardTitle: $("board-title"), boardScreen: $("board-screen"), boardCaption: $("board-caption"), boardNote: $("board-note"),
       boardDots: $("board-dots"), boardPrev: $("board-prev"), boardNext: $("board-next"), boardHelp: $("board-help"),
+      boardHead: $("board-head"), boardPause: $("board-pause"), boardResize: $("board-resize"),
       act: $("act"),
       mode: $("mode-hud"),
+      modeDestination: $("destination-hud"),
       modeFree: $("freeroam-icon"),
       modeFace: $("mode-face-icon"),
       modeHealth: $("mode-health"),
@@ -164,7 +201,6 @@
       primaryStrength: $("primary-strength"),
       primaryStrengthFill: $("primary-strength-fill"),
       gorillaSmash: $("gorilla-smash-hud"),
-      gorillaDrag: $("gorilla-drag-hud"),
       weapon: $("weapon-hud"),
       weaponToggle: $("weapon-hud"),
       weaponReadout: $("weapon-readout"),
@@ -210,6 +246,24 @@
       recipe: $("recipe"),
       recipeText: $("recipe-text")
     };
+    const favicon = new Image();
+    favicon.onload = () => {
+      const canvas = document.createElement("canvas");
+      canvas.width = favicon.width;
+      canvas.height = favicon.height;
+      const ctx = canvas.getContext("2d", { willReadFrequently: true });
+      ctx.drawImage(favicon, 0, 0);
+      const image = ctx.getImageData(0, 0, canvas.width, canvas.height);
+      for (let i = 0; i < image.data.length; i += 4) {
+        const brightness = Math.max(image.data[i], image.data[i + 1], image.data[i + 2]);
+        const alpha = Math.max(0, Math.min(1, (brightness - 24) / 56));
+        image.data[i + 3] = Math.round(alpha * 255);
+        if (alpha > 0 && alpha < 1) for (let color = 0; color < 3; color++) image.data[i + color] = Math.min(255, image.data[i + color] / alpha);
+      }
+      ctx.putImageData(image, 0, 0);
+      el.modeFree.src = canvas.toDataURL("image/png");
+    };
+    favicon.src = document.querySelector('link[rel="icon"][sizes="64x64"]').href;
     el.lootTab.hidden = !lootEnabled;
     el.crateHelp.hidden = !lootEnabled;
     el.worldLootHint.hidden = !lootEnabled;
@@ -219,7 +273,7 @@
     for (const panel of el.panels) panel.hidden = panel.dataset.panel !== sheetTab;
     el.sheet.dataset.open = String(!!savedSheet?.open);
     el.primary.hidden = true;
-    el.gorillaSmash.hidden = el.gorillaDrag.hidden = true;
+    el.gorillaSmash.hidden = true;
     el.mode.hidden = true;
     el.weapon.hidden = true;
     el.magazine.hidden = true;
@@ -231,7 +285,7 @@
     };
     let toastTimer = 0, toastHideTimer = 0, hintTimer = 0, hintHideTimer = 0, copyTimer = 0;
     const rosterRows = new Map();
-    const orderedRoster = [...roster].sort((a, b) => b.lastCommitAt - a.lastCommitAt);
+    const orderedRoster = [...roster].sort((a, b) => b.lastContributionAt - a.lastContributionAt);
     for (let rosterIndex = 0; rosterIndex < orderedRoster.length; rosterIndex++) {
       const contributor = orderedRoster[rosterIndex];
       const li = document.createElement("li");
@@ -247,10 +301,12 @@
       name.textContent = contributor.display;
       const age = document.createElement("span");
       age.className = "roster-age";
-      age.append("");
+      age.append(BL.contributors.contributionAgeLabel(contributor));
       const state = document.createElement("span");
       state.className = "roster-state";
-      state.append("");
+      const activity = BL.contributors.contributionStateFor(contributor);
+      state.dataset.state = activity;
+      state.append(STATE_LABELS[activity]);
       li.append(presence, name, age, state);
       el.roster.append(li);
       rosterRows.set(contributor.name, { li, presence, state, age, contributor, rosterIndex, online: false });
@@ -260,22 +316,25 @@
       for (const sibling of el.roster.children) {
         if (sibling === row.li) continue;
         const other = rosterRows.get(sibling.dataset.name);
-        if (other.contributor.lastCommitAt < row.contributor.lastCommitAt ||
-          other.contributor.lastCommitAt === row.contributor.lastCommitAt && other.rosterIndex > row.rosterIndex) { before = sibling; break; }
+        if (other.contributor.lastContributionAt < row.contributor.lastContributionAt ||
+          other.contributor.lastContributionAt === row.contributor.lastContributionAt && other.rosterIndex > row.rosterIndex) { before = sibling; break; }
       }
       if (before) {
         if (row.li.nextElementSibling !== before) el.roster.insertBefore(row.li, before);
       } else if (el.roster.lastElementChild !== row.li) el.roster.append(row.li);
     };
-    const setRosterRow = (name, stateKey, ageText, online = false) => {
+    const setRosterRow = (name, _stateKey, _ageText, online = false) => {
       const row = rosterRows.get(name);
       if (!row) return;
-      const activity = stateKey === "away" ? "chilling" : stateKey;
+      // Gameplay can put an Ooga to work or sleep; this board follows the
+      // contributor's latest recorded activity instead.
+      const activity = BL.contributors.contributionStateFor(row.contributor);
+      const ageText = BL.contributors.contributionAgeLabel(row.contributor);
       if (row.state.dataset.state !== activity) {
         row.state.dataset.state = activity;
         row.state.firstChild.data = STATE_LABELS[activity] || activity;
       }
-      if (ageText != null && row.age.firstChild.data !== ageText) row.age.firstChild.data = ageText;
+      if (row.age.firstChild.data !== ageText) row.age.firstChild.data = ageText;
       if (row.online !== online) {
         row.online = online;
         row.presence.dataset.online = online ? "true" : "false";
@@ -318,33 +377,58 @@
     let actionHandler = null;
     const DETACHED_PRESETS = ["pile", "lab", "mirror", "underground", "basement"];
     const DETACHED_NAMES = { pile: "Pile", lab: "Lab", mirror: "Mirror", underground: "HQ", basement: "Basement" };
-    let detachedPreset = "pile", detachedNameTimer = 0;
-    const setDetachedView = (name, announce = false) => {
+    let detachedPreset = "pile", detachedNameShown = false, detachedSelectionShown = false, areaLabel = "";
+    let destinationAnchored = false, destinationX = 0, destinationY = 0, destinationZ = 0;
+    const showAreaLabel = () => {
+      if (el.modeDestinationName.textContent !== areaLabel) el.modeDestinationName.textContent = areaLabel;
+      el.modeDestinationName.classList.toggle("show", !!areaLabel);
+    };
+    const fadeDetachedName = (force = false) => {
+      // Looking or zooming at an arrival does not leave that place.
+      // Scenes with an anchor expire it from actual travel instead.
+      if (destinationAnchored && !force) return;
+      if (!detachedNameShown && !detachedSelectionShown) return;
+      destinationAnchored = false;
+      detachedNameShown = false;
+      detachedSelectionShown = false;
+      showAreaLabel();
+      for (const dot of el.modeDestinationDots) dot.dataset.current = "false";
+    };
+    const setAreaLabel = (name, position = null) => {
+      areaLabel = name;
+      if (destinationAnchored && position
+        && (position.x - destinationX) ** 2 + (position.y - destinationY) ** 2 + (position.z - destinationZ) ** 2 > 2.25) fadeDetachedName(true);
+      if (!detachedNameShown) showAreaLabel();
+    };
+    const setDetachedView = (name, announce = false, position = null) => {
       if (!DETACHED_NAMES[name]) return;
       detachedPreset = name;
+      destinationAnchored = !!position;
+      if (position) { destinationX = position.x; destinationY = position.y; destinationZ = position.z; }
+      detachedSelectionShown = true;
       for (const dot of el.modeDestinationDots) dot.dataset.current = String(dot.dataset.detachedPreset === name);
       if (!announce) return;
-      window.clearTimeout(detachedNameTimer);
       el.modeDestinationName.textContent = DETACHED_NAMES[name];
-      el.modeDestinationName.classList.remove("show");
-      void el.modeDestinationName.offsetWidth;
+      detachedNameShown = true;
       el.modeDestinationName.classList.add("show");
-      detachedNameTimer = window.setTimeout(() => el.modeDestinationName.classList.remove("show"), 1200);
     };
     const nextDetachedView = () => DETACHED_PRESETS[(DETACHED_PRESETS.indexOf(detachedPreset) + 1) % DETACHED_PRESETS.length];
     let gorillaEntry = null, gorillaView = "orbit", gorillaCombat = false;
-    let modeName = "", modeGeometry = null, modeSelected = false, modeCombat = false, modeView = "detached", modeHealth = -1, modeGorilla = false;
+    let modeName = "", modeGeometry = null, modeSelected = false, modeCombat = false, modeView = "detached", modeHealth = -1, modeHealthMax = 0, modeGorilla = false;
     const setMode = (cave, combat = false, view = cave ? "orbit" : "detached", visible = true) => {
       const gorilla = gorillaEntry ? gorillaEntry.gorilla : null;
       if (gorilla) { cave = gorillaEntry.owner; combat = gorillaCombat; view = gorillaView; visible = true; }
       const selected = !!cave, name = selected ? cave.traits.name : "", shown = selected ? cave.traits.display : "";
+      if (!visible) fadeDetachedName(true);
       const identityChanged = selected !== modeSelected || selected && name !== modeName || !!gorilla !== modeGorilla;
       const stateChanged = combat !== modeCombat || view !== modeView;
-      if (el.mode.hidden === visible) el.mode.hidden = !visible;
+      const showMode = visible && selected;
+      if (el.mode.hidden === showMode) el.mode.hidden = !showMode;
+      if (el.modeDestination.hidden === visible) el.modeDestination.hidden = !visible;
       const geometry = selected ? (gorilla ? gorilla.parts.head.geometry : cave.parts.head.geometry) : null;
       if (selected && (identityChanged || geometry !== modeGeometry)) {
         renderFaceIcon(el.modeFace, cave, gorilla);
-        el.mode.dataset.portrait = gorilla ? "gorilla" : "face-crop";
+        el.mode.dataset.portrait = "face-crop";
         modeName = name;
         modeGeometry = geometry;
       }
@@ -353,14 +437,17 @@
         modeSelected = selected;
         el.mode.dataset.selected = String(selected);
       }
-      if (el.modeFree.hidden !== selected) el.modeFree.hidden = selected;
       if (el.modeFace.hidden === selected) el.modeFace.hidden = !selected;
-      const showHealth = selected && !gorilla;
+      const showHealth = selected;
       if (el.modeHealth.hidden === showHealth) el.modeHealth.hidden = !showHealth;
-      const health = selected && cave.health ? Math.max(0, Math.min(25, cave.health.value)) : 25;
-      if (health !== modeHealth) {
+      const sourceHealth = gorilla ? gorillaEntry.health : cave && cave.health;
+      const healthMax = sourceHealth ? sourceHealth.max : BL.crew.HEALTH_MAX;
+      const health = sourceHealth ? Math.max(0, Math.min(healthMax, sourceHealth.value)) : healthMax;
+      if (health !== modeHealth || healthMax !== modeHealthMax) {
         modeHealth = health;
-        el.modeHealthFill.style.transform = `scaleY(${health / 25})`;
+        modeHealthMax = healthMax;
+        el.modeHealthFill.style.transform = `scaleY(${health / healthMax})`;
+        el.modeHealth.setAttribute("aria-valuemax", String(healthMax));
         el.modeHealth.setAttribute("aria-valuenow", String(Math.ceil(health)));
       }
       if (stateChanged) { modeCombat = combat; modeView = view; }
@@ -378,7 +465,7 @@
       }
     };
     setDetachedView(detachedPreset);
-    let primaryShown = false, primarySelected = false, primaryAiming = false, primaryHeld = false, primaryPower = 50;
+    let primaryShown = false, primarySelected = false, primaryAiming = false, primaryHeld = false, primaryPower = 100;
     let primaryGeometry = null, primaryPointer = -1, primaryKey = "";
     const finishPrimary = (cancel) => {
       if (primaryPointer < 0 && !primaryKey) return;
@@ -387,28 +474,28 @@
       if (pointer >= 0 && el.primary.hasPointerCapture(pointer)) el.primary.releasePointerCapture(pointer);
       if (actionHandler) actionHandler(cancel ? "weapon-primary-cancel" : "weapon-primary-up");
     };
-    const setPrimary = (available, selected, geometry, charge = 0, held = false, power = 0.5, aiming = false) => {
+    const setPrimary = (available, selected, geometry, charge = 0, held = false, power = 1, aiming = false, ownerName = "") => {
       if (!available || !selected && primarySelected || geometry !== primaryGeometry) finishPrimary(true);
       if (available !== primaryShown) {
         primaryShown = available;
       }
       if (el.primary.hidden !== (!available || !!gorillaEntry)) el.primary.hidden = !available || !!gorillaEntry;
       if (available && geometry !== primaryGeometry) {
-        renderPrimaryIcon(el.primaryIcon, geometry);
+        renderPrimaryIcon(el.primaryIcon, geometry, ownerName === "timechainb");
         primaryGeometry = geometry;
       }
       if (selected !== primarySelected || aiming !== primaryAiming) {
         primarySelected = selected; primaryAiming = aiming;
         el.primary.dataset.equipped = String(selected);
         el.primary.setAttribute("aria-pressed", String(selected));
-        el.primary.title = !selected ? "Equip primary melee weapon (1)" : aiming ? "Primary melee weapon selected (1)" : "Tap to poke; hold to charge a swing (1)";
-        el.primary.setAttribute("aria-label", !selected ? "Equip primary melee weapon" : aiming ? "Primary melee weapon selected" : "Tap primary melee weapon to poke; hold to charge a swing");
+        el.primary.title = !selected ? "Equip primary melee weapon (1)" : "Melee weapon · 0.2s between hits for full power (1)";
+        el.primary.setAttribute("aria-label", !selected ? "Equip primary melee weapon" : "Melee weapon · allow 0.2 seconds between hits for full power");
       }
       if (held !== primaryHeld) {
         primaryHeld = held;
         el.primary.dataset.charging = String(held);
       }
-      const strength = Math.round(Math.max(0.5, Math.min(2, power)) * 100);
+      const strength = Math.round(Math.max(0.25, Math.min(2, power)) * 100);
       if (strength !== primaryPower) {
         primaryPower = strength;
         el.primaryStrengthFill.style.transform = `scaleY(${strength / 200})`;
@@ -500,7 +587,7 @@
         el.weapon.dataset.reloading = String(reloading);
         el.weapon.dataset.canReload = String(canReload);
         el.weaponLabel.firstChild.data = reloading ? "Reloading" : "Ammo";
-        el.weaponMagazine.title = unlimited ? "Unlimited ammunition; firing does not consume rounds" : reloading ? "Stay near the pile to keep reloading; leave its range to stop" : canReload ? "Press Space to reload; two bananas load 6 rounds" : "Each slot is 1 round. Press Space beside the pile to reload.";
+        el.weaponMagazine.title = unlimited ? "Unlimited ammunition; firing does not consume rounds" : reloading ? "Stay near the pile to keep reloading; leave its range to stop" : canReload ? "Press Space to reload beside the pile; its level stays the same" : "Each slot is 1 round. Press Space beside the pile to reload.";
       }
       if (ammo === weaponAmmo) {
         if (modeChanged || !available || !equipped || reducedMotion.matches) showWeaponAmmo(ammo);
@@ -561,7 +648,7 @@
       }
       refreshWeaponSummary();
     };
-    let jetpackShown = false, jetpackEquipped = false, jetpackBlocked = false, jetpackPercent = -1;
+    let jetpackShown = false, jetpackEquipped = false, jetpackBlocked = false, jetpackPercent = -1, jetpackLevel = "";
     const setJetpack = (owned, equipped, fuel, blocked = false) => {
       if (owned !== jetpackShown) {
         jetpackShown = owned;
@@ -578,14 +665,18 @@
       }
       if (!owned) return;
       const percent = Math.ceil(fuel * 100);
+      const level = fuel < 0.2 ? "low" : "ok";
+      if (level !== jetpackLevel) {
+        jetpackLevel = level;
+        el.jetpackFuel.dataset.level = level;
+        el.jetpackCompactFuel.dataset.level = level;
+      }
       if (percent === jetpackPercent) return;
       jetpackPercent = percent;
       el.jetpackFuelFill.style.transform = `scaleX(${percent / 100})`;
       el.jetpackCompactFill.style.transform = `scaleY(${percent / 100})`;
       el.jetpackFuel.setAttribute("aria-valuenow", String(percent));
-      el.jetpackFuel.dataset.level = percent <= 20 ? "low" : "ok";
       el.jetpackCompactFuel.setAttribute("aria-valuenow", String(percent));
-      el.jetpackCompactFuel.dataset.level = percent <= 20 ? "low" : "ok";
       el.jetpackFuelValue.firstChild.data = `${percent}%`;
     };
     const setGorilla = (entry, view = "orbit", combat = false) => {
@@ -594,7 +685,7 @@
       gorillaEntry = entry;
       gorillaView = view;
       gorillaCombat = combat;
-      el.gorillaSmash.hidden = el.gorillaDrag.hidden = !entry;
+      el.gorillaSmash.hidden = !entry;
       el.primary.hidden = !primaryShown || !!entry;
       el.weapon.hidden = !weaponShown || !!entry;
       el.jetpack.hidden = !jetpackShown || !!entry;
@@ -618,75 +709,453 @@
       e.preventDefault();
       closeFeed();
     });
-    // The board close-up: one dialog for every readable board (the jumbotron, the chain board, the weather key).
-    // A board is any object with `title`, `help`, `canvas`, `count`, `index`, `caption`, `note`, `version` and
-    // `go(index)`, plus an optional `wide`, which widens the dialog on desktop. The dialog copies the canvas, captions the page, lays one dot per page and pages with the
-    // chevrons, the dots and the arrow keys; it never learns what a board shows, so a board can change freely.
-    // `updateBoard` repaints whenever the open board's version moves.
-    let board = null, boardShown = -1, boardDots = -1;
-    const paintBoard = () => {
-      boardShown = board.version;
-      const src = board.canvas, screen = el.boardScreen;
-      if (screen.width !== src.width || screen.height !== src.height) {
-        screen.width = src.width;
-        screen.height = src.height;
-        screen.style.setProperty("--board-ratio", String(src.width / src.height));
+    const floatingBoards = [];
+    const stackBoards = () => {
+      for (let i = 0; i < floatingBoards.length; i++) floatingBoards[i].setLayer(20 + i);
+    };
+    let boardWindowId = 0;
+    let lastBoard = null, lastBoardWidth = 550, boardSaveTimer = 0, boardSavingEnabled = false, boardSavingSuspended = false;
+    const saveBoardState = () => {
+      window.clearTimeout(boardSaveTimer);
+      boardSaveTimer = 0;
+      if (!boardSavingEnabled || boardSavingSuspended) return;
+      if (lastBoard) lastBoardWidth = lastBoard.width;
+      try {
+        localStorage.setItem(BOARD_STATE_KEY, JSON.stringify({ version: 1, lastWidth: lastBoardWidth,
+          lastUsed: floatingBoards.indexOf(lastBoard), windows: floatingBoards.map((popup) => popup.snapshot()) }));
+      } catch { /* Storage may be unavailable or full. */ }
+    };
+    const scheduleBoardSave = () => {
+      if (boardSavingEnabled && !boardSavingSuspended && !boardSaveTimer) boardSaveTimer = window.setTimeout(saveBoardState, 100);
+    };
+    on(window, "pagehide", saveBoardState);
+    const createBoardWindow = (node, floatingId = 0, saved = null) => {
+      const el = { board: node };
+      const ids = {
+        boardTitle: "board-title", boardScreen: "board-screen", boardCaption: "board-caption", boardNote: "board-note",
+        boardDots: "board-dots", boardPrev: "board-prev", boardNext: "board-next", boardHelp: "board-help",
+        boardHead: "board-head", boardPause: "board-pause", boardResize: "board-resize",
+        boardFilter: "board-filter", boardFilterMenu: "board-filter-menu", boardFilterList: "board-filter-list", boardRollup: "board-rollup",
+        boardFilterRepos: "board-filter-repos", boardFilterUsers: "board-filter-users", boardFilterTypes: "board-filter-types"
+      };
+      for (const key in ids) el[key] = node.querySelector(`[id="${ids[key]}"]`);
+      const boardNav = node.querySelector(".board-nav");
+      if (floatingId) {
+        node.id += `-${floatingId}`;
+        for (const child of node.querySelectorAll("[id]")) child.id += `-${floatingId}`;
+        node.setAttribute("aria-labelledby", el.boardTitle.id);
       }
-      screen.getContext("2d").drawImage(src, 0, 0);
-      el.boardCaption.textContent = board.caption;
-      el.boardNote.textContent = board.note || "";
-      el.boardNote.hidden = !board.note;
-      if (boardDots !== board.count) {
-        boardDots = board.count;
-        const dots = [];
-        for (let i = 0; i < board.count; i++) {
-          const dot = document.createElement("button");
-          dot.type = "button";
-          dot.className = "board-dot";
-          dot.dataset.page = String(i);
-          dot.setAttribute("aria-label", `Page ${i + 1}`);
-          dots.push(dot);
+      el.boardFilter.setAttribute("aria-controls", el.boardFilterMenu.id);
+      el.boardFilterRepos.setAttribute("aria-controls", el.boardFilterList.id);
+      el.boardFilterUsers.setAttribute("aria-controls", el.boardFilterList.id);
+      el.boardFilterTypes.setAttribute("aria-controls", el.boardFilterList.id);
+      const boardListeners = [];
+      const on = (target, type, fn, options) => {
+        target.addEventListener(type, fn, options);
+        boardListeners.push(() => target.removeEventListener(type, fn, options));
+      };
+      // Each window copies a readable board's canvas and owns its controls.
+      // A board is any object with `title`, `help`, `canvas`, `count`, `index`, `caption`, `note`, `version` and
+      // `go(index)`, plus an optional `wide`, which widens the dialog on desktop. The dialog copies the canvas, captions the page, lays one dot per page and pages with the
+      // chevrons, the dots and the arrow keys; it never learns what a board shows, so a board can change freely.
+      // `updateBoard` repaints whenever the open board's version moves.
+      // A `floating` board also supplies `paused` and `setPaused`, and keeps island input available.
+      let board = null, boardShown = -1, boardDots = -1;
+      let filterTab = "repos", filterShown = -1;
+      const filterTabs = [el.boardFilterRepos, el.boardFilterUsers, el.boardFilterTypes];
+      const typeLabels = { commit: "Commits", pr: "Pull requests", review: "Reviews", merge: "Merges", issue: "Issues", comment: "Comments" };
+      const filterOptions = () => filterTab === "repos" ? board.repos : filterTab === "users" ? board.users : board.types;
+      const filterKey = (entry) => filterTab === "repos" ? entry.name : filterTab === "users" ? entry.login : entry;
+      const paintFilters = () => {
+        filterShown = board.filterVersion;
+        const selected = board.filters[filterTab];
+        const active = document.activeElement;
+        const focusedChoice = el.boardFilterList.contains(active) ? active.dataset.filterChoice : null;
+        const focusedValue = focusedChoice ? active.value : null;
+        const rows = [];
+        const row = (value, text, checked, all = false) => {
+          const label = document.createElement("label"), input = document.createElement("input"), caption = document.createElement("span");
+          input.type = "checkbox"; input.checked = checked; input.value = value;
+          input.dataset.filterChoice = all ? "all" : "one";
+          caption.textContent = text;
+          label.append(input, caption); rows.push(label);
+        };
+        row("", filterTab === "repos" ? "All repos" : filterTab === "users" ? "All contributors" : "All types", selected === null, true);
+        for (const entry of filterOptions()) {
+          const key = filterKey(entry);
+          const label = filterTab === "repos" ? key
+            : filterTab === "users" ? BL.characters.displayOf(key) : typeLabels[key];
+          row(key, label, selected === null || selected.includes(key));
         }
-        el.boardDots.replaceChildren(...dots);
-        el.boardDots.hidden = el.boardPrev.hidden = el.boardNext.hidden = board.count < 2;
+        const scroll = el.boardFilterList.scrollTop;
+        el.boardFilterList.replaceChildren(...rows);
+        el.boardFilterList.scrollTop = scroll;
+        if (focusedChoice) for (const input of el.boardFilterList.querySelectorAll("input")) {
+          if (input.dataset.filterChoice === focusedChoice && input.value === focusedValue) { input.focus({ preventScroll: true }); break; }
+        }
+        el.boardFilterList.setAttribute("aria-labelledby", filterTabs.find((tab) => tab.dataset.filterTab === filterTab).id);
+        for (const tab of filterTabs) {
+          const active = tab.dataset.filterTab === filterTab;
+          tab.setAttribute("aria-selected", String(active)); tab.tabIndex = active ? 0 : -1;
+        }
+      };
+      const positionFilters = () => {
+        const screen = el.boardScreen, play = el.boardPause, menu = el.boardFilterMenu;
+        // Match the screen's edges and stop at the play button's bottom.
+        menu.style.left = `${screen.offsetLeft}px`;
+        menu.style.top = `${screen.offsetTop}px`;
+        menu.style.width = `${screen.offsetWidth}px`;
+        menu.style.height = `${play.offsetTop + play.offsetHeight - screen.offsetTop}px`;
+      };
+      const showFilters = (open) => {
+        el.boardFilterMenu.hidden = !open;
+        el.boardFilter.setAttribute("aria-expanded", String(open));
+        if (open) { paintFilters(); positionFilters(); }
+      };
+      // Geometry and pointer state belong to this window for this visit.
+      const boardRatio = 550 / 368;
+      const width = saved?.width ?? lastBoard?.width ?? lastBoardWidth;
+      const boardWindow = { x: saved?.x ?? 0, y: saved?.y ?? 0, width, height: width / boardRatio, placed: !!saved };
+      const interactBoard = () => {
+        if (!floatingId) return;
+        lastBoard = controller;
+        lastBoardWidth = boardWindow.width;
+        const index = floatingBoards.indexOf(controller);
+        if (index >= 0 && index !== floatingBoards.length - 1) {
+          floatingBoards.splice(index, 1);
+          floatingBoards.push(controller);
+        }
+        // Keep pressed controls and pointer capture attached while raising the window.
+        stackBoards();
+        scheduleBoardSave();
+      };
+      let boardPointer = -1, boardHandle = null, boardResizing = false;
+      let boardStartX = 0, boardStartY = 0, boardStartLeft = 0, boardStartTop = 0, boardStartWidth = 0;
+      const layoutBoard = () => {
+        const w = window.innerWidth, h = window.innerHeight, b = boardWindow;
+        const maxWidth = Math.min(w, h * boardRatio);
+        b.width = Math.min(maxWidth, Math.max(Math.min(260, maxWidth), b.width));
+        b.height = b.width / boardRatio;
+        b.x = Math.max(0, Math.min(w - b.width, b.x));
+        b.y = Math.max(0, Math.min(h - b.height, b.y));
+        el.board.style.width = `${b.width}px`;
+        el.board.style.height = `${b.height}px`;
+        el.board.style.left = `${b.x}px`;
+        el.board.style.top = `${b.y}px`;
+        el.board.style.setProperty("--board-scale", String(Math.min(b.width, 550) / 440));
+        if (!el.boardFilterMenu.hidden) positionFilters();
+      };
+      const resizeBoard = (width) => {
+        const maxWidth = Math.min(window.innerWidth - boardWindow.x, (window.innerHeight - boardWindow.y) * boardRatio);
+        boardWindow.width = Math.min(maxWidth, Math.max(Math.min(260, maxWidth), width));
+        layoutBoard();
+      };
+      const finishBoardPointer = () => {
+        const id = boardPointer, handle = boardHandle;
+        boardPointer = -1;
+        boardHandle = null;
+        if (handle && handle.hasPointerCapture(id)) handle.releasePointerCapture(id);
+        if (id >= 0) scheduleBoardSave();
+      };
+      const startBoardPointer = (e, resizing) => {
+        if (!board?.floating || boardPointer >= 0 || e.button !== 0 || !e.isPrimary) return;
+        if (!resizing && e.target.closest("button")) return;
+        interactBoard();
+        e.preventDefault();
+        e.stopPropagation();
+        document.activeElement?.blur();
+        boardPointer = e.pointerId;
+        boardHandle = resizing ? el.boardResize : el.boardHead;
+        boardResizing = resizing;
+        boardStartX = e.clientX; boardStartY = e.clientY;
+        boardStartLeft = boardWindow.x; boardStartTop = boardWindow.y;
+        boardStartWidth = boardWindow.width;
+        // The locked virtual cursor already captures its synthetic pointer itself.
+        if (e.isTrusted) boardHandle.setPointerCapture(e.pointerId);
+      };
+      on(el.boardHead, "pointerdown", (e) => startBoardPointer(e, false));
+      on(el.boardResize, "pointerdown", (e) => startBoardPointer(e, true));
+      on(el.board, "pointerdown", (e) => {
+        if (board?.floating) {
+          interactBoard();
+          if (!e.target.closest("button, input, label")) e.preventDefault();
+        }
+      });
+      on(el.board, "pointermove", (e) => {
+        if (e.pointerId !== boardPointer) return;
+        e.preventDefault(); e.stopPropagation();
+        if (boardResizing) {
+          // Project the pointer's motion onto the fixed-ratio corner diagonal.
+          const dx = e.clientX - boardStartX, dy = e.clientY - boardStartY;
+          resizeBoard(boardStartWidth + (dx + dy / boardRatio) / (1 + 1 / (boardRatio * boardRatio)));
+        } else {
+          boardWindow.x = boardStartLeft + e.clientX - boardStartX;
+          boardWindow.y = boardStartTop + e.clientY - boardStartY;
+          layoutBoard();
+        }
+      });
+      const endBoardPointer = (e) => {
+        if (e.pointerId !== boardPointer) return;
+        e.preventDefault(); e.stopPropagation();
+        finishBoardPointer();
+      };
+      on(el.board, "pointerup", endBoardPointer);
+      on(el.board, "pointercancel", endBoardPointer);
+      on(el.board, "lostpointercapture", endBoardPointer);
+      on(window, "blur", finishBoardPointer);
+      on(window, "resize", () => {
+        if (board?.floating) { layoutBoard(); scheduleBoardSave(); }
+      });
+      on(el.boardResize, "keydown", (e) => {
+        let step;
+        if (e.key === "ArrowLeft" || e.key === "ArrowUp") step = -20;
+        else if (e.key === "ArrowRight" || e.key === "ArrowDown") step = 20;
+        else return;
+        e.preventDefault(); e.stopPropagation();
+        interactBoard();
+        resizeBoard(boardWindow.width + step);
+        scheduleBoardSave();
+      });
+      const paintBoardPause = () => {
+        el.boardPause.setAttribute("aria-label", board.paused ? "Resume screen cycling" : "Pause screen cycling");
+        el.boardPause.setAttribute("aria-pressed", String(board.paused));
+      };
+      const paintBoard = () => {
+        boardShown = board.version;
+        const src = board.canvas, screen = el.boardScreen;
+        if (screen.width !== src.width || screen.height !== src.height) {
+          screen.width = src.width;
+          screen.height = src.height;
+          screen.style.setProperty("--board-ratio", String(src.width / src.height));
+        }
+        screen.getContext("2d").drawImage(src, 0, 0);
+        el.boardCaption.textContent = board.caption;
+        el.boardNote.textContent = board.note || "";
+        el.boardNote.hidden = !!board.floating || !board.note;
+        if (board.floating) {
+          paintBoardPause();
+          el.boardRollup.checked = board.rollup;
+          el.boardFilter.dataset.active = String(board.rollup || board.filters.repos !== null || board.filters.users !== null || board.filters.types !== null);
+          if (!el.boardFilterMenu.hidden && filterShown !== board.filterVersion) paintFilters();
+        }
+        if (boardDots !== board.count) {
+          boardDots = board.count;
+          const dots = [];
+          for (let i = 0; i < board.count; i++) {
+            const dot = document.createElement("button");
+            dot.type = "button";
+            dot.className = "board-dot";
+            dot.dataset.page = String(i);
+            dot.setAttribute("aria-label", `Page ${i + 1}`);
+            dots.push(dot);
+          }
+          el.boardDots.replaceChildren(...dots);
+          el.boardDots.hidden = el.boardPrev.hidden = el.boardNext.hidden = !board.floating && board.count < 2;
+          el.boardPrev.disabled = el.boardNext.disabled = board.count < 2;
+        }
+        for (const dot of el.boardDots.children) dot.setAttribute("aria-current", String(+dot.dataset.page === board.index));
+        if (!el.boardFilterMenu.hidden) positionFilters();
+        if (floatingId) scheduleBoardSave();
+      };
+      const openBoard = (next) => {
+        finishBoardPointer();
+        if (el.board.open && !!board?.floating !== !!next.floating) el.board.close();
+        board = next;
+        boardDots = -1;
+        letterSign(el.boardTitle, board.title);
+        el.board.classList.toggle("board-wide", !!board.wide);
+        el.board.classList.toggle("board-floating", !!board.floating);
+        if (board.floating) el.boardHead.insertBefore(el.boardDots, el.boardHead.lastElementChild);
+        else boardNav.after(el.boardDots);
+        el.boardCaption.hidden = !!board.floating;
+        el.boardPause.hidden = el.boardResize.hidden = !board.floating;
+        el.boardFilter.hidden = !board.floating;
+        showFilters(false);
+        el.boardHelp.hidden = !!board.floating;
+        el.boardHelp.textContent = board.help;
+        if (board.floating) {
+          if (!boardWindow.placed) {
+            const offset = ((floatingId - 1) % 6) * 24;
+            boardWindow.x = (window.innerWidth - boardWindow.width) / 2 + offset;
+            boardWindow.y = (window.innerHeight - boardWindow.height) / 2 + offset;
+            boardWindow.placed = true;
+          }
+          layoutBoard();
+        } else {
+          el.board.removeAttribute("style");
+        }
+        if (board.update) board.update();
+        paintBoard();
+        if (!el.board.open) {
+          if (board.floating) {
+            el.board.show();
+            document.activeElement?.blur();
+          } else el.board.showModal();
+        }
+      };
+      const closeBoard = () => {
+        finishBoardPointer();
+        const closing = board;
+        board = null;
+        if (el.board.open) el.board.close();
+        if (floatingId) {
+          if (lastBoard === controller) { lastBoardWidth = boardWindow.width; lastBoard = null; }
+          for (const off of boardListeners) off();
+          boardListeners.length = 0;
+          closing?.dispose();
+          el.board.remove();
+          el.boardScreen.width = el.boardScreen.height = 0;
+          const index = floatingBoards.indexOf(controller);
+          if (index >= 0) floatingBoards.splice(index, 1);
+          stackBoards();
+          scheduleBoardSave();
+        }
+      };
+      const updateBoard = (elapsed) => {
+        if (board?.update) board.update(elapsed);
+        if (board && board.version !== boardShown) paintBoard();
+      };
+      const pageBoard = (step) => {
+        if (!board) return;
+        board.go((board.index + step + board.count) % board.count);
+        updateBoard();
+      };
+      on(el.board, "keydown", (e) => {
+        interactBoard();
+        if (e.target.closest(".board-filter-menu")) {
+          if (e.key === "Escape") { showFilters(false); el.boardFilter.focus(); }
+          else return;
+        }
+        else if (e.key === "Escape") {
+          if (!el.boardFilterMenu.hidden) showFilters(false);
+          else closeBoard();
+        }
+        else if (e.key === "ArrowLeft") pageBoard(-1);
+        else if (e.key === "ArrowRight") pageBoard(1);
+        else return;
+        e.preventDefault();
+        e.stopPropagation();
+      });
+      on(el.boardFilterMenu, "click", (e) => {
+        const tab = e.target.closest("[data-filter-tab]");
+        if (!tab) return;
+        interactBoard(); filterTab = tab.dataset.filterTab;
+        el.boardFilterList.scrollTop = 0;
+        paintFilters();
+      });
+      on(el.boardFilterMenu, "keydown", (e) => {
+        if (!e.target.closest("[data-filter-tab]") || !["ArrowLeft", "ArrowRight", "Home", "End"].includes(e.key)) return;
+        e.preventDefault(); e.stopPropagation();
+        const current = filterTabs.findIndex((tab) => tab.dataset.filterTab === filterTab);
+        const next = e.key === "Home" ? 0 : e.key === "End" ? filterTabs.length - 1
+          : (current + (e.key === "ArrowRight" ? 1 : filterTabs.length - 1)) % filterTabs.length;
+        filterTab = filterTabs[next].dataset.filterTab;
+        paintFilters();
+        filterTabs[next].focus();
+      });
+      on(el.boardFilterList, "change", (e) => {
+        const input = e.target.closest("[data-filter-choice]");
+        if (!input) return;
+        interactBoard();
+        const choices = filterOptions().map(filterKey);
+        let values;
+        if (input.dataset.filterChoice === "all") values = input.checked ? null : [];
+        else {
+          const selected = new Set(board.filters[filterTab] ?? choices);
+          if (input.checked) selected.add(input.value); else selected.delete(input.value);
+          values = choices.every((key) => selected.has(key)) ? null : [...selected];
+        }
+        board.setFilter(filterTab, values);
+        updateBoard();
+        scheduleBoardSave();
+      });
+      on(el.boardRollup, "change", () => {
+        if (!board?.floating) return;
+        interactBoard();
+        board.setRollup(el.boardRollup.checked);
+        updateBoard();
+        scheduleBoardSave();
+      });
+      on(el.boardDots, "click", (e) => {
+        const dot = e.target.closest(".board-dot");
+        if (!dot || !board) return;
+        interactBoard();
+        dot.blur();
+        board.go(+dot.dataset.page);
+        updateBoard();
+      });
+      on(el.board, "click", (e) => {
+        const button = e.target.closest("[data-action]");
+        if (!button) return;
+        interactBoard();
+        button.blur();
+        if (button.dataset.action === "board-close") closeBoard();
+        else if (button.dataset.action === "board-prev") pageBoard(-1);
+        else if (button.dataset.action === "board-next") pageBoard(1);
+        else if (button.dataset.action === "board-filter") showFilters(el.boardFilterMenu.hidden);
+        else if (button.dataset.action === "board-filter-done") showFilters(false);
+        else if (button.dataset.action === "board-pause" && board?.floating) {
+          board.setPaused(!board.paused);
+          paintBoardPause();
+          scheduleBoardSave();
+        }
+      });
+      const controller = {
+        open: openBoard, close: closeBoard, update: updateBoard,
+        setLayer(layer) { el.board.style.zIndex = String(layer); },
+        get width() { return boardWindow.width; },
+        snapshot() { return { x: boardWindow.x, y: boardWindow.y, width: boardWindow.width, screen: board.view, paused: board.paused, filters: board.filters, rollup: board.rollup }; },
+        dispose() {
+          closeBoard();
+          for (const off of boardListeners) off();
+          boardListeners.length = 0;
+        }
+      };
+      return controller;
+    };
+    const mainBoard = createBoardWindow(el.board);
+    const openFloatingBoard = (next, saved = null) => {
+      // Bound bitmap/DOM memory while still opening a fresh window on every click.
+      if (floatingBoards.length === MAX_FLOATING_BOARDS) floatingBoards[0].close();
+      const node = el.board.cloneNode(true);
+      node.removeAttribute("open");
+      const popup = createBoardWindow(node, ++boardWindowId, saved);
+      el.board.parentElement.append(node);
+      floatingBoards.push(popup);
+      popup.open(next.createReader(saved));
+      stackBoards();
+      return popup;
+    };
+    const restoreBoards = (next) => {
+      if (boardSavingEnabled) return;
+      const saved = readBoardState();
+      boardSavingEnabled = true;
+      boardSavingSuspended = true;
+      if (saved) {
+        lastBoardWidth = saved.lastWidth;
+        for (const entry of saved.windows) openFloatingBoard(next, entry);
+        lastBoard = floatingBoards[saved.lastUsed] || null;
       }
-      for (const dot of el.boardDots.children) dot.setAttribute("aria-current", String(+dot.dataset.page === board.index));
+      boardSavingSuspended = false;
     };
     const openBoard = (next) => {
-      board = next;
-      boardDots = -1;
-      letterSign(el.boardTitle, board.title);
-      el.board.classList.toggle("board-wide", !!board.wide);
-      el.boardHelp.textContent = board.help;
-      paintBoard();
-      if (!el.board.open) el.board.showModal();
+      if (!next.floating) { mainBoard.open(next); return; }
+      restoreBoards(next);
+      lastBoard = openFloatingBoard(next);
+      scheduleBoardSave();
     };
-    const closeBoard = () => {
-      board = null;
-      if (el.board.open) el.board.close();
+    const closeBoard = (preserve = false) => {
+      if (preserve && !boardSavingSuspended) {
+        saveBoardState();
+        boardSavingSuspended = true;
+      }
+      mainBoard.close();
+      while (floatingBoards.length) floatingBoards[floatingBoards.length - 1].close();
     };
-    const updateBoard = () => {
-      if (board && board.version !== boardShown) paintBoard();
+    const updateBoard = (elapsed) => {
+      mainBoard.update(elapsed);
+      for (let i = 0; i < floatingBoards.length; i++) floatingBoards[i].update(elapsed);
     };
-    const pageBoard = (step) => {
-      if (!board) return;
-      board.go((board.index + step + board.count) % board.count);
-      updateBoard();
-    };
-    on(el.board, "keydown", (e) => {
-      if (e.key === "Escape") closeBoard();
-      else if (e.key === "ArrowLeft") pageBoard(-1);
-      else if (e.key === "ArrowRight") pageBoard(1);
-      else return;
-      e.preventDefault();
-    });
-    on(el.boardDots, "click", (e) => {
-      const dot = e.target.closest(".board-dot");
-      if (!dot || !board) return;
-      dot.blur();
-      board.go(+dot.dataset.page);
-      updateBoard();
-    });
     const openRecipe = () => {
       if (!el.recipe.open) el.recipe.showModal();
     };
@@ -716,7 +1185,7 @@
     }, true);
     dismissOutside(el.feed, closeFeed);
     dismissOutside(el.recipe, closeRecipe);
-    dismissOutside(el.board, closeBoard);
+    dismissOutside(el.board, () => mainBoard.close());
     // The prompt is written to be pasted, so it leaves in one click.
     const copyRecipe = (button) => {
       const text = el.recipeText.textContent;
@@ -774,7 +1243,7 @@
     on(document, "visibilitychange", () => { if (document.hidden) finishPrimary(true); });
     on(el.primary, "contextmenu", (e) => e.preventDefault());
     const MODE_HOLD_MS = 650;
-    let modePointer = -1, modeHoldTimer = 0, modeLong = false, modePressPreset = "";
+    let modePointer = -1, modeHoldTimer = 0, modeLong = false;
     const clearModeHold = () => {
       window.clearTimeout(modeHoldTimer);
       modeHoldTimer = 0;
@@ -785,7 +1254,6 @@
       e.preventDefault(); e.stopPropagation();
       modePointer = e.pointerId;
       modeLong = false;
-      modePressPreset = !modeSelected && e.target.closest ? e.target.closest("[data-detached-preset]")?.dataset.detachedPreset || "" : "";
       el.mode.dataset.holding = String(modeSelected);
       if (e.isTrusted) el.mode.setPointerCapture(e.pointerId);
       if (modeSelected) {
@@ -803,11 +1271,7 @@
       modePointer = -1;
       if (el.mode.hasPointerCapture(e.pointerId)) el.mode.releasePointerCapture(e.pointerId);
       clearModeHold();
-      if (!cancel && !modeLong && actionHandler) {
-        if (modeSelected) actionHandler("mode-toggle");
-        else actionHandler("mode-preset", modePressPreset || nextDetachedView());
-      }
-      modePressPreset = "";
+      if (!cancel && !modeLong && modeSelected && actionHandler) actionHandler("mode-toggle");
       modeLong = false;
       el.mode.blur();
     };
@@ -815,7 +1279,7 @@
     on(el.mode, "pointercancel", (e) => finishModePress(e, true));
     on(el.mode, "lostpointercapture", (e) => { if (e.pointerId === modePointer) finishModePress(e, true); });
     on(el.mode, "contextmenu", (e) => e.preventDefault());
-    for (const b of el.actions) on(b, "click", (e) => {
+    for (const b of el.actions.filter((button) => !button.dataset.action.startsWith("board-"))) on(b, "click", (e) => {
       // Native and virtual pointer clicks already completed their press/release.
       // A detail-zero click is an assistive or programmatic tap without a hold.
       if (b === el.primary && (e.detail !== 0 || primaryPointer >= 0 || primaryKey)) return;
@@ -824,12 +1288,15 @@
       if (b.dataset.action === "feed") openFeed();
       else if (b.dataset.action === "feed-close") closeFeed();
       else if (b.dataset.action === "recipe-close") closeRecipe();
-      else if (b.dataset.action === "board-close") closeBoard();
-      else if (b.dataset.action === "board-prev") pageBoard(-1);
-      else if (b.dataset.action === "board-next") pageBoard(1);
       else if (b.dataset.action === "recipe-copy") copyRecipe(b);
       else if (b.dataset.action === "intro-go") b.closest("[data-intro]").hidden = true;
-      else if (b === el.mode && !modeSelected) actionHandler && actionHandler("mode-preset", nextDetachedView());
+      else if (b === el.modeDestination) {
+        // The locked virtual cursor dispatches to the enclosing button.
+        // Resolve the dot at its screen coordinates as well as native targets.
+        const dot = e.target.closest("[data-detached-preset]")
+          || (e.detail > 0 ? document.elementFromPoint(e.clientX, e.clientY)?.closest("[data-detached-preset]") : null);
+        actionHandler && actionHandler("mode-preset", dot ? dot.dataset.detachedPreset : nextDetachedView());
+      }
       else actionHandler && actionHandler(b.dataset.action);
     });
     // A game's side panels fold away and come back from a tab on the screen's edge: a `data-fold`
@@ -908,7 +1375,7 @@
       update: (place = true) => {
         if (!tipCave) return;
         const state = statusFor(tipCave);
-        const healthMax = tipCave.health && tipCave.health.max || 25;
+        const healthMax = tipCave.health && tipCave.health.max || BL.crew.HEALTH_MAX;
         const health = tipCave.health ? Math.max(0, Math.min(healthMax, tipCave.health.value)) : healthMax;
         const shownHealth = Math.ceil(health);
         const healthChanged = health !== tipHealth || healthMax !== tipHealthMax;
@@ -949,7 +1416,6 @@
     const hint = (text, ms = 4200) => {
       window.clearTimeout(hintTimer);
       window.clearTimeout(hintHideTimer);
-      window.clearTimeout(detachedNameTimer);
       el.hint.textContent = text;
       el.hint.hidden = false;
       el.messageStack.append(el.hint);
@@ -1154,9 +1620,12 @@
       setJetpack(false, false, 0);
       closeFeed();
       closeRecipe();
-      closeBoard();
+      closeBoard(true);
+      mainBoard.dispose();
+      el.board.classList.remove("board-floating");
+      el.board.removeAttribute("style");
     };
-    return { el, openFeed, closeFeed, openRecipe, closeRecipe, dismissOutside, openBoard, closeBoard, updateBoard, setRosterRow, setMeter, setStats, setAct, setMode, setGorilla, setDetachedView, setPrimary, setWeapon, setMagazine, setJetpack, setSubtitle, onAction, toast, tooltip, hint, hideHint, letterSign, selectTab, onPreset, onIdentityChange, setIdentity, setDonationUrl, onAssign, onUnassign, renderInventory, dispose };
+    return { el, openFeed, closeFeed, openRecipe, closeRecipe, dismissOutside, openBoard, closeBoard, updateBoard, restoreBoards, setRosterRow, setMeter, setStats, setAct, setMode, setGorilla, setDetachedView, fadeDetachedName, setAreaLabel, setPrimary, setWeapon, setMagazine, setJetpack, setSubtitle, onAction, toast, tooltip, hint, hideHint, letterSign, selectTab, onPreset, onIdentityChange, setIdentity, setDonationUrl, onAssign, onUnassign, renderInventory, dispose };
   };
   BL.hud = { create, renderIcon, signLettering, STATE_LABELS, statusFor };
 })();

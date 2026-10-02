@@ -1,6 +1,7 @@
-// Builds the page and serves it locally; --watch rebuilds on every change under src/.
-// `/` is the built single-file page as GitHub Pages serves it; `/src/` is the unbundled
-// source tree, which gives DevTools real file names while the same flags apply to both.
+// Builds and stages the site (scripts/site.mjs into untracked/site) and serves it locally; --watch rebuilds
+// on every change under src/. Everything outside `/src/` is the staged site as GitHub Pages serves it, so
+// /rally answers from rally.html and an unknown path from 404.html; `/src/` is the unbundled source tree,
+// which gives DevTools real file names while the same flags apply to both.
 import { spawn } from "node:child_process";
 import { existsSync, readFileSync, statSync, watch } from "node:fs";
 import { createServer } from "node:http";
@@ -8,8 +9,8 @@ import { dirname, extname, join, normalize, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
-const build = join(root, "scripts", "build.mjs");
-const page = join(root, "oogaboogaland.html");
+const build = join(root, "scripts", "site.mjs");
+const site = join(root, "untracked", "site");
 const src = join(root, "src");
 const watching = process.argv.includes("--watch");
 const port = Number(process.env.PORT) || 8080;
@@ -24,6 +25,9 @@ const TYPES = {
   ".json": "application/json; charset=utf-8",
   ".svg": "image/svg+xml",
   ".png": "image/png",
+  ".jpg": "image/jpeg",
+  ".xml": "application/xml; charset=utf-8",
+  ".txt": "text/plain; charset=utf-8",
   ".ico": "image/x-icon",
 };
 
@@ -74,9 +78,7 @@ const server = createServer((req, res) => {
   } catch {
     return send(res, 400, "bad request");
   }
-  if (pathname === "/" || pathname === "/index.html" || pathname === "/oogaboogaland.html") {
-    return serveFile(res, page);
-  }
+  if (pathname === "/") return serveFile(res, join(site, "index.html"));
   if (pathname === "/src" || pathname === "/src/") return serveFile(res, join(src, "index.html"));
   if (pathname.startsWith("/src/")) {
     // Resolve inside src/ only; a normalized path that escapes it is refused.
@@ -84,7 +86,10 @@ const server = createServer((req, res) => {
     if (!file.startsWith(src + sep)) return send(res, 403, "forbidden");
     return serveFile(res, file);
   }
-  send(res, 404, "not found");
+  const file = normalize(join(site, pathname));
+  if (!file.startsWith(site + sep)) return send(res, 403, "forbidden");
+  for (const candidate of [file, `${file}.html`]) if (existsSync(candidate) && statSync(candidate).isFile()) return serveFile(res, candidate);
+  send(res, 404, readFileSync(join(site, "404.html")), TYPES[".html"]);
 });
 
 await rebuild();
@@ -94,7 +99,7 @@ server.on("error", (err) => {
   process.exit(1);
 });
 server.listen(port, host, () => {
-  console.log(`serving http://${host}:${port}/ (built page) and http://${host}:${port}/src/ (sources)`);
+  console.log(`serving http://${host}:${port}/ (the staged site; try /rally) and http://${host}:${port}/src/ (sources)`);
   if (!watching) return;
   let timer = null;
   watch(src, { recursive: true }, (_, file) => {

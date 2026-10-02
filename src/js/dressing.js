@@ -1,37 +1,34 @@
 // The one set-dressing kit every scene draws from. `KIT` pieces are voxel functions on a 1/16 grid, each
-// writing through `box` and `put` into the three layers: general (`lanternPost`, `crate`, `coalCrate`,
-// `barrel`, `cart`, `rails`, `banner`, `gauge`, `rubble`, `sack`, `bracket`, `hanging`, `bulb`), garage
-// (`toolWall`, `workbench`, `tireRack`, `oilDrum`, `checkerMat`), lab (`die`, `flaskBench`, `terminal`,
-// `chalkboard`), rally (`tireStack`, `flag`, `cone`, `barrier`, `fuelPump`, `startLights`, the `pennant`
-// string), mine (`pickRack`, `dynamiteCrate`, `oreHeap`), the mirror (`monolith`, `runeStone`), lightning
-// (`coil`, `boards`), plus `bench`, `vine` and `banner(v)` carrying each cave's emblem from
-// `hubModels.SIGN_ICONS`.
+// writing through `box` and `put` into separate solid, hanging, decorative glow and lantern glow layers: general (`lanternPost`, `crate`, `coalCrate`,
+// `barrel`, `cart`, `banner`, `gauge`, `rubble`, `bracket`, `hanging`, `bulb`), lab (`die`,
+// `flaskBench`, `terminal`, `chalkboard`), the mirror (`monolith`, `runeStone`), lightning (`coil`,
+// `boards`), plus `bench`, `vine` and `banner(v)` carrying each cave's emblem from `hubModels.SIGN_ICONS`.
 //
 // `set()` places pieces by quarter turns (`put`), strings sagging cables with lamps (`cable`) and `build`s
-// everything placed into one `solid`, one `hang` and one emissive `glow` mesh plus the `lights` its lanterns
-// cast; lamps hung by `cable` bake into `swing` and `swingGlow`, which the wind rocks. Lantern glass (amber,
+// everything placed into one `solid`, one `hang`, decorative `glow` and lantern `lampGlow` mesh plus the `lights` its lanterns
+// cast; lamps hung by `cable` bake into swinging body and glow meshes. Lantern glass (amber,
 // teal, green, red) is the variant and sets the light's colour in `LIGHT_RGB`. `nodes(baked, opts)` makes a
 // baked set's nodes. A theme's `inside` list and `ceiling` lamp runs in scene-hub.js furnish the room behind
-// a mouth from the garage pieces.
+// a mouth from the kit's pieces.
 //
 // Beyond sets: `palm(v)` three swaying cartoon palm meshes (not voxels) placed as their own nodes, `islet(v)` the terraced sea stacks on the horizon (variant 1 has a sea arch), `motes(opts)` a
 // fixed field of glowing dust that wraps round the view (`update(elapsed, x, z)`), `flock(opts)` one
 // instanced batch of wheeling gulls and `fleet(opts)` log rafts on the sea, each with `update(elapsed)`.
 //
-// A dressed area costs three draws: bake it once and memoise it (the hub per island, the caves per page).
+// Bake each dressed area once and memoise it (the hub per island, the caves per page).
 // Only `solid` collides.
 (() => {
   "use strict";
   const BL = window.BL = window.BL || {};
   const { voxelFaces, noShadow, merge } = BL.models;
   const { mulberry32, hexToRgb } = BL.math;
+  const BANANA_ART = BL.hubModels.AMMO_BANANA;
   // Set dressing for every scene from one voxel kit. Pieces are authored once as integer voxel lists; a set places
-  // them by quarter turns on the kit's grid and bakes every placed voxel into one mesh per layer, so a dressed
-  // area of posts, crates, carts, cables and lanterns costs three draws however much stands in it, and faces
+  // them by quarter turns on the kit's grid and bakes every placed voxel into one mesh per layer, so faces
   // where two pieces touch are never emitted. Layers: `solid` (stands on the ground, collides), `hang` (cables,
-  // arms, cloth, frames: no collision) and `glow` (lantern glass, bolts, ore glints: emissive, no shadow).
+  // arms, cloth, frames: no collision), `glow` (bolts and ore glints) and `lampGlow` (lantern glass).
   const U = 1 / 16;
-  const SOLID = 0, HANG = 1, GLOW = 2;
+  const SOLID = 0, HANG = 1, GLOW = 2, LAMP_GLOW = 3;
   const PALETTE = [
     "#8a5a32", "#a8703e", "#5c3a1e", "#43291a", // 0 wood, 1 wood light, 2 wood dark, 3 plank gap
     "#4a4d52", "#2c2e33", "#6f737a", // 4 iron, 5 iron dark, 6 iron light
@@ -43,16 +40,17 @@
     "#6d6a66", "#85817b", "#56534f", "#6d8a3a", "#86a24a", // 20 stone, 21 stone light, 22 stone dark, 23 moss, 24 moss light
     "#b89a68", "#9a7f52", // 25 burlap, 26 burlap dark
     "#7fb23d", "#9ccc4a", "#5f9632", // 27 grass, 28 grass tip, 29 grass dark
-    "#7ff5e6", "#7dff96", "#ff5a46", "#ffb43a", // 30 teal glass, 31 green glass, 32 red lamp, 33 amber lamp
-    "#f2efe8", "#1b1b1e", "#ff7a1f", "#2f4a3a", "#e6eee4", // 34 white paint, 35 rubber, 36 cone orange, 37 chalkboard, 38 chalk
-    "#141816", "#46ff72", "#b9bec6", "#c4302b", "#c77a3a", "#ffcf3a", "#c08cff", // 39 obsidian, 40 glyph, 41 chrome, 42 dynamite, 43 copper, 44 gold, 45 violet glass
-    "#c8322e", "#3a6fd8", "#1f6f6a", "#6a4424", // 46 red paint, 47 blue paint, 48 teal cloth, 49 brown cloth
-    "#9a7148", "#7a5634", "#4fae3a", "#6fcf4a", "#3a8a2c", "#6b4a26", // 50 palm trunk, 51 trunk dark, 52 frond, 53 frond light, 54 frond dark, 55 coconut
-    "#f5d142", "#4f9a38", // 56 banana, 57 vine
-    "#e9d7a0", "#d8c184", // 58 sand, 59 sand dark
-    "#d9a441", "#5a3a1a" // 60 leopard tan, 61 leopard spot
+    "#7ff5e6", "#7dff96", "#ff5a46", // 30 teal glass, 31 green glass, 32 red lamp
+    "#f2efe8", "#2f4a3a", "#e6eee4", // 33 white paint, 34 chalkboard, 35 chalk
+    "#141816", "#46ff72", "#b9bec6", "#c77a3a", "#c08cff", // 36 obsidian, 37 glyph, 38 chrome, 39 copper, 40 violet glass
+    "#1f6f6a", "#6a4424", // 41 teal cloth, 42 brown cloth
+    "#9a7148", "#7a5634", "#4fae3a", "#6fcf4a", "#3a8a2c", "#6b4a26", // 43 palm trunk, 44 trunk dark, 45 frond, 46 frond light, 47 frond dark, 48 coconut
+    "#f5d142", "#4f9a38", // 49 banana, 50 vine
+    "#e9d7a0", "#d8c184", // 51 sand, 52 sand dark
+    "#d9a441", "#5a3a1a", // 53 leopard tan, 54 leopard spot
+    BANANA_ART.ink.D, BANANA_ART.ink.Y, BANANA_ART.ink.G // 55-57 ammo banana outline, fruit, stem
   ];
-  const EMISSIVE = { 9: 1, 10: 1, 11: 0.9, 30: 1, 31: 1, 32: 1, 33: 1, 40: 1, 44: 0.8, 45: 1 };
+  const EMISSIVE = { 9: 1, 10: 1, 11: 0.9, 30: 1, 31: 1, 32: 1, 37: 1, 40: 1 };
   // Lantern glass by variant (amber, teal, green, red) and the light each casts; the fifth is a bolt's yellow.
   const GLASS = [9, 30, 31, 32];
   const LIGHT_RGB = [[1, 0.7, 0.36], [0.45, 1, 0.92], [0.5, 1, 0.55], [1, 0.38, 0.3], [1, 0.9, 0.35]];
@@ -64,7 +62,7 @@
   const BOLT = ["...##", "..##.", ".##..", "#####", "..##.", ".##..", "##..."];
   // A piece is three flat lists of x, y, z, colour per layer, built by its author through `put`.
   const author = (build) => {
-    const layers = [[], [], []];
+    const layers = [[], [], [], []];
     const put = (layer, x, y, z, c) => layers[layer].push(x, y, z, c);
     const box = (layer, x0, x1, y0, y1, z0, z1, color) => {
       for (let x = x0; x <= x1; x++) for (let y = y0; y <= y1; y++) for (let z = z0; z <= z1; z++) {
@@ -80,7 +78,7 @@
     box(HANG, cx - 1, cx, top + 1, top + 2, cz - 1, cz, 5);
     box(HANG, cx - 3, cx + 2, top, top, cz - 3, cz + 2, 5);
     for (const [x, z] of [[cx - 3, cz - 3], [cx + 2, cz - 3], [cx - 3, cz + 2], [cx + 2, cz + 2]]) box(HANG, x, x, top - 7, top - 1, z, z, 5);
-    box(GLOW, cx - 2, cx + 1, top - 7, top - 1, cz - 2, cz + 1, (x, y) => y === top - 4 && glass === 9 ? 10 : glass);
+    box(LAMP_GLOW, cx - 2, cx + 1, top - 7, top - 1, cz - 2, cz + 1, (x, y) => y === top - 4 && glass === 9 ? 10 : glass);
     box(HANG, cx - 3, cx + 2, top - 8, top - 8, cz - 3, cz + 2, 5);
     box(HANG, cx - 1, cx, top - 9, top - 9, cz - 1, cz, 4);
   };
@@ -98,10 +96,6 @@
       if (d <= r) fn(cx + x, y, cz + z, d);
     }
   };
-  // Pip blocks on an eight-cell die face, by value.
-  const PIPS = [[], [[-1, -1]], [[-3, -3], [1, 1]], [[-3, -3], [-1, -1], [1, 1]], [[-3, -3], [1, -3], [-3, 1], [1, 1]],
-    [[-3, -3], [1, -3], [-3, 1], [1, 1], [-1, -1]], [[-3, -3], [1, -3], [-3, 1], [1, 1], [-3, -1], [1, -1]]];
-  const pipAt = (value, a, b) => PIPS[value].some(([p, q]) => a >= p && a <= p + 1 && b >= q && b <= q + 1);
   const plank = (x, y, z, lo, hi, axis) => {
     const t = axis === 0 ? x : axis === 1 ? y : z;
     return (t - lo) % 4 === 3 && t !== hi ? 3 : ((t - lo) >> 2) & 1 ? 1 : 0;
@@ -165,82 +159,47 @@
         if (d <= 3.2) put(SOLID, x, y, wz, d < 1.2 ? 6 : 5);
       }
     }),
-    rails: () => author((put, box) => {
-      for (let z = -24; z < 24; z += 6) box(SOLID, -10, 9, 0, 0, z, z + 2, 2);
-      box(SOLID, -7, -6, 1, 1, -24, 23, 6);
-      box(SOLID, 5, 6, 1, 1, -24, 23, 6);
-    }),
-    // A cave's standard: 0 bolt, 1 die, 2 chequered, 3 pick, 4 glyph, 5 banana.
+    // A cave's standard: 0 bolt, 1 die, 2 glyph, 3 banana.
     banner: (v) => author((put, box) => {
-      const CLOTH = [14, 48, 35, 49, 39, 49][v], EDGE = [15, 34, 34, 2, 40, 18][v];
-      const EMBLEM = [["bolt", 18], ["die", 34], null, ["pick", 21], ["glyph", 40], ["banana", 56]][v];
+      const CLOTH = [14, 41, 36, 42][v], EDGE = [15, 33, 37, 18][v];
+      const EMBLEM = [["bolt", 18], ["die", 33], ["glyph", 37], null][v];
       box(SOLID, -3, 2, 0, 1, -3, 2, 2);
       box(SOLID, -1, 0, 2, 45, -1, 0, 2);
-      box(SOLID, -1, 0, 46, 47, -1, 0, v === 4 ? 40 : 6);
+      box(SOLID, -1, 0, 46, 47, -1, 0, v === 2 ? 37 : 6);
       box(HANG, -9, 8, 43, 44, -1, 0, 0);
       for (let x = -8; x <= 7; x++) {
         const bottom = 14 + ((x * 7) % 3 + 3) % 3 * 2;
-        for (let y = bottom; y <= 42; y++) put(HANG, x, y, 1, x === -8 || x === 7 ? EDGE : v === 2 ? ((x + 8 >> 2) + (y >> 2) & 1 ? 34 : 35) : CLOTH);
+        for (let y = bottom; y <= 42; y++) put(HANG, x, y, 1, x === -8 || x === 7 ? EDGE : CLOTH);
       }
-      if (EMBLEM) icon(put, v === 4 ? GLOW : HANG, ICONS[EMBLEM[0]], -5, 22, 2, 2, EMBLEM[1]);
-    }),
-    // Ooga Rally: a stack of three tyres, the top ring of each striped.
-    tireStack: (v) => author((put) => {
-      for (let t = 0; t < 3; t++) for (let y = t * 3; y < t * 3 + 3; y++) disc((x, yy, z, d) => {
-        if (d < 2.3) return;
-        put(SOLID, x + (t & 1), yy, z, yy === t * 3 + 2 && d > 3.6 && d < 4.6 ? (v & 1 ? 46 : 34) : 35);
-      }, 5.3, y);
-    }),
-    flag: (v) => author((put, box) => {
-      box(SOLID, -2, 1, 0, 1, -2, 1, 5);
-      box(SOLID, -1, 0, 2, 49, -1, 0, 6);
-      box(SOLID, -1, 0, 50, 51, -1, 0, 44);
-      for (let x = 1; x <= 18; x++) for (let y = 34; y <= 47; y++) {
-        const z = Math.round(Math.sin(x * 0.45 + v) * 1.3);
-        put(HANG, x, y - Math.floor(x / 6), z, v === 1 ? (y > 40 ? 46 : 18) : ((x >> 1) + (y >> 1)) & 1 ? 34 : 35);
+      if (EMBLEM) icon(put, v === 2 ? GLOW : HANG, ICONS[EMBLEM[0]], -5, 22, 2, 2, EMBLEM[1]);
+      if (v === 3) for (let row = 0; row < 15; row++) for (let col = 0; col < 15; col++) {
+        const ink = BANANA_ART.rows[Math.floor(row * 9 / 15)][Math.floor(col * 9 / 15)];
+        if (ink !== ".") put(HANG, col - 7, 36 - row, 2, ink === "D" ? 55 : ink === "Y" ? 56 : 57);
       }
-    }),
-    cone: () => author((put, box) => {
-      box(SOLID, -4, 3, 0, 0, -4, 3, 35);
-      for (let y = 1; y <= 11; y++) {
-        const h = Math.max(0, Math.round(3 - y * 0.27));
-        box(SOLID, -h - 1, h, y, y, -h - 1, h, y >= 5 && y <= 7 ? 34 : 36);
-      }
-    }),
-    barrier: (v) => author((put, box) => box(SOLID, -12, 11, 0, 7, -2, 1, (x, y) => y === 0 ? 5 : ((x + 12 >> 2) + v) & 1 ? 46 : 34)),
-    fuelPump: () => author((put, box) => {
-      box(SOLID, -5, 4, 0, 1, -4, 3, 5);
-      box(SOLID, -4, 3, 2, 19, -3, 2, (x, y) => y === 11 || y === 12 ? 34 : 46);
-      box(SOLID, -5, 4, 20, 22, -4, 3, 34);
-      box(GLOW, -2, 1, 14, 17, 3, 3, 33);
-      box(SOLID, 4, 4, 8, 13, -1, 0, 41);
-      box(SOLID, 5, 5, 3, 12, 0, 0, 35);
-      box(SOLID, 5, 7, 3, 3, 0, 0, 35);
-    }),
-    startLights: () => author((put, box) => {
-      box(SOLID, -3, 2, 0, 1, -3, 2, 5);
-      box(SOLID, -1, 0, 2, 31, -1, 0, 5);
-      box(SOLID, -3, 2, 32, 49, -2, 1, 35);
-      for (const [y, c] of [[45, 32], [40, 33], [35, 31]]) box(GLOW, -2, 1, y, y + 2, 2, 2, c);
     }),
     // EntropyLab: a big die, a bench of glowing flasks, a terminal, a chalkboard of scribbles.
-    die: (v) => author((put) => {
+    die: () => author((put) => {
       for (let x = -4; x <= 3; x++) for (let y = 0; y <= 7; y++) for (let z = -4; z <= 3; z++) {
         const ex = x === -4 || x === 3, ey = y === 0 || y === 7, ez = z === -4 || z === 3;
         if (!(ex || ey || ez) || ex + ey + ez === 3) continue;
-        const face = ez ? (z > 0 ? v % 6 + 1 : 6 - v % 6) : ex ? (x > 0 ? (v + 1) % 6 + 1 : 6 - (v + 1) % 6) : (y > 0 ? (v + 2) % 6 + 1 : 6 - (v + 2) % 6);
-        const a = ex ? z : x, b = ey ? z : y - 4;
-        put(SOLID, x, y, z, ex + ey + ez === 1 && pipAt(face, a, b) ? 35 : 34);
+        put(SOLID, x, y, z, 33);
       }
     }),
     flaskBench: (v) => author((put, box) => {
       box(SOLID, -10, 9, 11, 12, -5, 4, 0);
       for (const [x, z] of [[-10, -5], [8, -5], [-10, 3], [8, 3]]) box(SOLID, x, x + 1, 0, 10, z, z + 1, 2);
       box(SOLID, -9, 8, 3, 3, -4, 3, 1);
-      const COLORS = [30, 31, 45];
+      const COLORS = [30, 31, 40];
       [[-7, -1], [-2, 1], [3, -2]].forEach(([cx, cz], i) => {
-        for (let y = 13; y <= 17; y++) disc((x, yy, z) => put(GLOW, x, yy, z, COLORS[(i + v) % 3]), 2.6 - Math.abs(y - 15) * 0.5, y, cx, cz);
-        box(SOLID, cx - 1, cx, 18, 20, cz - 1, cz, 34);
+        const fill = [14, 15, 13][i];
+        for (let y = 13; y <= fill; y++) disc((x, yy, z) => put(GLOW, x, yy, z, COLORS[(i + v) % 3]), y === 13 ? 1.6 : 2.1, y, cx, cz);
+        for (let y = 13; y <= 17; y++) {
+          const radius = 2.6 - Math.abs(y - 15) * 0.5;
+          disc((x, yy, z, d) => {
+            if (d > radius - 0.8 && (y === 17 || x === cx - 2 || z === cz + 2)) put(HANG, x, yy, z, x === cx - 2 ? 35 : 38);
+          }, radius, y, cx, cz);
+        }
+        box(SOLID, cx - 1, cx, 18, 20, cz - 1, cz, 33);
         box(SOLID, cx - 1, cx, 21, 21, cz - 1, cz, 0);
       });
       box(SOLID, 5, 9, 13, 14, 1, 3, 2);
@@ -249,61 +208,39 @@
     terminal: () => author((put, box) => {
       crateShell(box, 12, false, 1);
       box(SOLID, -6, 5, 12, 23, -5, 4, (x, y) => y === 12 || y === 23 ? 5 : 6);
-      for (let y = 14; y <= 21; y++) box(y & 1 ? GLOW : SOLID, -4, 3, y, y, 5, 5, y & 1 ? 31 : 39);
+      for (let y = 14; y <= 21; y++) box(y & 1 ? GLOW : SOLID, -4, 3, y, y, 5, 5, y & 1 ? 31 : 36);
       box(SOLID, -5, 4, 12, 12, 6, 8, 5);
     }),
-    chalkboard: (v) => author((put, box) => {
-      for (const x of [-9, 8]) for (let y = 0; y <= 28; y++) put(SOLID, x, y, -(y >> 3), 2);
-      box(SOLID, -8, 7, 10, 25, -2, -2, (x, y) => x === -8 || x === 7 || y === 10 || y === 25 ? 2 : 37);
-      const rand = mulberry32(61 + v);
-      for (let y = 12; y <= 23; y += 3) for (let x = -6; x <= 5;) {
-        const run = 1 + Math.floor(rand() * 4);
-        if (rand() < 0.7) for (let k = 0; k < run && x + k <= 5; k++) put(SOLID, x + k, y, -1, 38);
-        x += run + 1;
+    chalkboard: () => author((put, box) => {
+      for (let y = 0; y <= 29; y++) {
+        const z = Math.round(-2 - y * 3 / 29);
+        box(SOLID, -1, 0, y, y, z, z + 1, 2);
       }
-    }),
-    // Ooga Mine: a rack of picks, a crate of dynamite, a heap of ore that glitters.
-    pickRack: () => author((put, box) => {
-      box(SOLID, -10, -9, 0, 22, -1, 0, 2);
-      box(SOLID, 8, 9, 0, 22, -1, 0, 2);
-      box(SOLID, -10, 9, 19, 20, -1, 0, 0);
-      for (const x0 of [-7, -1, 5]) {
-        for (let y = 0; y <= 17; y++) put(SOLID, x0 + (y >> 3), y, 2, 0);
-        for (let k = -4; k <= 4; k++) put(SOLID, x0 + 2 + k, 18 - Math.round(k * k * 0.12), 2, 6);
+      for (const side of [-1, 1]) for (let y = 0; y <= 17; y++) {
+        const x = side < 0 ? Math.round(-1 - 8 * (1 - y / 17)) : Math.round(8 * (1 - y / 17));
+        const z = Math.round(-10 + y * 6 / 17);
+        box(SOLID, x, x + 1, y, y, z, z + 1, 2);
       }
-    }),
-    dynamiteCrate: () => author((put, box) => {
-      crateShell(box, 9, true, 0);
-      for (let x = -4; x <= 2; x += 2) for (let z = -4; z <= 2; z += 2) {
-        box(SOLID, x, x + 1, 8, 12 + ((x + z) & 2), z, z + 1, 42);
-        put(HANG, x, 13 + ((x + z) & 2), z, 7);
-      }
-    }),
-    oreHeap: (v) => author((put) => {
-      const rand = mulberry32(333 + v);
-      for (let x = -8; x <= 7; x++) for (let z = -8; z <= 7; z++) {
-        const d = Math.hypot(x + 0.5, z + 0.5), h = Math.floor(6 - d * 0.75 + rand() * 1.5);
-        for (let y = 0; y < h; y++) {
-          const top = y === h - 1, gem = top && rand() < 0.12;
-          put(gem ? GLOW : SOLID, x, y, z, gem ? (rand() < 0.6 ? 44 : 30) : rand() < 0.3 ? 21 : rand() < 0.3 ? 22 : 20);
-        }
-      }
+      box(SOLID, -13, 12, 10, 26, -2, -2, (x, y) => x === -13 || x === 12 || y === 10 || y === 26 ? 2 : 34);
+      box(SOLID, -14, 13, 9, 9, -2, 2, 1);
+      box(SOLID, -10, -6, 10, 11, 1, 2, 5);
+      box(SOLID, 6, 9, 10, 10, 1, 1, 35);
     }),
     // The mirror cave: black monoliths running with green glyphs, and rune stones.
     monolith: (v) => author((put, box) => {
-      box(SOLID, -4, 3, 0, 44, -2, 1, 39);
-      box(SOLID, -3, 2, 45, 47, -1, 0, 39);
+      box(SOLID, -4, 3, 0, 44, -2, 1, 36);
+      box(SOLID, -3, 2, 45, 47, -1, 0, 36);
       const rand = mulberry32(17 + v);
-      for (let y = 3; y <= 42; y++) for (let x = -3; x <= 2; x++) if (y % 7 < 5 && rand() < 0.42) put(GLOW, x, y, 2, 40);
+      for (let y = 3; y <= 42; y++) for (let x = -3; x <= 2; x++) if (y % 7 < 5 && rand() < 0.42) put(GLOW, x, y, 2, 37);
     }),
     runeStone: (v) => author((put, box) => {
       box(SOLID, -6, 5, 0, 10, -4, 3, (x, y) => y === 10 ? 21 : 20);
-      icon(put, GLOW, ICONS.glyph, -3, 2, 4, 1, 40);
+      icon(put, GLOW, ICONS.glyph, -3, 2, 4, 1, 37);
     }),
     // The Lightning Factory: a coil with a glowing crown and arcs leaping from it.
     coil: () => author((put, box) => {
       box(SOLID, -5, 4, 0, 3, -5, 4, (x, y) => y === 3 ? 6 : 5);
-      for (let y = 4; y <= 30; y++) disc((x, yy, z) => put(SOLID, x, yy, z, y % 3 === 0 ? 43 : 5), y % 3 === 0 ? 3.2 : 2.3, y);
+      for (let y = 4; y <= 30; y++) disc((x, yy, z) => put(SOLID, x, yy, z, y % 3 === 0 ? 39 : 5), y % 3 === 0 ? 3.2 : 2.3, y);
       for (let y = 31; y <= 37; y++) disc((x, yy, z) => put(GLOW, x, yy, z, 11), 3.6 - Math.abs(y - 34) * 0.9, y);
       const rand = mulberry32(3);
       for (let arc = 0; arc < 3; arc++) {
@@ -314,50 +251,6 @@
           put(GLOW, x + dx * 3, y, z + dz * 3, 11);
         }
       }
-    }),
-    // Ooga Rally's garage: a pegboard of tools, a workbench with a vice, a tyre rack, an oil drum, a chequered
-    // mat for the kart to stand on.
-    toolWall: () => author((put, box) => {
-      box(SOLID, -16, 15, 0, 40, -1, 0, (x, y) => x === -16 || x === 15 || y === 0 || y === 40 ? 2 : (x + y) % 4 === 0 ? 3 : 1);
-      // A wrench, a hammer, a saw and a screwdriver hung in outline.
-      const hang = (x0, y0, shape, c) => shape.forEach((row, r) => { for (let i = 0; i < row.length; i++) if (row[i] === "#") put(SOLID, x0 + i, y0 - r, 1, c); });
-      hang(-13, 34, ["#.#", "###", ".#.", ".#.", ".#.", ".#.", ".#.", ".#.", "###", "#.#"], 41);
-      hang(-7, 34, ["#####", "#####", "..#..", "..#..", "..#..", "..#..", "..#..", "..#..", "..#.."], 5);
-      hang(-1, 32, ["########", "#######.", "######..", "#####...", "#.......", "##......"], 6);
-      hang(9, 34, [".#.", ".#.", ".#.", ".#.", "###", "###", "###"], 46);
-      hang(-12, 18, ["########################"], 2);
-      for (let x = -12; x < 12; x += 4) box(SOLID, x, x + 2, 19, 22, 1, 2, [46, 47, 18, 17, 34, 36][((x + 12) >> 2) % 6]);
-    }),
-    workbench: () => author((put, box) => {
-      box(SOLID, -14, 13, 13, 15, -5, 4, (x, y) => y === 15 ? 1 : 0);
-      for (const [x, z] of [[-14, -5], [12, -5], [-14, 3], [12, 3]]) box(SOLID, x, x + 1, 0, 12, z, z + 1, 2);
-      box(SOLID, -13, 12, 4, 4, -4, 3, 0);
-      box(SOLID, 7, 11, 16, 19, -2, 1, 5);
-      box(SOLID, 8, 10, 20, 20, -1, 0, 6);
-      box(SOLID, -10, -6, 16, 16, -3, -1, 46);
-      box(SOLID, -3, 2, 16, 17, 0, 2, 41);
-    }),
-    tireRack: () => author((put, box) => {
-      for (const x of [-12, 11]) box(SOLID, x, x, 0, 38, -4, -3, 5);
-      for (const y of [12, 26]) box(SOLID, -12, 11, y, y, -4, 3, 6);
-      for (const [y0, n] of [[13, 3], [27, 3], [0, 2]]) for (let t = 0; t < n; t++) {
-        const cx = -8 + t * 8;
-        for (let x = -4; x <= 3; x++) for (let y = 0; y <= 9; y++) {
-          const d = Math.hypot(x + 0.5, y - 4.5);
-          if (d > 5 || d < 2.2) continue;
-          for (let z = -3; z <= 2; z++) put(SOLID, cx + x, y0 + y, z, z === 2 && d > 4 ? 41 : 35);
-        }
-      }
-    }),
-    oilDrum: (v) => author((put) => {
-      for (let y = 0; y < 16; y++) disc((x, yy, z, d) => {
-        if (d < 3.4 && y > 0 && y < 15) return;
-        put(SOLID, x, yy, z, y === 4 || y === 11 ? 5 : y === 15 ? 5 : v ? 47 : 46);
-      }, 4.6, y);
-      put(SOLID, 1, 16, 1, 41);
-    }),
-    checkerMat: () => author((put) => {
-      for (let x = -24; x < 24; x++) for (let z = -32; z < 32; z++) put(SOLID, x, 0, z, ((x >> 3) + (z >> 3)) & 1 ? 34 : 35);
     }),
     // Planks nailed across a sealed mouth: this one is coming soon.
     boards: () => author((put, box) => {
@@ -378,7 +271,7 @@
       for (let k = 0; k < 3; k++) {
         const x = k * 2 + (v & 1), len = 10 + Math.floor(rand() * 18);
         for (let y = 0; y > -len; y--) {
-          put(HANG, x, y, 0, 57);
+          put(HANG, x, y, 0, 50);
           if (-y % 3 === 1) put(HANG, x + ((y & 2) ? 1 : -1), y, 0, rand() < 0.5 ? 23 : 24);
         }
       }
@@ -404,13 +297,6 @@
         box(SOLID, x0, x0 + w, y0, y0 + h, z0, z0 + d, (x, y) => y === y0 + h && rand() < 0.55 ? (rand() < 0.5 ? 23 : 24) : rand() < 0.25 ? 21 : rand() < 0.2 ? 22 : 20);
       }
     }),
-    sack: (v) => author((put) => {
-      for (let x = -5; x <= 4; x++) for (let y = 0; y <= 10; y++) for (let z = -4; z <= 3; z++) {
-        const e = ((x + 0.5) / 5) ** 2 + ((y - 4.5) / 5.8) ** 2 + ((z + 0.5) / 4) ** 2;
-        if (e <= 1 && e > 0.55) put(SOLID, x, y, z, (x + y + v) % 5 === 0 ? 26 : 25);
-      }
-      for (let y = 10; y <= 12; y++) put(SOLID, -1, y, -1, y === 10 ? 7 : 26);
-    }),
     // A plain pole the cables start from on walls; it carries a small lantern of its own.
     bracket: () => author((put, box) => {
       box(HANG, -1, 0, 0, 1, -1, 6, 2);
@@ -431,7 +317,7 @@
   const pickOf = (piece) => {
     if (piece.pick) return piece.pick;
     let x0 = Infinity, y0 = Infinity, z0 = Infinity, x1 = -Infinity, y1 = -Infinity, z1 = -Infinity;
-    for (let layer = 0; layer < 3; layer++) {
+    for (let layer = 0; layer < 4; layer++) {
       const list = piece[layer];
       for (let i = 0; i < list.length; i += 4) {
         x0 = Math.min(x0, list[i]); x1 = Math.max(x1, list[i] + 1);
@@ -444,19 +330,61 @@
   };
   // Pieces drawn as cartoon timber instead of voxels: the hub's crate and barrel, scaled to the piece's voxel
   // footprint and turned with it, baked into the set's solid mesh so they still collide and cost no draw of their
-  // own. `keep` names the voxels still written (a coal crate's coal and glints, a dynamite crate's sticks and
-  // fuses); the voxel piece still sets the pick sphere.
+  // own. `keep` names the voxels still written (a coal crate's coal and glints); the voxel piece still sets the
+  // pick sphere.
   const filled = (layer, x, y, z) => layer !== SOLID || (y >= 8 && x > -6 && x < 5 && z > -6 && z < 5);
   const CRATE_SCALE = 0.75 / 0.9, OPEN_SCALE = 0.5625 / 0.9;
   const MESHES = {
+    die: { build: (variant) => {
+      const geo = BL.models.die({ size: 0.5, variant });
+      for (let i = 1; i < geo.verts.length; i += 3) geo.verts[i] += 0.25;
+      return geo;
+    }, variants: new Map(), scale: [1, 1, 1], keep: null },
     crate: { build: () => BL.hubModels.woodCrate(0), scale: [CRATE_SCALE, CRATE_SCALE, CRATE_SCALE], keep: null },
     coalCrate: { build: () => BL.hubModels.woodCrate(1), scale: [CRATE_SCALE, OPEN_SCALE, CRATE_SCALE], keep: filled },
-    dynamiteCrate: { build: () => BL.hubModels.woodCrate(1), scale: [CRATE_SCALE, OPEN_SCALE, CRATE_SCALE], keep: filled },
     barrel: { build: () => BL.hubModels.barrel(), scale: [0.8, 1.04, 0.8], keep: null }
   };
+  const stepBounds = new Map();
+  const boundsForStep = (kind, variant) => {
+    const key = `${kind}:${variant}`;
+    if (stepBounds.has(key)) return stepBounds.get(key);
+    const piece = pieceOf(kind, variant), mesh = MESHES[kind];
+    const box = [Infinity, Infinity, Infinity, -Infinity, -Infinity, -Infinity];
+    const solid = piece[SOLID];
+    for (let i = 0; i < solid.length; i += 4) {
+      const x = solid[i], y = solid[i + 1], z = solid[i + 2];
+      if (mesh && (!mesh.keep || !mesh.keep(SOLID, x, y, z))) continue;
+      box[0] = Math.min(box[0], x * U); box[1] = Math.min(box[1], y * U); box[2] = Math.min(box[2], z * U);
+      box[3] = Math.max(box[3], (x + 1) * U); box[4] = Math.max(box[4], (y + 1) * U); box[5] = Math.max(box[5], (z + 1) * U);
+    }
+    if (mesh) {
+      let geometry = mesh.variants ? mesh.variants.get(variant) : mesh.geometry;
+      if (!geometry) {
+        geometry = mesh.build(variant);
+        if (mesh.variants) mesh.variants.set(variant, geometry);
+        else mesh.geometry = geometry;
+      }
+      const [sx, sy, sz] = mesh.scale;
+      for (let i = 0; i < geometry.verts.length; i += 3) {
+        const x = geometry.verts[i] * sx, y = geometry.verts[i + 1] * sy, z = geometry.verts[i + 2] * sz;
+        box[0] = Math.min(box[0], x); box[1] = Math.min(box[1], y); box[2] = Math.min(box[2], z);
+        box[3] = Math.max(box[3], x); box[4] = Math.max(box[4], y); box[5] = Math.max(box[5], z);
+      }
+    }
+    const result = Number.isFinite(box[0]) && box[4] - box[1] <= 1.16 && box[1] >= -0.01 ? box : null;
+    stepBounds.set(key, result);
+    return result;
+  };
   // A mesh piece's geometry scaled, turned by quarter turns q and moved to (ox, oy, oz) in kit cells.
-  const meshAt = (kind, ox, oy, oz, q) => {
-    const m = MESHES[kind], src = m.geometry || (m.geometry = m.build()), [sx, sy, sz] = m.scale, v = src.verts, out = new Array(v.length);
+  const meshAt = (kind, ox, oy, oz, q, variant) => {
+    const m = MESHES[kind];
+    let src = m.variants ? m.variants.get(variant) : m.geometry;
+    if (!src) {
+      src = m.build(variant);
+      if (m.variants) m.variants.set(variant, src);
+      else m.geometry = src;
+    }
+    const [sx, sy, sz] = m.scale, v = src.verts, out = new Array(v.length);
     for (let i = 0; i < v.length; i += 3) {
       const x = v[i] * sx, z = v[i + 2] * sz;
       out[i] = ox * U + (q === 0 ? x : q === 1 ? z : q === 2 ? -x : -z);
@@ -468,11 +396,12 @@
   const set = () => {
     // Mesh pieces placed so far: kind, then the cell origin and quarter turns.
     const meshes = [];
-    // Layers 3 and 4 hold what hangs from a cable (lantern bodies and their glass), baked apart so the wind
-    // can swing them without swinging the cable or the posts.
-    const layers = [new Map(), new Map(), new Map(), new Map(), new Map()], lights = [];
+    // Layers 3 and 4 hold what hangs from a cable (lantern bodies and other glow); 5 and 6 hold lantern glass.
+    // The hanging layers swing without moving the cable or the posts.
+    const layers = [new Map(), new Map(), new Map(), new Map(), new Map(), new Map(), new Map()], lights = [];
     // What was placed, for poking: kind, variant, then the pick sphere's centre x, y, z and radius in metres.
     const picks = [];
+    const steps = [];
     // Each light is x, y, z and its colour's index in LIGHT_RGB.
     const light = (kind, ox, oy, oz, q, variant) => {
       const p = LIGHTS[kind];
@@ -490,15 +419,24 @@
     const put = (kind, x, y, z, turns = 0, variant = 0) => {
       const piece = pieceOf(kind, variant), mesh = MESHES[kind];
       const ox = Math.round(x / U), oy = Math.round(y / U), oz = Math.round(z / U), q = ((turns % 4) + 4) % 4;
-      if (mesh) meshes.push(kind, ox, oy, oz, q);
-      for (let layer = 0; layer < 3; layer++) {
+      const step = boundsForStep(kind, variant);
+      if (step) {
+        const x0 = q & 1 ? step[2] : step[0], x1 = q & 1 ? step[5] : step[3];
+        const z0 = q & 1 ? step[0] : step[2], z1 = q & 1 ? step[3] : step[5];
+        steps.push([(ox * U) + (q === 2 || q === 3 ? -x1 : x0), (oy * U) + step[1],
+          (oz * U) + (q === 1 || q === 2 ? -z1 : z0),
+          (ox * U) + (q === 2 || q === 3 ? -x0 : x1), (oy * U) + step[4],
+          (oz * U) + (q === 1 || q === 2 ? -z0 : z1)]);
+      }
+      if (mesh) meshes.push(kind, ox, oy, oz, q, variant);
+      for (let layer = 0; layer < 4; layer++) {
         const list = piece[layer];
         for (let i = 0; i < list.length; i += 4) {
           const lx = list[i], lz = list[i + 2];
           if (mesh && (!mesh.keep || !mesh.keep(layer, lx, list[i + 1], lz))) continue;
           const rx = q === 0 ? lx : q === 1 ? lz : q === 2 ? -lx - 1 : -lz - 1;
           const rz = q === 0 ? lz : q === 1 ? -lx - 1 : q === 2 ? -lz - 1 : lx;
-          write(layer, ox + rx, oy + list[i + 1], oz + rz, list[i + 3]);
+          write(layer === LAMP_GLOW ? 5 : layer, ox + rx, oy + list[i + 1], oz + rz, list[i + 3]);
         }
       }
       light(kind, ox, oy, oz, q, variant);
@@ -507,7 +445,7 @@
       return set;
     };
     // A sagging cable of 6-connected voxels between two points, banded every metre, with lanterns hung at `lamps`.
-    // Pennants cycle their colours along the cable; lanterns and bulbs all take the one glass `variant`.
+    // Lanterns and bulbs all take the one glass `variant`.
     const cable = (ax, ay, az, bx, by, bz, sag, lamps = [], lamp = "hanging", variant = 0) => {
       const steps = Math.ceil(Math.hypot(bx - ax, by - ay, bz - az) / U * 2);
       let px = Math.round(ax / U), py = Math.round(ay / U), pz = Math.round(az / U), run = 0;
@@ -525,16 +463,15 @@
           lay(px, py, pz);
         }
       }
-      lamps.forEach((t, n) => {
+      lamps.forEach((t) => {
         const x = ax + (bx - ax) * t, y = ay + (by - ay) * t - sag * 4 * t * (1 - t), z = az + (bz - az) * t;
-        const v = lamp === "pennant" ? n % 5 : variant;
-        const piece = pieceOf(lamp, v);
+        const piece = pieceOf(lamp, variant);
         const ox = Math.round(x / U), oy = Math.round(y / U), oz = Math.round(z / U);
-        for (let layer = 0; layer < 3; layer++) {
-          const list = piece[layer], into = layer === GLOW ? 4 : 3;
+        for (let layer = 0; layer < 4; layer++) {
+          const list = piece[layer], into = layer === LAMP_GLOW ? 6 : layer === GLOW ? 4 : 3;
           for (let i = 0; i < list.length; i += 4) write(into, ox + list[i], oy + list[i + 1], oz + list[i + 2], list[i + 3]);
         }
-        light(lamp, ox, oy, oz, 0, v);
+        light(lamp, ox, oy, oz, 0, variant);
       });
       return set;
     };
@@ -546,25 +483,41 @@
       const emit = (pts, c) => {
         const b = geo.verts.length / 3;
         for (const [x, y, z] of pts) geo.verts.push(x * U, y * U, z * U);
-        geo.faces.push({ i: [b, b + 1, b + 2, b + 3], color: RGB[c], emissive: layer === GLOW || layer === 4 ? EMISSIVE[c] || 0 : 0 });
+        geo.faces.push({ i: [b, b + 1, b + 2, b + 3], color: RGB[c], emissive: layer === GLOW || layer === 4 || layer >= 5 ? EMISSIVE[c] || 0 : 0 });
       };
       voxelFaces((fn) => {
         for (const [k, c] of map) fn(Math.floor(k / 16777216) - 2048, Math.floor(k / 4096) % 4096 - 2048, k % 4096 - 2048, c);
       }, has, emit);
-      if (layer >= 3) geo.swing = 1;
-      return layer === GLOW || layer === 4 ? noShadow(geo) : geo;
+      if (layer === 3 || layer === 4 || layer === 6) geo.swing = 1;
+      return layer === GLOW || layer === 4 || layer >= 5 ? noShadow(geo) : geo;
     };
     const build = () => {
       let solid = bake(SOLID);
       if (meshes.length) {
         const parts = solid ? [solid] : [];
-        for (let i = 0; i < meshes.length; i += 5) parts.push(meshAt(meshes[i], meshes[i + 1], meshes[i + 2], meshes[i + 3], meshes[i + 4]));
+        for (let i = 0; i < meshes.length; i += 6) parts.push(meshAt(meshes[i], meshes[i + 1], meshes[i + 2], meshes[i + 3], meshes[i + 4], meshes[i + 5]));
         solid = merge(...parts);
         meshes.length = 0;
       }
-      const out = { solid, hang: bake(HANG), glow: bake(GLOW), swing: bake(3), swingGlow: bake(4), lights: Float32Array.from(lights), picks: picks.splice(0) };
+      if (solid && steps.length) {
+        solid.gorillaSteps = steps.slice();
+        for (const face of solid.faces) {
+          const vertices = solid.verts;
+          for (const step of steps) {
+            let within = true;
+            for (const index of face.i) {
+              const at = index * 3;
+              if (vertices[at] < step[0] - 1e-6 || vertices[at] > step[3] + 1e-6
+                || vertices[at + 1] < step[1] - 1e-6 || vertices[at + 1] > step[4] + 1e-6
+                || vertices[at + 2] < step[2] - 1e-6 || vertices[at + 2] > step[5] + 1e-6) { within = false; break; }
+            }
+            if (within) { face.gorillaStep = true; break; }
+          }
+        }
+      }
+      const out = { solid, hang: bake(HANG), glow: bake(GLOW), swing: bake(3), swingGlow: bake(4), lampGlow: bake(5), swingLampGlow: bake(6), lights: Float32Array.from(lights), picks: picks.splice(0) };
       for (const layer of layers) layer.clear();
-      lights.length = 0;
+      lights.length = steps.length = 0;
       return out;
     };
     const set = { put, cable, build };
@@ -578,14 +531,7 @@
   KIT.bulb = (v) => author((put, box) => {
     box(HANG, 0, 0, -1, -1, 0, 0, 5);
     box(HANG, -1, 1, -2, -2, -1, 1, 4);
-    box(GLOW, -1, 1, -5, -3, -1, 1, GLASS[v]);
-  });
-  // Bunting: a triangle of cloth under the cable.
-  KIT.pennant = (v) => author((put) => {
-    const color = [46, 18, 47, 17, 34][v];
-    [[-2, 2], [-2, 2], [-1, 1], [-1, 1], [0, 0]].forEach(([a, b], row) => {
-      for (let x = a; x <= b; x++) put(HANG, x, -1 - row, 0, color);
-    });
+    box(LAMP_GLOW, -1, 1, -5, -3, -1, 1, GLASS[v]);
   });
   // Dust in lamplight: a fixed field of glowing motes that drifts and wraps round a moving centre (the view's
   // target), so there is always air to see near the camera and no mote is ever created or dropped. One draw.
@@ -703,7 +649,7 @@
       const h = heightAt(x, z), r = Math.hypot(x - S / 2, z - S / 2) / (S / 2);
       for (let y = 0; y < h; y++) {
         if (v === 1 && Math.abs(x - S / 2) < 4 && y > 2 && y < 11) continue;
-        const color = y < 2 && r > 0.55 ? (rand() < 0.3 ? 59 : 58) : y === h - 1 && h > 4 ? (rand() < 0.3 ? 29 : 27) : y >= h - 3 && rand() < 0.35 ? 23 : rand() < 0.3 ? 21 : rand() < 0.3 ? 22 : 20;
+        const color = y < 2 && r > 0.55 ? (rand() < 0.3 ? 52 : 51) : y === h - 1 && h > 4 ? (rand() < 0.3 ? 29 : 27) : y >= h - 3 && rand() < 0.35 ? 23 : rand() < 0.3 ? 21 : rand() < 0.3 ? 22 : 20;
         grid.set(x, y, z, color + 1);
       }
     }
@@ -712,23 +658,24 @@
     islets[v] = geo;
     return geo;
   };
-  // The nodes for a baked set: solid (for the caller's collision), hang, glow and the two swinging layers. All
+  // The nodes for a baked set: solid (for the caller's collision), hang, decorative glow, lantern glow and swinging layers. All
   // stay out of the sight systems: registering the facades' solids alone cost the hub 140 ms of boot, and dressing
   // needs no outline cue. `glow` sets the lit layers' glow.
   const nodes = (baked, { glow = 0, living = false } = {}) => {
     const out = [];
     const node = (geometry, lit) => geometry && out.push(BL.scene.createNode({ geometry, sightHidden: true, glow: lit ? glow : 0, matrixEmissiveLiving: lit && living }));
     node(baked.solid, false); node(baked.hang, false); node(baked.glow, true); node(baked.swing, false); node(baked.swingGlow, true);
+    node(baked.lampGlow, true); node(baked.swingLampGlow, true);
     return out;
   };
   // A gull: a wide shallow V of wings over a white body; flapping is the instance's own vertical scale.
   KIT.gull = () => author((put) => {
     for (let x = -9; x <= 8; x++) {
       const y = Math.round(Math.abs(x + 0.5) * 0.35);
-      put(SOLID, x, y, 0, Math.abs(x + 0.5) > 6 ? 5 : 34);
-      put(SOLID, x, y, 1, Math.abs(x + 0.5) > 6 ? 5 : 34);
+      put(SOLID, x, y, 0, Math.abs(x + 0.5) > 6 ? 5 : 33);
+      put(SOLID, x, y, 1, Math.abs(x + 0.5) > 6 ? 5 : 33);
     }
-    for (let z = -2; z <= 3; z++) put(SOLID, 0, 0, z, 34);
+    for (let z = -2; z <= 3; z++) put(SOLID, 0, 0, z, 33);
     put(SOLID, 0, 0, 4, 18);
   });
   // An Ooga raft, bow to +z: five round logs side by side, the middle one longest, lashed by three rope bands, a
@@ -736,41 +683,41 @@
   // lower yard, 1 hangs three banana leaves from a trunk-ringed post under a crown with a bunch of bananas, 2 a
   // patched brown hide with a banana on it; 0 and 2 carry a pennant and bananas on deck.
   KIT.boat = (v) => author((put, box) => {
-    const BAND = v === 1 ? 57 : 25, BOW = [0, 1, 2, 1, 0], STERN = [1, 0, 2, 0, 1];
+    const BAND = v === 1 ? 50 : 25, BOW = [-2, 0, 3, 0, -2], STERN = [3, 1, 0, 1, 3];
     // Each log is a 3x3 section with its corners cut; cut ends show light end grain.
     for (let i = 0; i < 5; i++) {
       const cx = -6 + i * 3, z0 = -16 + STERN[i], z1 = 13 + BOW[i];
       for (let z = z0; z <= z1; z++) for (let x = cx - 1; x <= cx + 1; x++) for (let y = 0; y <= 2; y++) {
         const end = z === z0 || z === z1;
         if ((x !== cx && y !== 1) || (x === cx && y === 1 && !end)) continue;
-        put(SOLID, x, y, z, end ? 1 : i & 1 ? 50 : 0);
+        put(SOLID, x, y, z, end ? 1 : i & 1 ? 43 : 0);
       }
     }
     // Rope bands follow the logs' tops and wrap down the outer sides.
-    for (const z of [-12, -11, -5, -4, 8, 9]) {
+    for (const z of [-10, -3, 7]) {
       for (let x = -7; x <= 7; x++) put(SOLID, x, (x + 7) % 3 === 1 ? 3 : 2, z, BAND);
       put(SOLID, -8, 1, z, BAND); put(SOLID, 8, 1, z, BAND);
     }
-    box(SOLID, -1, 1, 2, 45, -1, 1, (x, y) => v === 1 ? (y % 4 === 0 ? 51 : 50) : 2);
-    box(SOLID, -2, 2, 3, 4, -2, 2, BAND);
-    box(SOLID, -10, 9, 40, 41, 2, 3, v === 1 ? 51 : 2);
+    box(SOLID, -1, 0, 2, 45, -1, 0, (x, y) => v === 1 ? (y % 4 === 0 ? 44 : 43) : 2);
+    box(SOLID, -2, 1, 3, 3, -2, 1, BAND);
+    box(SOLID, -9, 8, 40, 40, 2, 2, v === 1 ? 44 : 2);
     if (v === 1) {
       // Three banana leaves hang from the yard, the middle one in front; the side ones splay outward as they fall.
       for (const [cx, bot, z] of [[-5, 16, 2], [5, 16, 2], [0, 13, 3]]) for (let y = bot; y <= 39; y++) {
         const t = (39 - y) / (39 - bot), mid = cx + Math.sign(cx) * Math.round(t * 2);
         const hw = Math.max(0, Math.round(2.8 * Math.sin(Math.PI * (0.12 + 0.88 * t)) - 0.2));
-        for (let x = mid - hw; x <= mid + hw; x++) put(HANG, x, y, z, x === mid ? 53 : hw > 1 && Math.abs(x - mid) === hw ? 54 : 52);
+        for (let x = mid - hw; x <= mid + hw; x++) put(HANG, x, y, z, x === mid ? 46 : hw > 1 && Math.abs(x - mid) === hw ? 47 : 45);
       }
       // A crown of two short leaves over the post, and a bunch of bananas behind it.
       for (const s of [-1, 1]) for (let k = 0; k < 8; k++) {
         const y = 44 + Math.round(k * 0.6);
-        for (const yy of [y, y + 1]) put(HANG, s * (2 + k), yy, 0, yy === y ? 52 : 53);
+        for (const yy of [y, y + 1]) put(HANG, s * (2 + k), yy, 0, yy === y ? 45 : 46);
       }
-      box(SOLID, -1, 1, 31, 35, -4, -2, 56);
-      box(SOLID, 0, 0, 36, 38, -3, -2, 55);
+      box(SOLID, -1, 0, 31, 34, -3, -2, 49);
+      box(SOLID, 0, 0, 35, 36, -2, -2, 48);
       return;
     }
-    box(SOLID, -9, 8, 13, 14, 2, 3, 2);
+    box(SOLID, -9, 8, 13, 13, 2, 2, 2);
     // The hide between the yards: leopard in clean 2x2 spots on a staggered lattice, or patched brown with a banana.
     const BANANA = ["...........s", "..........s.", ".........##.", "#.......###.", "##.....###..", ".#########..", "..#######...", "....###....."];
     for (let y = 15; y <= 39; y++) for (let x = -8; x <= 7; x++) {
@@ -779,16 +726,16 @@
       if (v === 0) {
         const j = Math.floor((y - 15) / 4), sx = x + 10 + (j & 1) * 2, i = Math.floor(sx / 5), h = (i * 2 + j) % 3;
         const lx = sx - i * 5 - 1 - (h === 1 ? 1 : 0), ly = y - 15 - j * 4 - (h === 2 ? 1 : 0);
-        c = lx >= 0 && lx <= 1 && ly >= 0 && ly <= 1 ? 61 : 60;
+        c = lx >= 0 && lx <= 1 && ly >= 0 && ly <= 1 ? 54 : 53;
       } else {
         const ch = y >= 22 && y <= 29 ? BANANA[29 - y][x + 6] : undefined;
-        c = ch === "#" ? 56 : ch === "s" ? 55 : (x <= -4 && y >= 33 && y <= 37) || (x >= 3 && y >= 17 && y <= 20) ? 25 : 49;
+        c = ch === "#" ? 49 : ch === "s" ? 48 : (x <= -4 && y >= 33 && y <= 37) || (x >= 3 && y >= 17 && y <= 20) ? 25 : 42;
       }
       put(HANG, x, y, 2, c);
     }
-    for (let k = 0; k < 6; k++) for (let y = 42 + Math.floor(k / 3); y <= 45 - Math.floor(k / 3); y++) put(HANG, 0, y, 2 + k, 19);
-    box(SOLID, 2, 4, 2, 4, -9, -7, 56);
-    put(SOLID, 3, 5, -8, 55);
+    for (let k = 0; k < 5; k++) for (let y = 42 + Math.floor(k / 3); y <= 44 - Math.floor(k / 3); y++) put(HANG, 0, y, 2 + k, 19);
+    box(SOLID, 2, 3, 2, 3, -9, -8, 49);
+    put(SOLID, 3, 4, -8, 48);
   });
   // Seagulls wheeling round a centre on their own circles, heights and speeds; one instanced draw.
   const instanceField = (geometry, count) => BL.scene.createNode({ geometry, instanceData: new Float32Array(count * 20), instanceCount: count, instanceVersion: 0, fixedInstanceCapacity: true, sightHidden: true });
@@ -828,8 +775,26 @@
       boatGeometry[v] = [baked.solid, baked.hang, baked.glow].filter(Boolean).map(noShadow);
     }
     const boats = spots.map(([r, a, s], i) => {
-      const node = BL.scene.createNode({ scale: { x: s, y: s, z: s }, sightHidden: true });
+      const node = BL.scene.createNode({ scale: { x: s, y: s * 0.85, z: s }, sightHidden: true });
       for (const geometry of boatGeometry[i % 3]) BL.scene.addChild(node, BL.scene.createNode({ geometry, sightHidden: true }));
+      const seated = (i & 1) === 0;
+      const passenger = BL.models.caveman(BL.contributors.traitsFor(`boat-ooga-${i % 2}`));
+      const figure = passenger.root, size = 1 / s, deck = 3 * U;
+      // Horizon rafts are enlarged scenery; their passengers retain the
+      // same world scale and proportions as the Oogas on the island.
+      figure.scale.x = figure.scale.z = size;
+      figure.scale.y = size / 0.85;
+      figure.position.x = seated ? -0.3 : 0.3;
+      figure.position.y = deck + figure.scale.y * passenger.traits.height * 5 / 16 * (seated ? 0.4 : 1);
+      figure.position.z = -0.65;
+      figure.rotation.y = seated ? -0.12 : 0.12;
+      passenger.parts.club.visible = false;
+      if (seated) {
+        passenger.parts.legL.rotation.x = passenger.parts.legR.rotation.x = -1.15;
+        passenger.parts.armL.rotation.x = passenger.parts.armR.rotation.x = -0.65;
+      }
+      figure.sightHidden = true;
+      BL.scene.addChild(node, figure);
       return { node, r, a, w: (0.004 + rand() * 0.004) * (i & 1 ? 1 : -1), ph: rand() * 6.3 };
     });
     for (const b of boats) nodes.push(b.node);

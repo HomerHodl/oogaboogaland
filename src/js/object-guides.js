@@ -61,10 +61,16 @@
         geometries.set(geometry, cached); stats.geometries++; stats.triangles += cached.triangles.length / 9; stats.samples += cached.samples.length / 3;
         return cached;
       }
-      const v = geometry.verts, triangles = [], triangleBounds = [], triangleCoverFaces = [], coverFaces = [], edgeMap = new Map(), planes = new Map();
+      // Triangle buffers take every face's fan up front (skipped faces leave their slots unused) and the witnesses
+      // grow a typed buffer, so the bake does not grow JS arrays through the island's hundreds of thousands of faces.
+      let slots = 0;
+      for (const face of geometry.faces) if (face.i.length > 2) slots += face.i.length - 2;
+      const v = geometry.verts, triangles = new Float64Array(slots * 9), triangleBounds = new Float64Array(slots * 6), triangleCoverFaces = new Int32Array(slots), coverFaces = [], edgeMap = new Map(), planes = new Map();
+      let count = 0;
       // Witnesses dedupe by rounded coordinates, first point kept, in insertion order: an open-addressing table of
       // id + 1 over each id's rounded key triplet, doubled at half load.
-      const samplePoints = [], vertexIds = new Int32Array(v.length / 3);
+      let samplePoints = new Float64Array(1536), sampleCount = 0;
+      const vertexIds = new Int32Array(v.length / 3);
       let sampleSlots = new Int32Array(1024), sampleKeys = new Float64Array(1536);
       const sampleSlot = (slots, kx, ky, kz) => {
         let h = Math.imul(kx | 0, 73856093) ^ Math.imul(ky | 0, 19349663) ^ Math.imul(kz | 0, 83492791);
@@ -77,8 +83,9 @@
       const sample = (x, y, z) => {
         const kx = Math.round(x / EPS), ky = Math.round(y / EPS), kz = Math.round(z / EPS), slot = sampleSlot(sampleSlots, kx, ky, kz);
         if (sampleSlots[slot]) return sampleSlots[slot] - 1;
-        const id = samplePoints.length / 3;
-        samplePoints.push(x, y, z);
+        const id = sampleCount++;
+        if (id * 3 + 3 > samplePoints.length) { const points = new Float64Array(samplePoints.length * 2); points.set(samplePoints); samplePoints = points; }
+        samplePoints[id * 3] = x; samplePoints[id * 3 + 1] = y; samplePoints[id * 3 + 2] = z;
         if (id * 3 + 3 > sampleKeys.length) { const keys = new Float64Array(sampleKeys.length * 2); keys.set(sampleKeys); sampleKeys = keys; }
         sampleKeys[id * 3] = kx; sampleKeys[id * 3 + 1] = ky; sampleKeys[id * 3 + 2] = kz;
         sampleSlots[slot] = id + 1;
@@ -89,10 +96,27 @@
         }
         return id;
       };
+      // Interior witnesses are needed when a window reveals only a patch between vertices, face centers and contour:
+      // project a regular grid onto the actual convex face; paint seams dedupe. One closure and point serve every face.
+      const point = [0, 0, 0];
+      let face = null, a = 0, u = 0, w = 0, drop = 0;
+      const interior = (pu, pw) => {
+        // Some tube quads bend slightly: interpolate their actual triangle fan so every witness lies on a rendered
+        // surface, not its plane.
+        for (let j = 1; j < face.i.length - 1; j++) {
+          const b = face.i[j] * 3, c = face.i[j + 1] * 3, bu = v[b + u] - v[a + u], bw = v[b + w] - v[a + w], cu = v[c + u] - v[a + u], cw = v[c + w] - v[a + w], determinant = bu * cw - bw * cu;
+          if (Math.abs(determinant) < 1e-12) continue;
+          const du = pu - v[a + u], dw = pw - v[a + w], beta = (du * cw - dw * cu) / determinant, gamma = (bu * dw - bw * du) / determinant;
+          if (beta < -EPS || gamma < -EPS || beta + gamma > 1 + EPS) continue;
+          point[u] = pu; point[w] = pw; point[drop] = v[a + drop] + beta * (v[b + drop] - v[a + drop]) + gamma * (v[c + drop] - v[a + drop]);
+          sample(point[0], point[1], point[2]); return;
+        }
+      };
       for (let faceIndex = 0; faceIndex < geometry.faces.length; faceIndex++) {
-        const face = geometry.faces[faceIndex];
+        face = geometry.faces[faceIndex];
         if (face.i.length < 3) continue;
-        const a = face.i[0] * 3, b = face.i[1] * 3, c = face.i[2] * 3;
+        a = face.i[0] * 3;
+        const b = face.i[1] * 3, c = face.i[2] * 3;
         const ux = v[b] - v[a], uy = v[b + 1] - v[a + 1], uz = v[b + 2] - v[a + 2], vx = v[c] - v[a], vy = v[c + 1] - v[a + 1], vz = v[c + 2] - v[a + 2];
         let nx = uy * vz - uz * vy, ny = uz * vx - ux * vz, nz = ux * vy - uy * vx;
         const length = Math.hypot(nx, ny, nz);
@@ -122,34 +146,20 @@
           centerX += v[at]; centerY += v[at + 1]; centerZ += v[at + 2];
           vertexIds[vertex] = sample(v[at], v[at + 1], v[at + 2]);
         }
-        // Interior witnesses are needed when a window reveals only a patch between vertices, face centers and contour:
-        // project a regular grid onto the actual convex face; paint seams dedupe.
-        const normal = [nx, ny, nz];
-        let drop = 0;
-        if (Math.abs(ny) > Math.abs(normal[drop])) drop = 1;
-        if (Math.abs(nz) > Math.abs(normal[drop])) drop = 2;
-        const u = (drop + 1) % 3, w = (drop + 2) % 3;
-        const nu = Math.max(1, Math.ceil((bounds[u + 3] - bounds[u]) / SURFACE_STEP)), nw = Math.max(1, Math.ceil((bounds[w + 3] - bounds[w]) / SURFACE_STEP)), point = [0, 0, 0];
-        const interior = (pu, pw) => {
-          // Some tube quads bend slightly: interpolate their actual triangle fan so every witness lies on a rendered
-          // surface, not its plane.
-          for (let j = 1; j < face.i.length - 1; j++) {
-            const b = face.i[j] * 3, c = face.i[j + 1] * 3, bu = v[b + u] - v[a + u], bw = v[b + w] - v[a + w], cu = v[c + u] - v[a + u], cw = v[c + w] - v[a + w], determinant = bu * cw - bw * cu;
-            if (Math.abs(determinant) < 1e-12) continue;
-            const du = pu - v[a + u], dw = pw - v[a + w], beta = (du * cw - dw * cu) / determinant, gamma = (bu * dw - bw * du) / determinant;
-            if (beta < -EPS || gamma < -EPS || beta + gamma > 1 + EPS) continue;
-            point[u] = pu; point[w] = pw; point[drop] = v[a + drop] + beta * (v[b + drop] - v[a + drop]) + gamma * (v[c + drop] - v[a + drop]);
-            sample(point[0], point[1], point[2]); return;
-          }
-        };
-        const center = [centerX / face.i.length, centerY / face.i.length, centerZ / face.i.length];
-        interior(center[u], center[w]);
+        drop = Math.abs(ny) > Math.abs(nx) ? 1 : 0;
+        if (Math.abs(nz) > Math.abs(drop ? ny : nx)) drop = 2;
+        u = (drop + 1) % 3; w = (drop + 2) % 3;
+        const nu = Math.max(1, Math.ceil((bounds[u + 3] - bounds[u]) / SURFACE_STEP)), nw = Math.max(1, Math.ceil((bounds[w + 3] - bounds[w]) / SURFACE_STEP));
+        interior((u === 0 ? centerX : u === 1 ? centerY : centerZ) / face.i.length, (w === 0 ? centerX : w === 1 ? centerY : centerZ) / face.i.length);
         for (let iu = 0; iu < nu; iu++) for (let iw = 0; iw < nw; iw++) interior(bounds[u] + (bounds[u + 3] - bounds[u]) * (iu + 0.5) / nu, bounds[w] + (bounds[w + 3] - bounds[w]) * (iw + 0.5) / nw);
-        for (let j = 1; j < face.i.length - 1; j++) {
-          const b = face.i[j] * 3, c = face.i[j + 1] * 3;
-          triangles.push(v[a], v[a + 1], v[a + 2], v[b] - v[a], v[b + 1] - v[a + 1], v[b + 2] - v[a + 2], v[c] - v[a], v[c + 1] - v[a + 1], v[c + 2] - v[a + 2]);
-          triangleCoverFaces.push(coverIndex);
-          triangleBounds.push(Math.min(v[a], v[b], v[c]), Math.min(v[a + 1], v[b + 1], v[c + 1]), Math.min(v[a + 2], v[b + 2], v[c + 2]), Math.max(v[a], v[b], v[c]), Math.max(v[a + 1], v[b + 1], v[c + 1]), Math.max(v[a + 2], v[b + 2], v[c + 2]));
+        for (let j = 1; j < face.i.length - 1; j++, count++) {
+          const b = face.i[j] * 3, c = face.i[j + 1] * 3, t = count * 9, box = count * 6;
+          triangles[t] = v[a]; triangles[t + 1] = v[a + 1]; triangles[t + 2] = v[a + 2];
+          triangles[t + 3] = v[b] - v[a]; triangles[t + 4] = v[b + 1] - v[a + 1]; triangles[t + 5] = v[b + 2] - v[a + 2];
+          triangles[t + 6] = v[c] - v[a]; triangles[t + 7] = v[c + 1] - v[a + 1]; triangles[t + 8] = v[c + 2] - v[a + 2];
+          triangleCoverFaces[count] = coverIndex;
+          triangleBounds[box] = Math.min(v[a], v[b], v[c]); triangleBounds[box + 1] = Math.min(v[a + 1], v[b + 1], v[c + 1]); triangleBounds[box + 2] = Math.min(v[a + 2], v[b + 2], v[c + 2]);
+          triangleBounds[box + 3] = Math.max(v[a], v[b], v[c]); triangleBounds[box + 4] = Math.max(v[a + 1], v[b + 1], v[c + 1]); triangleBounds[box + 5] = Math.max(v[a + 2], v[b + 2], v[c + 2]);
         }
         for (let j = 0; j < face.i.length; j++) {
           const a = face.i[j] * 3, b = face.i[(j + 1) % face.i.length] * 3, ak = vertexIds[a / 3], bk = vertexIds[b / 3], key = ak < bk ? ak * 67108864 + bk : bk * 67108864 + ak;
@@ -245,7 +255,7 @@
         const e = edges[i], g = e.g, t = (end ? e.hi : e.lo) - g.origin, at = i * 6 + end * 3;
         edgeLines[at] = g.ax + g.dx * t; edgeLines[at + 1] = g.ay + g.dy * t; edgeLines[at + 2] = g.az + g.dz * t;
       }
-      const samples = new Float32Array(samplePoints);
+      const samples = new Float32Array(samplePoints.subarray(0, sampleCount * 3));
       // Face grids already place neighboring witnesses together; small contiguous bounds prove occlusion for whole
       // patches without another sorted mesh or per-frame buffers.
       const sampleBounds = new Float64Array(Math.ceil(samples.length / (SAMPLE_BLOCK * 3)) * 6);
@@ -257,7 +267,6 @@
           sampleBounds[block + axis + 3] = Math.max(sampleBounds[block + axis + 3], samples[i + axis]);
         }
       }
-      const count = triangles.length / 9;
       if (!count) return null;
       const indices = Uint32Array.from({ length: count }, (_, i) => i), scratch = BL.math.sortScratch(count), bounds = [], left = [], right = [], starts = [], counts = [];
       // Centroid sort keys computed once rather than inside every comparison.
@@ -275,7 +284,7 @@
         return id;
       };
       if (count) build(0, count);
-      cached = { lines: edgeLines, samples, sampleBounds, coverFaces: new Uint32Array(coverFaces), triangleCoverFaces: new Int32Array(triangleCoverFaces), edgeStarts, edgeNormals: new Float64Array(edgeNormals), triangles: new Float64Array(triangles), indices, bounds: new Float64Array(bounds), left: new Int32Array(left), right: new Int32Array(right), starts: new Uint32Array(starts), counts: new Uint32Array(counts), sphere: BL.scene.boundsOf(geometry) };
+      cached = { lines: edgeLines, samples, sampleBounds, coverFaces: new Uint32Array(coverFaces), triangleCoverFaces: triangleCoverFaces.slice(0, count), edgeStarts, edgeNormals: new Float64Array(edgeNormals), triangles: triangles.slice(0, count * 9), indices, bounds: new Float64Array(bounds), left: new Int32Array(left), right: new Int32Array(right), starts: new Uint32Array(starts), counts: new Uint32Array(counts), sphere: BL.scene.boundsOf(geometry) };
       const bake = { faces: geometry.faces.map((face) => face.i), record: cached };
       if (baked) baked.push(bake); else bakes.set(geometry.verts, [bake]);
       geometries.set(geometry, cached); stats.geometries++; stats.triangles += count; stats.samples += samples.length / 3;
@@ -306,7 +315,7 @@
           let entry = entries.get(node);
           if (!entry) {
             const group = groupOf(owner);
-            entry = { node, owner, group, character, geometry, hitTriangle: -1, capacity: 0, source: node.geometry, inverse: BL.math.mat4.create(), world: new Float64Array(16), visible: false, shown: false, clipMinY: -Infinity, worldMinY: -Infinity, worldMaxY: Infinity, x: 0, y: 0, z: 0, radius: 0, hx: 0, hy: 0, hz: 0, scaleX: 0, scaleY: 0, scaleZ: 0, centerY: 0, halfY: 0, boundsGeometry: null, boundaryBounds: new Float64Array(4), boundaryTriangles: new Float64Array(0), boundaryBoxes: new Float64Array(0), boundaryNodes: new Float64Array(0), boundaryRay: new Float64Array(12), boundaryHits: new Int32Array([-1, -1]), boundaryGrid: null };
+            entry = { node, owner, group, character, geometry, hitTriangle: -1, capacity: 0, source: node.geometry, inverse: BL.math.mat4.create(), world: new Float64Array(16), visible: false, shown: false, clipMinY: -Infinity, worldMinY: -Infinity, worldMaxY: Infinity, x: 0, y: 0, z: 0, radius: 0, hx: 0, hy: 0, hz: 0, scaleX: 0, scaleY: 0, scaleZ: 0, centerY: 0, halfY: 0, boundsGeometry: null, boundaryBounds: new Float64Array(4), boundaryTriangles: new Float64Array(0), boundaryBoxes: new Float64Array(0), boundaryNodes: new Float64Array(0), boundaryRay: new Float64Array(12), boundaryHits: new Int32Array([-1, -1]), boundaryGrid: null, boundaryReserve: 0, boundaryNodeReserve: 0 };
             registered.push(entry); entries.set(node, entry); group.push(entry);
           }
           // Animated world-height planes can add one boundary per triangle and plane; reserve it at registration,
@@ -325,14 +334,17 @@
         if (closed) reserveBoundary(entry, closed);
       }
     };
+    // Registration records the largest geometry each entry can show; the buffers are allocated at that size the first
+    // time the entry's boundary is built, since only owners near the camera ever build one.
     const reserveBoundary = (entry, geometry) => {
-      const triangles = geometry.triangles.length / 9 * 10;
-      if (entry.boundaryTriangles.length < triangles) entry.boundaryTriangles = new Float64Array(triangles);
-      const boxes = geometry.triangles.length / 9 * 4;
-      if (entry.boundaryBoxes.length < boxes) entry.boundaryBoxes = new Float64Array(boxes);
-      const nodes = geometry.counts.length * 4;
-      if (entry.boundaryNodes.length < nodes) entry.boundaryNodes = new Float64Array(nodes);
-      const count = geometry.triangles.length / 9;
+      entry.boundaryReserve = Math.max(entry.boundaryReserve, geometry.triangles.length / 9);
+      entry.boundaryNodeReserve = Math.max(entry.boundaryNodeReserve, geometry.counts.length);
+    };
+    const boundaryStorage = (entry) => {
+      const count = entry.boundaryReserve;
+      if (entry.boundaryTriangles.length < count * 10) entry.boundaryTriangles = new Float64Array(count * 10);
+      if (entry.boundaryBoxes.length < count * 4) entry.boundaryBoxes = new Float64Array(count * 4);
+      if (entry.boundaryNodes.length < entry.boundaryNodeReserve * 4) entry.boundaryNodes = new Float64Array(entry.boundaryNodeReserve * 4);
       if (count >= 64) {
         let grid = entry.boundaryGrid;
         if (!grid) grid = entry.boundaryGrid = { active: false, capacity: 0, size: 0, offsets: null, cursors: null, spans: null, indices: null, scaleX: 0, scaleY: 0 };
@@ -365,9 +377,8 @@
       if (candidates.length !== count) {
         candidates = new Array(count).fill(null); occluders = new Array(count).fill(null); cameraOccluders = new Array(count).fill(null); targetOccluders = new Array(count).fill(null); perceptionOccluders = new Array(count).fill(null);
       }
-      if (result.capacity !== capacity) { lines = result.lines = new Float32Array(capacity * 6); owners = result.owners = new Array(capacity).fill(null); }
       if (result.ownerCapacity !== ownerGroups.length) { nearOwners = result.nearOwners = new Array(ownerGroups.length).fill(null); nearDistances = result.nearDistances = new Float64Array(ownerGroups.length); }
-      result.capacity = stats.limit = capacity; result.ownerCapacity = stats.owners = ownerGroups.length; stats.nodes = stats.registered = count;
+      stats.limit = capacity; result.ownerCapacity = stats.owners = ownerGroups.length; stats.nodes = stats.registered = count;
       candidates.fill(null); occluders.fill(null); cameraOccluders.fill(null); targetOccluders.fill(null); perceptionOccluders.fill(null); owners.fill(null); nearOwners.fill(null);
       targetOwnerCache = null; targetStamp = -1; targetCount = 0;
       cameraCoverEntry = cameraCoverSource = null; cameraCoverFace = -1;
@@ -408,6 +419,14 @@
       edgeLo = Math.max(edgeLo, Math.min(first, last)); edgeHi = Math.min(edgeHi, Math.max(first, last));
       return edgeLo < edgeHi;
     };
+    // Only candidates near the camera write lines, so the buffer grows to its high-water mark instead of holding
+    // every registered edge (`stats.limit`).
+    const growLines = () => {
+      const capacity = Math.max(1024, result.capacity * 2), next = new Float32Array(capacity * 6);
+      next.set(lines); lines = result.lines = next;
+      while (owners.length < capacity) owners.push(null);
+      result.capacity = capacity;
+    };
     const appendLine = (entry, ax, ay, az, bx, by, bz) => {
       edgeLo = 0; edgeHi = 1;
       if ((entry.worldMinY !== -Infinity || entry.worldMaxY !== Infinity) && !clipSpan(ay, by, entry.worldMinY, entry.worldMaxY)) return;
@@ -419,6 +438,7 @@
       if (length < EPS) return;
       const middle = (edgeLo + edgeHi) / 2;
       if (!cameraIncludes(ax + dx * middle, ay + dy * middle, az + dz * middle, length / 2)) return;
+      if (lineUsed === result.capacity) growLines();
       for (let end = 0; end < 2; end++) {
         const t = end ? edgeHi : edgeLo, at = lineUsed * 6 + end * 3;
         const x = Math.fround(t === 1 ? bx : ax + dx * t), y = Math.fround(t === 1 ? by : ay + dy * t), z = Math.fround(t === 1 ? bz : az + dz * t);
@@ -1291,6 +1311,7 @@
     };
     const boundaryBounds = (entry) => {
       stats.boundaryBuilds++;
+      boundaryStorage(entry);
       const geometry = entry.geometry, m = boundaryView;
       BL.math.mat4.multiply(m, cameraView, entry.world);
       // All owner-union rays share this eye and camera basis. Cache the

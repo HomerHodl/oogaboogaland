@@ -4,9 +4,10 @@
   const BL = window.BL = window.BL || {};
   const { mat4, mulberry32, hexToRgb, sortByKey, sortScratch } = BL.math;
   const { createNode, addChild, removeChild, boundsOf } = BL.scene;
-  const PANEL_DAMAGE = 20, PANEL_HEALTH = 1, PANEL_LIMIT = 48, DEBRIS_LIMIT = 48, DEBRIS_LIFE = 1.2, HEAL_DELAY = 3, HEAL_RATE = 2;
-  const MAX_DAMAGE = PANEL_DAMAGE + PANEL_LIMIT * PANEL_HEALTH, DAMAGE_STEP = 0.5, STATE_LIMIT = MAX_DAMAGE / DAMAGE_STEP;
+  const PANEL_DAMAGE = 100, PANEL_HEALTH = 8, PANEL_LIMIT = 50, DEBRIS_LIMIT = 50, DEBRIS_LIFE = 1.2, HEAL_DELAY = 3, HEAL_RATE = 8;
+  const MAX_DAMAGE = PANEL_DAMAGE + PANEL_LIMIT * PANEL_HEALTH, DAMAGE_STEP = 2, STATE_LIMIT = MAX_DAMAGE / DAMAGE_STEP;
   const PANEL_HEAL_RATE = HEAL_RATE / PANEL_LIMIT;
+  const BROKEN_HEAL_DELAY = 120;
   const CRACK_HEAL_TIME = 1.5, CRACK_STEPS = 6, REPAIR_STEPS = 96, REPAIR_CACHES = 2;
   const GLASS = hexToRgb("#8298a0"), EDGE = hexToRgb("#d5e4e8");
   const areaOf = polygon => {
@@ -59,7 +60,7 @@
     while (root.parent) root = root.parent;
     BL.scene.updateWorld(root);
     mat4.invert(inverse, node.world);
-    let quiet = 0, selected = null, paneSize = original.verts.length, bevelSize = 0;
+    let quiet = 0, healDelay = HEAL_DELAY, selected = null, paneSize = original.verts.length, bevelSize = 0;
     let healCrackDamage = 0;
     const panelHealth = new Float64Array(PANEL_LIMIT).fill(PANEL_HEALTH);
     const state = { damage: 0, crackDamage: 0, panelHealth, stage: 0, version: 0, broken: false, active: 0, healing: 0, cracks: 0, holes: 0, seams: 0, hit, contains, aimCenter, update, restore, liveGeometry, dispose };
@@ -82,7 +83,9 @@
         cut(nx, ny, nx * x + ny * y + radius * (0.8 + random() * 0.4), limit);
       }
     }
-    function buildLayout(x, y) {
+    function buildLayout() {
+      // Pane borders belong to the mirror, not the first shot's position.
+      const x = (minX + maxX) * 0.5, y = (minY + maxY) * 0.5;
       const width = maxX - minX, height = maxY - minY;
       const centers = [[x, y], [minX + width * (0.2 + random() * 0.2), minY + height * (0.2 + random() * 0.25)], [minX + width * (0.6 + random() * 0.2), minY + height * (0.5 + random() * 0.25)]];
       for (let stage = 1; stage < 4; stage++) fracture(centers[stage - 1][0], centers[stage - 1][1], stage);
@@ -301,7 +304,11 @@
     function selectShape(shape) {
       if (shape) panelHealth.set(shape.health); else panelHealth.fill(PANEL_HEALTH);
       state.damage = state.crackDamage;
-      for (let p = 0; p < panelHealth.length; p++) state.damage += PANEL_HEALTH - panelHealth[p];
+      state.broken = true;
+      for (let p = 0; p < panelHealth.length; p++) {
+        state.damage += PANEL_HEALTH - panelHealth[p];
+        if (panelHealth[p] > 0) state.broken = false;
+      }
       state.stage = state.damage > 0 ? Math.max(1, Math.min(state.broken ? STATE_LIMIT : STATE_LIMIT - 1, Math.ceil(state.damage / DAMAGE_STEP - 1e-9))) : 0;
       state.cracks = shape ? shape.cracks : 0; state.holes = shape ? Math.ceil(shape.absent) : 0; state.seams = shape ? shape.seams : 0;
       if (selected === shape) return;
@@ -374,9 +381,7 @@
     function hit(power, x, y, z) {
       if (state.broken || !(power > 0)) return false;
       mat4.transformPoint(point, inverse, x, y, z);
-      const cx = Math.max(minX + 0.12, Math.min(maxX - 0.12, point[0]));
-      const cy = Math.max(minY + 0.12, Math.min(maxY - 0.12, point[1]));
-      if (!pieces.length) buildLayout(cx, cy);
+      if (!pieces.length) buildLayout();
       const preserved = selected && (selected.repair !== undefined || selected.preserve || state.healing > 0);
       const growth = new Float64Array(pieces.length), health = new Float64Array(panelHealth);
       const fractureDamage = new Float64Array(pieces.length), fractureLevel = new Float64Array(pieces.length);
@@ -392,7 +397,7 @@
       sortByKey(order, 0, pieces.length, keys, 1, 0, hitSort);
       if (preserved && Number.isFinite(keys[order[0]])) {
         // Other panels retain their exact repair and crack contours. Further
-        // force is absorbed by the nearest remaining glass, one HP per pane.
+        // force is absorbed by the nearest remaining glass, eight HP per pane.
         fractureDamage[order[0]] = Math.max(fractureDamage[order[0]], state.crackDamage); fractureLevel[order[0]] = 1;
       }
       for (let i = 0; i < pieces.length && remaining > 0 && Number.isFinite(keys[order[i]]); i++) {
@@ -410,23 +415,20 @@
         panelHealTime = Math.max(panelHealTime, (PANEL_HEALTH - health[p]) / PANEL_HEAL_RATE);
       }
       quiet = 0; state.healing = 0; healCrackDamage = state.crackDamage;
-      if (state.broken) {
-        const shape = buildShape(growth, fractureDamage, fractureLevel, 0);
-        shape.health = health;
-        selectShape(shape);
-        repairCache = null;
-        return true;
-      }
-      const full = new Float64Array(pieces.length).fill(1);
+      healDelay = state.broken ? BROKEN_HEAL_DELAY : HEAL_DELAY;
+      prepareRepair(growth, health, fractureDamage, fractureLevel, damaged, preserved);
+      return true;
+    }
+    function prepareRepair(growth, health, fractureDamage, fractureLevel, damaged, preserved) {
+      const full = new Float64Array(pieces.length).fill(1), fullHealth = new Float64Array(pieces.length).fill(PANEL_HEALTH);
       for (let step = 0; step <= CRACK_STEPS; step++) {
         const shape = buildShape(full, fractureDamage, fractureLevel, 1 - step / CRACK_STEPS);
-        shape.health = full;
+        shape.health = fullHealth;
         shape.preserve = !!preserved;
         crackStates[step] = shape;
       }
       repairCache = damaged ? repairsFor(growth, health, fractureDamage, fractureLevel, crackStates[0]) : null;
       selectShape(repairCache ? repairCache.states[0] : crackStates[0]);
-      return true;
     }
     function contains(x, y) {
       if (state.broken || x < minX || x > maxX || y < minY || y > maxY) return false;
@@ -446,10 +448,16 @@
       }
       return false;
     }
-    function aimCenter(out, x, y, z) {
+    function aimCenter(out, x, y, z, sample = null) {
       if (state.broken) return false;
       mat4.transformPoint(point, inverse, x, y, z);
       let cx = (minX + maxX) * 0.5, cy = (minY + maxY) * 0.5;
+      if (!state.holes && sample !== null) {
+        // Keep each round's scattered aim stable throughout its flight.
+        // Do not consume the fracture RNG: the glass layout is deterministic.
+        cx += Math.sin(sample * 1.7 + 0.6) * (maxX - minX) * 0.35;
+        cy += Math.sin(sample * 2.39996323 + 1.1) * (maxY - minY) * 0.3;
+      }
       if (state.holes && selected && pieces.length) {
         let nearest = Infinity, index = -1;
         for (let p = 0; p < pieces.length; p++) {
@@ -463,11 +471,14 @@
       out.x = point[0]; out.y = point[1]; out.z = point[2];
       return true;
     }
-    function update(dt) {
-      if (state.damage > 0 && !state.broken) {
-        quiet += dt;
-        if (quiet > HEAL_DELAY) {
-          const elapsed = quiet - HEAL_DELAY;
+    function update(dt, canHeal = true) {
+      if (state.damage > 0) {
+        // The delay runs from the last hit. An open gate pauses growth,
+        // including a repair already underway, without accumulating a jump.
+        if (canHeal) quiet += dt;
+        else if (quiet < healDelay) quiet = Math.min(healDelay, quiet + dt);
+        if (canHeal && quiet > healDelay) {
+          const elapsed = quiet - healDelay;
           if (elapsed < panelHealTime) {
             state.healing = 1;
             const progress = elapsed / panelHealTime;
@@ -526,9 +537,13 @@
     }
     function restore() {
       state.crackDamage = PANEL_DAMAGE; state.broken = true; state.healing = 0; state.active = 0;
-      panelHealth.fill(0);
+      quiet = 0; healDelay = BROKEN_HEAL_DELAY; healCrackDamage = PANEL_DAMAGE;
+      if (!pieces.length) buildLayout();
+      panelHealTime = PANEL_HEALTH / PANEL_HEAL_RATE;
+      const growth = new Float64Array(pieces.length), health = new Float64Array(pieces.length);
+      const fractureDamage = new Float64Array(pieces.length).fill(PANEL_DAMAGE), fractureLevel = new Float64Array(pieces.length).fill(1);
       for (const shard of debris) { shard.life = 0; shard.node.visible = false; }
-      selectShape({ pane: geometry(original.verts), bevel: geometry(), counts: new Uint8Array(0), opening: new Float32Array(0), health: panelHealth, absent: PANEL_LIMIT, cracks: 0, seams: 0 });
+      prepareRepair(growth, health, fractureDamage, fractureLevel, true, false);
     }
     function liveGeometry(set) {
       set.add(original); set.add(node.geometry);
@@ -554,5 +569,5 @@
     node.mirrorDamage = state;
     return state;
   };
-  BL.mirrorDamage = { create, MAX_DAMAGE, DAMAGE_STEP, STATE_LIMIT, PANEL_DAMAGE, PANEL_HEALTH, PANEL_HEAL_RATE, PANEL_LIMIT, DEBRIS_LIMIT, HEAL_DELAY, HEAL_RATE, CRACK_HEAL_TIME, REPAIR_STEPS, REPAIR_CACHES };
+  BL.mirrorDamage = { create, MAX_DAMAGE, DAMAGE_STEP, STATE_LIMIT, PANEL_DAMAGE, PANEL_HEALTH, PANEL_HEAL_RATE, PANEL_LIMIT, DEBRIS_LIMIT, HEAL_DELAY, BROKEN_HEAL_DELAY, HEAL_RATE, CRACK_HEAL_TIME, REPAIR_STEPS, REPAIR_CACHES };
 })();

@@ -7,6 +7,7 @@
     z: "up", " ": "up", x: "down", arrowup: "forward", arrowdown: "back", arrowleft: "left", arrowright: "right", shift: "sprint"
   };
   const KNOB = 18;
+  const keyName = (e) => e.key === "Shift" && (e.code === "ShiftRight" || e.location === 2) ? "peek" : KEYS[e.key.toLowerCase()];
   // Joystick state x/y track the pointer normalized to -1..1.
   const joystick = (el) => {
     const knob = el.firstElementChild;
@@ -58,19 +59,19 @@
   };
   // Joystick bases, a hold-to-climb button, a canvas whose mouse chord walks, and a Space handler
   const create = ({ move = null, look = null, boost = null, chord = null, onAction = null, pressActions = false, shooter = () => false, canDescend = () => true } = {}) => {
-    const held = { forward: 0, back: 0, left: 0, right: 0, yawLeft: 0, yawRight: 0, pitchDown: 0, pitchUp: 0, up: 0, space: 0, down: 0, boost: 0, chord: 0, sprint: 0 };
-    const axes = { x: 0, y: 0, up: 0, yaw: 0, pitch: 0, orbitYaw: 0, sprint: 0, shiftTap: 0 };
+    const held = { forward: 0, back: 0, left: 0, right: 0, yawLeft: 0, yawRight: 0, pitchDown: 0, pitchUp: 0, up: 0, space: 0, down: 0, boost: 0, chord: 0, sprint: 0, peek: 0 };
+    const axes = { x: 0, y: 0, up: 0, yaw: 0, pitch: 0, orbitYaw: 0, sprint: 0, peek: 0, shiftTap: 0 };
     let spaceDown = false, boostPointer = null, boostClick = false, shiftAt = 0, shiftUsed = false, shiftTap = 0;
     const typing = (e) => e.target && (e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA" || (e.target.closest && e.target.closest("dialog")));
     const onKeyDown = (e) => {
       if (e.metaKey || e.ctrlKey || e.altKey || typing(e)) return;
-      const name = pressActions && e.key === " " ? "space" : KEYS[e.key.toLowerCase()];
+      const name = pressActions && e.key === " " ? "space" : keyName(e);
       if (!name) return;
       if (e.key === " " || e.key.startsWith("Arrow")) e.preventDefault();
-      if (name === "sprint" && !held.sprint) {
+      if (name === "peek" && !held.peek) {
         shiftAt = e.timeStamp;
         shiftUsed = !!(held.left || held.right);
-      } else if ((name === "left" || name === "right") && held.sprint) shiftUsed = true;
+      } else if ((name === "left" || name === "right") && held.peek) shiftUsed = true;
       if (pressActions && e.key === " ") {
         if (spaceDown || e.repeat) return;
         spaceDown = true;
@@ -79,8 +80,8 @@
       held[name] = 1;
     };
     const onKeyUp = (e) => {
-      const name = pressActions && e.key === " " ? "space" : KEYS[e.key.toLowerCase()];
-      if (name === "sprint" && held.sprint && !shiftUsed && e.timeStamp - shiftAt <= 300) shiftTap = 1;
+      const name = pressActions && e.key === " " ? "space" : keyName(e);
+      if (name === "peek" && held.peek && !shiftUsed && e.timeStamp - shiftAt <= 300) shiftTap = 1;
       if (name) held[name] = 0;
       if (e.key === " ") spaceDown = false;
     };
@@ -142,7 +143,8 @@
       axes.orbitYaw = held.yawLeft - held.yawRight;
       axes.yaw = clamp((shooter() ? 0 : held.yawLeft - held.yawRight) - (lookStick ? lookStick.x : 0), -1, 1);
       axes.pitch = clamp((shooter() ? 0 : held.pitchDown - held.pitchUp) - (lookStick ? lookStick.y : 0), -1, 1);
-      axes.sprint = shooter() ? held.sprint : 0;
+      axes.sprint = held.sprint;
+      axes.peek = shooter() ? held.peek : 0;
       axes.shiftTap = shiftTap;
       shiftTap = 0;
       return axes;
@@ -174,7 +176,7 @@
       boostClick = false;
     };
     const reset = () => { onBlur(); if (moveStick) moveStick.reset(); if (lookStick) lookStick.reset(); };
-    return { read, axes, clearPointer, reset, dispose };
+    return { read, axes, clearPointer, reset, dispose, get rightShift() { return !!held.peek; } };
   };
   BL.controls = { create };
 })();

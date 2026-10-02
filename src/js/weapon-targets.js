@@ -118,7 +118,9 @@
     };
     const eligible = (target, ignore, includeNonWeapon = false) => {
       const { node, owner } = target;
-      return !!node.geometry && owner.active !== false && (includeNonWeapon || owner.weaponType !== "none") && (!ignore || owner.cave !== ignore)
+      return !!node.geometry && owner.active !== false && (includeNonWeapon || owner.weaponType !== "none")
+        && (!ignore || owner.cave !== ignore && owner.entry?.owner !== ignore
+          && (!ignore.owner || owner.cave !== ignore.owner) && !(ignore.gorilla && owner.kind === "clanker"))
         && !(node.mirror && (node.mirrorPortal || node.mirrorReveal >= 1)) && refreshWorld(node);
     };
     const sync = node => {
@@ -143,6 +145,7 @@
     const hit = (out, target, distance, x, y, z) => {
       out.node = target.node; out.owner = target.owner; out.distance = distance;
       out.x = x; out.y = y; out.z = z;
+      if (out.normal) out.normal.x = out.normal.y = out.normal.z = 0;
       out.type = target.owner.weaponType || (target.owner.cave ? target.owner.cave.hostile ? "enemy" : "friendly" : "object");
     };
     const onMirror = (node, bounds, x, y) => x >= bounds.min[0] - EPS && x <= bounds.max[0] + EPS
@@ -176,7 +179,7 @@
         mat4.transformPoint(point, m, ox, oy, oz);
         const lx = point[0], ly = point[1], lz = point[2];
         const ux = m[0] * dx + m[4] * dy + m[8] * dz, uy = m[1] * dx + m[5] * dy + m[9] * dz, uz = m[2] * dx + m[6] * dy + m[10] * dz;
-        let found = Infinity;
+        let found = Infinity, foundTriangle = -1;
         if (target.node.mirror) {
           const t = Math.abs(uz) > 1e-12 ? (entry.bounds.min[2] - lz) / uz : -1;
           if (t >= 0 && t <= nearest && onMirror(target.node, entry.bounds, lx + ux * t, ly + uy * t)) found = t;
@@ -192,11 +195,29 @@
               const at = data.order[i] * 3;
               const t = triangleRay(data.verts, data.triangles[at], data.triangles[at + 1], data.triangles[at + 2], lx, ly, lz, ux, uy, uz);
               stats.triangleTests++;
-              if (t < found && t <= nearest) found = t;
+              if (t < found && t <= nearest) { found = t; foundTriangle = at; }
             }
           }
         }
-        if (found < Infinity) { nearest = found; hit(out, target, found, ox + dx * found, oy + dy * found, oz + dz * found); }
+        if (found < Infinity) {
+          nearest = found; hit(out, target, found, ox + dx * found, oy + dy * found, oz + dz * found);
+          // Navigation callers opt into the contacted face's world normal.
+          // The inverse transpose also handles nonuniformly scaled props.
+          if (out.normal) {
+            let nx = 0, ny = 0, nz = 1;
+            if (foundTriangle >= 0) {
+              const data = entry.data, v = data.verts, a = data.triangles[foundTriangle], b = data.triangles[foundTriangle + 1], c = data.triangles[foundTriangle + 2];
+              const ax = v[b] - v[a], ay = v[b + 1] - v[a + 1], az = v[b + 2] - v[a + 2];
+              const bx = v[c] - v[a], by = v[c + 1] - v[a + 1], bz = v[c + 2] - v[a + 2];
+              nx = ay * bz - az * by; ny = az * bx - ax * bz; nz = ax * by - ay * bx;
+            }
+            const x = m[0] * nx + m[1] * ny + m[2] * nz;
+            const y = m[4] * nx + m[5] * ny + m[6] * nz;
+            const z = m[8] * nx + m[9] * ny + m[10] * nz;
+            const scale = (x * dx + y * dy + z * dz > 0 ? -1 : 1) / Math.max(1e-12, Math.hypot(x, y, z));
+            out.normal.x = x * scale; out.normal.y = y * scale; out.normal.z = z * scale;
+          }
+        }
       }
       return !!out.node;
     };
