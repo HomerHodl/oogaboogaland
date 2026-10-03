@@ -86,7 +86,7 @@
 
 
   // Only implemented interiors register here. Later venues supply the same room contract.
-  const definitions=[{id:"meme-factory",building:"Meme Factory House",ambience:"meme-factory",build:buildMemeFactoryInterior},{id:"dsb-studio",building:"DSB Studio Stage",ambience:"studio",build:BL.dsbStudio.build}];
+  const definitions=[{id:"meme-factory",building:"Meme Factory House",ambience:"meme-factory",build:buildMemeFactoryInterior},{id:"dsb-studio",building:"DSB Studio Stage",ambience:"studio",build:BL.dsbStudio.build},{id:"maxis-club",building:"Maxis Club Theater",ambience:"studio",build:BL.maxisClub.build}];
   const create=({root,exterior,land,weather,relocate,lock,onChange})=>{
     const rooms=new Map(),registry=new Map(),entries=[];
     for(const definition of definitions){

@@ -7331,3 +7331,43 @@ body[data-poker-table-view="true"] #act { visibility: hidden; }
 
 /* Equip expands the mobile HUD onto a second row: keep its fire target stable between taps. */
 .dsb-studio-active .weapon-hud { transition: background .15s ease; touch-action: manipulation; }
+
+/* Maxis only: nonmodal source panel, one persistent player, same element in fullscreen. */
+.maxis-club-active .weapon-hud { transition: background .15s ease; touch-action: manipulation; }
+.maxis-media, .maxis-media * { box-sizing: border-box; }
+.maxis-media { position: fixed; z-index: 55; right: 14px; bottom: 12px; width: min(720px, 94vw); max-height: 82dvh; overflow: auto; background: #101a13; border: 1px solid #9b7440; border-radius: 10px; color: #eadbb7; font: 13px/1.4 system-ui, sans-serif; box-shadow: 0 15px 50px #000a; }
+.maxis-media[hidden], .maxis-media [hidden] { display: none !important; }
+.maxis-media header, .maxis-media footer { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; padding: 9px 12px; background: #1e2c20; }
+.maxis-media h2 { font-size: 18px; letter-spacing: .1em; color: #f4cf7a; margin: 0 auto 0 0; }
+.maxis-media button, .maxis-media input { font: inherit; min-height: 42px; background: #26382a; color: #f0dfba; border: 1px solid #556247; border-radius: 5px; padding: 7px 10px; }
+.maxis-media button { cursor: pointer; white-space: normal; }
+.maxis-media button:hover, .maxis-media button:focus-visible, .maxis-media button[aria-pressed="true"] { outline: 2px solid #cbaa64; background: #3d5036; }
+.maxis-browser { display: grid; grid-template-columns: 146px minmax(0, 1fr); gap: 12px; padding: 12px; }
+.maxis-browser nav { display: grid; align-content: start; gap: 5px; }
+.maxis-browser nav button { text-align: left; font-size: 11px; }
+.maxis-help { margin-top: 0; color: #c8c5ab; }
+.maxis-source form, .maxis-source label { display: grid; gap: 7px; }
+.maxis-source input { width: 100%; min-width: 0; }
+.maxis-picks button { display: block; width: 100%; text-align: left; margin: 8px 0; overflow-wrap: anywhere; }
+.maxis-playback { border-top: 1px solid #4e5739; }
+.maxis-player-slot:not(:empty) { width: 100%; height: 340px; }
+.maxis-player-slot iframe { display: block; width: 100%; height: 100%; border: 0; }
+.maxis-status { margin: 7px 12px; font-size: 12px; overflow-wrap: anywhere; }
+.maxis-media footer label { display: flex; align-items: center; gap: 6px; }
+.maxis-volume { width: 90px; padding: 0 !important; }
+.maxis-media a { color: #e5bf71; }
+.maxis-docked { width: min(450px, 92vw); max-height: 62dvh; }
+.maxis-docked .maxis-player-slot:not(:empty) { height: 300px; }
+.maxis-media:fullscreen, .maxis-media.maxis-fullscreen { inset: 0; width: 100vw; height: 100dvh; max-height: 100dvh; border: 0; border-radius: 0; display: flex; flex-direction: column; }
+.maxis-media:fullscreen .maxis-browser, .maxis-media.maxis-fullscreen .maxis-browser { display: none; }
+.maxis-media:fullscreen .maxis-playback, .maxis-media.maxis-fullscreen .maxis-playback { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.maxis-media:fullscreen .maxis-player-slot, .maxis-media.maxis-fullscreen .maxis-player-slot { height: auto; min-height: 0; flex: 1; }
+@media(max-width: 600px) {
+  .maxis-media { right: 3vw; bottom: 8px; font-size: 12px; }
+  .maxis-browser { grid-template-columns: minmax(0, 1fr); gap: 8px; }
+  .maxis-browser nav { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .maxis-browser nav button { text-align: center; font-size: 10px; padding: 5px; }
+  .maxis-media h2 { font-size: 15px; }
+  .maxis-media header { gap: 5px; }
+  .maxis-player-slot:not(:empty) { height: 300px; }
+}

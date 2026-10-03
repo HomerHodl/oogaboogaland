@@ -46,6 +46,9 @@ jobs:
           npm run build
           mkdir -p ../_site/dsb-preview
           cp oogaboogaland.html ../_site/dsb-preview/index.html
+          mkdir -p ../_site/dsb-preview/src/js
+          cp -R src/maxis-player ../_site/dsb-preview/src/maxis-player
+          cp src/js/maxis-media-data.js ../_site/dsb-preview/src/js/maxis-media-data.js
       - uses: actions/upload-pages-artifact@v4
         with:
           path: _site

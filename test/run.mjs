@@ -2323,7 +2323,7 @@ const orbitFlow = async (b) => {
 const SCENES = ["hub", "lab", "race", "drop", "orbit", "mine", "pool", "dsb", "factory", "bifrost", "poker", "arcade", "skee", "hoops", "shy", "claw", "hockey", "billiards", "darts", "pinball", "ride", "invaders", "snake", "pong", "stampede", "flap", "breaker", "dash", "stacker"];
 const LANES = Number(process.env.LANES) || 8;
 const ARGS = process.argv.slice(2);
-for (const a of ARGS) if (!SCENES.includes(a) && !["unit", "perf", "full", "poker-protocol"].includes(a)) throw new Error(`Unknown argument "${a}" (unit | perf | full | poker-protocol | ${SCENES.join(" | ")})`);
+for (const a of ARGS) if (!SCENES.includes(a) && !["unit", "maxis-unit", "perf", "full", "poker-protocol"].includes(a)) throw new Error(`Unknown argument "${a}" (unit | perf | full | poker-protocol | ${SCENES.join(" | ")})`);
 const ONLY = process.env.ONLY || ""; // Optional substring within the requested scenes; defaults are unchanged.
 const FULL = ARGS.includes("full");
 const PICKED = FULL ? SCENES : SCENES.filter((s) => ARGS.includes(s));
@@ -8081,6 +8081,90 @@ const pokerProtocolChecks = async () => {
   } catch (e) { record("poker protocol: timeouts refund chips, repeated requests cannot stall, and signers cannot be impersonated", false, e.stack); }
 };
 
+// Rule: the authored Maxis routes and stand points must fit the real Yellow actor, not a guessed radius.
+const maxisChecks = BL => {
+  const noop=()=>{},S=BL.scene,root=S.createNode(),targets=new Set();
+  const land={buildings:[{name:"Maxis Club Theater",x:0,z:0,yaw:0,d:2}],heightAt:()=>0,walkable:()=>true};
+  const I=BL.dsbInteriors.create({root,exterior:{visible:true},land,weather:{shared:{state:{muted:true}},setInterior:noop},relocate:noop,lock:noop,onChange:noop});
+  I.review("maxis-club",true);I.update(.4);const R=I.active.room;
+  const C=BL.crew.create({root,world:{level:0},playerName:"YellowBrokeIt",input:{add:n=>targets.add(n),remove:n=>targets.delete(n)},hud:{setRosterRow:noop},game:{state:{assignments:{},inventory:[]}},viewYaw:0,groundAt:I.groundAt,walkable:I.walkable,fx:{say:noop,zzzAt:noop,burst:noop,puff:noop,spawnParticle:noop,damageNumber:noop}});
+  const A=C.cavemen.get("YellowBrokeIt");C.control(A);
+  const clear=(ax,az,bx=ax,bz=az)=>I.walkable(ax,az,bx,bz,R.groundAt(ax,az),A.bodyHeight,A);
+  record("Maxis: 50 reusable seats fit measured Yellow scale",R.seats.length===50&&A.bodyHeight>1.3&&A.bodyHeight<1.5&&R.seats.every(s=>s.allowWeapons&&s.lockMovement&&clear(s.walkAt.x,s.walkAt.z)),JSON.stringify({height:A.bodyHeight,radius:A.bodyRadius,blocked:R.seats.map((s,i)=>!clear(s.walkAt.x,s.walkAt.z)?i:null).filter(i=>i!==null)}));
+  const seatResults=[];
+  for(const [i,seat] of R.seats.entries()){
+    Object.assign(A.root.position,{x:seat.walkAt.x,y:seat.floor+A.baseY,z:seat.walkAt.z});A.hop=A.hopV=0;
+    const sat=C.sitPlayer(seat),aligned=A.root.rotation.y===seat.ry;
+    C.configureWeapon(A,2,30);C.steer(.5,0);C.look(seat.ry,.1,1);C.update(.2,i*.2);
+    const locked=A.root.position.x===seat.x&&A.root.position.z===seat.z,shots=A.weapon.shotsFired;
+    const gun=sat&&C.fireWeapon(A,{x:seat.x,y:seat.y+1,z:-13},1)&&A.weapon.shotsFired===shots+1;
+    C.steer(0,0);const threw=sat&&C.throwTomato();C.clearProjectiles();
+    const stood=C.standPlayer();seatResults.push({i,ok:sat&&aligned&&locked&&gun&&threw&&stood&&!seat.sitter&&!A.camp.seat&&clear(A.root.position.x,A.root.position.z)});
+  }
+  record("Maxis: real crew sits, locks movement, aims/fires, throws and stands at all 50 chairs",seatResults.every(x=>x.ok),JSON.stringify(seatResults.filter(x=>!x.ok)));
+  // Flood the actual collision queries at quarter-unit resolution, rejecting discontinuous floor steps.
+  const step=.25,w=101,h=125,seen=new Uint8Array(w*h),queue=[],index=(x,z)=>Math.round((z+13.5)/step)*w+Math.round((x+12.5)/step);
+  const start=index(R.spawn.x,R.spawn.z);seen[start]=1;queue.push(start);
+  for(let head=0;head<queue.length;head++){
+    const i=queue[head],ix=i%w,iz=Math.floor(i/w),x=-12.5+ix*step,z=-13.5+iz*step;
+    for(const [dx,dz] of [[1,0],[-1,0],[0,1],[0,-1]]){
+      const nx=ix+dx,nz=iz+dz,n=nz*w+nx;if(nx<0||nx>=w||nz<0||nz>=h||seen[n])continue;
+      const px=x+dx*step,pz=z+dz*step;
+      if(Math.abs(R.groundAt(x,z)-R.groundAt(px,pz))>.5||!clear(x,z,px,pz))continue;
+      seen[n]=1;queue.push(n);
+    }
+  }
+  const reachable=(x,z)=>{const i=index(x,z),ix=i%w,iz=Math.floor(i/w);for(let dx=-2;dx<=2;dx++)for(let dz=-2;dz<=2;dz++){const nx=ix+dx,nz=iz+dz;if(nx>=0&&nx<w&&nz>=0&&nz<h&&seen[nz*w+nx]&&clear(-12.5+nx*step,-13.5+nz*step,x,z))return true;}return false;};
+  const goals=[R.mediaAt,{x:0,z:-10},{x:0,z:-12.3},{x:-10.3,z:-8.25},{x:10.3,z:-8.25},{x:6,z:11},...R.seats.map(s=>s.walkAt)];
+  record("Maxis: lobby reaches screen, stairs, both galleries, bar and every seat",goals.every(p=>reachable(p.x,p.z)),JSON.stringify(goals.filter(p=>!reachable(p.x,p.z))));
+  const geometries=new Set();let nodes=0,finite=true;S.updateWorld(R.root);const visit=n=>{nodes++;if(n.geometry){geometries.add(n.geometry);finite&&=n.geometry.verts.every(Number.isFinite);}n.children.forEach(visit);};visit(R.root);
+  record("Maxis: shared geometry, finite transforms and five authored lights",finite&&geometries.size<90&&nodes<2200&&R.lighting.lightCount===5,JSON.stringify({nodes,geometries:geometries.size}));
+  record("Maxis: main theater gain exceeds lobby and physical screen changes state",R.gainAt(0,0)>R.gainAt(-5.6,16)&&R.gainAt(-5.6,16)>0&&typeof R.setMedia==="function");
+  const roomRoot=R.root;C.dispose();I.dispose();record("Maxis: actor and room disposal remove input targets and scene children",targets.size===0&&!root.children.includes(roomRoot));
+  const D=BL.maxisMediaData;
+  const good=[["youtube","https://youtu.be/M7lc1UVf-VE"],["youtube","https://www.youtube.com/playlist?list=PL123456789012345"],["twitch","https://twitch.tv/yellow"],["twitch","https://twitch.tv/videos/12345"],["twitch","https://clips.twitch.tv/ExampleClip"],["x","https://x.com/example/status/123456"],["direct","https://example.com/film.mp4"],["direct","https://example.com/live.m3u8"]];
+  record("Maxis media: canonical video, playlist, channel, VOD, clip, post and direct formats",good.every(([p,u])=>D.parse(p,u).provider===p));
+  const bad=[["direct","javascript:alert(1)"],["direct","https://user:secret@example.com/a.mp4"],["direct","https://localhost/a.mp4"],["direct","https://127.0.0.1/a.mp4"],["youtube","https://youtube.com.evil.example/watch?v=M7lc1UVf-VE"],["x","https://x.com/example"],["direct","https://example.com/page.html"]];
+  record("Maxis media: rejects unsafe URLs and unsupported provider shapes",bad.every(([p,u])=>{try{D.parse(p,u);return false;}catch{return true;}}));
+  record("Maxis media: offline Live and local filtering require no backend or credentials",D.parse("live","").offline&&D.search("yellow").length===1&&D.search("not configured").length===1&&D.search("absent title").length===0);
+  // Contract: exercise the actual media controller with a small DOM transport double, without fetching providers.
+  const saved={document:globalThis.document,location:globalThis.location,add:window.addEventListener,remove:window.removeEventListener},listeners=new Map(),frames=[];
+  const element=tag=>{
+    const selectors=new Map(),e={tag,children:[],dataset:{},value:tag==="input"?"":"",hidden:false,parent:null,
+      classList:{add:noop,remove:noop,toggle:noop},setAttribute:noop,removeAttribute:noop,addEventListener:noop,removeEventListener:noop,
+      appendChild(c){c.parent=this;this.children.push(c);return c;},replaceChildren(){for(const c of this.children)c.parent=null;this.children=[];},remove(){if(this.parent)this.parent.children=this.parent.children.filter(c=>c!==this);this.parent=null;},blur:noop,
+      querySelector(q){if(!selectors.has(q)){const n=element(q==="input"?"input":"div");if(q===".maxis-volume")n.value="0.8";selectors.set(q,n);}return selectors.get(q);}
+    };if(tag==="iframe"){e.contentWindow={postMessage:noop};frames.push(e);}return e;
+  };
+  globalThis.document={createElement:element,body:element("body"),hidden:false,activeElement:null,fullscreenElement:null,addEventListener:(k,f)=>listeners.set("d:"+k,f),removeEventListener:k=>listeners.delete("d:"+k)};
+  globalThis.location={href:"https://yellowbrokeit.github.io/oogaboogaland/dsb-preview/index.html",origin:"https://yellowbrokeit.github.io"};
+  window.addEventListener=(k,f)=>listeners.set("w:"+k,f);window.removeEventListener=k=>listeners.delete("w:"+k);
+  try{
+    const M=BL.maxisMedia.create();let okay=true;
+    const reply=(frame,state,message="",origin=location.origin)=>listeners.get("w:message")({source:frame.contentWindow,origin,data:{kind:"maxis-player",state,message}});
+    for(let pass=0;pass<3;pass++){
+      M.enter();M.setGain(.8,false);M.load("youtube","https://youtu.be/M7lc1UVf-VE");const stale=frames.at(-1);M.load("twitch","https://twitch.tv/yellow");const twitch=frames.at(-1);
+      M.load("x","https://x.com/example/status/123456");const post=frames.at(-1);M.load("direct","https://example.com/film.mp4");const current=frames.at(-1);
+      const status=document.body.children[0].querySelector(".maxis-status"),before=status.textContent;
+      reply(stale,"error","stale");reply(current,"error","forged","https://unrelated.example");
+      okay&&=status.textContent===before&&!twitch.parent&&!post.parent;
+      reply(current,"bridge-ready");reply(current,"loading","Loading direct");okay&&=M.stats.pending===1;
+      reply(current,"ready","Ready");okay&&=M.stats.pending===0;
+      M.fullscreen();M.fullscreen();M.close();M.setGain(.12,true);
+      okay&&=!stale.parent&&!!current.parent&&M.stats.players===1&&M.stats.provider==="direct"&&M.stats.lastVolume===0;
+      M.setGain(.8,false);document.hidden=true;listeners.get("d:visibilitychange")();okay&&=M.stats.lastVolume===0;document.hidden=false;
+      M.load("live","");okay&&=M.stats.players===0&&!current.parent;
+      M.leave();okay&&=M.stats.players===0&&M.stats.pending===0&&!current.parent;
+    }
+    M.enter();M.setGain(.8,false);M.load("x","https://x.com/example/status/123456");okay&&=M.stats.players===1;M.close();okay&&=M.stats.players===0;
+    for(const [provider,url] of [["x","https://x.com/example/status/123456"],["twitch","https://clips.twitch.tv/ExampleClip"]]){
+      M.setGain(.8,false);M.load(provider,url);okay&&=M.stats.players===1;M.setGain(.8,true);okay&&=M.stats.players===0;
+      okay&&=!M.load(provider,url)&&M.stats.players===0;M.setGain(.8,false);M.load(provider,url);document.hidden=true;listeners.get("d:visibilitychange")();okay&&=M.stats.players===0;document.hidden=false;
+    }
+    M.dispose();record("Maxis media: switching, stale replies, fullscreen, mute and three visit cycles retain one player then dispose",okay&&listeners.size===0&&document.body.children.length===0&&M.stats.disposed);
+  }finally{globalThis.document=saved.document;globalThis.location=saved.location;window.addEventListener=saved.add;window.removeEventListener=saved.remove;}
+};
+
 const unitChecks = async () => {
   const canvasStub = () => ({
     width: 0, height: 0,
@@ -8131,6 +8215,8 @@ const unitChecks = async () => {
     }
   }
   const BL = globalThis.BL;
+  maxisChecks(BL);
+  if(ARGS.includes("maxis-unit"))return;
   pokerChecks(BL);
   {
     // Analytic half-spaces are an independent normal oracle: an incoming

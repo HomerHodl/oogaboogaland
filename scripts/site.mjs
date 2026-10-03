@@ -5,7 +5,7 @@
 // Each is the whole built page with its own head. 404.html sends a miscased or slash-ended route
 // (/OogaRally/) to its address and anything else home; sitemap.xml and robots.txt list the routes, and
 // cards/ holds the card images from `npm run cards`; a route without an `image` uses home's.
-import { copyFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { copyFileSync, cpSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import vm from "node:vm";
@@ -21,6 +21,10 @@ const { site, name, list } = routes;
 
 rmSync(out, { recursive: true, force: true });
 mkdirSync(join(out, "cards"), { recursive: true });
+// The isolated Maxis provider document is loaded only by an explicit media selection.
+mkdirSync(join(out, "src", "js"), { recursive: true });
+cpSync(join(root, "src", "maxis-player"), join(out, "src", "maxis-player"), { recursive: true });
+copyFileSync(join(root, "src", "js", "maxis-media-data.js"), join(out, "src", "js", "maxis-media-data.js"));
 
 const shell = readFileSync(join(root, "oogaboogaland.html"), "utf8");
 if (shell.split("</title>").length !== 2 || shell.split("</head>").length !== 2) throw new Error("oogaboogaland.html: expected one <title> and one </head>");
