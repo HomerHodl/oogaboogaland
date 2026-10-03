@@ -2784,6 +2784,9 @@ const weatherStepChecks = async () => {
   const context = { window: { BL: { math: null, models: { cached: (f) => f, noShadow: (g) => g, box: () => ({}), merge: () => ({}), polyline: () => ({}), particleGeometry: () => ({}) }, scene: {} } } };
   runInNewContext(await readFile(new URL("../src/js/math.js", import.meta.url), "utf8"), context);
   runInNewContext(await readFile(new URL("../src/js/weather.js", import.meta.url), "utf8"), context);
+  runInNewContext(await readFile(new URL("../src/js/dsb-weather.js", import.meta.url), "utf8"), context);
+  const parse = query => context.window.BL.dsbWeather.override(new URLSearchParams(query));
+  record("DSB weather override: only known debug presets can replace ordinary chain weather", parse("weather=storm") === null && parse("debug=1&weather=storm") === "storm" && parse("debug=1&weather=NaN") === null && parse("debug=1&weather=__proto__") === null);
   const { STEPS, stepFor, wetAt } = context.window.BL.weather;
   const names = [0, 0.1, 0.25, 0.45, 0.65, 0.85, 1].map((k) => STEPS[stepFor(k)].name);
   const ladder = names.join() === "dry,drizzle,light rain,rain,heavy rain,downpour,downpour";
@@ -8791,6 +8794,44 @@ const dsbWaterCheckpoint = { name: "dsb water checkpoint", why: "contract: Aegea
 scene("dsb",{label:"water checkpoint",query:"&overview=1",steps:[dsbWaterCheckpoint]});
 scene("dsb",{label:"water checkpoint canvas",query:"&overview=1&canvas2d=1",steps:[dsbWaterCheckpoint]});
 scene("dsb",{label:"water checkpoint phone",query:"&overview=1",opts:{w:390,h:844,mobile:true},steps:[dsbWaterCheckpoint]});
+
+// The current master scene deliberately omits the old attraction prototype. Exercise its
+// environment through the same public debug surface used by the visual review.
+const dsbWeatherCheckpoint = { name: "dsb weather checkpoint", why: "rule: weather recovers to clear, preserves night and gates exterior sound without growing particle or GPU pools", run: async b => {
+  await b.key("m"); await b.key("m"); // Real gesture unlocks the shared sound graph.
+  const r = await b.evaluate(`(() => {
+    const B=__ooga,D=B.dsb,W=D.weather,S=W.shared.state,O=B.renderOpts;
+    let elapsed=0;const advance=seconds=>{for(let t=0;t<seconds;t+=1/60)BL.scenes.dsb.update(1/60,elapsed+=1/60);};
+    const settle=()=>advance(8);
+    W.setMode("clear");settle();
+    const base={light:O.directStrength,sky:Array.from(O.sky),wave:D.water.environment[0],drops:S.drops};
+    W.setMode("light-rain");settle();
+    const rain={light:O.directStrength,drops:S.drops,cloud:W.state.cloud,wave:D.water.environment[0]};
+    W.setMode("storm");settle();
+    const storm={light:O.directStrength,drops:S.drops,cloud:W.state.cloud,wave:D.water.environment[0],strikes:S.strikes};
+    W.strike();advance(.04);const flash=S.flash;advance(2);const expired=S.flash===0;
+    D.setInterior(true);advance(.1);
+    const gated=!S.exterior&&S.drops===0&&S.masterLevel===0&&!S.thunderPending;
+    D.setInterior(false);advance(1);
+    const resumed=S.exterior&&S.drops>0&&S.masterLevel>0;
+    const tier=B.renderer.quality;B.renderer.setQuality("low");advance(2);
+    const bounded=S.drops<=260&&S.deckShown<=22;
+    B.renderer.setQuality(tier);W.setMode("clear");settle();
+    const recovered=Math.abs(O.directStrength-base.light)<.0001&&S.drops===0&&D.water.environment[0]===1;
+    const finite=Array.from(D.water.environment).every(Number.isFinite)&&D.water.heights.every(Number.isFinite);
+    return {base,rain,storm,flash,expired,gated,resumed,bounded,recovered,finite,thunders:S.thunders,kind:B.renderer.kind,textures:B.renderer.stats.waterTextures};
+  })()`);
+  record("DSB weather: rain and storm attenuate daylight and raise bounded water energy",r.base.drops===0&&r.rain.drops>0&&r.rain.light<r.base.light&&r.storm.light<r.rain.light&&r.storm.wave>r.rain.wave&&r.storm.strikes>0,JSON.stringify(r));
+  record("DSB weather: flash expires, exterior gate silences and resumes, tiers bound pools and clear recovers",r.flash>0&&r.expired&&r.thunders>0&&r.gated&&r.resumed&&r.bounded&&r.recovered&&r.finite,JSON.stringify(r));
+  const night=await b.evaluate(`(() => {
+    const B=__ooga,D=B.dsb;D.weather.setMode("rain");for(let i=0;i<240;i++)BL.scenes.dsb.update(1/60,i/60);BL.daylight.sample(0,B.renderOpts,80,37);D.weather.update(0,B.renderOpts);
+    return {day:B.renderOpts.day,lamps:B.renderOpts.lampFactor,drops:D.weather.shared.state.drops,glint:D.water.environment[2],sky:Array.from(B.renderOpts.sky)};
+  })()`);
+  record("DSB night rain: clock stays at night, lamps stay lit, precipitation stays visible and solar glints vanish",night.day===0&&night.lamps>.9&&night.drops>0&&night.glint===0&&night.sky.every(Number.isFinite),JSON.stringify(night));
+  record("DSB weather: runtime console remains clean",b.logs.length===0,b.logs.join(" | "));
+}};
+scene("dsb",{label:"weather checkpoint",query:"&overview=1&weather=clear&time=1200",steps:[dsbWeatherCheckpoint]});
+scene("dsb",{label:"weather checkpoint phone",query:"&overview=1&weather=clear&time=1200",opts:{w:390,h:844,mobile:true},steps:[dsbWeatherCheckpoint]});
 
 const runTasks = async () => {
   const picked = tasks.filter((t) => (t.perf ? PERF : PICKED.includes(t.scene)));

@@ -13,7 +13,7 @@
   renderOpts.fog=renderOpts.horizon;
   // Four structural validation lamps, not street dressing. Keep within even the lowest light tier.
   const LAMP_SPOTS=[[-49,-45],[-57,37],[20,63],[64,49]], lamps=[];
-  let clock,water;
+  let clock,water,weather;
   const sampleDaylight=()=>{
     daylight.sample(clock.read(),renderOpts,clock.dayOfYear,LATITUDE,clock.continuousDay);
     const k=renderOpts.lampFactor, lights=renderOpts.lights;
@@ -29,13 +29,21 @@
   };
   const scene={id:"dsb",renderOpts};
   let root,camera,land,pilot,crew,avatar,hud,input,fx,gate,world,go,overlayCanvas,panel,context,oldSheet,leaving=false,overview=false;
-  const drawExtra=()=>{};
+  const drawExtra=()=>{
+    if(!DEBUG||!weather)return;
+    const c=overlayCanvas.getContext("2d"),s=weather.state;
+    c.save();c.font="12px monospace";c.fillStyle="rgba(5,20,30,.8)";c.fillRect(12,160,310,60);c.fillStyle="#e7f3fa";
+    c.fillText(`Weather: ${s.mode} · ${s.quality}`,20,176);
+    c.fillText(`Rain ${s.precipitation.toFixed(2)} · cloud ${s.cloud.toFixed(2)}`,20,193);
+    c.fillText(`Wind ${s.wind.strength.toFixed(2)} · ${s.exterior?"exterior":"interior / hidden"}`,20,210);c.restore();
+  };
   const before={x:0,y:0,z:0},after={x:0,y:0,z:0};
   const nearGate=()=>avatar&&Math.hypot(avatar.root.position.x+45,avatar.root.position.z+44)<10;
   const walk=()=>{overview=false;pilot.possess(avatar);pilot.navigate({position:{x:avatar.root.position.x,y:avatar.root.position.y-avatar.baseY,z:avatar.root.position.z},yaw:Math.PI,pitch:.22,dist:7});pilot.setActive(true);};
   const overviewView=()=>{overview=true;pilot.goPreset("overview");};
   const act=()=>{if(nearGate()&&!overview){gate.open();return true;}return false;};
-  const action=name=>{if(name==="dsb-lookout")overviewView();else if(name==="reset-view")walk();else if(name==="dsb-context")act();else if(name==="leave")hud.toast("Return through the Portara at the summit.");};
+  const mute=()=>{const on=weather.toggleMuted(),button=document.getElementById("dsb-mute");button.textContent=on?"Unmute":"Mute";button.setAttribute("aria-pressed",String(on));};
+  const action=name=>{if(name==="dsb-mute")mute();else if(name==="dsb-lookout")overviewView();else if(name==="reset-view")walk();else if(name==="dsb-context")act();else if(name==="leave")hud.toast("Return through the Portara at the summit.");};
   const enter=ctx=>{
     ({world,go}=ctx);leaving=false;overview=false;
     root=S.createNode();land=BL.dsbGeography.build();S.addChild(root,land.root);
@@ -71,7 +79,8 @@
     panel=document.getElementById("dsb-panel");panel.hidden=true;
     context=document.getElementById("dsb-context");context.textContent="Dial Portara → Bifrost";
     document.body.classList.add("dsb-active");
-    Object.assign(scene,{root,camera,input,debug:{renderOpts,daylight:clock,camera,pilot,crew,controls:pilot.controls,hud,dsb:{land,water,gate,avatar,phase:"land",overview:OVERVIEW}}});
+    weather=BL.dsbWeather.create({root,renderer:ctx.renderer,camera,land,water,params});
+    Object.assign(scene,{root,camera,input,setInterior:weather.setInterior,debug:{weather:weather.shared,renderOpts,daylight:clock,camera,pilot,crew,controls:pilot.controls,hud,dsb:{land,water,weather,setInterior:weather.setInterior,gate,avatar,phase:"land",overview:OVERVIEW}}});
     walk();if(new URLSearchParams(location.search).get("overview")==="1")overviewView();
   };
   const update=(dt,time)=>{
@@ -80,15 +89,16 @@
     if(!gate.isOpen){pilot.readInput(dt);if(!overview)crew.update(dt,time);pilot.update(dt);}
     Object.assign(after,avatar.root.position);after.y+=avatar.bodyHeight/2-avatar.baseY;
     if(!overview&&gate.traverse(before,after,avatar.bodyRadius,1))return;
+    weather.update(dt,renderOpts);
     context.hidden=overview||!nearGate()||gate.isOpen;fx.update(dt);
   };
   const leave=()=>{
     if(avatar)world.pilot=avatar.traits.name;
-    gate.dispose();pilot.dispose();crew.dispose();fx.dispose();const targets=input.targetCount;input.dispose();hud.el.sheet.hidden=oldSheet;hud.dispose();context.hidden=true;
+    weather.dispose();weather=null;gate.dispose();pilot.dispose();crew.dispose();fx.dispose();const targets=input.targetCount;input.dispose();hud.el.sheet.hidden=oldSheet;hud.dispose();context.hidden=true;
     document.body.classList.remove("dsb-active");while(root.children.length)S.removeChild(root,root.children[root.children.length-1]);
     lamps.length=0;renderOpts.lightCount=0;clock=null;water=renderOpts.dsbWater=null;
-    scene.debug=scene.input=null;land=avatar=crew=pilot=gate=fx=hud=input=null;return {targets};
+    scene.setInterior=scene.debug=scene.input=null;land=avatar=crew=pilot=gate=fx=hud=input=null;return {targets};
   };
-  Object.assign(scene,{enter,update,leave,onKey:e=>{if(e.key==="Escape"&&!gate.isOpen){overviewView();return true;}return false;},overlay:dt=>{const dpr=Math.min(devicePixelRatio||1,2),w=Math.round(overlayCanvas.clientWidth*dpr),h=Math.round(overlayCanvas.clientHeight*dpr);if(overlayCanvas.width!==w||overlayCanvas.height!==h){overlayCanvas.width=w;overlayCanvas.height=h;}overlayCanvas.getContext("2d").setTransform(dpr,0,0,dpr,0,0);fx.drawOverlay(dt,drawExtra);},stats:()=>({targets:input.targetCount,tweens:0}),liveGeometry:set=>{if(avatar)set.add(avatar.headOpen).add(avatar.headClosed);},onDonation:()=>{},onLootCleared:()=>{}});
+  Object.assign(scene,{enter,update,leave,onKey:e=>{if(e.key.toLowerCase()==="m"){mute();return true;}if(e.key==="Escape"&&!gate.isOpen){overviewView();return true;}return false;},overlay:dt=>{const dpr=Math.min(devicePixelRatio||1,2),w=Math.round(overlayCanvas.clientWidth*dpr),h=Math.round(overlayCanvas.clientHeight*dpr);if(overlayCanvas.width!==w||overlayCanvas.height!==h){overlayCanvas.width=w;overlayCanvas.height=h;}overlayCanvas.getContext("2d").setTransform(dpr,0,0,dpr,0,0);fx.drawOverlay(dt,drawExtra);},stats:()=>({targets:input.targetCount,tweens:0}),liveGeometry:set=>{if(avatar)set.add(avatar.headOpen).add(avatar.headClosed);},onDonation:()=>{},onLootCleared:()=>{}});
   BL.scenes.dsb=scene;
 })();

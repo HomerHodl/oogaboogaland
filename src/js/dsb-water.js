@@ -39,6 +39,7 @@
       }
     }
   };
+  const bounded=(v,lo,hi,fallback)=>Number.isFinite(v)?Math.max(lo,Math.min(hi,v)):fallback;
   const create=land=>{
     const re=new Float32Array(N*N),im=new Float32Array(N*N),h0r=new Float32Array(N*N),h0i=new Float32Array(N*N),omega=new Float32Array(N*N);
     const pixels=new Uint8Array(N*N*4),depths=new Uint8Array(B*B*4);
@@ -100,7 +101,14 @@
       }
       state.version++;
     };
-    const state={node,geometry,pixels,depths,update,version:0,size:N,depthSize:B,depthAt,heights:re};
+    const environment=new Float32Array([1,0,1,1]);
+    const setEnvironment=value=>{
+      environment[0]=bounded(value.waveEnergy,1,3,1);
+      environment[1]=bounded(value.roughness,0,1,0);
+      environment[2]=bounded(value.glint,0,1,1);
+      environment[3]=bounded(value.foam,1,3,1);
+    };
+    const state={environment,setEnvironment,node,geometry,pixels,depths,update,version:0,size:N,depthSize:B,depthAt,heights:re};
     update(0);return state;
   };
   const gpu=(gl,state)=>{
@@ -112,7 +120,9 @@
       return tex;
     };
     const surface=texture(7,N,state.pixels,true),depth=texture(8,B,state.depths,false);let version=state.version;
-    return {state,bind:()=>{
+    return {state,bind:program=>{
+      gl.useProgram(program.prog);
+      gl.uniform4fv(program.u.uDSBEnvironment,state.environment);
       gl.activeTexture(gl.TEXTURE7);gl.bindTexture(gl.TEXTURE_2D,surface);
       if(version!==state.version){gl.texSubImage2D(gl.TEXTURE_2D,0,0,0,N,N,gl.RGBA,gl.UNSIGNED_BYTE,state.pixels);version=state.version;}
       gl.activeTexture(gl.TEXTURE8);gl.bindTexture(gl.TEXTURE_2D,depth);gl.activeTexture(gl.TEXTURE0);
@@ -121,6 +131,7 @@
   const shader=`
 uniform sampler2D uDSBSurface;
 uniform sampler2D uDSBDepth;
+uniform vec4 uDSBEnvironment; // wave energy, roughness, sun glint, shoreline foam
 float dsbFresnel(float ci) {
   ci=clamp(ci,0.001,1.0);
   float n=1.333,ct=sqrt(1.0-(1.0-ci*ci)/(n*n));
@@ -132,7 +143,7 @@ vec3 dsbWaterShade(out vec3 bright) {
   vec4 a=texture(uDSBSurface,p/32.0),b=texture(uDSBSurface,mat2(.8,-.6,.6,.8)*p/13.12+.37);
   vec2 slope=(a.rg-.5)+.22*mat2(.8,.6,-.6,.8)*(b.rg-.5);
   float depth=texture(uDSBDepth,p/650.0+.5).r*30.0;
-  slope*=smoothstep(0.0,1.0,depth);
+  slope*=uDSBEnvironment.x*smoothstep(0.0,1.0,depth);
   vec3 n=normalize(vec3(-slope.x,1.0,-slope.y)),v=normalize(uEye-vWorld);
   vec3 r=reflect(-v,n),tr=refract(-v,n,1.0/1.333);
   vec2 floorP=p+tr.xz*depth/max(.25,-tr.y);
@@ -147,8 +158,8 @@ vec3 dsbWaterShade(out vec3 bright) {
   vec3 body=mix(vec3(.012,.22,.32),bottom,transmission)*lightLevel;
   vec3 reflection=uSky*(.8+.45*max(r.y,0.0));
   float fres=dsbFresnel(max(dot(v,n),0.0));
-  float glint=pow(max(dot(r,uLightDir),0.0),180.0)*daylight;
-  float foam=(1.0-smoothstep(.1,.85,depth))*smoothstep(.51,.63,a.a)*.22;
+  float glint=pow(max(dot(r,uLightDir),0.0),mix(180.0,65.0,uDSBEnvironment.y))*daylight*uDSBEnvironment.z;
+  float foam=(1.0-smoothstep(.1,.85,depth))*smoothstep(.51,.63,a.a)*.22*uDSBEnvironment.w;
   vec3 col=mix(body,reflection,fres)+uSun*glint*1.5+vec3(foam*lightLevel);
   bright=uSun*glint*.65;
   return col;
