@@ -8833,6 +8833,50 @@ const dsbWeatherCheckpoint = { name: "dsb weather checkpoint", why: "rule: weath
 scene("dsb",{label:"weather checkpoint",query:"&overview=1&weather=clear&time=1200",steps:[dsbWeatherCheckpoint]});
 scene("dsb",{label:"weather checkpoint phone",query:"&overview=1&weather=clear&time=1200",opts:{w:390,h:844,mobile:true},steps:[dsbWeatherCheckpoint]});
 
+const dsbInteriorCheckpoint = { name: "dsb interior checkpoint", why: "rule: a real door isolates its room and returns the same player to current exterior weather without accumulating resources", run: async b => {
+  const step=()=>b.evaluate('for(let i=0;i<36;i++)BL.scenes.dsb.update(1/60,i/60)');
+  const tap=async()=>{
+    const p=await b.evaluate('(()=>{const e=document.getElementById("dsb-context"),r=e.getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2,visible:!e.hidden};})()');
+    if(!p.visible)throw new Error("Expected a reachable interior door");
+    await b.send("Input.dispatchTouchEvent",{type:"touchStart",touchPoints:[{x:p.x,y:p.y}]});
+    await b.send("Input.dispatchTouchEvent",{type:"touchEnd",touchPoints:[]});await step();
+  };
+  await b.key(" ");await step();
+  const entry=await b.evaluate(`(()=>{const B=__ooga,D=B.dsb,I=D.interiors,S=D.weather.shared.state;window.__interiorCheck={avatar:D.avatar,land:D.land,nature:D.nature,water:D.water,indoor:I.lighting,read:B.daylight.read};
+    return {active:!!I.active,exterior:D.exterior.visible,drops:S.drops,master:S.masterLevel,feet:D.avatar.root.position.y-D.avatar.baseY,camera:{...B.camera.position},audio:I.audio.stats,label:document.querySelector("#dsb-context").textContent};})()`);
+  record("DSB interior: Space at the exterior door enters, gates weather and starts one workshop graph",entry.active&&!entry.exterior&&entry.drops===0&&entry.master===0&&Math.abs(entry.feet-.06)<.001&&Math.abs(entry.camera.x)<2&&entry.audio.connected&&entry.audio.sources===3,JSON.stringify(entry));
+  // Actual held movement, then a supported doorway return through the same controller.
+  const before=await b.evaluate('({...__ooga.dsb.avatar.root.position})');
+  await b.send("Input.dispatchKeyEvent",{type:"keyDown",key:"d",code:"KeyD"});await step();
+  await b.send("Input.dispatchKeyEvent",{type:"keyUp",key:"d",code:"KeyD"});
+  const moved=await b.evaluate(`(()=>{const D=__ooga.dsb,I=D.interiors,p=D.avatar.root.position;return {p:{...p},floor:I.groundAt(p.x,p.z),wall:I.walkable(0,8,0,12,.06,2,D.avatar),counter:I.walkable(0,-3,0,-7,.06,2,D.avatar),table:I.walkable(0,7,0,3,.06,2,D.avatar)};})()`);
+  record("DSB interior: held movement works on the floor and swept collision blocks walls, tables and counter",Math.hypot(moved.p.x-before.x,moved.p.z-before.z)>.2&&moved.floor===.06&&!moved.wall&&!moved.counter&&!moved.table,JSON.stringify(moved));
+  await b.evaluate('(()=>{const B=__ooga,I=B.dsb.interiors;B.pilot.navigate({position:I.active.room.spawn,yaw:0,pitch:.22,dist:3});B.dsb.weather.setMode("rain");B.daylight.read=()=>0;for(let i=0;i<480;i++)BL.scenes.dsb.update(1/60,i/60);})()');
+  const isolation=await b.evaluate('({same:BL.scenes.dsb.renderOpts===__interiorCheck.indoor,exterior:__ooga.dsb.weather.state.exterior,drops:__ooga.dsb.weather.shared.state.drops,night:__ooga.renderOpts.day})');
+  await tap();
+  const exit=await b.evaluate(`(()=>{const B=__ooga,D=B.dsb,I=D.interiors,p=D.avatar.root.position,e=I.registry.get("meme-factory").entry;return {active:!!I.active,same:D.avatar===__interiorCheck.avatar&&D.land===__interiorCheck.land&&D.water===__interiorCheck.water&&D.nature===__interiorCheck.nature,distance:Math.hypot(p.x-e.x,p.z-e.z),floor:p.y-D.avatar.baseY-D.land.heightAt(p.x,p.z),weather:D.weather.state.mode,night:B.renderOpts.day,lamps:B.renderOpts.lampFactor,drops:D.weather.shared.state.drops,master:D.weather.shared.state.masterLevel,audio:I.audio.stats};})()`);
+  record("DSB interior: touch exit restores the same player/building and current night rain, not entry weather",isolation.same&&!isolation.exterior&&isolation.drops===0&&isolation.night===0&&!exit.active&&exit.same&&exit.distance<.01&&Math.abs(exit.floor)<.01&&exit.weather==="rain"&&exit.night===0&&exit.lamps>.9&&exit.drops>0&&exit.master>0&&!exit.audio.connected,JSON.stringify({isolation,exit}));
+  await b.evaluate('__ooga.daylight.read=__interiorCheck.read');
+  const snapshot=()=>b.evaluate(`(()=>{const B=__ooga,I=B.dsb.interiors;let nodes=0;const geometries=new Set();const visit=n=>{nodes++;if(n.geometry)geometries.add(n.geometry);for(const c of n.children)visit(c);};visit(BL.scenes.dsb.root);return {nodes,geometries:geometries.size,rooms:I.rooms.size,targets:BL.scenes.dsb.input.targetCount,audio:I.audio.stats.sources,contexts:I.audio.stats.contexts,records:B.renderer.stats.records};})()`);
+  const listenerCount=async()=>{
+    const obj=await b.send("Runtime.evaluate",{expression:"document"});
+    const result=await b.send("DOMDebugger.getEventListeners",{objectId:obj.result.result.objectId});
+    await b.send("Runtime.releaseObject",{objectId:obj.result.result.objectId});return result.result.listeners.length;
+  };
+  const base=await snapshot(),listeners=await listenerCount();
+  let cycles=1;
+  for(;cycles<10;cycles++){await tap();await tap();}
+  const end=await snapshot(),listenersEnd=await listenerCount();
+  record("DSB interior: ten complete door cycles retain bounded nodes, geometry, handlers and audio sources",Object.keys(base).every(key=>key==="records"?end[key]<=base[key]:end[key]===base[key])&&listeners===listenersEnd,JSON.stringify({cycles,base,end,listeners,listenersEnd}));
+  await b.evaluate('window.__interiorCheck.old=__ooga.dsb.interiors;__ooga.go("dsb",null,true);__ooga.advance(.05)');
+  const clean=await b.evaluate('({rooms:__interiorCheck.old.rooms.size,audio:__interiorCheck.old.audio.stats.contexts,fresh:__ooga.dsb.interiors.rooms.size,visible:__ooga.dsb.exterior.visible})');
+  record("DSB interior: scene departure releases the room and its AudioContext",clean.rooms===0&&clean.audio===0&&clean.fresh===0&&clean.visible,JSON.stringify(clean));
+  await b.evaluate('delete window.__interiorCheck');
+  record("DSB interior: runtime console remains clean",b.logs.length===0,b.logs.join(" | "));
+}};
+scene("dsb",{label:"interior checkpoint",query:"&view=meme-factory&weather=storm&time=1200",steps:[dsbInteriorCheckpoint]});
+scene("dsb",{label:"interior checkpoint phone",query:"&view=meme-factory&weather=storm&time=1200",opts:{w:390,h:844,mobile:true},steps:[dsbInteriorCheckpoint]});
+
 const dsbNatureCheckpoint = { name: "dsb nature checkpoint", why: "rule: terrain contact, deterministic layout, clear routes and bounded tier populations survive scene re-entry", run: async b => {
   const r=await b.evaluate(`(() => {
     const B=__ooga,D=B.dsb,N=D.nature,L=D.land;
