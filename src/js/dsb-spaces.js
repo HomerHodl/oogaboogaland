@@ -21,7 +21,7 @@
     document.body.appendChild(dialog);
     const q=s=>dialog.querySelector(s),select=q("select"),search=q('input[type="search"]'),list=q(".spaces-list"),status=q("[data-status]"),title=q("[data-title]"),date=q("[data-date]"),state=q("[data-state]"),play=q("[data-play]"),progress=q('input[type="range"]'),output=q("output");
     for(const [id,label] of YEARS){const option=document.createElement("option");option.value=id;option.textContent=label;select.appendChild(option);}
-    let stopped=true,media=null,mediaEvents=null,active=false,disposed=false,controller=null,timer=0,epoch=0,items=[],queue=[],index=-1,current=null,returnFocus=null;
+    let gain=0,muted=false,stopped=true,media=null,mediaEvents=null,active=false,disposed=false,controller=null,timer=0,epoch=0,items=[],queue=[],index=-1,current=null,returnFocus=null;
     const cache=new Map(),events=new AbortController();
     const time=n=>Number.isFinite(n)?`${Math.floor(n/60)}:${String(Math.floor(n%60)).padStart(2,"0")}`:"—";
     const sync=()=>{
@@ -34,7 +34,7 @@
     };
     const ensureMedia=()=>{
       if(media)return media;
-      media=document.createElement("audio");media.preload="none";mediaEvents=new AbortController();
+      media=document.createElement("audio");media.preload="none";media.volume=gain;media.muted=muted||gain===0;mediaEvents=new AbortController();
       for(const type of ["play","pause","ended","error","loadedmetadata","timeupdate","durationchange","waiting","playing","canplay"])media.addEventListener(type,sync,{signal:mediaEvents.signal});
       return media;
     };
@@ -76,7 +76,7 @@
     listen(q("[data-stop]"),"click",()=>{stopped=true;epoch++;if(media){media.pause();media.currentTime=0;}sync();state.textContent="Stopped";});
     listen(progress,"change",()=>{if(media&&Number.isFinite(media.duration))media.currentTime=media.duration*Number(progress.value)/1000;});
     const leave=()=>{
-      active=false;stopped=true;epoch++;controller?.abort();controller=null;clearTimeout(timer);close();
+      active=false;gain=0;stopped=true;epoch++;controller?.abort();controller=null;clearTimeout(timer);close();
       mediaEvents?.abort();mediaEvents=null;
       if(media){media.pause();media.removeAttribute("src");media.load();media=null;}
       cache.clear();items=[];queue=[];index=-1;current=null;list.replaceChildren();search.value="";onPlaying(false);
@@ -84,8 +84,9 @@
     return {enter:()=>{if(!disposed)active=true;},leave,close,
       open:()=>{if(!active||disposed)return;returnFocus=document.activeElement;if(!dialog.open)dialog.showModal();onOpen(true);sync();if(!items.length&&!controller)void load();},
       get isOpen(){return dialog.open;},get playing(){return !!media&&!media.paused&&!media.ended;},
-      setMuted:on=>{if(media)media.muted=on;},
-      get stats(){return {active,open:dialog.open,cached:cache.size,items:items.length,media:media?1:0,playing:!!media&&!media.paused,loading:!!controller,title:current?.title||""};},
+      setMuted:on=>{muted=!!on;if(media)media.muted=muted||gain===0;},
+      setGain:value=>{gain=Math.max(0,Math.min(1,value));if(media){if(Math.abs(media.volume-gain)>.001)media.volume=gain;media.muted=muted||gain===0;}},
+      get stats(){return {active,gain,muted:muted||gain===0,position:media?.currentTime||0,open:dialog.open,cached:cache.size,items:items.length,media:media?1:0,playing:!!media&&!media.paused,loading:!!controller,title:current?.title||""};},
       dispose:()=>{leave();disposed=true;events.abort();dialog.remove();}
     };
   };

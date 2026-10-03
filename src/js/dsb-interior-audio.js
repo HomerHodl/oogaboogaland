@@ -3,17 +3,35 @@
   "use strict";
   const create=()=>{
     let context=null,bus=null,hum=null,buzz=null,noise=null,filter=null,humGain=null,buzzGain=null,noiseGain=null;
-    let kind="meme-factory",duck=false;
+    let kind="meme-factory",duck=false,effects=null;
+    const buffers=new Map(),voices=new Set(),cues={step:0,jump:0,land:0,throw:0,splat:0};
+    const clearVoices=()=>{for(const source of voices){source.stop();source.onended?.();source.onended=null;}voices.clear();};
     let active=false,muted=false,connected=false,disposed=false;
     const gate=()=>{
       if(!bus)return;
       const on=active&&!muted&&!document.hidden;
-      if(on&&!connected){bus.connect(context.destination);connected=true;}
-      if(!on&&connected){bus.disconnect();connected=false;}
+      if(on&&!connected){bus.connect(context.destination);effects.connect(context.destination);connected=true;}
+      if(!on&&connected){bus.disconnect();effects.disconnect();connected=false;}
     };
     const wake=()=>{
       if(context||disposed||!active||!window.AudioContext||!navigator.userActivation?.hasBeenActive)return;
       context=new AudioContext();bus=context.createGain();bus.gain.value=.7;
+      effects=context.createGain();effects.gain.value=.65;
+      // Short deterministic, project-generated foley. Buffers are built once in the room's context.
+      for(const name of Object.keys(cues)){
+        const duration=name==="splat"?.32:name==="step"?.1:.18;
+        const buffer=context.createBuffer(1,Math.ceil(context.sampleRate*duration),context.sampleRate),data=buffer.getChannelData(0);
+        let seed=4721,low=0,phase=0;
+        for(let i=0;i<data.length;i++){
+          const t=i/context.sampleRate,k=t/duration;
+          seed=(Math.imul(seed,1664525)+1013904223)|0;const noise=(seed>>>0)/2147483648-1;low=low*.72+noise*.28;
+          const wet=name==="splat",air=name==="throw"||name==="jump",freq=wet?320*(1-k)+65:air?130+k*240:name==="land"?85:135;
+          phase+=2*Math.PI*freq/context.sampleRate;
+          const envelope=Math.min(1,t/.006)*Math.pow(1-k,wet?1.6:2.4);
+          data[i]=envelope*(air?noise*.22:wet?(low*.85+Math.sin(phase+Math.sin(phase*.41)*2)*.38):low*.32+Math.sin(phase)*.34);
+        }
+        buffers.set(name,buffer);
+      }
       humGain=context.createGain();humGain.gain.value=.028;humGain.connect(bus);
       hum=context.createOscillator();hum.type="triangle";hum.frequency.value=46;hum.connect(humGain);hum.start();
       buzzGain=context.createGain();buzzGain.gain.value=.007;buzzGain.connect(bus);
@@ -29,7 +47,18 @@
     const gesture=()=>{wake();if(active&&context?.state==="suspended")context.resume().catch(()=>{});};
     document.addEventListener("pointerdown",gesture);document.addEventListener("keydown",gesture);document.addEventListener("visibilitychange",gate);
     return {
-      setActive:(on,room="meme-factory")=>{active=!!on;kind=room;wake();gate();},
+      setActive:(on,room="meme-factory")=>{clearVoices();active=!!on;kind=room;duck=false;wake();gate();},
+      cue:(name,level=1)=>{
+        if(disposed||!active||kind!=="studio"||muted||document.hidden)return false;
+        gesture();if(!context||!buffers.has(name))return false;
+        if(voices.size>=8){const oldest=voices.values().next().value;oldest.stop();oldest.onended?.();oldest.onended=null;}
+        const source=context.createBufferSource();source.buffer=buffers.get(name);
+        // Source buffers already have an envelope; playback level uses the shared effect bus.
+        source.playbackRate.value=name==="step"?(cues.step%2?1.08:.94):1;
+        const gain=context.createGain();gain.gain.value=Math.max(0,Math.min(1,level));source.connect(gain);gain.connect(effects);
+        source.onended=()=>{source.disconnect();gain.disconnect();voices.delete(source);};
+        voices.add(source);source.start();cues[name]++;return true;
+      },
       setDucked:on=>{duck=!!on;},
       update:on=>{
         if(muted!==!!on){muted=!!on;gate();}
@@ -41,14 +70,14 @@
         buzzGain.gain.setTargetAtTime(.006+.003*(.5+.5*Math.sin(t*1.7)),t,.12);
         noiseGain.gain.setTargetAtTime(.008+.004*(.5+.5*Math.sin(t*2.3)),t,.12);
       },
-      get stats(){return {active,connected,contexts:context?1:0,sources:context?3:0,state:context?.state||"locked"};},
+      get stats(){return {active,connected,contexts:context?1:0,sources:context?3+voices.size:0,voices:voices.size,cues:{...cues},state:context?.state||"locked"};},
       dispose:()=>{
-        disposed=true;active=false;gate();
+        disposed=true;active=false;clearVoices();gate();
         document.removeEventListener("pointerdown",gesture);document.removeEventListener("keydown",gesture);document.removeEventListener("visibilitychange",gate);
         if(!context)return;
         for(const source of [hum,buzz,noise]){source.stop();source.disconnect();}
-        for(const node of [filter,humGain,buzzGain,noiseGain,bus])node.disconnect();
-        context.close().catch(()=>{});context=null;
+        for(const node of [filter,humGain,buzzGain,noiseGain,bus,effects])node.disconnect();
+        context.close().catch(()=>{});context=null;buffers.clear();
       }
     };
   };

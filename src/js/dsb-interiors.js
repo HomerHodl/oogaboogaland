@@ -144,12 +144,12 @@
       }
       return true;
     };
-    const clampCamera=p=>{
+    const clampCamera=(p,focus)=>{
       if(!active){p.y=Math.max(p.y,land.heightAt(p.x,p.z)+1);return;}
       const b=active.room.bounds;
       p.x=Math.max(b.minX+.2,Math.min(b.maxX-.2,p.x));p.z=Math.max(b.minZ+.2,Math.min(b.maxZ-.2,p.z));
       p.y=Math.max(active.room.groundAt(p.x,p.z)+.74,Math.min(active.room.ceiling-.7,p.y));
-      active.room.clampCamera?.(p);
+      active.room.clampCamera?.(p,focus);
     };
     return {registry,rooms,audio,
       get lighting(){return active?.room.lighting||null;},request,target,update,walkable,clampCamera,

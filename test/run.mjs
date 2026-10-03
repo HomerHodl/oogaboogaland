@@ -9053,7 +9053,14 @@ const dsbStudioCheckpoint = {name:"dsb studio checkpoint",why:"playthrough: Stud
   };
   await b.key(" ");await step();
   const layout=await b.evaluate(`(()=>{const B=__ooga,D=B.dsb,R=D.interiors.active?.room;return {id:R?.id,seats:R?.seats.length,entry:R?.groundAt(0,17),lower:R?.groundAt(0,-6),stage:R?.groundAt(0,-12),exterior:D.exterior.visible,rain:D.weather.shared.state.drops,master:D.weather.shared.state.masterLevel,lights:R?.lighting.lightCount};})()`);
-  record("Studio: correct door reveals upper entrance, descending room and isolated stage",layout.id==="dsb-studio"&&layout.seats===24&&layout.entry===3&&layout.lower===0&&layout.stage===.6&&!layout.exterior&&layout.rain===0&&layout.master===0&&layout.lights===3,JSON.stringify(layout));
+  record("Studio: correct door reveals upper entrance, descending room and isolated stage",layout.id==="dsb-studio"&&layout.seats===28&&layout.entry===3&&layout.lower===0&&layout.stage===.6&&!layout.exterior&&layout.rain===0&&layout.master===0&&layout.lights===3,JSON.stringify(layout));
+  const routes=await b.evaluate(`(()=>{const B=__ooga,D=B.dsb,R=D.interiors.active.room,A=D.avatar,clear=(a,b)=>D.interiors.walkable(a[0],a[1],b[0],b[1],3,2,A);return {left:R.jukeboxAt.x<0,booth:clear([0,12],[5,12])&&clear([5,12],[5,15.5]),corridor:clear([0,17],[0,8.5]),balcony:clear([0,8.5],[13.5,8.5])&&clear([13.5,8.5],[12.5,6.8]),seats:R.seats.every(s=>clear([s.walkAt.x,s.walkAt.z],[s.walkAt.x,s.walkAt.z]))};})()`);
+  record("Studio: left archive, enterable right booth, corridor and balcony approaches stay clear",Object.values(routes).every(Boolean),JSON.stringify(routes));
+  await b.evaluate('__ooga.pilot.navigate({position:{x:0,y:3,z:13},yaw:0,pitch:.12,dist:3})');
+  await b.send("Input.dispatchKeyEvent",{type:"keyDown",key:"w",code:"KeyW"});await step();await b.send("Input.dispatchKeyEvent",{type:"keyUp",key:"w",code:"KeyW"});
+  await tap("#act");await step();await step();
+  const cues=await b.evaluate('__ooga.dsb.interiors.audio.stats');
+  record("Studio: walking, takeoff and landing use the gated indoor sound bus",cues.cues.step>0&&cues.cues.jump>0&&cues.cues.land>0&&cues.contexts===1,JSON.stringify(cues));
   // Playback is deterministic here; a separate live smoke checks the real public source and media.
   await b.evaluate(`(()=>{
     window.__studioCheck={fetch:window.fetch,play:HTMLMediaElement.prototype.play,pause:HTMLMediaElement.prototype.pause,requests:0,plays:0,active:new Set()};
@@ -9071,9 +9078,11 @@ const dsbStudioCheckpoint = {name:"dsb studio checkpoint",why:"playthrough: Stud
     await b.send("Input.dispatchKeyEvent",{type:"keyDown",key:"w",code:"KeyW"});await step();await b.send("Input.dispatchKeyEvent",{type:"keyUp",key:"w",code:"KeyW"});
     await tap("#weapon-hud");await tap("#weapon-hud");await tap(".dsb-studio-tools button");
     await b.evaluate('if(!__ooga.dsb.avatar.weapon.aiming)__ooga.pilot.modeAction("mode-toggle");__ooga.crew.look(2.7,.1,1)');await step();
-    const fired=await b.evaluate('({seat:!!__ooga.dsb.avatar.camp.seat,p:{...__ooga.dsb.avatar.root.position},yaw:__ooga.dsb.avatar.root.rotation.y,shots:__ooga.dsb.avatar.weapon.shotsFired,throws:__ooga.crew.stats().tomatoesThrown,aim:__ooga.dsb.avatar.weapon.aiming})');
-    record("Studio: seat "+cycle+" locks walking with seated pose and allows gun/throw controls",seated.seat&&seated.close&&seated.leg<-1.5&&fired.seat&&Math.hypot(fired.p.x-seated.p.x,fired.p.z-seated.p.z)<.001&&fired.shots>cycle&&fired.throws===cycle+1&&fired.aim,JSON.stringify({seated,fired}));
-    await tap("#dsb-context");
+    const fired=await b.evaluate('({seat:!!__ooga.dsb.avatar.camp.seat,p:{...__ooga.dsb.avatar.root.position},yaw:__ooga.dsb.avatar.root.rotation.y,shots:__ooga.dsb.avatar.weapon.shotsFired,throws:__ooga.crew.stats().tomatoesThrown,aim:__ooga.dsb.avatar.weapon.aiming,cues:__ooga.dsb.interiors.audio.stats.cues})');
+    record("Studio: seat "+cycle+" locks walking with seated pose and allows gun/throw controls",seated.seat&&seated.close&&seated.leg<-1.5&&fired.seat&&Math.hypot(fired.p.x-seated.p.x,fired.p.z-seated.p.z)<.001&&fired.shots>cycle&&fired.throws===cycle+1&&fired.aim&&fired.cues.throw>cycle&&fired.cues.splat>cycle,JSON.stringify({seated,fired}));
+    const standControls=await b.evaluate('Array.from(document.querySelectorAll("button")).filter(e=>/stand up/i.test(e.textContent)&&e.getClientRects().length&&getComputedStyle(e).visibility!=="hidden").length');
+    record("Studio: seated control "+cycle+" has one stand action and no lighting button",standControls===1&&!await b.evaluate('Array.from(document.querySelectorAll("button")).some(e=>/stage lights|studio lights/i.test(e.textContent))'));
+    await tap("#act");
     const stood=await b.evaluate('({seat:!!__ooga.dsb.avatar.camp.seat,close:__ooga.pilot.closeWanted,clear:__ooga.dsb.interiors.walkable(__ooga.dsb.avatar.root.position.x,__ooga.dsb.avatar.root.position.z,__ooga.dsb.avatar.root.position.x,__ooga.dsb.avatar.root.position.z,0,2,__ooga.dsb.avatar)})');
     record("Studio: touch stand "+cycle+" restores clear ground and follow camera",!stood.seat&&!stood.close&&stood.clear,JSON.stringify(stood));
     await b.evaluate('__ooga.pilot.navigate({position:__ooga.dsb.interiors.active.room.jukeboxAt,yaw:-Math.PI/2,pitch:.12,dist:3})');await step();await tap("#dsb-context");await b.sleep(80);
@@ -9082,6 +9091,8 @@ const dsbStudioCheckpoint = {name:"dsb studio checkpoint",why:"playthrough: Stud
     await tap("#dsb-context");await tap(".dsb-spaces [data-close]");
     const audio=await b.evaluate('({stats:__ooga.dsb.spaces.stats,active:__studioCheck.active.size,requests:__studioCheck.requests})');
     record("Studio: archive "+cycle+" browses, pauses, resumes and reuses one player/cache",paused&&audio.stats.items===3&&audio.stats.playing&&audio.active===1&&audio.requests===cycle+1,JSON.stringify(audio));
+    const localized=await b.evaluate(`(()=>{const B=__ooga,D=B.dsb,R=D.interiors.active.room,plays=__studioCheck.plays,near=D.spaces.stats.gain;B.pilot.navigate({position:{x:0,y:3,z:8.5},yaw:0,pitch:.12,dist:3});BL.scenes.dsb.update(1/60,0);const far=D.spaces.stats;B.pilot.navigate({position:R.jukeboxAt,yaw:Math.PI/2,pitch:.12,dist:3});BL.scenes.dsb.update(1/60,0);return {near,far,back:D.spaces.stats,plays:__studioCheck.plays-plays};})()`);
+    record("Studio: archive "+cycle+" fades to silence in theater and returns without replay",localized.near>.9&&localized.far.gain===0&&localized.far.muted&&localized.far.playing&&localized.back.gain>.9&&!localized.back.muted&&localized.plays===0,JSON.stringify(localized));
     await b.evaluate('__ooga.pilot.navigate({position:__ooga.dsb.interiors.active.room.spawn,yaw:0,pitch:.22,dist:3})');await step();await tap("#dsb-context");
     const end=await b.evaluate(`(()=>{const B=__ooga,D=B.dsb;return {indoor:!!D.interiors.active,seat:!!D.avatar.camp.seat,spaces:D.spaces.stats,active:__studioCheck.active.size,weather:D.weather.state.exterior,trigger:D.avatar.weapon.triggerHeld,projectiles:B.crew.stats().projectiles,rooms:D.interiors.rooms.size,dom:document.querySelectorAll(".dsb-spaces").length,records:B.renderer.stats.records};})()`);
     record("Studio: exit "+cycle+" disposes playback, seat, projectiles and restores exterior",!end.indoor&&!end.seat&&end.spaces.media===0&&end.spaces.cached===0&&end.active===0&&end.weather&&!end.trigger&&end.projectiles===0&&end.dom===1,JSON.stringify(end));

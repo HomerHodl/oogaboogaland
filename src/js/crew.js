@@ -1477,7 +1477,7 @@
       if(ctx.clipProjectileTarget)ctx.clipProjectileTarget(b.from,b.to);
       b.node.geometry=tomatoGeometry;setVec(b.node.scale,1,1,1);setVec(b.node.position,b.from.x,b.from.y,b.from.z);
       b.node.visible=true;b.duration=b.life=.8;b.arc=1.8;b.tomato=true;b.source=cave;b.feedback=b.workShot=false;
-      throwCooldown=.45;tomatoesThrown++;return true;
+      throwCooldown=.45;tomatoesThrown++;ctx.onTomatoThrow?.(b.from);return true;
     };
     const fireBullet = (cave, spot) => {
       const bullet = bulletPool[bulletIdx++ % bulletPool.length], node = bullet.node;
@@ -1544,6 +1544,7 @@
             else setVec(p, nx, ny, nz);
           }
         } else setVec(p, lerp(from.x, to.x, k), lerp(from.y, to.y, k)+bullet.arc*4*k*(1-k), lerp(from.z, to.z, k));
+        if(bullet.tomato&&ctx.tomatoContact?.(x,y,z,p))bullet.life=0;
         const absorbed = ctx.absorbProjectile && ctx.absorbProjectile(x, y, z, p, step, bullet.source, bullet.workShot);
         if (absorbed) bullet.life = 0;
         let impacted = false, dx = 0, dy = 0, dz = 0, distance = 0;
@@ -1567,6 +1568,7 @@
         }
         bullet.node.rotation.x += dt * 24;
         if (!bullet.life) {
+          if (bullet.tomato) ctx.onTomatoImpact?.(p);
           if (bullet.workShot && ctx.workHit) ctx.workHit(bullet.source);
           bullet.workShot = false;
           bullet.node.visible = false;
