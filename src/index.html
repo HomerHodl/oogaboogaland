@@ -1297,6 +1297,7 @@
         </nav>
         <section id="dsb-tv-radio" hidden aria-label="Noderunners Radio">
           <button type="button" id="dsb-tv-back">Back to TV menu</button>
+          <button type="button" id="dsb-tv-play">Play / enable radio</button>
           <p id="dsb-tv-status" role="status">Connecting to the station</p>
           <p class="dsb-eyebrow">NOW PLAYING</p><h3 id="dsb-tv-song">Waiting for song info</h3><p id="dsb-tv-artist"></p><p id="dsb-tv-note"></p>
           <section class="dsb-tv-jukebox" aria-label="Request a song">
@@ -1304,6 +1305,7 @@
             <div class="dsb-tv-search"><input id="dsb-tv-query" maxlength="100" placeholder="Search Noderunners"><button id="dsb-tv-search" type="button">Search</button></div>
             <p id="dsb-tv-request-status" role="status"></p><div id="dsb-tv-results"></div>
             <section id="dsb-tv-invoice" hidden aria-label="Lightning payment">
+              <p>Invoice from Noderunners Radio. Scan or open your wallet to pay. No payment is made automatically.</p>
               <h3 id="dsb-tv-price"></h3><p id="dsb-tv-selected"></p><canvas id="dsb-tv-invoice-qr" role="img" aria-label="Lightning invoice QR code"></canvas>
               <a id="dsb-tv-wallet">Open Lightning wallet</a><button id="dsb-tv-copy" type="button">Copy invoice</button><button id="dsb-tv-cancel-invoice" type="button">Close invoice</button>
               <textarea id="dsb-tv-invoice-text" readonly aria-label="Lightning invoice"></textarea><p id="dsb-tv-payment-status" role="status"></p>
@@ -1311,7 +1313,7 @@
           </section>
           <div class="dsb-tv-columns"><div><h3>Up next</h3><ol id="dsb-tv-queue"></ol><h3>Recently played</h3><ol id="dsb-tv-history"></ol></div>
           <div class="dsb-tv-request"><canvas id="dsb-tv-qr" role="img" aria-label="Scan to open the official Noderunners jukebox"></canvas><a href="https://noderunnersradio.com/?jukebox" target="_blank" rel="noopener noreferrer">Choose a song on Noderunners &#8599;</a><p>Scan or open the jukebox, choose a song, then pay its Lightning invoice. The station sets the price and confirms your place in the queue.</p></div></div>
-          <p class="dsb-tv-help">Broadcast audio can lag behind song information. Music and Mute controls remain in Bag &amp; rides. Closing this TV keeps the radio playing.</p>
+          <p class="dsb-tv-help">Broadcast audio can lag behind song information. The existing DSB Mute control silences radio and ambience. Closing this TV keeps the outdoor radio playing and stops invoice monitoring. Close invoice stops monitoring only; it does not cancel a Lightning invoice. No payment is made automatically.</p>
         </section>
         <p id="dsb-tv-welcome">Choose a channel. The island is listening.</p>
       </div>

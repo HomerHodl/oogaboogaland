@@ -1,5 +1,8 @@
 # Milestone 7: outdoor Noderunner harbor
 
+The original implementation below is historical. The Radio/TV correction section
+supersedes its synthesized-only audio and absent TV behavior.
+
 Base: `2cf648e4fd6dcd350910597bf38468cb44b685ab` on `feature/dsb-land-master`.
 
 ## Restoration source
@@ -81,3 +84,77 @@ new lettering behind large facade/screen faces. The three labels now use the exi
 sign/arcade `depthBias` convention (-0.6); the shared renderer and WebGL geometry are
 unchanged. A forced Canvas render confirms complete labels and no console warnings
 or errors. Build and syntax checks pass again.
+
+
+## Radio / TV correction
+
+Starting checkpoint: `7f3670532f06c830f7fe6609b0aa861d5b68cc30`, clean and matching
+GitHub after fetch and direct `ls-remote`. Historical source remains
+`75cb0394891ea2520419a1bc5eef63ef0cd42c37`: inspected its `dsb-audio.js`,
+`dsb-tv.js`, `scene-dsb.js`, `index.html` and `qr.js`. The TV and version-40 ECC-M
+QR modules were already retained unchanged from that commit. Adapted the TV rather
+than duplicating it; the old scene and entrance audio implementation are not restored.
+
+- One HTMLAudioElement supplies the primary station stream. The stream lacks CORS
+  headers, so it is not connected through MediaElementAudioSource (which would
+  silence cross-origin audio). The shared weather audio layer receives synchronous
+  `setEnabled(exterior && !muted)` notifications, muting the element immediately
+  for interiors, hidden pages and global Mute. Normal updates use the existing
+  player-distance attenuation, 5–42 units, with exponential smoothing. The stream
+  stays connected during interior visits; exit samples current player distance.
+- A 12-second connection/stall watchdog switches to the existing original loop;
+  a 30-second retry attempts live playback. The fallback is lazily allocated once
+  on the existing weather context. Its gain is zeroed before retrying live audio;
+  both sources cannot be audible together. Autoplay denial waits for Play rather
+  than repeatedly retrying. Disposal invalidates handlers and timers, releases the
+  stream and stops/disconnects the fallback before closing the shared context.
+- The physical screen is a pick target. Nearby Space or the touch action opens
+  the five-channel DSB TV menu. Channel 1 is Noderunners; 2–5 remain disabled.
+  TV freezes movement, supports Back/Close/Escape, and returns to walking on close.
+  Closing TV does not stop radio, but does stop invoice monitoring.
+- One uncached screen-text geometry updates only when displayed status or metadata
+  changes and releases its predecessor. The approved frame, lettering depth bias,
+  facade, pergola, road and props remain. No new light or render target is added.
+- Metadata refreshes every 15 seconds, skips hidden pages, times out at 10 seconds
+  and preserves last-good values. Now Playing, station note, eight queued tracks
+  and six history tracks are bounded. Search returns at most 12 items. Text uses
+  textContent, strips controls/bidi overrides and caps lengths; unknown sources
+  are rejected. Requests use AbortController and are cancelled on disposal.
+- The station sets prices. POST /api/play creates an unpaid invoice only; this
+  client never pays. Validation checks lowercase mainnet BOLT11 structure,
+  Bech32 checksum, amount against returned sats, finite positive sats, 64-digit
+  hexadecimal payment hash and the local encoder's full-payload capacity.
+  This is format/checksum validation, not signature or payee authentication.
+- BL.qr generates both QR codes locally. Full invoice text, lightning: anchor,
+  clipboard copy (selection fallback), price and station attribution are shown.
+  One active request/invoice prevents duplicates. Payment polling runs every
+  five seconds for up to 15 minutes, with distinct unpaid/paid/queued states.
+  Errors say not to pay twice. Closing invalidates the epoch and aborts in-flight
+  payment requests; it does not cancel the invoice at the station. The official
+  jukebox QR/link remains available if an integrated endpoint fails.
+
+Live validation on 2026-10-03: streaming GET returned HTTP 200 audio/mpeg;
+nowplaying, history, search and an unpaid invoice returned the expected schema.
+The API advertises Access-Control-Allow-Origin: *. A direct status GET returned
+paid:false/queued:false. The browser independently searched, created an unpaid
+210-sat invoice, rendered its QR/deep link and displayed the unpaid state. An
+initial timeout recovered to live playback on retry, with fallback gain zero.
+No sats were spent. Automated browser audio is muted, so perceived balance and
+launching an installed mobile Lightning wallet remain user acceptance checks.
+
+Independent ZXing decoding round-tripped the official URL, a real 322-character
+station invoice and an 1800-character synthetic QR stress payload exactly. The
+existing independent encoder fingerprints also cover capacity through version 40.
+
+Correction validation: final build, touched-file syntax and diff checks passed.
+Desktop and 390x844 touch TV assertions passed for menu, metadata, search, validated
+invoice, copy/selection, bounded layout, duplicate prevention, all payment states,
+epoch cancellation, Escape, live/fallback exclusivity, shared gate and disposal.
+The normal harbor checkpoint passed walking (9.3 units), zero road obstructions,
+all three destination paths, storm mix, real interior gate and three round trips.
+Ten Meme Factory cycles held exactly 376 nodes, 176 geometries, seven targets,
+nine document listeners and 170 renderer records, with one radio started once.
+Strict console assertions still flag only the known software-GPU ReadPixels
+warnings; no application exceptions appeared in the successful final runs.
+The unit suite reproduced the documented cave/mirror assertions and breakables
+fixture exception. No unrelated test or locked environment system was changed.

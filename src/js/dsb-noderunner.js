@@ -18,11 +18,10 @@
     block(group,"#2b6599",0,building.floor+5.08,0,11.4,.22,8.3);
     // Match existing sign/arcade conventions for Canvas painter-order fallback.
     sign(group,"NODERUNNER",0,building.floor+3.85,4.12,.9,"#4fb7d5").depthBias=-.6;
-    // Screen and mixer stay on the exterior face; no interior or old stream UI is restored.
+    // Keep the approved screen frame; one uncached live-text mesh sits on its face.
     block(group,"#78543b",0,building.floor+2.3,4.14,5.8,2.5,.22);
-    block(group,"#142d35",0,building.floor+2.3,4.28,5.35,2.1,.12);
-    sign(group,"HARBOR RADIO",0,building.floor+2.6,4.38,.43,"#49ddd9").depthBias=-.6;
-    sign(group,"OOGA FM",0,building.floor+1.85,4.38,.48,"#ffdf38").depthBias=-.6;
+    const screenFace=block(group,"#142d35",0,building.floor+2.3,4.28,5.35,2.1,.12);
+    const screen=S.createNode({position:{x:0,y:building.floor+2.12,z:4.38},scale:{x:.9,y:.7,z:1}});screen.depthBias=-.6;S.addChild(group,screen);
     const console=foot("#78543b",0,4.35,4.8,1.05,.55);
     block(group,"#283d46",0,console.position.y+.6,4.35,5,.14,.7);
     for(const x of [-1.4,1.4])block(group,"#25252d",x,console.position.y+.7,4.35,.8,.08,.45);
@@ -48,10 +47,12 @@
       block(group,"#c5ab79",x,crate.position.y+.2,3.65,.8,.12,.7);
     }
     const source=at(0,4.8);source.y=ground(0,4.8)+1.4;
+    const interactionFloor=ground(0,7);
     const review=at(0,9.5);review.y=land.heightAt(review.x,review.z);
     const solids=BL.solidProps.create();S.updateWorld(group);solids.add(group);solids.sync();
     let audio=null,distance=Infinity;
-    return {group,building,source,review,contacts,solids,
+    return {group,building,source,review,contacts,solids,screen,screenFace,
+      near:p=>{const dx=p.x-building.x,dz=p.z-building.z,lx=c*dx-s*dz,lz=s*dx+c*dz;return Math.abs(lx)<4&&lz>4.6&&lz<11&&Math.abs(p.y-interactionFloor)<3;},
       createAudio:(context,master)=>audio=BL.dsbRadio.create(context,master),
       update:(dt,listener,state,lampFactor)=>{
         distance=Math.hypot(listener.x-source.x,listener.y-source.y,listener.z-source.z);

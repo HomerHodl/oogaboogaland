@@ -278,7 +278,7 @@
       }
       noise.start();
       // Optional scene source shares this context and the exact exterior master gate.
-      if (audioFactory) audioLayer = audioFactory(ctx, master);
+      if (audioFactory) { audioLayer = audioFactory(ctx, master); audioLayer.setEnabled?.(exterior && !muted); }
       if (ctx.state === "suspended") ctx.resume().catch(() => {});
       return true;
     };
@@ -526,11 +526,13 @@
     const setMuted = (on) => {
       if (muted === !!on) return;
       muted = !!on;
+      audioLayer?.setEnabled?.(exterior && !muted);
       if (master) master.gain.setTargetAtTime(muted || !exterior ? 0 : MASTER, ctx.currentTime, 0.05);
     };
     const setExterior = (on) => {
       if (exterior === !!on) return;
       exterior = !!on;
+      audioLayer?.setEnabled?.(exterior && !muted);
       if (!exterior) {
         thunderAt = -1; count = 0; node.instanceCount = node.drawInstanceCount = 0; node.instanceVersion++;
         if (thunderGain) { thunderGain.gain.cancelScheduledValues(ctx.currentTime); thunderGain.gain.setValueAtTime(0, ctx.currentTime); }

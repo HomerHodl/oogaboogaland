@@ -7291,3 +7291,10 @@ body[data-poker-table-view="true"] #act { visibility: hidden; }
 .poker-fairness label { display: grid; gap: 6px; margin-top: 10px; }
 .poker-fairness input { max-width: 100%; }
 .poker-proof-root { overflow-wrap: anywhere; font-family: monospace; }
+
+/* Station metadata and invoices stay within the mobile TV glass. */
+#dsb-tv, #dsb-tv * { box-sizing: border-box; }
+.dsb-tv-columns > *, .dsb-tv-glass { min-width: 0; }
+#dsb-tv-wallet { overflow-wrap: anywhere; }
+#dsb-tv header { position: sticky; top: -20px; z-index: 1; background: #392739; padding: 8px 0; }
+@media (max-width: 600px) { #dsb-tv header { top: -10px; } }

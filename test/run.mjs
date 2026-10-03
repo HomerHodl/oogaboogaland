@@ -2174,8 +2174,8 @@ const session = (url, steps, opts, final) => output.run({ lines: [], results: []
         if (String(url).startsWith("https://noderunnersradio.com/")) {
           window.__dsbTvFixture = window.__dsbTvFixture || { invoices: 0, searches: 0 }; let value;
           if (url.includes("/api/search")) { __dsbTvFixture.searches++; value = { results: [{ title: "Banana Beats", artist: "Ooga", source: "library", sats: 21 }] }; }
-          else if (url.includes("/api/play/status")) value = { paid: true, queued: true };
-          else if (url.endsWith("/api/play")) { __dsbTvFixture.invoices++; value = { bolt11: "lnbc210n1" + "q".repeat(340), sats: 21, payment_hash: "fixture-hash" }; }
+          else if (url.includes("/api/play/status")) { if(__dsbTvFixture.paymentError)throw new Error("offline");value = __dsbTvFixture.payment || { paid: false, queued: false }; }
+          else if (url.endsWith("/api/play")) { __dsbTvFixture.invoices++; value = {"bolt11": "lnbc2100n1p4vzq52pp50dsaw0kxfc0urmtzl7ezwv4qemxs8ufx98cyjjsj9wkz7l3l7afsdpltfshqgpg2c69v2f6ypqkzun0dcsykmm9de5kwgpdyppxjarrda5kugzzv4skx6qcqzzsxqzuysp535fyv3fcdnf59stpn82fd6mypgd245r8n9zg6mcnx90a8ws68v2s9qxpqysgqxj432mzxnppe93v7fqxvs8hav584jgqfejc3mrpagrkheq0ythhse9ldk82lc0p43njn39dcs36m0djafxgug2aa374eczjfm3ew54qqt8zcnh", "sats": 210, "payment_hash": "7b61d73ec64e1fc1ed62ffb22732a0cecd03f12629f0494a122bac2f7e3ff753"}; }
           else value = url.includes("nowplaying") ? { now_playing: { title: "Turtle Radio", artist: "DSB Band", note: "Hello island" }, queue: [{ title: "Banana Beats", artist: "Ooga" }] } : { history: [{ title: "Neon River", artist: "Purple Crew" }] };
           return { ok: true, json: async () => value };
         }
@@ -7250,7 +7250,7 @@ for (const fallback of [false, true]) scene("dsb", { label: "dsb gameplay " + (f
   await click("#dsb-tv-channel");
   await b.evaluate(`document.getElementById("dsb-tv-query").value = "Ooga"`); await click("#dsb-tv-search"); await untilPage(b, 'document.querySelector("#dsb-tv-results button") !== null');
   await click("#dsb-tv-results button"); await untilPage(b, '!document.getElementById("dsb-tv-invoice").hidden');
-  record("dsb gameplay: song selection creates one invoice QR and wallet link", await b.evaluate(`__dsbTvFixture.invoices === 1 && document.getElementById("dsb-tv-invoice-qr").width > 200 && document.getElementById("dsb-tv-wallet").href.startsWith("lightning:lnbc") && document.getElementById("dsb-tv-price").textContent.includes("21 sats")`));
+  record("dsb gameplay: song selection creates one invoice QR and wallet link", await b.evaluate(`__dsbTvFixture.invoices === 1 && document.getElementById("dsb-tv-invoice-qr").width > 200 && document.getElementById("dsb-tv-wallet").href.startsWith("lightning:lnbc") && document.getElementById("dsb-tv-price").textContent.includes("210 sats")`));
   record("dsb gameplay: station payment confirmation is shown", await untilPage(b, 'document.getElementById("dsb-tv-payment-status").textContent.includes("confirmed")', 10000));
   if (process.env.DSB_CAPTURE && !fallback) await b.screenshot(join(root, "untracked", "dsb-jukebox.png"));
   await click("#dsb-tv-close"); await dsbApproach(b, "shop"); await click("#dsb-context"); await click('[data-action="dsb-banana"]'); await click('[data-action="dsb-tomato"]');
@@ -8832,6 +8832,45 @@ const dsbWeatherCheckpoint = { name: "dsb weather checkpoint", why: "rule: weath
 }};
 scene("dsb",{label:"weather checkpoint",query:"&overview=1&weather=clear&time=1200",steps:[dsbWeatherCheckpoint]});
 scene("dsb",{label:"weather checkpoint phone",query:"&overview=1&weather=clear&time=1200",opts:{w:390,h:844,mobile:true},steps:[dsbWeatherCheckpoint]});
+
+const dsbRadioTvCorrection = { name:"dsb radio TV correction", why:"regression: restore the physical radio TV, safe invoice flow and exclusive live/fallback audio with the shared interior gate", run:async b=>{
+  const step=()=>b.evaluate('for(let i=0;i<60;i++)BL.scenes.dsb.update(1/60,i/60)');
+  const click=async id=>{const p=await b.evaluate(`(()=>{const e=document.getElementById(${JSON.stringify(id)});e.scrollIntoView({block:"center"});const r=e.getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2};})()`);await b.send("Input.dispatchTouchEvent",{type:"touchStart",touchPoints:[p]});await b.send("Input.dispatchTouchEvent",{type:"touchEnd",touchPoints:[]});};
+  await b.key("m");await b.key("m");await step();
+  await b.evaluate('window.__correction={audio:__ooga.dsb.noderunner.audio,tv:__ooga.dsb.tv};__ooga.dsb.tv.close()');
+  await click("dsb-context");await step();
+  record("DSB TV correction: physical nearby touch action opens five-channel menu",await b.evaluate('document.getElementById("dsb-tv").open&&document.querySelectorAll("#dsb-tv-menu button").length===5&&document.querySelectorAll("#dsb-tv-menu button:disabled").length===4'));
+  await click("dsb-tv-channel");
+  record("DSB TV correction: bounded metadata and local official QR are visible",await b.evaluate('document.getElementById("dsb-tv-song").textContent==="Turtle Radio"&&document.querySelectorAll("#dsb-tv-queue li").length===1&&document.getElementById("dsb-tv-qr").width>100'));
+  await b.evaluate('document.getElementById("dsb-tv-query").value="Ooga"');await click("dsb-tv-search");
+  await b.evaluate('window.__paymentClock={native:window.setTimeout.bind(window)};window.setTimeout=(fn,ms,...args)=>{if(ms===5000){__paymentClock.tick=fn;__paymentClock.id=__paymentClock.native(()=>{},ms);return __paymentClock.id;}return __paymentClock.native(fn,ms,...args);};document.querySelector("#dsb-tv-results button").click()');await b.sleep(100);
+  const invoice=await b.evaluate(`(()=>{const T=BL.dsbTv,good={"bolt11": "lnbc2100n1p4vzq52pp50dsaw0kxfc0urmtzl7ezwv4qemxs8ufx98cyjjsj9wkz7l3l7afsdpltfshqgpg2c69v2f6ypqkzun0dcsykmm9de5kwgpdyppxjarrda5kugzzv4skx6qcqzzsxqzuysp535fyv3fcdnf59stpn82fd6mypgd245r8n9zg6mcnx90a8ws68v2s9qxpqysgqxj432mzxnppe93v7fqxvs8hav584jgqfejc3mrpagrkheq0ythhse9ldk82lc0p43njn39dcs36m0djafxgug2aa374eczjfm3ew54qqt8zcnh", "sats": 210, "payment_hash": "7b61d73ec64e1fc1ed62ffb22732a0cecd03f12629f0494a122bac2f7e3ff753"},bad={...good,sats:1},long="\u0000"+"x".repeat(500);return {valid:T.validInvoice(good),bad:T.validInvoice(bad),hash:T.validInvoice({...good,payment_hash:"bad"}),check:T.validInvoice({...good,bolt11:good.bolt11.slice(0,-1)+"q"}),clean:T.clean(long).length,bounded:T.results({results:Array.from({length:30},()=>({title:long,artist:"<img>",source:"library"}))}).length,open:!document.getElementById("dsb-tv-invoice").hidden,qr:document.getElementById("dsb-tv-invoice-qr").width,link:document.getElementById("dsb-tv-wallet").getAttribute("href"),width:document.getElementById("dsb-tv").scrollWidth<=document.getElementById("dsb-tv").clientWidth};})()`);
+  record("DSB TV correction: valid station invoice, local QR, bounded data and mobile layout",invoice.valid&&!invoice.bad&&!invoice.hash&&!invoice.check&&invoice.clean===160&&invoice.bounded===12&&invoice.open&&invoice.qr>200&&invoice.link.startsWith("lightning:lnbc")&&invoice.width,JSON.stringify(invoice));
+  await b.evaluate('document.querySelector("#dsb-tv-results button").click()');
+  record("DSB TV correction: duplicate invoice is refused",await b.evaluate('__dsbTvFixture.invoices===1'));
+  const payment=async (value,error=false)=>{await b.evaluate(`__dsbTvFixture.payment=${JSON.stringify(value)};__dsbTvFixture.paymentError=${error};clearTimeout(__paymentClock.id);__paymentClock.tick()`);await b.sleep(40);return b.evaluate('document.getElementById("dsb-tv-payment-status").textContent');};
+  const unpaid=await payment({paid:false,queued:false}),offline=await payment(null,true),paid=await payment({paid:true,queued:false}),queued=await payment({paid:true,queued:true});
+  record("DSB TV correction: unpaid, failure, paid and queued states never suggest a second payment",unpaid.includes("Waiting for payment")&&offline.includes("do not pay twice")&&paid.includes("waiting for the station")&&queued.includes("your song is queued"));
+  await click("dsb-tv-copy");
+  record("DSB TV correction: copy succeeds or selects the full invoice",await b.evaluate('/Invoice copied|Invoice selected/.test(document.getElementById("dsb-tv-payment-status").textContent)'));
+  await b.evaluate('window.__correction.epoch=__ooga.dsb.tv.stats.paymentEpoch');await click("dsb-tv-cancel-invoice");
+  record("DSB TV correction: closing invoice invalidates polling epoch",await b.evaluate('!__ooga.dsb.tv.stats.invoice&&__ooga.dsb.tv.stats.paymentEpoch>__correction.epoch&&document.getElementById("dsb-tv-invoice").hidden'));
+  await b.evaluate('clearTimeout(__paymentClock.id);__paymentClock.tick();window.setTimeout=__paymentClock.native');await b.sleep(40);
+  record("DSB TV correction: cancelled epoch cannot revive its invoice",await b.evaluate('!__ooga.dsb.tv.stats.invoice&&document.getElementById("dsb-tv-invoice").hidden'));
+  await b.key("Escape");await step();
+  record("DSB TV correction: Escape closes TV without stopping the live stream",await b.evaluate('!__ooga.dsb.tv.isOpen&&__correction.audio.stats.mode==="live"&&__correction.audio.stats.starts===1'));
+  const audio=await b.evaluate(`(()=>{const D=__ooga.dsb,A=D.noderunner.audio,E=__dsbRadioFixture.element;A.update(1,4,true);const live=A.stats;D.weather.setInterior(true);const gated=E.muted&&!A.stats.enabled;D.weather.setInterior(false);A.update(1,80,true);const far=E.muted;E.onerror();A.update(1,4,true);const offline=A.stats;A.play();A.update(1,4,true);return {live,gated,far,offline,connecting:A.stats};})()`);
+  await b.sleep(50);await step();
+  record("DSB radio correction: live/fallback are exclusive and the shared gate silences HTML audio immediately",audio.live.liveAudible&&audio.gated&&audio.far&&audio.offline.fallbackLevel>0&&!audio.offline.liveAudible&&audio.connecting.fallbackLevel===0,JSON.stringify(audio));
+  record("DSB radio correction: recovery returns to one live stream",await b.evaluate('__correction.audio.stats.mode==="live"&&__correction.audio.stats.fallbackLevel===0'));
+  await b.evaluate('__ooga.go("bifrost",null,true);__ooga.advance(.05)');
+  record("DSB radio correction: scene disposal stops stream, fallback and TV timers",await b.evaluate('__correction.audio.stats.disposed&&__correction.audio.stats.sources===0&&__correction.audio.stats.timers===0&&__correction.audio.stats.fallbackSources===0&&__correction.tv.stats.disposed&&__correction.tv.stats.timers===0&&__correction.tv.stats.requests===0'));
+  await b.evaluate('__ooga.go("dsb",null,true);__ooga.advance(.05)');await step();
+  record("DSB radio correction: re-entry creates one fresh station",await b.evaluate('__ooga.dsb.noderunner.audio.stats.starts===1&&__ooga.dsb.noderunner.audio.stats.sources===1'));
+  record("DSB radio correction: console remains clean",b.logs.length===0,b.logs.join(" | "));
+}};
+scene("dsb",{label:"radio TV correction",query:"&view=noderunner&weather=clear&time=1200",steps:[dsbRadioTvCorrection]});
+scene("dsb",{label:"radio TV correction phone",query:"&view=noderunner&weather=clear&time=1200",opts:{w:390,h:844,mobile:true},steps:[dsbRadioTvCorrection]});
 
 const dsbHarborCheckpoint = { name:"dsb harbor checkpoint", why:"rule: normal walking reaches the harbor, and one distance-based exterior station survives weather, rooms and scene changes", run:async b=>{
   const step=()=>b.evaluate('for(let i=0;i<60;i++)BL.scenes.dsb.update(1/60,i/60)');
