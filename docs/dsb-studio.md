@@ -8,7 +8,7 @@ The Studio exterior door uses Space / the existing action button / the contextua
 
 Approach the front of a seat and use the same interaction to sit. Space or the single normal **STAND UP!** action button returns to the clear row aisle. Seated walking input is ignored; look, weapon selection, aiming and fire remain available. The seated view uses the existing first-person camera and restores the follow/shoulder view on standing. **T** or **Throw tomato** uses the shared crew projectile pool. Lighting is authored; there is no stage-light control.
 
-Audience and balcony seats use the existing crew seat contract with opt-in `allowWeapons` and `lockMovement`. Camp seating retains its prior behavior. The host chair uses that same contract and faces the audience; the two guest chairs remain decorative.
+Audience and balcony seats use the existing crew seat contract with opt-in `allowWeapons` and `lockMovement`. Camp seating retains its prior behavior. All three stage chairs use that same contract. The guest chairs turn 0.3 radians (about 17°) toward the host while presenting to the audience. Each has a clear outside approach/stand point; the host uses the open right side of the desk, with its existing seated anchor behind the desk.
 
 ## Public archive source
 
@@ -46,7 +46,7 @@ Review views (with `scene=dsb&debug=1&interior=dsb-studio`): default corridor, `
 
 The supplied concept board guides the lower dark ceiling and corridor, burgundy runner, dark balcony lattice rails, smaller maroon seat backs, warm aisle lights, folded curtains, stacked gold DSB / STUDIO lettering and microphone emblem directly against brick. The guest conversation area sits to the left, the lowered wooden host desk to its right, and the stand-up mic at the far right. Furniture remains original cached block geometry. The stage rig is lowered to frame the backdrop; the room retains its existing walk surfaces and three lights.
 
-Measured Yellow: body height 1.370, body radius 0.697, standing face/head range approximately 0.881–1.288 above the floor. The ticket opening is 0.75–1.40 above the booth floor. The mic head is 0.949 above the stage, at the model's lower face. Desk top is 1.04 above the stage; seated host face starts at 1.279 above it. The host chair shares the existing seat interaction, with an audience-facing initial view and a clear stand point behind the desk. There are 37 seat anchors: 32 audience, four balcony and one host.
+Measured Yellow: body height 1.370, body radius 0.697, standing face/head range approximately 0.881–1.288 above the floor. The ticket opening is 0.75–1.40 above the booth floor. The mic head is 0.949 above the stage, at the model's lower face. Desk top is 1.04 above the stage; seated host face starts at 1.279 above it. The host chair shares the existing seat interaction, with an audience-facing initial view and a clear stand point behind the desk. There are 39 seat anchors: 32 audience, four balcony, two guest and one host.
 
 Available validation: normal build, syntax checks and whitespace checks pass. A headless geometry audit using the real room builder and interior collision function passes ten checks, including all stand points, booth/corridor/balcony access, host approach, window/desk scale and light budget. The existing browser checkpoint is updated to include the host in repeated seated weapon/archive cycles.
 
@@ -73,3 +73,7 @@ Browser validation is **not complete** for this polish. Chrome could not start b
 - Desktop/phone layout inspection keeps all player controls visible with an independently scrolling archive list. Visuals were inspected in clear light, low quality and storm/late-day exterior conditions.
 
 Physical-device sound balance, hardware GPU performance and final artistic approval remain human review items. No other venue interior is implemented.
+
+## Stage-chair correction
+
+All three stage chairs register with the existing crew seat system; no new UI or seating implementation is introduced. The browser checkpoint now exercises each stage chair individually through its existing seated gun, tomato, single stand-control and lifecycle checks. Browser interaction remains a manual review item because local Chrome IPC is unavailable. Deterministic seat checks cover the real crew sit/stand functions with the room collision function, all 39 anchors, stage approaches and chair-facing alignment.

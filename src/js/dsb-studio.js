@@ -111,14 +111,21 @@
     };
     rug(-3.5,-12.9,6.4,4.7);rug(4.2,-13.5,5,4.5);
     // Fronts face +Z: dark guest chairs, low coffee table, separate audience-facing host desk.
-    for(const [x,yaw] of [[-5,Math.PI-.12],[-2,Math.PI+.12]])prop("armchair",x,.6,-13.4).rotation.y=yaw;
-    prop("table",-3.5,.6,-11.65);solids.push([-4.85,-2.15,-12.25,-11.05],[-5.95,-4.05,-14.1,-12.7],[-2.95,-1.05,-14.1,-12.7]);
+    const guestSeats=[];
+    for(const [x,standX] of [[-5,-7],[-2,0]]){
+      const facing=.3; // Present to the crowd, with a slight turn toward the host on +X.
+      prop("armchair",x,.6,-13.4).rotation.y=Math.PI+facing;
+      guestSeats.push({x,y:1.25,z:-13.4,ry:facing,viewYaw:Math.PI+facing,floor:.6,walkAt:{x:standX,z:-13.4},sitter:null,allowWeapons:true,lockMovement:true});
+      solids.push([x-1.04,x+1.04,-14.22,-12.58]);
+    }
+    prop("table",-3.5,.6,-11.65);solids.push([-4.85,-2.15,-12.25,-11.05]);
     for(const x of [-4.1,-2.9])block(root,"#e5c69b",x,1.48,-11.65,.2,.23,.2);
     // Top is 1.04 above the stage; Yellow's seated face starts at 1.28.
     const hostDesk=prop("host-desk",4.2,.65,-13.5);hostDesk.scale.y=.6;hostDesk.scale.x=.85;
     prop("armchair",4.2,.6,-15.2).rotation.y=Math.PI;
-    const hostSeat={x:4.2,y:1.25,z:-15.2,ry:0,viewYaw:Math.PI,floor:.6,walkAt:{x:6,z:-15.2},sitter:null,allowWeapons:true,lockMovement:true};
-    seats.push(hostSeat);
+    const hostSeat={x:4.2,y:1.25,z:-15.2,ry:0,viewYaw:Math.PI,floor:.6,walkAt:{x:6.85,z:-13.5},sitter:null,allowWeapons:true,lockMovement:true};
+    seats.push(hostSeat,...guestSeats);
+    const stageSeats=[...guestSeats,hostSeat];
     solids.push([2.415,5.985,-14.35,-12.65,1.64],[3.3,5.1,-15.85,-14.6]);
     prop("mic",8,.65,-11.8);const stool=prop("stool",8.8,.6,-13.8);stool.scale.y=.65;
     for(const side of [-1,1]){
@@ -146,7 +153,7 @@
     const lights=new Float32Array(BL.glRenderer.POINT_LIGHT_CAPACITY*8);
     lights.set([5,4.4,-12,11,1.35,.85,.42,0,-5,4.4,-12,10,1.15,.72,.4,0,1,4.8,14,5,.65,.36,.16,0]);
     const lighting={clear:[.04,.03,.045],sky:[.34,.27,.26],ground:[.22,.16,.17],direct:[.66,.5,.35],directStrength:.24,ambientFloor:.29,sun:{x:.3,y:.9,z:.4},shadowCenter:{x:0,y:3,z:0},shadowExtent:22,shadowStrength:.2,bloomStrength:.3,fog:[.04,.03,.045],fogNear:55,fogFar:85,lights,lightCount:3};
-    return {id:"dsb-studio",root,seats,hostSeat,solids,lighting,groundAt:floor,ceiling:6.4,spawnYaw:0,followDistance:3,
+    return {id:"dsb-studio",root,seats,hostSeat,stageSeats,solids,lighting,groundAt:floor,ceiling:6.4,spawnYaw:0,followDistance:3,
       spawn:{x:0,y:3,z:17},exit:{x:0,y:3,z:18.1},jukeboxAt:{x:-1.3,y:3,z:14.3},jukeboxSource:{x:-2.5,y:4.2,z:14.3},
       bounds:{minX:-15.15,maxX:15.15,minZ:-16.25,maxZ:18.5},
       tomatoContact:(ax,ay,az,p,seat)=>{
