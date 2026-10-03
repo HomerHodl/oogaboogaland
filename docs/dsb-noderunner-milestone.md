@@ -75,3 +75,9 @@ checkpoint released the old source and collider group. Normal W movement travele
 The hub's default weather path also booted/updated without application exceptions.
 Day, night-rain and storm renders produced no application/shader/WebGL-fatal errors;
 strict console checks still report the environmental warnings described above.
+
+Post-deployment follow-up: the cloud browser's Canvas fallback painted parts of the
+new lettering behind large facade/screen faces. The three labels now use the existing
+sign/arcade `depthBias` convention (-0.6); the shared renderer and WebGL geometry are
+unchanged. A forced Canvas render confirms complete labels and no console warnings
+or errors. Build and syntax checks pass again.

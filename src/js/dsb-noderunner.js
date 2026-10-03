@@ -16,12 +16,13 @@
     };
     const roof=building.floor+4.65;
     block(group,"#2b6599",0,building.floor+5.08,0,11.4,.22,8.3);
-    sign(group,"NODERUNNER",0,building.floor+3.85,4.12,.9,"#4fb7d5");
+    // Match existing sign/arcade conventions for Canvas painter-order fallback.
+    sign(group,"NODERUNNER",0,building.floor+3.85,4.12,.9,"#4fb7d5").depthBias=-.6;
     // Screen and mixer stay on the exterior face; no interior or old stream UI is restored.
     block(group,"#78543b",0,building.floor+2.3,4.14,5.8,2.5,.22);
     block(group,"#142d35",0,building.floor+2.3,4.28,5.35,2.1,.12);
-    sign(group,"HARBOR RADIO",0,building.floor+2.6,4.38,.43,"#49ddd9");
-    sign(group,"OOGA FM",0,building.floor+1.85,4.38,.48,"#ffdf38");
+    sign(group,"HARBOR RADIO",0,building.floor+2.6,4.38,.43,"#49ddd9").depthBias=-.6;
+    sign(group,"OOGA FM",0,building.floor+1.85,4.38,.48,"#ffdf38").depthBias=-.6;
     const console=foot("#78543b",0,4.35,4.8,1.05,.55);
     block(group,"#283d46",0,console.position.y+.6,4.35,5,.14,.7);
     for(const x of [-1.4,1.4])block(group,"#25252d",x,console.position.y+.7,4.35,.8,.08,.45);
