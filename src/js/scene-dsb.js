@@ -13,7 +13,7 @@
   renderOpts.fog=renderOpts.horizon;
   // Four structural validation lamps, not street dressing. Keep within even the lowest light tier.
   const LAMP_SPOTS=[[-49,-45],[-57,37],[20,63],[64,49]], lamps=[];
-  let clock,water,weather;
+  let clock,water,weather,nature;
   const sampleDaylight=()=>{
     daylight.sample(clock.read(),renderOpts,clock.dayOfYear,LATITUDE,clock.continuousDay);
     const k=renderOpts.lampFactor, lights=renderOpts.lights;
@@ -32,10 +32,11 @@
   const drawExtra=()=>{
     if(!DEBUG||!weather)return;
     const c=overlayCanvas.getContext("2d"),s=weather.state;
-    c.save();c.font="12px monospace";c.fillStyle="rgba(5,20,30,.8)";c.fillRect(12,160,310,60);c.fillStyle="#e7f3fa";
+    c.save();c.font="12px monospace";c.fillStyle="rgba(5,20,30,.8)";c.fillRect(12,160,350,78);c.fillStyle="#e7f3fa";
     c.fillText(`Weather: ${s.mode} · ${s.quality}`,20,176);
     c.fillText(`Rain ${s.precipitation.toFixed(2)} · cloud ${s.cloud.toFixed(2)}`,20,193);
-    c.fillText(`Wind ${s.wind.strength.toFixed(2)} · ${s.exterior?"exterior":"interior / hidden"}`,20,210);c.restore();
+    c.fillText(`Wind ${s.wind.strength.toFixed(2)} · ${s.exterior?"exterior":"interior / hidden"}`,20,210);
+    if(nature)c.fillText(`Nature: ${nature.stats.visible}/${nature.stats.total} · seed ${nature.stats.seed}`,20,227);c.restore();
   };
   const before={x:0,y:0,z:0},after={x:0,y:0,z:0};
   const nearGate=()=>avatar&&Math.hypot(avatar.root.position.x+45,avatar.root.position.z+44)<10;
@@ -80,8 +81,14 @@
     context=document.getElementById("dsb-context");context.textContent="Dial Portara → Bifrost";
     document.body.classList.add("dsb-active");
     weather=BL.dsbWeather.create({root,renderer:ctx.renderer,camera,land,water,params});
-    Object.assign(scene,{root,camera,input,setInterior:weather.setInterior,debug:{weather:weather.shared,renderOpts,daylight:clock,camera,pilot,crew,controls:pilot.controls,hud,dsb:{land,water,weather,setInterior:weather.setInterior,gate,avatar,phase:"land",overview:OVERVIEW}}});
-    walk();if(new URLSearchParams(location.search).get("overview")==="1")overviewView();
+    nature=BL.dsbNature.create({root,land,renderer:ctx.renderer,camera,weather});
+    Object.assign(scene,{root,camera,input,setInterior:weather.setInterior,debug:{weather:weather.shared,renderOpts,daylight:clock,camera,pilot,crew,controls:pilot.controls,hud,dsb:{land,water,weather,nature,setInterior:weather.setInterior,gate,avatar,phase:"land",overview:OVERVIEW}}});
+    walk();
+    if(DEBUG&&params.get("view")==="clearing") {
+      const p=land.marks.clearing;
+      pilot.navigate({position:{x:p.x,y:p.y,z:p.z},yaw:-2.4,pitch:.22,dist:7});
+    }
+    if(params.get("overview")==="1")overviewView();
   };
   const update=(dt,time)=>{
     if(leaving)return;sampleDaylight();renderOpts.time=time;if(water)water.update(time);gate.update();
@@ -89,12 +96,12 @@
     if(!gate.isOpen){pilot.readInput(dt);if(!overview)crew.update(dt,time);pilot.update(dt);}
     Object.assign(after,avatar.root.position);after.y+=avatar.bodyHeight/2-avatar.baseY;
     if(!overview&&gate.traverse(before,after,avatar.bodyRadius,1))return;
-    weather.update(dt,renderOpts);
+    weather.update(dt,renderOpts);nature.update(dt,time);
     context.hidden=overview||!nearGate()||gate.isOpen;fx.update(dt);
   };
   const leave=()=>{
     if(avatar)world.pilot=avatar.traits.name;
-    weather.dispose();weather=null;gate.dispose();pilot.dispose();crew.dispose();fx.dispose();const targets=input.targetCount;input.dispose();hud.el.sheet.hidden=oldSheet;hud.dispose();context.hidden=true;
+    nature.dispose();nature=null;weather.dispose();weather=null;gate.dispose();pilot.dispose();crew.dispose();fx.dispose();const targets=input.targetCount;input.dispose();hud.el.sheet.hidden=oldSheet;hud.dispose();context.hidden=true;
     document.body.classList.remove("dsb-active");while(root.children.length)S.removeChild(root,root.children[root.children.length-1]);
     lamps.length=0;renderOpts.lightCount=0;clock=null;water=renderOpts.dsbWater=null;
     scene.setInterior=scene.debug=scene.input=null;land=avatar=crew=pilot=gate=fx=hud=input=null;return {targets};

@@ -8833,6 +8833,65 @@ const dsbWeatherCheckpoint = { name: "dsb weather checkpoint", why: "rule: weath
 scene("dsb",{label:"weather checkpoint",query:"&overview=1&weather=clear&time=1200",steps:[dsbWeatherCheckpoint]});
 scene("dsb",{label:"weather checkpoint phone",query:"&overview=1&weather=clear&time=1200",opts:{w:390,h:844,mobile:true},steps:[dsbWeatherCheckpoint]});
 
+const dsbNatureCheckpoint = { name: "dsb nature checkpoint", why: "rule: terrain contact, deterministic layout, clear routes and bounded tier populations survive scene re-entry", run: async b => {
+  const r=await b.evaluate(`(() => {
+    const B=__ooga,D=B.dsb,N=D.nature,L=D.land;
+    const signature=JSON.stringify(N.placements),counts={};let floating=0,buried=0,blocked=0,invalid=0;
+    for(const f of N.fields) {
+      counts[f.kind]=f.list.length;
+      const v=f.node.geometry.verts,a=f.source;
+      for(let i=0;i<f.list.length;i++) {
+        const o=i*20,p=f.list[i];let top=-Infinity;
+        for(let j=0;j<v.length;j+=3) {
+          const x=a[o]*v[j]+a[o+8]*v[j+2]+a[o+12];
+          const y=a[o+1]*v[j]+a[o+5]*v[j+1]+a[o+9]*v[j+2]+a[o+13];
+          const z=a[o+2]*v[j]+a[o+10]*v[j+2]+a[o+14];
+          if(![x,y,z].every(Number.isFinite))invalid++;
+          if(Math.abs(v[j+1])<.001&&y>L.heightAt(x,z)+.005)floating++;
+          top=Math.max(top,y);
+        }
+        if(top<L.heightAt(p.x,p.z)+.08)buried++;
+        // Sample actual road/trail centre lines; no large silhouette can cross their walking surface.
+        if(f.kind!=="bougainvillea"&&f.kind!=="planter")for(const line of [L.trail,L.waterfront,...L.lanes]) {
+          for(let k=1;k<line.length;k++) {
+            const from=line[k-1],to=line[k],steps=Math.ceil(Math.hypot(to[0]-from[0],to[1]-from[1])*2);
+            for(let q=0;q<=steps;q++)if(Math.hypot(p.x-from[0]-(to[0]-from[0])*q/steps,p.z-from[1]-(to[1]-from[1])*q/steps)<f.spec.r*p.scale+1.5)blocked++;
+          }
+        }
+      }
+    }
+    const originalTier=B.renderer.quality,tiers={};
+    for(const tier of ["high","medium","low"]) {
+      B.renderer.setQuality(tier);N.update(0,0);
+      tiers[tier]={visible:N.stats.visible,gulls:N.stats.gulls,trees:N.fields.slice(0,2).reduce((n,f)=>n+f.node.instanceCount,0)};
+    }
+    B.renderer.setQuality("high");N.update(0,0);const calm=N.stats.sway;
+    D.weather.setMode("storm");for(let i=0;i<240;i++)BL.scenes.dsb.update(1/60,i/60);
+    const windy=N.stats.sway>calm;
+    D.weather.setMode("clear");B.renderer.setQuality(originalTier);
+    // Rebuilding over a translated surface must translate roots, not retain fixed-Y scenery.
+    const root=BL.scene.createNode(),raised={...L,heightAt:(x,z)=>L.heightAt(x,z)+2};
+    const extra=BL.dsbNature.create({root,land:raised,renderer:B.renderer,camera:B.camera,weather:D.weather});
+    const originals=new Map(N.placements.map(p=>[p.kind+":"+p.x+":"+p.z,p]));let matched=0,shifted=0;
+    for(const p of extra.placements){const old=originals.get(p.kind+":"+p.x+":"+p.z);if(old){matched++;if(Math.abs(p.y-old.y-2)<1e-6)shifted++;}}
+    extra.dispose();extra.dispose();
+    window.__natureCheck={signature,old:N,oldRoot:BL.scenes.dsb.root};
+    return {counts,floating,buried,blocked,invalid,tiers,windy,matched,shifted,disposed:root.children.length===0&&extra.group.children.length===0};
+  })()`);
+  record("DSB nature: every contact vertex is grounded, paths stay clear and transformed geometry stays finite",!r.floating&&!r.buried&&!r.blocked&&!r.invalid,JSON.stringify(r));
+  record("DSB nature: surface changes move roots and disposal removes the whole bounded field",r.matched>500&&r.matched===r.shifted&&r.disposed,JSON.stringify(r));
+  record("DSB nature: low tier retains trees, reduces detail and shares storm wind",r.tiers.high.visible>r.tiers.medium.visible&&r.tiers.medium.visible>r.tiers.low.visible&&r.tiers.low.trees>40&&r.tiers.low.gulls===0&&r.windy,JSON.stringify(r));
+  for(let visit=0;visit<2;visit++) {
+    await b.evaluate('__ooga.go("dsb",null,true);__ooga.advance(.05)');
+    const state=await b.evaluate(`(()=>{const p=window.__natureCheck,n=__ooga.dsb.nature;return {same:JSON.stringify(n.placements)===p.signature,cleared:p.oldRoot.children.length===0&&p.old.group.children.length===0,fields:n.group.children.length,total:n.stats.total,textures:__ooga.renderer.stats.waterTextures};})()`);
+    record(`DSB nature: visit ${visit+2} preserves seeded layout and releases old scene`,state.same&&state.cleared&&state.fields===10&&state.total>1000&&state.textures===2,JSON.stringify(state));
+  }
+  await b.evaluate('delete window.__natureCheck');
+  record("DSB nature: runtime console remains clean",b.logs.length===0,b.logs.join(" | "));
+}};
+scene("dsb",{label:"nature checkpoint",query:"&overview=1&weather=clear&time=1200",steps:[dsbNatureCheckpoint]});
+scene("dsb",{label:"nature checkpoint phone",query:"&overview=1&weather=clear&time=1200",opts:{w:390,h:844,mobile:true},steps:[dsbNatureCheckpoint]});
+
 const runTasks = async () => {
   const picked = tasks.filter((t) => (t.perf ? PERF : PICKED.includes(t.scene)));
   if (ONLY && (PICKED.length || PERF) && !picked.length) throw new Error(`No requested scene checks match ONLY=${ONLY}`);
