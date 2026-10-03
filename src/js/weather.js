@@ -183,7 +183,7 @@
   // The flash strobes twice, then decays: full, dip, second bright, tail.
   const flashAt = (t) => t < 0.08 ? 1 : t < 0.14 ? 0.25 : t < 0.22 ? 0.85 : 0.85 * Math.exp(-(t - 0.22) / FLASH_TAU);
 
-  const create = ({ root, renderer, camera, heightAt, fx = null, centre, presentation = null, random = Math.random }) => {
+  const create = ({ root, renderer, camera, heightAt, fx = null, centre, presentation = null, random = Math.random, audioFactory = null }) => {
     // Optional presentation keeps the shared state, pool, clouds and sound reusable by large worlds.
     const field = presentation ? presentation.field : centre;
     const cloudCentre = presentation ? presentation.cloudCentre : centre;
@@ -230,6 +230,7 @@
     let cloudCover = 0, cloudForm = "fair";
 
     // Sound: the context opens only after a real gesture, so weather on a fresh page stays silent.
+    let audioLayer = null;
     let ctx = null, master = null, noise = null, rainGain = null, windGain = null, surfGain = null, thunderGain = null, thunderFilter = null, muted = false, audioConnected = false;
     try {
       muted = localStorage.getItem(STORAGE_KEY) === "off";
@@ -276,6 +277,8 @@
         noise.connect(surf); surf.connect(surfGain); surfGain.connect(master);
       }
       noise.start();
+      // Optional scene source shares this context and the exact exterior master gate.
+      if (audioFactory) audioLayer = audioFactory(ctx, master);
       if (ctx.state === "suspended") ctx.resume().catch(() => {});
       return true;
     };
@@ -547,6 +550,7 @@
       for (const cloud of clouds) removeChild(root, cloud);
       clouds.length = 0;
       count = 0; audioConnected = false;
+      if (audioLayer) { audioLayer.dispose(); audioLayer = null; }
       if (ctx) { noise.stop(); ctx.close().catch(() => {}); }
       ctx = master = noise = rainGain = windGain = surfGain = thunderGain = thunderFilter = null;
     };

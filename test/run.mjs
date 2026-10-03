@@ -8833,6 +8833,65 @@ const dsbWeatherCheckpoint = { name: "dsb weather checkpoint", why: "rule: weath
 scene("dsb",{label:"weather checkpoint",query:"&overview=1&weather=clear&time=1200",steps:[dsbWeatherCheckpoint]});
 scene("dsb",{label:"weather checkpoint phone",query:"&overview=1&weather=clear&time=1200",opts:{w:390,h:844,mobile:true},steps:[dsbWeatherCheckpoint]});
 
+const dsbHarborCheckpoint = { name:"dsb harbor checkpoint", why:"rule: normal walking reaches the harbor, and one distance-based exterior station survives weather, rooms and scene changes", run:async b=>{
+  const step=()=>b.evaluate('for(let i=0;i<60;i++)BL.scenes.dsb.update(1/60,i/60)');
+  await b.evaluate('window.__harborStart={...__ooga.dsb.avatar.root.position}');
+  await b.send("Input.dispatchKeyEvent",{type:"keyDown",key:"w",code:"KeyW"});await step();
+  await b.send("Input.dispatchKeyEvent",{type:"keyUp",key:"w",code:"KeyW"});
+  const motion=await b.evaluate('({distance:Math.hypot(__ooga.dsb.avatar.root.position.x-__harborStart.x,__ooga.dsb.avatar.root.position.z-__harborStart.z),controlled:__ooga.pilot.player===__ooga.dsb.avatar})');
+  record("DSB harbor: normal non-overview gameplay walks the selected player",motion.controlled&&motion.distance>.5,JSON.stringify(motion));
+  await b.key("m");await b.key("m");
+  const mix=await b.evaluate(`(()=>{
+    const B=__ooga,D=B.dsb,N=D.noderunner,W=D.weather;const rows=[];
+    const move=p=>{B.pilot.navigate({position:{x:p.x,y:D.land.heightAt(p.x,p.z),z:p.z},yaw:N.building.yaw,pitch:.22,dist:7});for(let i=0;i<240;i++)BL.scenes.dsb.update(1/60,i/60);rows.push({...N.stats});};
+    move({x:-10,z:45});move({x:-38,z:34});move(N.review);move({x:-38,z:34});move({x:-10,z:45});
+    move(N.review);const clear=N.stats.target;W.setMode("storm");for(let i=0;i<480;i++)BL.scenes.dsb.update(1/60,i/60);
+    window.__harborTest={audio:N.audio,source:N.source};
+    return {rows,clear,storm:N.stats.target,rain:W.shared.state.rainLevel,starts:N.audio.stats.starts,sources:N.audio.stats.sources};
+  })()`);
+  record("DSB harbor: proximity fades in/out, is silent far away and never boosts itself over storms",mix.rows[0].level<.001&&mix.rows[1].level>0&&mix.rows[2].level>mix.rows[1].level&&mix.rows[3].level<mix.rows[2].level&&mix.rows[4].level<.001&&mix.clear===mix.storm&&mix.rain>0&&mix.starts===1&&mix.sources===1,JSON.stringify(mix));
+  const road=await b.evaluate(`(()=>{
+    const D=__ooga.dsb,N=D.noderunner,L=D.land;let obstructed=0;
+    for(let i=1;i<L.waterfront.length;i++){
+      const a=L.waterfront[i-1],b=L.waterfront[i],n=Math.ceil(Math.hypot(b[0]-a[0],b[1]-a[1]));
+      for(let j=0;j<=n;j++){const x=a[0]+(b[0]-a[0])*j/n,z=a[1]+(b[1]-a[1])*j/n,y=L.heightAt(x,z);if(!N.clearSegment(x,z,x,z,y,D.avatar.bodyHeight,D.avatar))obstructed++;}
+    }
+    // Flood the existing supported walking surface. No alternate collision or terrain formula.
+    const size=111,step=1.5,min=-90,seen=new Uint8Array(size*size),queue=[];
+    const index=p=>Math.round((p.z-min)/step)*size+Math.round((p.x-min)/step);
+    const start=index(__harborStart);seen[start]=1;queue.push(start);
+    for(let head=0;head<queue.length;head++){
+      const q=queue[head],ix=q%size,iz=(q/size)|0,x=min+ix*step,z=min+iz*step,y=L.heightAt(x,z);
+      for(const [dx,dz] of [[1,0],[-1,0],[0,1],[0,-1]]){
+        const nx=ix+dx,nz=iz+dz,k=nz*size+nx;if(nx<0||nz<0||nx>=size||nz>=size||seen[k])continue;
+        const tx=min+nx*step,tz=min+nz*step;
+        if(L.walkable(x,z,tx,tz,y,D.avatar.bodyHeight,D.avatar)&&N.clearSegment(x,z,tx,tz,y,D.avatar.bodyHeight,D.avatar)){seen[k]=1;queue.push(k);}
+      }
+    }
+    const reachable=p=>{const k=index(p),x=min+(k%size)*step,z=min+((k/size)|0)*step;return !!seen[k]&&L.walkable(x,z,p.x,p.z,L.heightAt(x,z),D.avatar.bodyHeight,D.avatar)&&N.clearSegment(x,z,p.x,p.z,L.heightAt(x,z),D.avatar.bodyHeight,D.avatar);};
+    return {obstructed,visited:queue.length,harbor:reachable(N.review),chora:reachable({x:22,z:41}),meme:reachable(D.interiors.registry.get("meme-factory").entry)};
+  })()`);
+  record("DSB harbor: promenade stays clear and the normal ground graph reaches harbor, Chora and Meme Factory",!road.obstructed&&road.harbor&&road.chora&&road.meme,JSON.stringify(road));
+  await b.evaluate('(()=>{const B=__ooga,d=B.dsb.interiors.registry.get("meme-factory");B.pilot.navigate({position:d.entry,yaw:d.building.yaw,pitch:.22,dist:7});})()');
+  await b.key(" ");await step();
+  const inside=await b.evaluate('({room:!!__ooga.dsb.interiors.active,gate:__ooga.dsb.weather.shared.state.masterLevel,radio:__ooga.dsb.noderunner.stats,indoor:__ooga.dsb.interiors.audio.stats.connected})');
+  await b.key(" ");await step();
+  const outside=await b.evaluate('({room:!!__ooga.dsb.interiors.active,gate:__ooga.dsb.weather.shared.state.masterLevel,radio:__ooga.dsb.noderunner.stats,same:__ooga.dsb.noderunner.audio===__harborTest.audio})');
+  record("DSB harbor: the real interior disconnects all exterior sound and exit uses current listener distance",inside.room&&inside.gate===0&&inside.radio.level===0&&inside.indoor&&!outside.room&&outside.gate>0&&outside.radio.target===0&&outside.same,JSON.stringify({inside,outside}));
+  for(let visit=0;visit<3;visit++){
+    await b.evaluate('__harborTest.old=__ooga.dsb.noderunner;__ooga.go("bifrost",null,true);__ooga.advance(.05)');
+    const released=await b.evaluate('({disposed:__harborTest.old.audio.stats.disposed,sources:__harborTest.old.audio.stats.sources,attached:!!__harborTest.old.group.parent,solids:__harborTest.old.solids.stats.nodes})');
+    await b.evaluate('__ooga.go("dsb",null,true);__ooga.advance(.05)');
+    await step();
+    const fresh=await b.evaluate('({sources:__ooga.dsb.noderunner.audio?.stats.sources,starts:__ooga.dsb.noderunner.audio?.stats.starts})');
+    record("DSB harbor: scene round trip "+(visit+1)+" stops the old station and creates only one new source",released.disposed&&released.sources===0&&!released.attached&&released.solids===0&&fresh.sources===1&&fresh.starts===1,JSON.stringify({released,fresh}));
+  }
+  await b.evaluate('delete window.__harborTest;delete window.__harborStart');
+  record("DSB harbor: runtime console remains clean",b.logs.length===0,b.logs.join(" | "));
+}};
+scene("dsb",{label:"harbor checkpoint",query:"&weather=clear&time=1200",steps:[dsbHarborCheckpoint]});
+scene("dsb",{label:"harbor checkpoint phone",query:"&weather=clear&time=1200",opts:{w:390,h:844,mobile:true},steps:[dsbHarborCheckpoint]});
+
 const dsbInteriorCheckpoint = { name: "dsb interior checkpoint", why: "rule: a real door isolates its room and returns the same player to current exterior weather without accumulating resources", run: async b => {
   const step=()=>b.evaluate('for(let i=0;i<36;i++)BL.scenes.dsb.update(1/60,i/60)');
   const tap=async()=>{
@@ -8857,7 +8916,7 @@ const dsbInteriorCheckpoint = { name: "dsb interior checkpoint", why: "rule: a r
   const exit=await b.evaluate(`(()=>{const B=__ooga,D=B.dsb,I=D.interiors,p=D.avatar.root.position,e=I.registry.get("meme-factory").entry;return {active:!!I.active,same:D.avatar===__interiorCheck.avatar&&D.land===__interiorCheck.land&&D.water===__interiorCheck.water&&D.nature===__interiorCheck.nature,distance:Math.hypot(p.x-e.x,p.z-e.z),floor:p.y-D.avatar.baseY-D.land.heightAt(p.x,p.z),cameraClear:D.land.clearAt(B.camera.position.x,B.camera.position.z,.1),weather:D.weather.state.mode,night:B.renderOpts.day,lamps:B.renderOpts.lampFactor,drops:D.weather.shared.state.drops,master:D.weather.shared.state.masterLevel,audio:I.audio.stats};})()`);
   record("DSB interior: touch exit restores the same player/building and current night rain, not entry weather",isolation.same&&!isolation.exterior&&isolation.drops===0&&isolation.night===0&&!exit.active&&exit.same&&exit.distance<.01&&exit.cameraClear&&Math.abs(exit.floor)<.01&&exit.weather==="rain"&&exit.night===0&&exit.lamps>.9&&exit.drops>0&&exit.master>0&&!exit.audio.connected,JSON.stringify({isolation,exit}));
   await b.evaluate('__ooga.daylight.read=__interiorCheck.read');
-  const snapshot=()=>b.evaluate(`(()=>{const B=__ooga,I=B.dsb.interiors;let nodes=0;const geometries=new Set();const visit=n=>{nodes++;if(n.geometry)geometries.add(n.geometry);for(const c of n.children)visit(c);};visit(BL.scenes.dsb.root);return {nodes,geometries:geometries.size,rooms:I.rooms.size,targets:BL.scenes.dsb.input.targetCount,audio:I.audio.stats.sources,contexts:I.audio.stats.contexts,records:B.renderer.stats.records};})()`);
+  const snapshot=()=>b.evaluate(`(()=>{const B=__ooga,I=B.dsb.interiors;let nodes=0;const geometries=new Set();const visit=n=>{nodes++;if(n.geometry)geometries.add(n.geometry);for(const c of n.children)visit(c);};visit(BL.scenes.dsb.root);return {nodes,geometries:geometries.size,rooms:I.rooms.size,targets:BL.scenes.dsb.input.targetCount,audio:I.audio.stats.sources,contexts:I.audio.stats.contexts,radioSources:B.dsb.noderunner.audio?.stats.sources,radioStarts:B.dsb.noderunner.audio?.stats.starts,records:B.renderer.stats.records};})()`);
   const listenerCount=async()=>{
     const obj=await b.send("Runtime.evaluate",{expression:"document"});
     const result=await b.send("DOMDebugger.getEventListeners",{objectId:obj.result.result.objectId});

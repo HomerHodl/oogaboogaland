@@ -14,13 +14,13 @@
     haze: { soak: 0, gale: .08, cloud: .12 }
   };
   const override = params => params.has("debug") && Object.hasOwn(PRESETS, params.get("weather")) ? params.get("weather") : null;
-  const create = ({ root, renderer, camera, land, water, params }) => {
+  const create = ({ root, renderer, camera, land, water, params, audioFactory = null }) => {
     let mode = override(params), nextStrike = mode === "storm" ? 5 : 35, elapsed = 0, interior = false, muted = false;
     const random = mode ? mulberry32(4804) : Math.random;
     const field = { x: 0, y: 0, z: 0 }, centre = { x: 0, y: 35, z: 0 };
     const presentation = { field, cloudCentre: { x: 0, y: 265, z: 0 }, cloudRadius: 220, cloudScale: 3, cloud: 0, surf: 0 };
     const rainFloor = (x, z) => Math.max(-.3, land.heightAt(x, z));
-    const shared = BL.weather.create({ root, renderer, camera, heightAt: rainFloor, centre, presentation, random });
+    const shared = BL.weather.create({ root, renderer, camera, heightAt: rainFloor, centre, presentation, random, audioFactory });
     const wind = { x: 0, z: 0, strength: 0 };
     const state = { mode: mode || "clear", precipitation: 0, cloud: 0, wind, quality: renderer.quality, exterior: true, audioEnabled: false };
     const environment = { waveEnergy: 1, roughness: 0, glint: 1, foam: 1 };
