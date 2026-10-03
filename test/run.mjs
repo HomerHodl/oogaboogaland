@@ -8976,6 +8976,15 @@ scene("dsb",{label:"interior checkpoint",query:"&view=meme-factory&weather=storm
 scene("dsb",{label:"interior checkpoint phone",query:"&view=meme-factory&weather=storm&time=1200",opts:{w:390,h:844,mobile:true},steps:[dsbInteriorCheckpoint]});
 
 const dsbNatureCheckpoint = { name: "dsb nature checkpoint", why: "rule: terrain contact, deterministic layout, clear routes and bounded tier populations survive scene re-entry", run: async b => {
+  const exterior=await b.evaluate(`(()=>{
+    const D=__ooga.dsb,L=D.land,E=D.detail;let floating=0,buried=0,blocked=0,invalid=0;
+    const geometries=new Set(),visit=n=>{if(n.geometry)geometries.add(n.geometry);for(const c of n.children)visit(c);};visit(E.group);
+    for(const n of E.group.children)if(n.instanceData){const a=n.instanceData,v=n.geometry.verts;for(let o=0;o<a.length;o+=20){let top=-Infinity;for(let j=0;j<v.length;j+=3){const x=a[o]*v[j]+a[o+8]*v[j+2]+a[o+12],y=a[o+1]*v[j]+a[o+5]*v[j+1]+a[o+9]*v[j+2]+a[o+13],z=a[o+2]*v[j]+a[o+10]*v[j+2]+a[o+14];if(![x,y,z].every(Number.isFinite))invalid++;if(Math.abs(v[j+1])<.001&&y>L.heightAt(x,z)+.005)floating++;top=Math.max(top,y);}if(top<L.heightAt(a[o+12],a[o+14])+.06)buried++;}}
+    for(const p of E.placements)if(p.region!=="pier")for(const line of [L.trail,L.waterfront,...L.lanes])for(let i=1;i<line.length;i++){const a=line[i-1],b=line[i],n=Math.ceil(Math.hypot(b[0]-a[0],b[1]-a[1])*2);for(let j=0;j<=n;j++)if(Math.hypot(p.x-a[0]-(b[0]-a[0])*j/n,p.z-a[1]-(b[1]-a[1])*j/n)<p.r+1.5)blocked++;}
+    window.__exteriorCheck={signature:JSON.stringify(E.placements),old:E};
+    return {floating,buried,blocked,invalid,geometries:geometries.size,facades:E.facades.length,coast:E.placements.filter(p=>p.region==="coast").length,rear:E.placements.some(p=>p.region==="coast"&&p.x<0&&p.z<-28)};
+  })()`);
+  record("DSB exterior: seated props leave routes and rear Olympus clear with seven bounded facades",!exterior.floating&&!exterior.buried&&!exterior.blocked&&!exterior.invalid&&!exterior.rear&&exterior.facades===7&&exterior.coast>10&&exterior.geometries<65,JSON.stringify(exterior));
   const r=await b.evaluate(`(() => {
     const B=__ooga,D=B.dsb,N=D.nature,L=D.land;
     const signature=JSON.stringify(N.placements),counts={};let floating=0,buried=0,blocked=0,invalid=0;
@@ -9027,8 +9036,10 @@ const dsbNatureCheckpoint = { name: "dsb nature checkpoint", why: "rule: terrain
     await b.evaluate('__ooga.go("dsb",null,true);__ooga.advance(.05)');
     const state=await b.evaluate(`(()=>{const p=window.__natureCheck,n=__ooga.dsb.nature;return {same:JSON.stringify(n.placements)===p.signature,cleared:p.oldRoot.children.length===0&&p.old.group.children.length===0,fields:n.group.children.length,total:n.stats.total,textures:__ooga.renderer.stats.waterTextures};})()`);
     record(`DSB nature: visit ${visit+2} preserves seeded layout and releases old scene`,state.same&&state.cleared&&state.fields===10&&state.total>1000&&state.textures===2,JSON.stringify(state));
+    const detail=await b.evaluate('({same:JSON.stringify(__ooga.dsb.detail.placements)===__exteriorCheck.signature,cleared:__exteriorCheck.old.group.children.length===0})');
+    record(`DSB exterior: visit ${visit+2} releases dressing without duplicates`,detail.same&&detail.cleared,JSON.stringify(detail));
   }
-  await b.evaluate('delete window.__natureCheck');
+  await b.evaluate('delete window.__natureCheck;delete window.__exteriorCheck');
   record("DSB nature: runtime console remains clean",b.logs.length===0,b.logs.join(" | "));
 }};
 scene("dsb",{label:"nature checkpoint",query:"&overview=1&weather=clear&time=1200",steps:[dsbNatureCheckpoint]});
