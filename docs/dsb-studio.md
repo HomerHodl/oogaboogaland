@@ -4,11 +4,11 @@ Only DSB Studio is added to the reusable DSB interior registry. The Meme Factory
 
 ## Visit and controls
 
-The Studio exterior door uses Space / the existing action button / the contextual touch button. The room begins at elevation 3 in a dim corridor, with the archive terminal to the left and an enterable ticket booth with a corridor-facing service window to the right. A rear gallery overlooks four rows of audience seating and central/side stairs. Two side balconies add four sittable lounge chairs with small tables; their entrances connect to the rear landing. The lower stage has a brick sign wall, stand-up microphone and stool, two audience-facing talk-show chairs, a coffee table, mugs and rug, a separate wooden host desk with its own chair, plus a visible ceiling lighting rig.
+The Studio exterior door uses Space / the existing action button / the contextual touch button. The room begins at elevation 3 in a dim corridor, with the archive terminal to the left and an enterable ticket booth with a corridor-facing service window to the right. A rear gallery overlooks four rows of eight audience seats and central/side stairs. Two side balconies add four sittable lounge chairs with small tables; their entrances connect to the rear landing. The lower stage has a brick sign wall, stand-up microphone and stool, two audience-facing talk-show chairs, a coffee table, mugs and rug, a separate wooden host desk with its own chair, plus a visible ceiling lighting rig.
 
 Approach the front of a seat and use the same interaction to sit. Space or the single normal **STAND UP!** action button returns to the clear row aisle. Seated walking input is ignored; look, weapon selection, aiming and fire remain available. The seated view uses the existing first-person camera and restores the follow/shoulder view on standing. **T** or **Throw tomato** uses the shared crew projectile pool. Lighting is authored; there is no stage-light control.
 
-Audience and balcony seats use the existing crew seat contract with opt-in `allowWeapons` and `lockMovement`. Camp seating retains its prior behavior. Stage chairs are decorative in this milestone.
+Audience and balcony seats use the existing crew seat contract with opt-in `allowWeapons` and `lockMovement`. Camp seating retains its prior behavior. The host chair uses that same contract and faces the audience; the two guest chairs remain decorative.
 
 ## Public archive source
 
@@ -28,7 +28,7 @@ The API responds with `Access-Control-Allow-Origin: https://yellowbrokeit.github
 
 Each archive is fetched on demand and cached during the current Studio visit. Up to 150 dated entries per archive are shown, searchable locally. There is a 15-second request timeout and 3 MB response guard. Failed loads show a retry/source-link message. The data source is a third-party public site and may change or be unavailable.
 
-One lazy HTML media element provides play/pause, previous/next, stop and seeking when duration is available. No extra AudioContext is created for the archive. Closing the dialog keeps playback running at the cabinet. Volume falls quadratically over four units beyond the near zone and reaches zero before the theater (z ≤ 9.2). Returning restores audibility without playing, seeking, or recreating the media element; leaving the Studio aborts requests, pauses and unloads audio, removes media listeners and clears the visit cache. Scene departure also removes the dialog and UI listeners. Existing room ambience is synthesized locally and reduced while a nearby Space is audible. Footsteps, takeoff, landing, tomato throw and comic splat use deterministic synthesized buffers in the same room AudioContext, a separate unducked effects bus and at most eight transient voices. Muting, leaving or disposing gates/disposes these voices. Tomato impacts reuse the shared crew projectile callbacks and capped FX pool; no second projectile system is introduced. Exterior weather and Noderunner audio use the existing interior mute gates.
+One lazy HTML media element provides play/pause, previous/next, stop and seeking when duration is available. No extra AudioContext is created for the archive. Closing the dialog keeps playback running at the cabinet. Volume falls quadratically over four units beyond the near zone and reaches zero before the theater (z ≤ 9.2). Returning restores audibility without playing, seeking, or recreating the media element; leaving the Studio aborts requests, pauses and unloads audio, removes media listeners and clears the visit cache. Scene departure also removes the dialog and UI listeners. Existing room ambience is synthesized locally and reduced while a nearby Space is audible. Studio-only footsteps, jump/landing and tomato throw/splat sounds have been removed without replacements. The shared projectile pool and capped visual splat effects are retained. Exterior weather and Noderunner audio use the existing interior mute gates.
 
 ## Rendering and lifecycle
 
@@ -40,9 +40,19 @@ The host desk adapts the broad wooden front, shallow top and host-behind-desk ar
 
 The MP3 server currently omits Access-Control-Allow-Origin, although the JSON API supplies it. Native HTML audio playback is retained: routing these MP3s into a Web Audio MediaElementSource would silence them under CORS. Browser media volume supplies the fade; the zero boundary also sets `muted`. Physical iOS Safari requires a manual attenuation check because some versions reserve media volume for hardware controls. No credentials or proxy are added.
 
-Review views (with `scene=dsb&debug=1&interior=dsb-studio`): default corridor, `studio-reveal`, `studio-balcony`, `studio-stage`, `studio-seat`. Use the named `dsb-preview/index.html` deployment route.
+Review views (with `scene=dsb&debug=1&interior=dsb-studio`): default corridor, `studio-reveal`, `studio-balcony`, `studio-stage`, `studio-seat`, `studio-host`, `studio-booth`, `studio-mic`. Use the named `dsb-preview/index.html` deployment route.
 
-## Correction validation
+## Concept polish — pending browser validation
+
+The supplied concept board guides the lower dark ceiling and corridor, burgundy runner, dark balcony lattice rails, smaller maroon seat backs, warm aisle lights, folded curtains, stacked gold DSB / STUDIO lettering and microphone emblem directly against brick. The guest conversation area sits to the left, the lowered wooden host desk to its right, and the stand-up mic at the far right. Furniture remains original cached block geometry. The stage rig is lowered to frame the backdrop; the room retains its existing walk surfaces and three lights.
+
+Measured Yellow: body height 1.370, body radius 0.697, standing face/head range approximately 0.881–1.288 above the floor. The ticket opening is 0.75–1.40 above the booth floor. The mic head is 0.949 above the stage, at the model's lower face. Desk top is 1.04 above the stage; seated host face starts at 1.279 above it. The host chair shares the existing seat interaction, with an audience-facing initial view and a clear stand point behind the desk. There are 37 seat anchors: 32 audience, four balcony and one host.
+
+Available validation: normal build, syntax checks and whitespace checks pass. A headless geometry audit using the real room builder and interior collision function passes ten checks, including all stand points, booth/corridor/balcony access, host approach, window/desk scale and light budget. The existing browser checkpoint is updated to include the host in repeated seated weapon/archive cycles.
+
+Browser validation is **not complete** for this polish. Chrome could not start because required local sockets were denied; the environment rejected escalated execution. No current visual captures, touch/gameplay, live media, or repeated renderer/listener lifecycle results are claimed. The user authorized publishing this existing correction after rerunning the available build/static/geometry checks, with interactive browser validation remaining manual. Manual review covers concept similarity; booth face alignment; microphone, desk and chair scale; host Sit / single Stand Up; seated gun/tomato actions; touch controls; jukebox playback/attenuation; and repeated entry/exit isolation and cleanup. Prior results below describe the earlier correction only.
+
+## Previous correction validation
 
 - Build and syntax/static checks pass.
 - 25/25 focused touch checks pass at 390×844, including three complete seated gun/tomato/archive cycles, one stand-up control, sound cues, attenuation/return, exit cleanup and full DSB departure/re-entry.

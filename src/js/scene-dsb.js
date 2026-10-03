@@ -13,7 +13,7 @@
   renderOpts.fog=renderOpts.horizon;
   // Four structural validation lamps, not street dressing. Keep within even the lowest light tier.
   const LAMP_SPOTS=[[-49,-45],[-57,37],[20,63],[64,49]], lamps=[];
-  let clock,water,weather,nature,detail,interiors,exterior,noderunner,tv,spaces,studioTools,studioReview=false,stepDistance=0,studioAir=false;
+  let clock,water,weather,nature,detail,interiors,exterior,noderunner,tv,spaces,studioTools,studioReview=false;
   const sampleDaylight=()=>{
     daylight.sample(clock.read(),renderOpts,clock.dayOfYear,LATITUDE,clock.continuousDay);
     const k=renderOpts.lampFactor, lights=renderOpts.lights;
@@ -57,7 +57,7 @@
     if(!seat)return false;
     if(pilot.player!==avatar)pilot.possess(avatar);
     input.reset();
-    pilot.navigate({position:{x:seat.walkAt.x,y:seat.floor,z:seat.walkAt.z},yaw:Math.atan2(seat.x,seat.z+13),pitch:.12,dist:3});
+    pilot.navigate({position:{x:seat.walkAt.x,y:seat.floor,z:seat.walkAt.z},yaw:seat.viewYaw??Math.atan2(seat.x,seat.z+13),pitch:.12,dist:3});
     const seated=crew.sitPlayer(seat);if(seated){pilot.enterClose();pilot.showAct();}return seated;
   };
   const studioAct=()=>{
@@ -91,9 +91,9 @@
     pilot=BL.pilot.create({renderer:ctx.renderer,canvas:ctx.canvas,camera,hud,presets:{overview:OVERVIEW,chora:{yaw:.62,pitch:.12,dist:18,target:{x:31,y:7,z:33}}},landing:"overview",pitch:[.1,1.45],dist:[3,270],follow:{y:1,min:3,max:9,pitch:[.1,.8]},fly:{speed:8,perDist:.1,climb:5,yMax:180},clampCamera:p=>interiors?interiors.clampCamera(p,avatar?.root.position):p.y=Math.max(p.y,land.heightAt(p.x,p.z)+1),coarse:matchMedia("(pointer: coarse)").matches,onFreeAction:act,onPlayerAction:act,close:{eyeHeight:1.7,eyeRatio:.8,eyeForward:0,maxStep:.6,pitch:[-1.2,1.2],orbitDist:12,trailingDist:6,groundAt:(x,z)=>interiors?interiors.groundAt(x,z):land.heightAt(x,z)}});
     fx=BL.fx.create({root,renderer:ctx.renderer,camera,overlay:ctx.overlay,hud,tickerAt:{x:-45,y:42,z:-44}});
     const splatGeometry=BL.models.particleGeometry("#e34d32",.12,0);
-    const shared={onTomatoThrow:()=>{if(studioRoom())interiors.audio.cue("throw");},
+    const shared={
       tomatoContact:(x,y,z,p)=>studioRoom()?.tomatoContact(x,y,z,p,avatar.camp.seat),
-      onTomatoImpact:p=>{if(!studioRoom())return;interiors.audio.cue("splat",1/(1+Math.hypot(p.x-avatar.root.position.x,p.z-avatar.root.position.z)*.04));for(let i=0;i<7;i++){const a=i*Math.PI*2/7;fx.spawnParticle(splatGeometry,p.x,p.y,p.z,Math.cos(a)*1.8,.8+(i%3)*.3,Math.sin(a)*1.8,.4,3,5,interiors.groundAt(p.x,p.z)+.06);}},
+      onTomatoImpact:p=>{if(!studioRoom())return;for(let i=0;i<7;i++){const a=i*Math.PI*2/7;fx.spawnParticle(splatGeometry,p.x,p.y,p.z,Math.cos(a)*1.8,.8+(i%3)*.3,Math.sin(a)*1.8,.4,3,5,interiors.groundAt(p.x,p.z)+.06);}},
       root,input,hud,game:ctx.game,world:{level:0,weapons:new Map(),magazine:{owned:false,count:0,ammo:0,carrier:null}},playerName:name,reloadPolicy:{near:()=>false,available:()=>false},fx,viewYaw:Math.PI,groundAt:(x,z)=>interiors?interiors.groundAt(x,z):land.groundAt(x,z),walkable:(ax,az,bx,bz,y,h,a)=>(interiors?interiors.walkable(ax,az,bx,bz,y,h,a):land.walkable(ax,az,bx,bz,y,h,a))&&(!noderunner||interiors?.active||noderunner.clearSegment(ax,az,bx,bz,y,h,a))};
     crew=shared.crew=BL.crew.create(shared);pilot.bind(shared);avatar=crew.cavemen.get(name);
     Object.assign(avatar.root.position,{x:-45,y:land.heightAt(-45,-43)+avatar.baseY,z:-43});avatar.root.rotation.y=0;
@@ -118,7 +118,7 @@
     interiors=BL.dsbInteriors.create({root,exterior,land,weather,
       relocate:(position,yaw,dist)=>{overview=false;pilot.setActive(true);if(pilot.player!==avatar)pilot.possess(avatar);pilot.navigate({position,yaw,pitch:.22,dist});pilot.setActive(!interiors?.transitioning);},
       lock:on=>{pilot.setActive(!on);pilot.controls.reset();input.reset();},
-      onChange:(lighting,label)=>{document.body.classList.toggle("dsb-studio-active",!!studioRoom());stepDistance=0;studioAir=false;crew.clearProjectiles();crew.setWeaponTrigger(false);if(studioRoom())spaces?.enter();else spaces?.leave();scene.renderOpts=lighting||renderOpts;hud.setAreaLabel(label);}
+      onChange:(lighting,label)=>{document.body.classList.toggle("dsb-studio-active",!!studioRoom());crew.clearProjectiles();crew.setWeaponTrigger(false);if(studioRoom())spaces?.enter();else spaces?.leave();scene.renderOpts=lighting||renderOpts;hud.setAreaLabel(label);}
     });
     spaces=BL.dsbSpaces.create({onOpen:on=>{pilot.setActive(!on&&!interiors.transitioning);pilot.controls.reset();input.reset();crew.setWeaponTrigger(false);},onPlaying:()=>{}});
     studioTools=document.createElement("div");studioTools.className="dsb-studio-tools";studioTools.hidden=true;
@@ -143,8 +143,11 @@
     if(DEBUG&&!studioReview&&studioRoom()&&!interiors.transitioning){
       studioReview=true;const room=studioRoom(),view=params.get("view");
       if(view==="studio-seat")sit(room.seats[19]);
+      if(view==="studio-host")sit(room.hostSeat);
+      if(view==="studio-booth")pilot.navigate({position:{x:4,y:3,z:14.8},yaw:Math.PI/2,pitch:.12,dist:3});
+      if(view==="studio-mic")pilot.navigate({position:{x:8,y:.6,z:-10.9},yaw:0,pitch:.12,dist:3});
       if(view==="studio-jukebox")pilot.navigate({position:room.jukeboxAt,yaw:Math.PI/2,pitch:.12,dist:3});
-      if(view==="studio-reveal")pilot.navigate({position:{x:0,y:3,z:8.5},yaw:0,pitch:.12,dist:3});
+      if(view==="studio-reveal")pilot.navigate({position:{x:0,y:3,z:8.5},yaw:0,pitch:.24,dist:4});
       if(view==="studio-balcony")pilot.navigate({position:{x:13.5,y:3,z:7.5},yaw:.45,pitch:.12,dist:3});
       if(view==="studio-stage")pilot.navigate({position:{x:-1,y:0,z:-5.8},yaw:0,pitch:-.1,dist:5});
     }
@@ -157,12 +160,6 @@
       // Full volume beside the cabinet, steep falloff, hard silent boundary before the theater.
       const distance=Math.max(0,1-Math.max(0,d-1.3)/4),door=Math.max(0,Math.min(1,(p.z-9.2)/2));
       spaces.setGain(distance*distance*door);interiors.audio.setDucked(spaces.playing&&distance*door>.1);
-      if(!avatar.camp.seat&&!spaces.isOpen){
-        const air=avatar.hop>0||avatar.hopV>0,moved=Math.hypot(p.x-before.x,p.z-before.z);
-        if(air&&!studioAir)interiors.audio.cue("jump");else if(!air&&studioAir)interiors.audio.cue("land");
-        studioAir=air;
-        if(!air&&moved>0&&moved<1){stepDistance+=moved;if(stepDistance>.95){stepDistance%=.95;interiors.audio.cue("step");}}
-      }else {stepDistance=0;studioAir=false;}
     }
     Object.assign(after,avatar.root.position);after.y+=avatar.bodyHeight/2-avatar.baseY;
     if(!interiors.active&&!interiors.transitioning&&!overview&&gate.traverse(before,after,avatar.bodyRadius,1))return;
