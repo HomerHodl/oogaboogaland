@@ -811,5 +811,34 @@
     update(0);
     return { nodes, update };
   };
-  BL.dressing = { U, PALETTE, KIT, LIGHT_RGB, set, motes, palm, islet, nodes, flock, fleet };
+  // Shared static Studio furnishings: one merged mesh per kind, instanced by the renderer.
+  const studioCache=new Map();
+  const studio=kind=>{
+    if(studioCache.has(kind))return studioCache.get(kind);
+    const bits=[],b=(c,x,y,z,w,h,d,e=0)=>bits.push(BL.models.box({w,h,d,color:c,emissive:e,offset:{x,y,z}}));
+    if(kind==="seat"||kind==="armchair"){
+      const plush=kind==="armchair",w=plush?1.65:1.25;
+      b("#353039",0,.3,0,w-.2,.6,.8);b(plush?"#bd8650":"#85414b",0,.65,0,w,.22,.95);
+      b(plush?"#c89964":"#a4535a",0,1.12,.45,w,1.05,.25);
+      for(const x of [-w/2,w/2])b("#ac8054",x,.82,0,.15,.16,1);
+    }else if(kind==="mic"){
+      b("#30323a",0,.04,0,.8,.08,.65);b("#92949c",0,1.15,0,.055,2.2,.055);b("#c0bdb5",0,2.28,0,.2,.36,.2);
+      b("#28262e",0,2.3,-.03,.23,.08,.23);
+    }else if(kind==="table"||kind==="stool"){
+      const table=kind==="table",w=table?2.6:.8,d=table?1.2:.8,h=table?.65:1.05;
+      b("#ad794a",0,h,0,w,.17,d);for(const x of [-w*.4,w*.4])for(const z of [-d*.35,d*.35])b("#68462f",x,h/2,z,.1,h,.1);
+    }else if(kind==="speaker"){
+      b("#242530",0,1,0,1.2,2,.8);for(const y of [.5,1.4])b("#494752",0,y,.42,.75,.65,.04);
+    }else if(kind==="light"){
+      b("#282932",0,0,0,.7,.8,.7);b("#ffce85",0,-.42,0,.52,.06,.5,.8);
+    }else if(kind==="jukebox"){
+      b("#6a422e",0,1.2,0,1.5,2.4,1.2);b("#302b32",0,1.25,.62,1.25,2.05,.1);
+      for(const x of [-.67,.67])b("#ffc568",x,1.3,.7,.12,2.2,.12,.75);
+      b("#e5a64d",0,2.35,.65,1.4,.18,.12,.65);b("#598575",0,1.75,.7,.9,.55,.08,.4);
+      for(let i=0;i<7;i++)b("#b78e58",0,.35+i*.12,.72,1,.04,.06);
+      for(const x of [-.35,0,.35])b("#e7bf73",x,1.22,.73,.13,.13,.1,.3);
+    }
+    const geometry=merge(...bits);studioCache.set(kind,geometry);return geometry;
+  };
+  BL.dressing = { U, PALETTE, KIT, LIGHT_RGB, studio, set, motes, palm, islet, nodes, flock, fleet };
 })();

@@ -3,6 +3,7 @@
   "use strict";
   const create=()=>{
     let context=null,bus=null,hum=null,buzz=null,noise=null,filter=null,humGain=null,buzzGain=null,noiseGain=null;
+    let kind="meme-factory",duck=false;
     let active=false,muted=false,connected=false,disposed=false;
     const gate=()=>{
       if(!bus)return;
@@ -28,11 +29,13 @@
     const gesture=()=>{wake();if(active&&context?.state==="suspended")context.resume().catch(()=>{});};
     document.addEventListener("pointerdown",gesture);document.addEventListener("keydown",gesture);document.addEventListener("visibilitychange",gate);
     return {
-      setActive:on=>{active=!!on;wake();gate();},
+      setActive:(on,room="meme-factory")=>{active=!!on;kind=room;wake();gate();},
+      setDucked:on=>{duck=!!on;},
       update:on=>{
         if(muted!==!!on){muted=!!on;gate();}
         if(!active||!context)return;
         const t=context.currentTime;
+        bus.gain.setTargetAtTime((kind==="studio"?.32:.7)*(duck?.2:1),t,.15);
         hum.frequency.setTargetAtTime(44+Math.sin(t*.8)*2,t,.08);
         buzz.frequency.setTargetAtTime(90+Math.sin(t*3.2)*7,t,.08);
         buzzGain.gain.setTargetAtTime(.006+.003*(.5+.5*Math.sin(t*1.7)),t,.12);

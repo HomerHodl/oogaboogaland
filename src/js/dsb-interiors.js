@@ -86,7 +86,7 @@
 
 
   // Only implemented interiors register here. Later venues supply the same room contract.
-  const definitions=[{id:"meme-factory",building:"Meme Factory House",ambience:"meme-factory",build:buildMemeFactoryInterior}];
+  const definitions=[{id:"meme-factory",building:"Meme Factory House",ambience:"meme-factory",build:buildMemeFactoryInterior},{id:"dsb-studio",building:"DSB Studio Stage",ambience:"studio",build:BL.dsbStudio.build}];
   const create=({root,exterior,land,weather,relocate,lock,onChange})=>{
     const rooms=new Map(),registry=new Map(),entries=[];
     for(const definition of definitions){
@@ -114,7 +114,7 @@
     const swap=definition=>{
       if(active)active.room.root.visible=false;
       active=definition?{definition,room:roomFor(definition)}:null;
-      exterior.visible=!active;weather.setInterior(!!active);audio.update(weather.shared.state.muted);audio.setActive(active?.definition.ambience==="meme-factory");
+      exterior.visible=!active;weather.setInterior(!!active);audio.update(weather.shared.state.muted);audio.setActive(!!active,active?.definition.ambience);
       if(active)active.room.root.visible=true;
       onChange(active?active.room.lighting:null,active?active.definition.building.name:"DSB LAND · CHORA");
       const point=active?active.room.spawn:pending.returnPoint;
@@ -149,6 +149,7 @@
       const b=active.room.bounds;
       p.x=Math.max(b.minX+.2,Math.min(b.maxX-.2,p.x));p.z=Math.max(b.minZ+.2,Math.min(b.maxZ-.2,p.z));
       p.y=Math.max(active.room.groundAt(p.x,p.z)+.74,Math.min(active.room.ceiling-.7,p.y));
+      active.room.clampCamera?.(p);
     };
     return {registry,rooms,audio,
       get lighting(){return active?.room.lighting||null;},request,target,update,walkable,clampCamera,

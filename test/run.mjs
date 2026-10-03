@@ -9045,6 +9045,58 @@ const dsbNatureCheckpoint = { name: "dsb nature checkpoint", why: "rule: terrain
 scene("dsb",{label:"nature checkpoint",query:"&overview=1&weather=clear&time=1200",steps:[dsbNatureCheckpoint]});
 scene("dsb",{label:"nature checkpoint phone",query:"&overview=1&weather=clear&time=1200",opts:{w:390,h:844,mobile:true},steps:[dsbNatureCheckpoint]});
 
+const dsbStudioCheckpoint = {name:"dsb studio checkpoint",why:"playthrough: Studio seating preserves locomotion lock, aim/fire and throws; archive and environment dispose through repeated visits",run:async b=>{
+  const step=()=>b.evaluate('for(let i=0;i<48;i++)BL.scenes.dsb.update(1/60,i/60)');
+  const tap=async selector=>{
+    const p=await b.evaluate(`(()=>{const e=document.querySelector(${JSON.stringify(selector)});e.scrollIntoView({block:"center"});const r=e.getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2};})()`);
+    await b.send("Input.dispatchTouchEvent",{type:"touchStart",touchPoints:[p]});await b.send("Input.dispatchTouchEvent",{type:"touchEnd",touchPoints:[]});await step();
+  };
+  await b.key(" ");await step();
+  const layout=await b.evaluate(`(()=>{const B=__ooga,D=B.dsb,R=D.interiors.active?.room;return {id:R?.id,seats:R?.seats.length,entry:R?.groundAt(0,17),lower:R?.groundAt(0,-6),stage:R?.groundAt(0,-12),exterior:D.exterior.visible,rain:D.weather.shared.state.drops,master:D.weather.shared.state.masterLevel,lights:R?.lighting.lightCount};})()`);
+  record("Studio: correct door reveals upper entrance, descending room and isolated stage",layout.id==="dsb-studio"&&layout.seats===24&&layout.entry===3&&layout.lower===0&&layout.stage===.6&&!layout.exterior&&layout.rain===0&&layout.master===0&&layout.lights===3,JSON.stringify(layout));
+  // Playback is deterministic here; a separate live smoke checks the real public source and media.
+  await b.evaluate(`(()=>{
+    window.__studioCheck={fetch:window.fetch,play:HTMLMediaElement.prototype.play,pause:HTMLMediaElement.prototype.pause,requests:0,plays:0,active:new Set()};
+    const check=window.__studioCheck;
+    window.fetch=(url,opts)=>{if(String(url).startsWith("https://hodlerhiq.net/")){check.requests++;return Promise.resolve(new Response(JSON.stringify({content:{rendered:[1,2,3].map(i=>'<div data-mediafile="https://hodlerhiq.net/wp-content/uploads/2026/fixture-'+i+'.mp3"><span class="player_song_name" data-albumname="2026-01-0'+i+'">Space '+i+'</span></div>').join("")}})));}return check.fetch(url,opts);};
+    HTMLMediaElement.prototype.play=function(){Object.defineProperty(this,"paused",{configurable:true,value:false});check.plays++;check.active.add(this);this.dispatchEvent(new Event("play"));return Promise.resolve();};
+    HTMLMediaElement.prototype.pause=function(){Object.defineProperty(this,"paused",{configurable:true,value:true});check.active.delete(this);this.dispatchEvent(new Event("pause"));};
+  })()`);
+  const listeners=async()=>{const a=await b.send("Runtime.evaluate",{expression:"document"}),r=await b.send("DOMDebugger.getEventListeners",{objectId:a.result.result.objectId});await b.send("Runtime.releaseObject",{objectId:a.result.result.objectId});return r.result.listeners.length;};
+  const startListeners=await listeners();let baseline=null;
+  for(let cycle=0;cycle<3;cycle++){
+    if(cycle){await tap("#dsb-context");await step();}
+    await b.evaluate(`(()=>{const B=__ooga,s=B.dsb.interiors.active.room.seats[${cycle*7}];B.pilot.navigate({position:{x:s.walkAt.x,y:s.floor,z:s.walkAt.z},yaw:0,pitch:.12,dist:3});})()`);await step();await tap("#dsb-context");
+    const seated=await b.evaluate('({seat:!!__ooga.dsb.avatar.camp.seat,leg:__ooga.dsb.avatar.parts.legL.rotation.x,p:{...__ooga.dsb.avatar.root.position},close:__ooga.pilot.closeWanted})');
+    await b.send("Input.dispatchKeyEvent",{type:"keyDown",key:"w",code:"KeyW"});await step();await b.send("Input.dispatchKeyEvent",{type:"keyUp",key:"w",code:"KeyW"});
+    await tap("#weapon-hud");await tap("#weapon-hud");await tap(".dsb-studio-tools button");
+    await b.evaluate('if(!__ooga.dsb.avatar.weapon.aiming)__ooga.pilot.modeAction("mode-toggle");__ooga.crew.look(2.7,.1,1)');await step();
+    const fired=await b.evaluate('({seat:!!__ooga.dsb.avatar.camp.seat,p:{...__ooga.dsb.avatar.root.position},yaw:__ooga.dsb.avatar.root.rotation.y,shots:__ooga.dsb.avatar.weapon.shotsFired,throws:__ooga.crew.stats().tomatoesThrown,aim:__ooga.dsb.avatar.weapon.aiming})');
+    record("Studio: seat "+cycle+" locks walking with seated pose and allows gun/throw controls",seated.seat&&seated.close&&seated.leg<-1.5&&fired.seat&&Math.hypot(fired.p.x-seated.p.x,fired.p.z-seated.p.z)<.001&&fired.shots>cycle&&fired.throws===cycle+1&&fired.aim,JSON.stringify({seated,fired}));
+    await tap("#dsb-context");
+    const stood=await b.evaluate('({seat:!!__ooga.dsb.avatar.camp.seat,close:__ooga.pilot.closeWanted,clear:__ooga.dsb.interiors.walkable(__ooga.dsb.avatar.root.position.x,__ooga.dsb.avatar.root.position.z,__ooga.dsb.avatar.root.position.x,__ooga.dsb.avatar.root.position.z,0,2,__ooga.dsb.avatar)})');
+    record("Studio: touch stand "+cycle+" restores clear ground and follow camera",!stood.seat&&!stood.close&&stood.clear,JSON.stringify(stood));
+    await b.evaluate('__ooga.pilot.navigate({position:__ooga.dsb.interiors.active.room.jukeboxAt,yaw:-Math.PI/2,pitch:.12,dist:3})');await step();await tap("#dsb-context");await b.sleep(80);
+    await tap(".spaces-item");await tap(".dsb-spaces [data-next]");await tap(".dsb-spaces [data-prev]");await tap(".dsb-spaces [data-play]");
+    const paused=await b.evaluate('!__ooga.dsb.spaces.stats.playing');await tap(".dsb-spaces [data-play]");await tap(".dsb-spaces [data-close]");
+    await tap("#dsb-context");await tap(".dsb-spaces [data-close]");
+    const audio=await b.evaluate('({stats:__ooga.dsb.spaces.stats,active:__studioCheck.active.size,requests:__studioCheck.requests})');
+    record("Studio: archive "+cycle+" browses, pauses, resumes and reuses one player/cache",paused&&audio.stats.items===3&&audio.stats.playing&&audio.active===1&&audio.requests===cycle+1,JSON.stringify(audio));
+    await b.evaluate('__ooga.pilot.navigate({position:__ooga.dsb.interiors.active.room.spawn,yaw:0,pitch:.22,dist:3})');await step();await tap("#dsb-context");
+    const end=await b.evaluate(`(()=>{const B=__ooga,D=B.dsb;return {indoor:!!D.interiors.active,seat:!!D.avatar.camp.seat,spaces:D.spaces.stats,active:__studioCheck.active.size,weather:D.weather.state.exterior,trigger:D.avatar.weapon.triggerHeld,projectiles:B.crew.stats().projectiles,rooms:D.interiors.rooms.size,dom:document.querySelectorAll(".dsb-spaces").length,records:B.renderer.stats.records};})()`);
+    record("Studio: exit "+cycle+" disposes playback, seat, projectiles and restores exterior",!end.indoor&&!end.seat&&end.spaces.media===0&&end.spaces.cached===0&&end.active===0&&end.weather&&!end.trigger&&end.projectiles===0&&end.dom===1,JSON.stringify(end));
+    if(cycle===1)baseline=end;else if(cycle===2)record("Studio: warmed room records remain bounded",end.records<=baseline.records,JSON.stringify({baseline,end}));
+  }
+  record("Studio: repeated cycles retain one listener set",await listeners()===startListeners);
+  const seats=await b.evaluate(`(()=>{const B=__ooga,R=B.dsb.interiors.rooms.get("dsb-studio");return R.seats.every(s=>!s.sitter);})()`);record("Studio: every seat releases occupancy",seats);
+  await b.evaluate('window.fetch=__studioCheck.fetch;HTMLMediaElement.prototype.play=__studioCheck.play;HTMLMediaElement.prototype.pause=__studioCheck.pause;__studioCheck.old=__ooga.dsb.spaces;__ooga.go("bifrost",null,true);__ooga.advance(.05);__ooga.go("dsb",null,true);__ooga.advance(.05)');
+  const fresh=await b.evaluate('({old:__studioCheck.old.stats,dialogs:document.querySelectorAll(".dsb-spaces").length,rooms:__ooga.dsb.interiors.rooms.size,seat:!!__ooga.dsb.avatar.camp.seat})');
+  record("Studio: leaving DSB and reentering creates one clean archive controller",!fresh.old.active&&fresh.old.media===0&&fresh.dialogs===1&&fresh.rooms===0&&!fresh.seat,JSON.stringify(fresh));
+  await b.evaluate('delete window.__studioCheck');
+}};
+scene("dsb",{label:"studio checkpoint",query:"&view=studio-door&weather=storm&time=1200",steps:[dsbStudioCheckpoint]});
+scene("dsb",{label:"studio checkpoint phone",query:"&view=studio-door&weather=storm&time=1200",opts:{w:390,h:844,mobile:true},steps:[dsbStudioCheckpoint]});
+
 const runTasks = async () => {
   const picked = tasks.filter((t) => (t.perf ? PERF : PICKED.includes(t.scene)));
   if (ONLY && (PICKED.length || PERF) && !picked.length) throw new Error(`No requested scene checks match ONLY=${ONLY}`);

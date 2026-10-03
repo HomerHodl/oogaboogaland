@@ -7298,3 +7298,36 @@ body[data-poker-table-view="true"] #act { visibility: hidden; }
 #dsb-tv-wallet { overflow-wrap: anywhere; }
 #dsb-tv header { position: sticky; top: -20px; z-index: 1; background: #392739; padding: 8px 0; }
 @media (max-width: 600px) { #dsb-tv header { top: -10px; } }
+
+/* Studio archive is a compact native dialog; gameplay controls remain available after closing it. */
+.dsb-spaces { box-sizing: border-box; width: min(620px, 94vw); height: min(720px, 92dvh); max-height: 92dvh; overflow: auto; padding: 16px; border: 2px solid #b78950; border-radius: 10px; background: #241f29; color: #f4e4c9; font: 14px/1.5 system-ui, sans-serif; }
+.dsb-spaces[open] { display: grid; grid-template-rows: auto auto auto minmax(60px, 1fr) auto; gap: 8px; }
+.dsb-spaces [data-status] { margin: 0; }
+.dsb-spaces::backdrop { background: #090810bb; }
+.dsb-spaces * { box-sizing: border-box; }
+.dsb-spaces header, .spaces-filters, .spaces-controls { display: flex; align-items: center; gap: 10px; justify-content: space-between; }
+.dsb-spaces h2 { margin: 0; letter-spacing: .12em; color: #ffd089; }
+.dsb-spaces small, .spaces-intro { color: #c7b59f; }
+.dsb-spaces button, .dsb-spaces input, .dsb-spaces select { min-height: 42px; border: 1px solid #99754f; border-radius: 5px; background: #39303b; color: #ffecd3; padding: 8px; font: inherit; }
+.dsb-spaces button { cursor: pointer; }
+.dsb-spaces button:hover, .dsb-spaces button:focus-visible { background: #644737; outline: 2px solid #ffcf83; }
+.spaces-filters label { display: grid; gap: 4px; min-width: 0; }
+.spaces-filters label:last-child { flex: 1; }
+.spaces-filters input { width: 100%; }
+.spaces-list { min-height: 0; overflow: auto; display: block; }
+.spaces-item { display: block; width: 100%; height: auto; margin: 0 0 6px; white-space: normal; text-align: left; overflow-wrap: anywhere; }
+.spaces-playing { display: grid; grid-template-columns: 1fr auto; gap: 4px; border-top: 1px solid #725a47; margin-top: 0; padding-top: 8px; }
+.spaces-playing > strong, .spaces-playing .spaces-controls { grid-column: 1 / -1; }
+.spaces-playing > strong { overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; font-size: 13px; }
+.spaces-playing p { margin: 0; font-size: 12px; }
+.spaces-playing output { align-self: center; font-size: 12px; }
+.spaces-progress { display: flex; align-items: center; gap: 8px; }
+.spaces-progress input { min-width: 0; min-height: 28px; height: 28px; flex: 1; }
+.dsb-spaces a { color: #ffd089; }
+.dsb-studio-tools { position: fixed; right: 16px; top: 150px; z-index: 15; display: flex; flex-direction: column; gap: 7px; }
+.dsb-studio-tools[hidden] { display: none; }
+.dsb-studio-tools button { min-height: 42px; background: #352a33; border: 1px solid #d5aa69; border-radius: 6px; color: #ffdfad; padding: 8px 12px; font: 12px system-ui; white-space: nowrap; }
+@media (max-width: 600px) { .dsb-spaces { padding: 13px; font-size: 12px; } .spaces-controls { gap: 5px; flex-wrap: wrap; } .dsb-studio-tools { top: 170px; right: 10px; } }
+
+/* Equip expands the mobile HUD onto a second row: keep its fire target stable between taps. */
+.dsb-studio-active .weapon-hud { transition: background .15s ease; touch-action: manipulation; }
