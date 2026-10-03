@@ -118,7 +118,7 @@
       if(active)active.room.root.visible=true;
       onChange(active?active.room.lighting:null,active?active.definition.building.name:"DSB LAND · CHORA");
       const point=active?active.room.spawn:pending.returnPoint;
-      relocate(point,active?active.room.spawnYaw:pending.building.yaw+Math.PI,active?active.room.followDistance:7);
+      relocate(point,active?active.room.spawnYaw:pending.building.yaw,active?active.room.followDistance:7);
     };
     const request=position=>{
       if(fade>0)return true;

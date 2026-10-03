@@ -87,3 +87,9 @@ passed, including seeded placement, tier populations, night rain, water recovery
 and scene re-entry. No application exceptions, shader compilation errors or
 fatal WebGL errors were observed. Audio graph behavior was measured; audible
 balance still needs hardware listening during visual approval.
+
+Deployed review caught the outward-facing return shoulder camera intersecting
+the exterior facade. The return now faces the same door (camera on the open
+road side); the door regression checks that the exterior camera is clear of
+building footprints. This was corrected in a follow-up commit without rewriting
+the already-published milestone commit.
