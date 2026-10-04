@@ -10,7 +10,7 @@
       M.moved(geometry,0,-bottom,0);geometry.castShadow=false;cache.set(kind,geometry);return geometry;
     }
     const parts=[],box=(x,y,z,w,h,d,color)=>parts.push(M.box({w,h,d,color,offset:{x,y,z}}));
-    const white="#eee5d2",blue="#326c99",wood="#90714f",iron="#425360";
+    const white="#fbf8f1",blue="#326c99",wood="#90714f",iron="#425360";
     if(kind==="window"){
       box(0,0,0,1.1,1.35,.12,white);box(0,0,.08,.83,1.08,.08,"#263f51");
       for(const x of [-.7,.7]){box(x,0,.06,.38,1.3,.13,blue);for(let y=-.45;y<.5;y+=.18)box(x,y,.14,.34,.045,.045,"#6596b1");}

@@ -42,14 +42,14 @@
     };
     for(let index=0;index<land.buildings.length;index++){
       const b=land.buildings[index];if(b.name==="Noderunner waterfront")continue;
-      const brand=VENUES.find(v=>v[0]===b.name),h=brand?brand[1]:b.name==="Harbor workshop"?4.5:b.name.startsWith("Harbor")?4:[4,4.6,4.8,4.4,4,5,4.5,5.5,4.5,5,4.5,5,5.5,4.5,4,5,4.5,4,4,4.5,4][index-7];
+      const brand=VENUES.find(v=>v[0]===b.name),h=brand?brand[1]:b.name==="Harbor workshop"?4.5:b.name.startsWith("Harbor")?4:([4,4.6,4.8,4.4,4,5,4.5,5.5,4.5,5,4.5,5,5.5,4.5,4,5,4.5,4,4,4.5,4][index-7]??b.h);
       const g=S.createNode({position:{x:b.x,y:b.floor,z:b.z},rotation:{x:0,y:b.yaw,z:0},sightHidden:true});S.addChild(group,g);
       const blue=brand?brand[4]:index%3===0?"#507e99":"#346e9c",front=b.d/2;
       // Raised details remain above walking height; all low trim is flush with the existing shell.
-      for(const x of [-b.w/2+.12,b.w/2-.12])block(g,"#e6ddc6",x,h+.23,0,.24,.46,b.d);
-      for(const z of [-front+.12,front-.12])block(g,"#e6ddc6",0,h+.23,z,b.w,.46,.24);
+      for(const x of [-b.w/2+.12,b.w/2-.12])block(g,"#f6f2e8",x,h+.23,0,.24,.46,b.d);
+      for(const z of [-front+.12,front-.12])block(g,"#f6f2e8",0,h+.23,z,b.w,.46,.24);
       block(g,blue,0,h-.16,front+.045,b.w,.18,.08);
-      for(const x of [-.69,.69])block(g,"#eee5d2",x,1.18,front+.07,.18,2.36,.1);
+      for(const x of [-.69,.69])block(g,"#fbf8f1",x,1.18,front+.07,.18,2.36,.1);
       block(g,blue,0,2.35,front+.09,1.56,.18,.14);
       node(g,BL.dressing.chora("vent"),-b.w*.3,h,-b.d*.27);
       for(const side of [-1,1]){
@@ -69,7 +69,7 @@
         BL.dsbModels.sign(g,brand[2],0,h-1.25,front+.24,scale,"#fff4df");
         if(brand[3]){const s=Math.min(.35,(width-.25)/(brand[3].length*.64));BL.dsbModels.sign(g,brand[3],0,h-1.8,front+.21,s,"#fff4df");block(g,blue,0,h-1.67,front+.1,width,.38,.15);}
         const awningY=2.85;
-        for(let i=0;i<7;i++)block(g,i%2?"#eee5d2":blue,(i-3)*(b.w-.6)/7,awningY,front+.47,(b.w-.6)/7,.13,.85);
+        for(let i=0;i<7;i++)block(g,i%2?"#fbf8f1":blue,(i-3)*(b.w-.6)/7,awningY,front+.47,(b.w-.6)/7,.13,.85);
         for(const side of [-1,1]){
           block(g,"#425360",side*(b.w/2-.35),2.75,front+.16,.14,.52,.2);
           const lamp=block(g,"#ffe0a0",side*(b.w/2-.35),2.77,front+.28,.16,.28,.15,.6);glows.push(lamp);
@@ -78,7 +78,7 @@
         if(index===2){for(const side of [-1,1])block(g,blue,side*(b.w/2-.18),h/2,front+.08,.23,h-.6,.13);}
         if(index===4){block(g,blue,0,h+.26,front-.12,3.2,.52,.25);BL.dsbModels.sign(g,"21M",0,h+.14,front+.04,.45,"#ffffff");}
         if(index===5)for(let i=0;i<3;i++)block(g,i%2?blue:"#e8dfc8",b.w*.34,1.35+i*.22,front+.2,.8,.12,.12);
-        if(index===6){block(g,blue,-b.w*.32,1.65,front+.1,.45,1,.12);block(g,"#eee5d2",-b.w*.32,1.65,front+.18,.08,.72,.05);}
+        if(index===6){block(g,blue,-b.w*.32,1.65,front+.1,.45,1,.12);block(g,"#fbf8f1",-b.w*.32,1.65,front+.18,.08,.72,.05);}
         facades.push({name:b.name,sign:brand[2],x:b.x,z:b.z});
       }
       // Rear and side pockets only. Narrow alleys reject the complete furniture footprint.
@@ -117,7 +117,7 @@
     for(const f of fields.values())S.addChild(group,S.createNode({geometry:f.geometry,instanceData:new Float32Array(f.data),instanceCount:f.data.length/20,instanceVersion:0,fixedInstanceCapacity:true,sightHidden:true,cullSphere:new Float32Array([0,20,0,140])}));
     // Existing clearing sign was absent at this checkpoint; a wall-height marker stays off its approach.
     const p=land.marks.choraSign,signRoot=S.createNode({position:{x:p.x,y:p.y,z:p.z}});S.addChild(group,signRoot);
-    block(signRoot,"#87745a",0,1,0,.12,2,.12);block(signRoot,"#eee5d2",0,1.8,0,2.4,.6,.14);
+    block(signRoot,"#87745a",0,1,0,.12,2,.12);block(signRoot,"#fbf8f1",0,1.8,0,2.4,.6,.14);
     BL.dsbModels.sign(signRoot,"CHORA",-.2,1.65,.11,.42,"#326c99");
     block(signRoot,"#326c99",.86,1.83,.11,.4,.065,.06);
     for(const side of [-1,1]){const a=block(signRoot,"#326c99",.99,1.83+side*.08,.11,.22,.065,.06);a.rotation.z=side*Math.PI/4;}

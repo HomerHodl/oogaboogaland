@@ -4,16 +4,19 @@
   const BL=window.BL,S=BL.scene,{mulberry32,fnv1a}=BL.math;
   const SEED=51037;
   const TYPES={
-    olive:{cap:110,r:2.5,foot:.3,relief:.2,maxY:22,sway:.0017,keep:[1,.85,.7]},
-    cypress:{cap:28,r:1,foot:.22,relief:.18,maxY:19,sway:.001,keep:[1,.9,.8]},
-    shrub:{cap:410,r:.85,foot:.45,relief:.24,maxY:32,sway:.055,keep:[1,.65,.38]},
-    cover:{cap:280,r:.65,foot:.4,relief:.16,maxY:25,sway:.035,keep:[1,.5,.2]},
-    grass:{cap:1600,r:.5,foot:.38,relief:.15,maxY:34,sway:.12,keep:[1,.45,.12]},
-    flowers:{cap:200,r:.5,foot:.38,relief:.13,maxY:12,sway:.09,keep:[1,.6,.25]},
+    olive:{cap:130,r:2.5,foot:.3,relief:.2,maxY:24,sway:.0017,keep:[1,.85,.7]},
+    cypress:{cap:80,r:1,foot:.22,relief:.18,maxY:30,sway:.001,keep:[1,.9,.8]},
+    shrub:{cap:720,r:.85,foot:.45,relief:.24,maxY:33,sway:.055,keep:[1,.65,.38]},
+    cover:{cap:560,r:.65,foot:.4,relief:.16,maxY:31,sway:.035,keep:[1,.5,.2]},
+    grass:{cap:3000,r:.5,foot:.38,relief:.15,maxY:34,sway:.12,keep:[1,.45,.12]},
+    flowers:{cap:560,r:.5,foot:.38,relief:.13,maxY:22,sway:.09,keep:[1,.6,.25]},
     rock:{cap:150,r:1.3,foot:1.1,relief:.42,maxY:36,sway:0,keep:[1,.75,.55]},
     bougainvillea:{cap:28,r:.55,foot:.14,relief:.16,maxY:20,sway:.0025,keep:[1,.85,.7]},
-    planter:{cap:28,r:.5,foot:.46,relief:.1,maxY:20,sway:0,keep:[1,.85,.7]}
+    planter:{cap:28,r:.5,foot:.46,relief:.1,maxY:20,sway:0,keep:[1,.85,.7]},
+    // The short green carpet between everything else, after the hub's lawn: tiny tufts by the thousand.
+    meadow:{cap:5600,r:.3,foot:.24,relief:.14,maxY:32,sway:.1,keep:[1,.45,.12]}
   };
+  const COURTS=[[7,36],[30,25],[57,17],[36,9],[12,7],[4,28],[48,15]];
   const distance=(line,x,z)=>{
     let best=Infinity;
     for(let i=1;i<line.length;i++) {
@@ -47,8 +50,14 @@
       // Olympus' rear stays rock-to-sea: no coastal plant/stone strip there.
       if(x<0&&z<-28&&edge<12)return false;
       const tree=kind==="olive"||kind==="cypress";
-      if(tree&&(edge<8||x>0&&z>-25&&x<70&&z<62))return false;
-      if(kind==="flowers"&&(x<-35||z<-8))return false;
+      if(tree&&edge<8)return false;
+      // Trees and rocks leave the sites the enrichment layer furnishes after this one: the ruin shelf, the beach
+      // and the seven courtyards. Scrub, grass and flowers may still grow there.
+      if(tree||kind==="rock"){
+        if(x>64&&x<86&&z>-4&&z<19||x>-6&&x<58&&z>60)return false;
+        for(const c of COURTS)if(Math.hypot(x-c[0],z-c[1])<5)return false;
+      }
+      if(kind==="flowers"&&x<0&&z<-28)return false;
       if((kind==="bougainvillea"||kind==="planter")&&x<0)return false;
       return true;
     };
@@ -85,6 +94,17 @@
     // Shared cluster centres give groves and bare gaps; rejection applies the master geography masks.
     const rand=mulberry32(SEED),clusters=[];
     for(let i=0;i<90;i++)clusters.push([-86+rand()*164,-74+rand()*144]);
+    // Density pass: growth is steered to where the island read bare. Courtyards and the edges of Chora, the
+    // ruins, the back of the beach, the hillside lots and the terraces of Olympus below the summit.
+    const STEER=[[7,36],[30,25],[57,17],[36,9],[12,7],[4,28],[48,15],[22,33],[44,30],[58,6],[26,-8],[75,8],[71,14],[78,3],[8,60],[30,63],[46,62],[62,44],
+      [-24,21],[-6,-14],[2,-20],[-12,24],[-30,-4],[-26,-20],[-38,-12],[-10,-32],[-56,-18],[-60,-34],[-34,-28],[-22,2],[-64,4],[-70,-8]];
+    for(const c of STEER)clusters.push(c);
+    const ROUTES=[[land.trail,2.9],[land.waterfront,3.8],...land.lanes.map(l=>[l,2])];
+    // A point just off the edge of a walking route: verges are where growth gathers.
+    const verge=(rng,r)=>{
+      const [line,half]=ROUTES[Math.floor(rng()*ROUTES.length)],i=1+Math.floor(rng()*(line.length-1)),a=line[i-1],b=line[i],t=rng(),dx=b[0]-a[0],dz=b[1]-a[1],len=Math.hypot(dx,dz)||1,off=(half+r+.15+rng()*rng()*3.2)*(rng()<.5?1:-1);
+      return [a[0]+dx*t+dz/len*off,a[1]+dz*t-dx/len*off];
+    };
     // Architectural plants occupy side/rear edges, never the front door or a storefront's face.
     for(const b of land.buildings) {
       if(b.x<0)continue;
@@ -96,14 +116,21 @@
       const lx=-b.w/2-1.2,lz=-b.d/2-1.2;
       add("planter",b.x+c*lx+s*lz,b.z-s*lx+c*lz,1,b.yaw,true);
     }
-    for(const kind of ["olive","cypress","rock","shrub","cover","grass","flowers"]) {
+    const VERGE={shrub:.25,cover:.35,grass:.3,flowers:.3,meadow:.4,cypress:.2};
+    for(const kind of ["olive","cypress","rock","shrub","cover","grass","flowers","meadow"]) {
       const spec=TYPES[kind],rng=mulberry32(SEED^fnv1a(kind));let count=0;
       for(let attempt=0;attempt<spec.cap*60&&count<spec.cap;attempt++) {
-        const centre=clusters[Math.floor(rng()*clusters.length)],angle=rng()*Math.PI*2,spread=Math.sqrt(rng())*(kind==="olive"?13:9);
-        const x=centre[0]+Math.cos(angle)*spread,z=centre[1]+Math.sin(angle)*spread,scale=.75+rng()*.55,yaw=rng()*Math.PI*2;
-        // Upper Olympus stays sparse; its visual identity is exposed rock.
+        const centre=clusters[Math.floor(rng()*clusters.length)],angle=rng()*Math.PI*2,spread=Math.sqrt(rng())*(kind==="olive"?13:kind==="flowers"?4.5:9);
+        let x=centre[0]+Math.cos(angle)*spread,z=centre[1]+Math.sin(angle)*spread;
+        // One olive in three is a sapling.
+        const scale=kind==="olive"&&rng()<.33?.45+rng()*.2:.75+rng()*.55,yaw=rng()*Math.PI*2;
+        if(rng()<(VERGE[kind]||0)){const p=verge(rng,spec.r*scale);x=p[0];z=p[1];}
+        // The summit stays bare rock; the terraces below it carry scrub.
         const y=land.heightAt(x,z);
-        if(y>18&&rng()<(kind==="rock"?.2:.7))continue;
+        if(y>30&&rng()<(kind==="rock"?.2:.8))continue;
+        if(y>18&&y<=30&&rng()<(kind==="rock"?.15:.3))continue;
+        // Trees thin out among the houses so the lanes keep their sightlines.
+        if((kind==="olive"||kind==="cypress")&&x>0&&z>-25&&x<70&&z<62&&rng()<.55)continue;
         if(kind==="rock"&&distance(coast,x,z)>13&&rng()<.65)continue;
         if(add(kind,x,z,scale,yaw))count++;
       }
@@ -134,7 +161,7 @@
       if(stats.tier!==tier||Math.hypot(p.x-lastX,p.y-lastY,p.z-lastZ)>4) {
         stats.tier=tier;lastX=p.x;lastY=p.y;lastZ=p.z;stats.visible=0;
         for(const f of fields) {
-          const count=Math.ceil(f.list.length*f.spec.keep[k]),detail=f.kind==="grass"||f.kind==="cover"||f.kind==="flowers";
+          const count=Math.ceil(f.list.length*f.spec.keep[k]),detail=f.kind==="grass"||f.kind==="cover"||f.kind==="flowers"||f.kind==="meadow";
           const range=p.y>75?300:detail?(k===0?110:k===1?80:50):300,data=f.node.instanceData;let n=0;
           for(let i=0;i<count;i++) {
             const o=i*20,source=f.source;

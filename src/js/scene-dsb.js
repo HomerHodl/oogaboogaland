@@ -36,6 +36,7 @@
   };
   const sampleDaylight=()=>{
     daylight.sample(clock.read(),renderOpts,clock.dayOfYear,LATITUDE,clock.continuousDay);
+    BL.dsbAtmosphere.light(renderOpts);
     const k=renderOpts.lampFactor, lights=renderOpts.lights;
     let count=0;
     for(const lamp of lamps){
@@ -46,8 +47,10 @@
       lights[o+4]=k;lights[o+5]=.65*k;lights[o+6]=.3*k;lights[o+7]=0;
     }
     renderOpts.lightCount=count;
+    atmosphere?.lights(renderOpts);
   };
   const scene={id:"dsb",renderOpts};
+  let atmosphere=null,town=null;
   let root,camera,land,pilot,crew,avatar,hud,input,fx,gate,world,go,overlayCanvas,panel,context,oldSheet,leaving=false,overview=false;
   const drawExtra=()=>{
     const overlay=overlayCanvas.getContext("2d");
@@ -106,6 +109,7 @@
     ({world,go}=ctx);leaving=false;overview=false;
     root=S.createNode();exterior=S.createNode();S.addChild(root,exterior);land=BL.dsbGeography.build();S.addChild(exterior,land.root);
     water=BL.dsbWater.create(land);S.removeChild(land.root,land.sea);S.addChild(exterior,water.node);renderOpts.dsbWater=water;
+    Object.assign(renderOpts,BL.dsbAtmosphere.OPTS);atmosphere=BL.dsbAtmosphere.create({root:exterior,land,renderer:ctx.renderer});
     clock=daylight.createClock({hour:DEBUG?parseFloat(params.get("hour")):NaN,daylen:DEBUG?parseFloat(params.get("daylen")):NaN,day:DEBUG?parseFloat(params.get("day")):NaN,time:DEBUG?params.get("time"):null,now:new Date()});
     const lampGeometry=BL.models.box({w:.24,h:.32,d:.24,color:"#ffcc80"});
     for(const [x,z] of LAMP_SPOTS){
@@ -127,7 +131,7 @@
     const shared={
       tomatoContact:(x,y,z,p)=>seatRoom()?.tomatoContact(x,y,z,p,avatar.camp.seat),
       onTomatoImpact:p=>{if(!seatRoom())return;for(let i=0;i<7;i++){const a=i*Math.PI*2/7;fx.spawnParticle(splatGeometry,p.x,p.y,p.z,Math.cos(a)*1.8,.8+(i%3)*.3,Math.sin(a)*1.8,.4,3,5,interiors.groundAt(p.x,p.z)+.06);}},
-      root,input,hud,game:ctx.game,world:{level:0,weapons:new Map(),magazine:{owned:false,count:0,ammo:0,carrier:null}},playerName:name,reloadPolicy:{near:()=>false,available:()=>false},fx,viewYaw:Math.PI,groundAt:(x,z)=>interiors?interiors.groundAt(x,z):land.groundAt(x,z),walkable:(ax,az,bx,bz,y,h,a)=>(interiors?interiors.walkable(ax,az,bx,bz,y,h,a):land.walkable(ax,az,bx,bz,y,h,a))&&(!noderunner||interiors?.active||noderunner.clearSegment(ax,az,bx,bz,y,h,a))};
+      root,input,hud,game:ctx.game,world:{level:0,weapons:new Map(),magazine:{owned:false,count:0,ammo:0,carrier:null}},playerName:name,reloadPolicy:{near:()=>false,available:()=>false},fx,viewYaw:Math.PI,groundAt:(x,z)=>interiors?interiors.groundAt(x,z):land.groundAt(x,z),walkable:(ax,az,bx,bz,y,h,a)=>(interiors?interiors.walkable(ax,az,bx,bz,y,h,a):land.walkable(ax,az,bx,bz,y,h,a))&&(!noderunner||interiors?.active||noderunner.clearSegment(ax,az,bx,bz,y,h,a))&&(!town||interiors?.active||town.clearSegment(ax,az,bx,bz,y,h,a))};
     crew=shared.crew=BL.crew.create(shared);pilot.bind(shared);avatar=crew.cavemen.get(name);
     Object.assign(avatar.root.position,{x:-45,y:land.heightAt(-45,-43)+avatar.baseY,z:-43});avatar.root.rotation.y=0;
     Object.assign(hooks,pilot.hooks);hud.onAction(action);hud.onPreset(()=>overviewView());
@@ -135,8 +139,7 @@
     gate=BL.oogaPortal.create({radius:2.5,outerRadius:2.8,position:{x:-45,y:land.heightAt(-45,-48)+2.4,z:-48},rotation:{x:Math.PI/2,y:0,z:0},destinations:[{id:"bifrost",label:"OogaBoogaLand Bifrost",enabled:true}],menuHint:"Activate, then walk through the Portara to Bifrost.",onMenu:open=>{pilot.setActive(!open);pilot.controls.reset();input.reset();},onTraverse:()=>{if(leaving)return;world.pilot=avatar.traits.name;leaving=go("bifrost");}});
     gate.ring.visible=false;S.addChild(exterior,gate.root);
     const floor=land.heightAt(-45,-48);
-    for(const x of [-48.2,-41.8])S.addChild(exterior,S.createNode({geometry:BL.models.box({w:1.25,h:7,d:1.5,color:"#d5c9aa"}),position:{x,y:floor+3.5,z:-48}}));
-    S.addChild(exterior,S.createNode({geometry:BL.models.box({w:7.65,h:1.5,d:1.65,color:"#e4d8b9"}),position:{x:-45,y:floor+7.1,z:-48}}));
+    S.addChild(exterior,S.createNode({geometry:BL.dsbAtmosphere.portara(),position:{x:-45,y:floor,z:-48}}));
     Object.assign(gate.dialer.position,{x:-40,y:land.heightAt(-40,-43),z:-43});S.addChild(exterior,gate.dialer);
     panel=document.getElementById("dsb-panel");panel.hidden=true;
     context=document.getElementById("dsb-context");context.textContent="Dial Portara → Bifrost";
@@ -149,6 +152,7 @@
     nature=BL.dsbNature.create({root:exterior,land,renderer:ctx.renderer,camera,weather});
     detail=BL.dsbExterior.create({root:exterior,land,nature});
     enrichment=BL.dsbEnrichment.create({root:exterior,land,nature,detail,renderer:ctx.renderer,camera});
+    town=BL.dsbTown.create({root:exterior,land,nature,detail,enrichment});
     interiors=BL.dsbInteriors.create({root,exterior,land,weather,
       relocate:(position,yaw,dist)=>{overview=false;pilot.setActive(true);if(pilot.player!==avatar)pilot.possess(avatar);pilot.navigate({position,yaw,pitch:.22,dist});pilot.setActive(!interiors?.transitioning);},
       lock:on=>{pilot.setActive(!on);pilot.controls.reset();input.reset();},
@@ -187,7 +191,7 @@
     studioReview=false;maxisReview=false;shopReview=false;shopMenuReview=0;inkReview=false;inkMenuReview=0;
     bigReview=false;bigMenuReview=0;
     scene.renderOpts=renderOpts;
-    Object.assign(scene,{root,camera,input,setInterior:weather.setInterior,debug:{weather:weather.shared,renderOpts,daylight:clock,camera,pilot,crew,controls:pilot.controls,hud,dsb:{land,water,weather,nature,detail,enrichment,noderunner,tv,spaces,maxisMedia,shopMenu,inkMenu,bigMenu,interiors,exterior,setInterior:weather.setInterior,gate,avatar,get phase(){return interiors?.active?"interior":"land";},overview:OVERVIEW}}});
+    Object.assign(scene,{root,camera,input,setInterior:weather.setInterior,debug:{weather:weather.shared,renderOpts,daylight:clock,camera,pilot,crew,controls:pilot.controls,hud,dsb:{land,water,weather,nature,detail,enrichment,get town(){return town;},get atmosphere(){return atmosphere;},noderunner,tv,spaces,maxisMedia,shopMenu,inkMenu,bigMenu,interiors,exterior,setInterior:weather.setInterior,gate,avatar,get phase(){return interiors?.active?"interior":"land";},overview:OVERVIEW}}});
     walk();
     if(DEBUG&&params.get("view")==="clearing") {
       const p=land.marks.clearing;
@@ -256,7 +260,7 @@
     }
     Object.assign(after,avatar.root.position);after.y+=avatar.bodyHeight/2-avatar.baseY;
     if(!interiors.active&&!interiors.transitioning&&!overview&&gate.traverse(before,after,avatar.bodyRadius,1))return;
-    detail.update(renderOpts.lampFactor);weather.update(dt,renderOpts);noderunner.update(dt,avatar.root.position,weather.state,renderOpts.lampFactor);tv.update();if(!interiors.active){nature.update(dt,time);enrichment.update(time,renderOpts.lampFactor);}
+    detail.update(renderOpts.lampFactor);weather.update(dt,renderOpts);atmosphere.update(time,renderOpts,!interiors.active);noderunner.update(dt,avatar.root.position,weather.state,renderOpts.lampFactor);tv.update();if(!interiors.active){nature.update(dt,time);enrichment.update(time,renderOpts.lampFactor);}
     const door=interiors.target(avatar.root.position);
     const studioLabel=seatRoom()?(avatar.camp.seat?"Stand up":nearSpaces()?"Open DSB Spaces":nearMaxis()?"Open MAXIS MEDIA":nearShop()?"Browse Without Rulers":nearInk()?"Browse Proof of Ink":nearBig()?"BIG BITCOIN Info":seatNear()?(bigRoom()?"Sit":(shopRoom()||inkRoom())?"Sit · browse corner":maxisRoom()?"Sit · view screen":"Sit · view stage"):null):null;
     const label=studioLabel|| (nearTv()?"Open DSB TV":door?`${interiors.active?"Exit":"Enter"} ${door.building.name}`:"Dial Portara → Bifrost");
@@ -276,7 +280,7 @@
     spaces.dispose();spaces=null;studioTools.remove();studioTools=maxisButton=null;
     input.remove(noderunner.screenFace);tv.dispose();tv=null;interiors.dispose();interiors=null;exterior=null;scene.renderOpts=renderOpts;
     noderunner.dispose();noderunner=null;
-    enrichment.dispose();enrichment=null;detail.dispose();detail=null;nature.dispose();nature=null;weather.dispose();weather=null;gate.dispose();pilot.dispose();crew.dispose();fx.dispose();const targets=input.targetCount;input.dispose();hud.el.sheet.hidden=oldSheet;hud.dispose();context.hidden=true;
+    town.dispose();town=null;atmosphere.dispose();atmosphere=null;enrichment.dispose();enrichment=null;detail.dispose();detail=null;nature.dispose();nature=null;weather.dispose();weather=null;gate.dispose();pilot.dispose();crew.dispose();fx.dispose();const targets=input.targetCount;input.dispose();hud.el.sheet.hidden=oldSheet;hud.dispose();context.hidden=true;
     document.body.classList.remove("dsb-active","dsb-studio-active","maxis-club-active");while(root.children.length)S.removeChild(root,root.children[root.children.length-1]);
     lamps.length=0;renderOpts.lightCount=0;clock=null;water=renderOpts.dsbWater=null;
     scene.setInterior=scene.debug=scene.input=null;land=avatar=crew=pilot=gate=fx=hud=input=null;return {targets};
