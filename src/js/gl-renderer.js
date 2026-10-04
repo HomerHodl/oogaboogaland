@@ -69,11 +69,14 @@ uniform vec4 uViewDirection;
 vec3 viewTowardEye(vec3 p) {
   return uViewDirection.w * (uEye - p) + uViewDirection.xyz;
 }`;
-  // Portal mode 6 uses the instance parameters for time, surge and reveal radius.
+  // Portal modes 6 (circle) and 7 (DSB rectangle) share time, surge and reveal parameters.
   // Keep the wave equation in sync with oogaPortalModels.liquidHeight (Canvas).
   const PORTAL_LIQUID_GLSL = `
-float portalHeight(vec2 p, float time, float surge) {
-  float envelope = max(0.0, 1.0 - dot(p, p));
+float portalDistance(vec2 p, float rectangular) {
+  return mix(length(p), max(abs(p.x), abs(p.y)), rectangular);
+}
+float portalHeight(vec2 p, float time, float surge, float rectangular) {
+  float envelope = max(0.0, 1.0 - mix(dot(p, p), max(p.x * p.x, p.y * p.y), rectangular));
   float a = length(p - vec2(0.22, -0.17)), b = length(p - vec2(-0.31, 0.24));
   return envelope * (0.016 * sin(a * 32.0 - time * 4.0) + 0.01 * sin(b * 25.0 - time * 3.0)
     + 0.008 * sin(p.x * 18.0 + p.y * 12.0 + time * 2.0) - surge * 0.32 * envelope);
@@ -115,7 +118,7 @@ void main() {
   vec3 pos = aPos;
   vPortalUV = aPos.xz;
   vPortalView = vec4(0.0);
-  if (aParams.z > 5.5) pos.y += portalHeight(aPos.xz, aParams.x, aParams.y);
+  if (aParams.z > 5.5) pos.y += portalHeight(aPos.xz, aParams.x, aParams.y, step(6.5, aParams.z));
   vec4 w = m * vec4(pos, 1.0);
   if (aParams.z > 5.5) {
     vec3 toward = viewTowardEye(w.xyz);
@@ -586,11 +589,12 @@ void main() {
   if (vWorld.y < uClipMinY || dot(uObjectClip, vec4(vWorld, 1.0)) > 0.0 || abs(dot(uObjectSlab.xyz, vWorld) + uObjectSlab.w) > 1.0 || cutaway(vWorld, vSmokeOpacity)) discard;
   if (vParams.z > 5.5) {
     vec2 p = vPortalUV;
-    float time = vParams.x, surge = vParams.y, radius = length(p);
+    float rectangular = step(6.5, vParams.z);
+    float time = vParams.x, surge = vParams.y, radius = portalDistance(p, rectangular);
     if (radius > vParams.w) discard;
-    float height = portalHeight(p, time, surge);
-    vec2 gradient = vec2(portalHeight(p + vec2(0.003, 0.0), time, surge) - height,
-      portalHeight(p + vec2(0.0, 0.003), time, surge) - height) / (0.003 * vPortalView.w);
+    float height = portalHeight(p, time, surge, rectangular);
+    vec2 gradient = vec2(portalHeight(p + vec2(0.003, 0.0), time, surge, rectangular) - height,
+      portalHeight(p + vec2(0.0, 0.003), time, surge, rectangular) - height) / (0.003 * vPortalView.w);
     vec3 normal = normalize(vec3(-gradient.x, 1.0, -gradient.y));
     vec3 eye = normalize(vPortalView.xyz);
     if (eye.y < 0.0) normal = -normal;
@@ -2135,7 +2139,7 @@ void main() {
         // mode = -1 - smokeOpacity.
         const portal = !!rec.geometry.portalSurface;
         const glow = Math.fround(portal ? n.portalTime : n.ember > 0 ? -n.ember : n.glow), highlight = Math.fround(portal ? n.portalSurge : n.scorch > 0 ? -n.scorch : n.highlight);
-        const mode = portal ? 6 : Math.fround(n.smokeOpacity === undefined ? matrixModeOf(n) : -1 - n.smokeOpacity);
+        const mode = portal ? (rec.geometry.portalRect ? 7 : 6) : Math.fround(n.smokeOpacity === undefined ? matrixModeOf(n) : -1 - n.smokeOpacity);
         if (d[o + 16] !== glow) { d[o + 16] = glow; dirty = true; }
         if (d[o + 17] !== highlight) { d[o + 17] = highlight; dirty = true; }
         if (d[o + 18] !== mode) { d[o + 18] = mode; dirty = true; }

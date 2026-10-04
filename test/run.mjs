@@ -2196,9 +2196,9 @@ const session = (url, steps, opts, final) => output.run({ lines: [], results: []
     // Watchdog kills Chrome so a wedged session never holds its lane; the longest healthy session is ~20 s.
     const browser = b;
     watchdog = setTimeout(() => { overran = true; browser.close(); }, SESSION_MS);
-    if(steps.some(([name])=>name.startsWith("dsb shoreline")))await b.send("Page.addScriptToEvaluateOnNewDocument",{source:`(${shorelineHarness.toString()})()`});
+    if(steps.some(([name])=>name.startsWith("dsb shoreline")||name.includes("Portara aperture")))await b.send("Page.addScriptToEvaluateOnNewDocument",{source:`(${shorelineHarness.toString()})()`});
     // Install before scripts/boot: observe every DSB runtime factory and prohibit live requests.
-    if (steps.some(([name]) => name.startsWith("Ooga Portal"))) await b.send("Page.addScriptToEvaluateOnNewDocument", { source: `(() => {
+    if (steps.some(([name]) => name.startsWith("Ooga Portal")||name.includes("Portara aperture"))) await b.send("Page.addScriptToEvaluateOnNewDocument", { source: `(() => {
       const counts = window.__gateDormancy = { enter: 0, land: 0, zuzu: 0, data: 0, tv: 0, audio: 0, chat: 0, fetch: 0, socket: 0, radio: 0 };
       const watch = (object, key, method, counter) => {
         let value;
@@ -2392,7 +2392,7 @@ const orbitFlow = async (b) => {
 const SCENES = ["hub", "lab", "race", "drop", "orbit", "mine", "pool", "dsb", "factory", "bifrost", "poker", "arcade", "skee", "hoops", "shy", "claw", "hockey", "billiards", "darts", "pinball", "ride", "invaders", "snake", "pong", "stampede", "flap", "breaker", "dash", "stacker"];
 const LANES = Number(process.env.LANES) || 8;
 const ARGS = process.argv.slice(2);
-for (const a of ARGS) if (!SCENES.includes(a) && !["unit", "water-baseline", "water-review", "water-unit", "stackchain-review", "stackchain-unit", "dsb-menus-unit", "maxis-unit", "exterior-unit", "rulers-unit", "ink-unit", "big-unit", "perf", "full", "poker-protocol"].includes(a)) throw new Error(`Unknown argument "${a}" (unit | perf | full | poker-protocol | ${SCENES.join(" | ")})`);
+for (const a of ARGS) if (!SCENES.includes(a) && !["unit", "portal-unit", "water-baseline", "water-review", "water-unit", "stackchain-review", "stackchain-unit", "dsb-menus-unit", "maxis-unit", "exterior-unit", "rulers-unit", "ink-unit", "big-unit", "perf", "full", "poker-protocol"].includes(a)) throw new Error(`Unknown argument "${a}" (unit | perf | full | poker-protocol | ${SCENES.join(" | ")})`);
 const ONLY = process.env.ONLY || ""; // Optional substring within the requested scenes; defaults are unchanged.
 const FULL = ARGS.includes("full");
 const PICKED = FULL ? SCENES : SCENES.filter((s) => ARGS.includes(s));
@@ -8150,6 +8150,62 @@ const pokerProtocolChecks = async () => {
   } catch (e) { record("poker protocol: timeouts refund chips, repeated requests cannot stall, and signers cannot be impersonated", false, e.stack); }
 };
 
+// Regression: DSB uses the measured marble aperture without changing circular gates or controller timing.
+const portalChecks=(BL,el)=>{
+  {
+    // Contract: both directions use the production swept aperture and wall-clock cycle.
+    const get = document.getElementById, listen = window.addEventListener, unlisten = window.removeEventListener;
+    document.getElementById = () => { const node = el(); node.querySelector = () => el(); return node; };
+    window.addEventListener = window.removeEventListener = () => {};
+    let time = 0, crossings = 0;
+    const gate = BL.oogaPortal.create({ radius: 2.2, outerRadius: 2.5, position: { x: 0, y: 2, z: 28 }, rotation: { x: -Math.PI / 2, y: 0, z: 0 }, now: () => time, destinations: [{ id: "hub", enabled: true }], onTraverse: () => crossings++ });
+    const from = { x: 0, y: 1, z: 20 }, to = { x: 0, y: 1, z: 60 };
+    const off = !gate.traverse(from, to, 0.8), activated = gate.activate(0), duplicate = !gate.activate(0), warming = !gate.traverse(from, to, 0.8);
+    time = 1999; gate.update(); const activation = gate.state === "ACTIVATING";
+    time = 2000; gate.update(); const active = gate.state === "ACTIVE";
+    const wrong = !gate.traverse(to, from, 0.8), outside = !gate.traverse({ ...from, x: 3 }, { ...to, x: 3 }, 0.8);
+    const swept = gate.traverse(from, to, 0.8), once = !gate.traverse(from, to, 0.8);
+    time = 11999; gate.update(); const fullWindow = gate.state === "ACTIVE";
+    time = 12000; gate.update(); const shutdown = gate.state === "SHUTDOWN" && !gate.traverse(from, to, 0.8);
+    time = 12450; gate.update(); const expired = gate.state === "OFF" && !gate.traverse(from, to, 0.8);
+    record("Ooga Portal return: directional swept front crossing, exact deadlines and one-use cycle", off && activated && duplicate && warming && activation && active && wrong && outside && swept && once && fullWindow && shutdown && expired && crossings === 1);
+    gate.receive(); time += 60000; gate.update(); const receiving = gate.receiving && gate.state === "ACTIVE" && !gate.activate(0);
+    gate.finishReceiving(true); const fading = gate.state === "SHUTDOWN";
+    time += 450; gate.update();
+    record("Ooga Portal receiving: host owns duration then restores reusable outbound cycle", receiving && fading && !gate.receiving && gate.state === "OFF" && gate.activate(0));
+    gate.dispose();
+    document.getElementById = get; window.addEventListener = listen; window.removeEventListener = unlisten;
+  }
+  const get=document.getElementById,listen=window.addEventListener,unlisten=window.removeEventListener;
+  const listeners=new Set(),nodes=[];
+  const element=()=>{const n=el();n.addEventListener=(type,fn)=>listeners.add(fn);n.removeEventListener=(type,fn)=>listeners.delete(fn);nodes.push(n);return n;};
+  document.getElementById=()=>{const n=element();n.querySelector=()=>element();return n;};window.addEventListener=(type,fn)=>listeners.add(fn);window.removeEventListener=(type,fn)=>listeners.delete(fn);
+  try{
+    const P=BL.dsbAtmosphere.portaraAperture,S=BL.scene,root=S.createNode();let time=0,crossings=0;
+    const gate=BL.oogaPortal.create({radius:2.5,outerRadius:2.8,aperture:P,position:{x:0,y:P.height/2,z:0},rotation:{x:Math.PI/2,y:0,z:0},now:()=>time,destinations:[{id:"bifrost",enabled:true}],onTraverse:()=>crossings++});
+    gate.ring.visible=false;S.addChild(root,gate.root,gate.dialer);
+    const marble=JSON.stringify(BL.dsbAtmosphere.portara());let hash=2166136261;for(let i=0;i<marble.length;i++)hash=Math.imul(hash^marble.charCodeAt(i),16777619);
+    record("Portara: approved marble bytes and measured 5 by 6.5 opening remain unchanged",(hash>>>0).toString(16)==="b4da96ad"&&P.width===5&&P.height===6.5&&P.footWidth===4.5&&P.footHeight===.5);
+    const g=gate.horizon.geometry,v=g.verts,circle=BL.oogaPortalModels.build(2.5,2.8),copy=BL.oogaPortalModels.build(2.5,2.8,P),original=circle.horizon.geometry.verts.slice();
+    const corners=[];for(const x of [-1,1])for(const z of [-1,1])corners.push(v.some((a,i)=>i%3===0&&Math.abs(a-x)<1e-6&&Math.abs(v[i+2]-z)<1e-6));
+    record("Portara: actual rectangular mesh fills four corners, caches separately and fits within the marble shafts/lintel",g.portalRect&&corners.every(Boolean)&&g===copy.horizon.geometry&&g!==circle.horizon.geometry&&gate.halfWidth===2.475&&gate.halfHeight===3.225&&v.every((a,i)=>i%3===1?a===0:Math.abs(a)<=1.000001));
+    const wave=BL.oogaPortalModels.liquidHeight;
+    record("Portara: rectangular ripple envelope reaches the corners and pins every aperture edge",wave(.8,.8,.3,0,true)!==wave(.8,.8,.6,0,true)&&[-1,1].every(x=>[-1,-.5,0,.5,1].every(z=>wave(x,z,.4,1,true)===0&&wave(z,x,.4,1,true)===0))&&wave(.8,.8,.3,0)===0);
+    const rows=[];for(const [name,x,y,r,h,expected,reverse] of [["floor",0,.7,.7,1.4,true,false],["upper corner",2,5.8,.2,.5,true,false],["footing",2.2,.7,.2,1.4,false,false],["column",2.45,3,.2,1,false,false],["lintel",0,6.2,.2,1,false,false],["below threshold",0,.2,.2,1,false,false],["wrong way",0,.7,.7,1.4,false,true]]){
+      gate.receive();const a={x,y,z:reverse?-1:1},b={x,y,z:reverse?1:-1},hit=gate.traverse(a,b,r,1,h);rows.push({name,hit,expected});
+    }
+    record("Portara: swept rectangle accepts its upper corners and rejects columns, footings, lintel, below-ground and reverse entry",rows.every(r=>r.hit===r.expected)&&crossings===2,JSON.stringify(rows));
+    gate.finishReceiving();let cycles=true;const slots=gate.root.children.slice(),snapshot=JSON.stringify(g.verts);
+    for(let i=0;i<10;i++){
+      const base=time;cycles&&=gate.activate();time=base+1000;gate.update();cycles&&=gate.state==="ACTIVATING"&&gate.kawoosh.visible&&gate.horizon.portalReveal===.5&&gate.kawoosh.scale.x===gate.halfWidth*.5&&gate.kawoosh.scale.z===gate.halfHeight*.5;
+      time=base+2000;gate.update();cycles&&=gate.state==="ACTIVE"&&gate.horizon.portalReveal===1&&!gate.kawoosh.visible;
+      time=base+12000;gate.update();cycles&&=gate.state==="SHUTDOWN";time=base+12450;gate.update();cycles&&=gate.state==="OFF"&&!gate.horizon.visible&&!gate.kawoosh.visible&&gate.root.children.every((n,k)=>n===slots[k]);
+    }
+    record("Portara: ten cycles retain shared reveal/surge/shutdown deadlines and fixed nodes/geometry",cycles&&snapshot===JSON.stringify(g.verts)&&original.every((n,i)=>n===circle.horizon.geometry.verts[i])&&copy.kawoosh.geometry===gate.kawoosh.geometry);
+    gate.dispose();gate.dispose();record("Portara: disposal releases scene nodes and all controller listeners",root.children.length===0&&listeners.size===0&&gate.disposed);
+  }finally{document.getElementById=get;window.addEventListener=listen;window.removeEventListener=unlisten;}
+};
+
 // Rule: one support mesh, bounded water effects and the real crew must agree about immersion.
 const waterWorld = BL => {
   const S=BL.scene,root=S.createNode(),land=BL.dsbGeography.build(),renderer={kind:"webgl2",quality:"high"},camera=S.createCamera();
@@ -8846,6 +8902,7 @@ const unitChecks = async () => {
     }
     renderer.dispose();I.dispose();W.dispose();document.createElement=oldCreate;console.log("Exported "+rows.length+" actual Canvas water review views to "+out);return;
   }
+  if(ARGS.includes("portal-unit")){portalChecks(BL,el);return;}
   if(ARGS.includes("water-unit")){await shorelineHarnessChecks();waterChecks(BL);return;}
   // Offline visual export through the actual Canvas renderer when this workspace cannot start Chrome.
   // Adapter is supplied by the review environment; it is never a production/package dependency.
@@ -8974,30 +9031,7 @@ const unitChecks = async () => {
       && rows.every((row) => row.dimensions && row.samples === 33 && row.owned && row.clear && row.enclosed && row.swept && row.walls)
       && ramps.length === 2 && ramps.every((mouth) => mouth.room.w === 6 && mouth.room.h === 4 && mouth.room.from === 2.5 && mouth.room.to === 6.5), JSON.stringify({ rows, ramps: ramps.map((mouth) => ({ id: mouth.id, room: mouth.room })) }));
   }
-  {
-    // Contract: both directions use the production swept aperture and wall-clock cycle.
-    const get = document.getElementById, listen = window.addEventListener, unlisten = window.removeEventListener;
-    document.getElementById = () => { const node = el(); node.querySelector = () => el(); return node; };
-    window.addEventListener = window.removeEventListener = () => {};
-    let time = 0, crossings = 0;
-    const gate = BL.oogaPortal.create({ radius: 2.2, outerRadius: 2.5, position: { x: 0, y: 2, z: 28 }, rotation: { x: -Math.PI / 2, y: 0, z: 0 }, now: () => time, destinations: [{ id: "hub", enabled: true }], onTraverse: () => crossings++ });
-    const from = { x: 0, y: 1, z: 20 }, to = { x: 0, y: 1, z: 60 };
-    const off = !gate.traverse(from, to, 0.8), activated = gate.activate(0), duplicate = !gate.activate(0), warming = !gate.traverse(from, to, 0.8);
-    time = 1999; gate.update(); const activation = gate.state === "ACTIVATING";
-    time = 2000; gate.update(); const active = gate.state === "ACTIVE";
-    const wrong = !gate.traverse(to, from, 0.8), outside = !gate.traverse({ ...from, x: 3 }, { ...to, x: 3 }, 0.8);
-    const swept = gate.traverse(from, to, 0.8), once = !gate.traverse(from, to, 0.8);
-    time = 11999; gate.update(); const fullWindow = gate.state === "ACTIVE";
-    time = 12000; gate.update(); const shutdown = gate.state === "SHUTDOWN" && !gate.traverse(from, to, 0.8);
-    time = 12450; gate.update(); const expired = gate.state === "OFF" && !gate.traverse(from, to, 0.8);
-    record("Ooga Portal return: directional swept front crossing, exact deadlines and one-use cycle", off && activated && duplicate && warming && activation && active && wrong && outside && swept && once && fullWindow && shutdown && expired && crossings === 1);
-    gate.receive(); time += 60000; gate.update(); const receiving = gate.receiving && gate.state === "ACTIVE" && !gate.activate(0);
-    gate.finishReceiving(true); const fading = gate.state === "SHUTDOWN";
-    time += 450; gate.update();
-    record("Ooga Portal receiving: host owns duration then restores reusable outbound cycle", receiving && fading && !gate.receiving && gate.state === "OFF" && gate.activate(0));
-    gate.dispose();
-    document.getElementById = get; window.addEventListener = listen; window.removeEventListener = unlisten;
-  }
+  portalChecks(BL,el);
   {
     // Regression: all canonical physical bodies fit DSB's portal and landmark lanes.
     const S = BL.scene, root = S.createNode(), noop = () => {};
@@ -9588,6 +9622,31 @@ scene("dsb",{label:"shoreline checkpoint piers",query:"&view=water-pier-west&wea
   record("DSB pier browser: revised sea shader and supported harbor retain healthy WebGL and bounded effects",shorelineHealthy(state)&&state.nodes===136&&state.readbacks===0,JSON.stringify(state));
   b.shorelineHealthy=shorelineHealthy(state)&&output.getStore().results.every(r=>r.ok);b.shorelineSoftware=/SwiftShader|llvmpipe|software/i.test(state.gpu);
   const evidence=join(root,"untracked/water-review");mkdirSync(evidence,{recursive:true});writeFileSync(join(evidence,"pier-state.json"),JSON.stringify({visits,state,logs:b.logs},null,2));
+}}]});
+
+for(const fallback of [false,true])scene("dsb",{label:"Portara aperture "+(fallback?"Canvas phone":"WebGL"),query:"&view=portara&weather=clear&time=1200"+(fallback?"&canvas2d=1":""),opts:fallback?{...PHONE_SIZE,motion:true}:{w:640,h:480,motion:true},steps:[{name:"dsb Portara aperture "+(fallback?"Canvas phone":"WebGL"),why:"regression: the Portara fills its rectangular marble opening while the shared dialer, animation, aperture and return transport keep working",run:async b=>{
+  // Finish the ordinary camera preset before comparing active-gate renderer residency.
+  await b.evaluate('__shoreline.advance(2)');
+  const kind=await b.evaluate('__ooga.renderer.kind');record("Portara "+kind+": expected renderer is active",kind===(fallback?"canvas2d":"webgl2"));
+  const shape=await b.evaluate(`(()=>{const B=__ooga,G=B.dsb.gate,P=G.aperture,V=G.horizon.geometry.verts;return {off:G.state==="OFF"&&!G.horizon.visible&&!G.kawoosh.visible,rect:G.horizon.geometry.portalRect,width:G.horizon.scale.x*2,height:G.horizon.scale.z*2,center:G.root.position.y-B.dsb.land.heightAt(-45,-48),corners:[[-1,-1],[-1,1],[1,-1],[1,1]].every(([x,z])=>V.some((v,i)=>i%3===0&&Math.abs(v-x)<1e-6&&Math.abs(V[i+2]-z)<1e-6))};})()`);
+  record("Portara "+kind+": inactive membrane is hidden and real rectangular corners match the measured opening",shape.off&&shape.rect&&shape.corners&&shape.width===4.95&&shape.height===6.45&&Math.abs(shape.center-3.25)<1e-6,JSON.stringify(shape));
+  const cycles=await b.evaluate(`(()=>{const B=__ooga,G=B.dsb.gate,records=[],rows=[],geometry=G.horizon.geometry,children=G.root.children.slice();for(let i=0;i<3;i++){const start=i*13000;__gateClock=start;const activated=G.activate();__gateClock=start+1000;__shoreline.advance(.05);const surge=G.kawoosh.visible&&G.horizon.portalReveal===.5&&G.kawoosh.scale.x===G.halfWidth*.5&&G.kawoosh.scale.z===G.halfHeight*.5;__gateClock=start+2000;__shoreline.advance(.05);records.push(B.renderer.stats?.records||0);const active=G.state==="ACTIVE"&&G.horizon.visible&&G.horizon.portalReveal===1&&!G.kawoosh.visible;__gateClock=start+12225;__shoreline.advance(.05);const closing=G.state==="SHUTDOWN"&&G.horizon.portalReveal===.5;__gateClock=start+12450;__shoreline.advance(.05);rows.push(activated&&surge&&active&&closing&&G.state==="OFF"&&!G.horizon.visible&&!G.kawoosh.visible&&G.horizon.geometry===geometry&&G.root.children.every((n,k)=>n===children[k]));}return {rows,records};})()`);
+  record("Portara "+kind+": repeated reveal, rectangular surge and shutdown retain fixed geometry and renderer records",cycles.rows.every(Boolean)&&cycles.records.every(n=>n===cycles.records[0]),JSON.stringify(cycles));
+  if(!fallback){const state=await b.evaluate(`(${shorelineState.toString()})()`);record("Portara WebGL: rectangular shader compiles and draws without API errors or context loss",shorelineHealthy(state)&&state.readbacks===0,JSON.stringify(state));b.shorelineHealthy=shorelineHealthy(state)&&output.getStore().results.every(r=>r.ok);b.shorelineSoftware=/SwiftShader|llvmpipe|software/i.test(state.gpu);}
+  await b.evaluate(`(()=>{document.querySelector('[data-action="reset-view"]').click();const B=__ooga,D=B.dsb;B.pilot.navigate({position:{x:-45,y:D.land.groundAt(-45,-44),z:-44},yaw:0,pitch:.2,dist:6});__shoreline.advance(.1);window.__portaraGate=D.gate;document.getElementById("dsb-context").click();})()`);
+  record("Portara "+kind+": existing contextual dialer opens",await b.evaluate('__ooga.dsb.gate.isOpen&&document.getElementById("ooga-portal-menu").open'));
+  await b.evaluate('__gateClock=50000;document.querySelector("#ooga-portal-menu button[data-destination]").click();__gateClock=52000;__shoreline.advance(.1)');
+  await b.send("Input.dispatchKeyEvent",{type:"keyDown",key:"w",code:"KeyW"});await b.evaluate('__shoreline.until(()=>__ooga.scene==="bifrost"&&!__ooga.transitioning,8)');await b.send("Input.dispatchKeyEvent",{type:"keyUp",key:"w",code:"KeyW"});
+  record("Portara "+kind+": keyboard crosses the aperture to Bifrost and disposes the old gate",await b.evaluate('__ooga.scene==="bifrost"&&__portaraGate.disposed&&!__portaraGate.root.parent&&!__portaraGate.horizon.visible'));
+}}]});
+
+for(const fallback of [false,true])scene("dsb",{label:"Portara visual evidence "+(fallback?"Canvas phone":"WebGL"),query:"&view=portara&weather=clear&time=1200"+(fallback?"&canvas2d=1":""),opts:fallback?{...PHONE_SIZE,motion:true}:{w:800,h:600,motion:true},steps:[{name:"dsb Portara aperture visual evidence "+(fallback?"Canvas":"WebGL"),why:"contract: retain human evidence of the exact aperture in both renderers after functional checks",run:async b=>{
+  const out=join(root,"untracked/water-review");mkdirSync(out,{recursive:true});await b.evaluate('document.getElementById("overlay").style.visibility="hidden"');
+  for(const [name,time] of [["off",0],["surge",1000],["active",2000]]){
+    await b.evaluate(`__gateClock=${time};if(${time}===1000){__gateClock=0;__ooga.dsb.gate.activate();__gateClock=1000;}__shoreline.advance(.05)`);
+    if(!fallback){const state=await b.evaluate(`(${shorelineState.toString()})()`);if(!shorelineHealthy(state))throw Error("Portara evidence WebGL: "+JSON.stringify(state));b.shorelineHealthy=true;b.shorelineSoftware=/SwiftShader|llvmpipe|software/i.test(state.gpu);}
+    const shot=await b.send("Page.captureScreenshot",{format:"png"},5000);if(!shot.result?.data)throw Error("Portara screenshot returned no image");writeFileSync(join(out,"portara-"+(fallback?"canvas":"webgl")+"-"+name+".png"),Buffer.from(shot.result.data,"base64"));
+  }
 }}]});
 
 // Optional human evidence: separate Chrome/session after the functional gate, never its readiness oracle.

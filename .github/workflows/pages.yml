@@ -63,6 +63,18 @@ jobs:
           for checkpoint in "venue menus checkpoint" "radio TV correction" "studio checkpoint" "interior checkpoint"; do
             ONLY="$checkpoint" node test/run.mjs dsb-menus-unit dsb
           done
+      - name: Validate Portara aperture and shared portal behavior
+        working-directory: preview-src
+        run: |
+          export CHROME="$(command -v google-chrome)"
+          LANES=1 VERBOSE=1 ONLY="Portara aperture" node test/run.mjs portal-unit dsb
+      - name: Capture Portara aperture review
+        working-directory: preview-src
+        continue-on-error: true
+        timeout-minutes: 2
+        run: |
+          export CHROME="$(command -v google-chrome)"
+          LANES=1 ONLY="Portara visual evidence" node test/run.mjs portal-unit dsb
       - name: Capture optional shoreline visual evidence after functional validation
         working-directory: preview-src
         continue-on-error: true
