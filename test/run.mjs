@@ -9945,10 +9945,18 @@ const dsbVenueMenusCheckpoint={name:"dsb venue menus checkpoint",why:"rule: spat
   await b.evaluate('(()=>{const D=__ooga.dsb,I=D.interiors;I.request(I.active.room.exit);I.update(.4);I.review("dsb-studio",true);I.update(.4);__ooga.pilot.navigate({position:I.active.room.jukeboxAt,yaw:Math.PI/2,pitch:.12,dist:3});})()');await step();
   await b.key(" ");await step();
   record("DSB Spaces: physical jukebox opens shared centered dialog",await b.evaluate('__ooga.dsb.spaces.isOpen&&document.querySelector(".dsb-spaces").classList.contains("dsb-menu-engaged")'));
+  const spacesLayouts=[];
   for(const [w,h] of [[1440,900],[390,844],[844,390]]){
     await b.send("Emulation.setDeviceMetricsOverride",{width:w,height:h,deviceScaleFactor:1,mobile:w!==1440});await step();
-    record(`DSB Spaces ${w}x${h}: centered and internally scrollable`,await b.evaluate('(()=>{const p=document.querySelector(".dsb-spaces"),r=p.getBoundingClientRect(),v=visualViewport;return Math.abs(r.x+r.width/2-v.width/2)<1&&Math.abs(r.y+r.height/2-v.height/2)<1&&r.x>=0&&r.y>=0&&r.bottom<=v.height+.5&&p.scrollWidth<=p.clientWidth+1&&getComputedStyle(p).overflowY==="auto";})()'));
+    // Unlike the other venue fixtures, Spaces stays open across resizes. Game
+    // simulation does not deliver browser resize events to the shared shell.
+    // Wait for its viewport inputs, not for the layout assertion to become true.
+    const resized=await b.evaluate('new Promise(resolve=>{const p=document.querySelector(".dsb-spaces"),start=performance.now();const tick=()=>{const v=visualViewport,s=p.style,ready=Math.abs(parseFloat(s.getPropertyValue("--menu-w"))-v.width)<.01&&Math.abs(parseFloat(s.getPropertyValue("--menu-h"))-v.height)<.01&&Math.abs(parseFloat(s.getPropertyValue("--menu-x"))-v.offsetLeft-v.width/2)<.01&&Math.abs(parseFloat(s.getPropertyValue("--menu-y"))-v.offsetTop-v.height/2)<.01;if(ready||performance.now()-start>5000)resolve(ready);else requestAnimationFrame(tick);};requestAnimationFrame(tick);})');
+    const r=await b.evaluate('(()=>{const p=document.querySelector(".dsb-spaces"),r=p.getBoundingClientRect(),v=visualViewport,s=getComputedStyle(p),top=p.scrollTop;p.scrollTop=1;const scrolls=p.scrollHeight<=p.clientHeight||p.scrollTop>0;p.scrollTop=top;return {rect:{x:r.x,y:r.y,width:r.width,height:r.height},viewport:{x:v.offsetLeft,y:v.offsetTop,width:v.width,height:v.height},cx:Math.abs(r.x+r.width/2-v.offsetLeft-v.width/2),cy:Math.abs(r.y+r.height/2-v.offsetTop-v.height/2),margins:[r.x-v.offsetLeft,r.y-v.offsetTop,v.offsetLeft+v.width-r.right,v.offsetTop+v.height-r.bottom],maxHeight:parseFloat(s.maxHeight),scrollHeight:p.scrollHeight,clientHeight:p.clientHeight,scrolls,width:p.scrollWidth<=p.clientWidth+1,overflow:s.overflowY,bodyOverflow:getComputedStyle(document.body).overflowY,isolated:p.open&&document.body.classList.contains("dsb-menu-open")&&BL.dsbMenuShell.count===1&&getComputedStyle(document.getElementById("dsb-context")).visibility==="hidden"};})()');
+    spacesLayouts.push({w,h,resized,...r});
+    record(`DSB Spaces ${w}x${h}: centered and internally scrollable`,resized&&r.cx<1&&r.cy<1&&r.margins.every(n=>n>=11.5)&&r.rect.height<=r.maxHeight+.5&&r.width&&r.scrolls&&r.overflow==="auto"&&r.bodyOverflow==="hidden"&&r.isolated,JSON.stringify(spacesLayouts.at(-1)));
   }
+  writeFileSync(join(paths,"spaces-layout.json"),JSON.stringify(spacesLayouts,null,2));
   await b.evaluate('__ooga.dsb.spaces.close();__ooga.dsb.interiors.request(__ooga.dsb.interiors.active.room.exit);__ooga.dsb.interiors.update(.4)');
   for(const route of ["main","radio","jukebox"])for(const [w,h] of [[1440,900],[390,844],[844,390]]){
     await b.send("Emulation.setDeviceMetricsOverride",{width:w,height:h,deviceScaleFactor:1,mobile:w!==1440});
