@@ -42,6 +42,8 @@ Focused tests walk real Yellow out and back on both piers, check exact foot heig
 
 Ground-level review views: `water-pier-west`, `water-pier-east`.
 
+The first hosted correction run passed both pier playthroughs but caught a pre-existing waterfall-test timing assumption: one of five reserved impact rings can expire on the last sampled update and renew on the next. The weather check now observes the same two-second window, requires all five rings to be visibly active within it, and checks finite water and the 24-slot ceiling throughout. No water lifetime, capacity, gameplay, timeout or required impact count changes.
+
 The existing Clearwater adaptation in `dsb-water.js` remains the ocean. Its 64×64 spectrum, inverse FFT, 120-second cycle, Fresnel function, absorption, horizon/reflection and sun-glint calculations retain their original implementation and MIT notice. The mean sea level remains **−0.3 m**. The original FFT bytes are golden-tested against the starting checkpoint.
 
 Changes in that module: a sand mask in an unused channel of the existing depth texture; a small shallow-sand brightness adjustment and moving shoaling foam; static fine tessellation/clipping at the playable beach so Canvas can sort the shore and submerged body; and a separate directional cascade shading function selected for the existing Olympus water faces. There are still exactly two ocean textures, no additional render targets and no vertex FFT displacement. Above-sea stream water reuses the sea's Fresnel, absorption palette, sky fill and sun response. Falling water uses downward-scrolling streak noise, not ocean displacement. Foam brightness is multiplied by scene light, with no constant waterfall bloom.
