@@ -35,7 +35,7 @@
         if(muted!==!!on){muted=!!on;gate();}
         if(!active||!context)return;
         const t=context.currentTime;
-        bus.gain.setTargetAtTime((kind==="studio"?.32:.7)*(duck?.2:1),t,.15);
+        bus.gain.setTargetAtTime((kind==="shop"?.12:kind==="studio"?.32:.7)*(duck?.2:1),t,.15);
         hum.frequency.setTargetAtTime(44+Math.sin(t*.8)*2,t,.08);
         buzz.frequency.setTargetAtTime(90+Math.sin(t*3.2)*7,t,.08);
         buzzGain.gain.setTargetAtTime(.006+.003*(.5+.5*Math.sin(t*1.7)),t,.12);

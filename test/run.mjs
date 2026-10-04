@@ -2323,7 +2323,7 @@ const orbitFlow = async (b) => {
 const SCENES = ["hub", "lab", "race", "drop", "orbit", "mine", "pool", "dsb", "factory", "bifrost", "poker", "arcade", "skee", "hoops", "shy", "claw", "hockey", "billiards", "darts", "pinball", "ride", "invaders", "snake", "pong", "stampede", "flap", "breaker", "dash", "stacker"];
 const LANES = Number(process.env.LANES) || 8;
 const ARGS = process.argv.slice(2);
-for (const a of ARGS) if (!SCENES.includes(a) && !["unit", "maxis-unit", "exterior-unit", "perf", "full", "poker-protocol"].includes(a)) throw new Error(`Unknown argument "${a}" (unit | perf | full | poker-protocol | ${SCENES.join(" | ")})`);
+for (const a of ARGS) if (!SCENES.includes(a) && !["unit", "maxis-unit", "exterior-unit", "rulers-unit", "perf", "full", "poker-protocol"].includes(a)) throw new Error(`Unknown argument "${a}" (unit | perf | full | poker-protocol | ${SCENES.join(" | ")})`);
 const ONLY = process.env.ONLY || ""; // Optional substring within the requested scenes; defaults are unchanged.
 const FULL = ARGS.includes("full");
 const PICKED = FULL ? SCENES : SCENES.filter((s) => ARGS.includes(s));
@@ -8218,6 +8218,68 @@ const maxisChecks = BL => {
   }finally{globalThis.document=saved.document;globalThis.location=saved.location;window.addEventListener=saved.add;window.removeEventListener=saved.remove;}
 };
 
+// Rule: the showroom must be reachable by the real Yellow and must only expose public catalog links.
+const rulersChecks = BL => {
+  const noop=()=>{},S=BL.scene,root=S.createNode(),targets=new Set(),exterior={visible:true},weather={shared:{state:{muted:true}},inside:false,setInterior(on){this.inside=on;}};
+  const land={buildings:[{name:"Without Rulers Shop",x:0,z:0,yaw:0,d:6}],heightAt:()=>0,walkable:()=>true};
+  const I=BL.dsbInteriors.create({root,exterior,land,weather,relocate:noop,lock:noop,onChange:noop});
+  I.review("without-rulers",true);I.update(.4);const R=I.active.room;
+  const C=BL.crew.create({root,world:{level:0},playerName:"YellowBrokeIt",input:{add:n=>targets.add(n),remove:n=>targets.delete(n)},hud:{setRosterRow:noop},game:{state:{assignments:{},inventory:[]}},viewYaw:0,groundAt:I.groundAt,walkable:I.walkable,fx:{say:noop,zzzAt:noop,burst:noop,puff:noop,spawnParticle:noop,damageNumber:noop}});
+  const A=C.cavemen.get("YellowBrokeIt");C.control(A);
+  const clear=(ax,az,bx=ax,bz=az)=>I.walkable(ax,az,bx,bz,0,A.bodyHeight,A);
+  const step=.25,w=93,h=85,seen=new Uint8Array(w*h),queue=[],index=(x,z)=>Math.round((z+10.5)/step)*w+Math.round((x+11.5)/step),start=index(R.spawn.x,R.spawn.z);seen[start]=1;queue.push(start);
+  for(let head=0;head<queue.length;head++){
+    const n=queue[head],ix=n%w,iz=Math.floor(n/w),x=-11.5+ix*step,z=-10.5+iz*step;
+    for(const [dx,dz] of [[1,0],[-1,0],[0,1],[0,-1]]){const nx=ix+dx,nz=iz+dz,i=nz*w+nx;if(nx<0||nx>=w||nz<0||nz>=h||seen[i]||!clear(x,z,x+dx*step,z+dz*step))continue;seen[i]=1;queue.push(i);}
+  }
+  const reachable=p=>{const i=index(p.x,p.z),ix=i%w,iz=Math.floor(i/w);for(let dx=-1;dx<=1;dx++)for(let dz=-1;dz<=1;dz++){const nx=ix+dx,nz=iz+dz;if(nx>=0&&nx<w&&nz>=0&&nz<h&&seen[nz*w+nx]&&clear(-11.5+nx*step,-10.5+nz*step,p.x,p.z))return true;}return false;};
+  const goals=[R.exit,...R.browseGoals,...Object.values(R.reviews).map(v=>v.position)];record("Without Rulers: entrance reaches kiosk, apparel, print gallery, desk and both lounge seats at Yellow scale",clear(R.spawn.x,R.spawn.z)&&goals.every(reachable),JSON.stringify({radius:A.bodyRadius,unreachable:goals.filter(p=>!reachable(p))}));
+  let seated=true;for(const seat of R.seats){Object.assign(A.root.position,{x:seat.walkAt.x,y:A.baseY,z:seat.walkAt.z});A.hop=A.hopV=0;seated&&=C.sitPlayer(seat);C.steer(.5,0);C.look(seat.ry,.2,1);C.update(.2,1);seated&&=A.camp.seat===seat&&A.root.position.x===seat.x&&A.root.position.z===seat.z;C.steer(0,0);seated&&=C.standPlayer()&&!A.camp.seat&&!seat.sitter&&clear(A.root.position.x,A.root.position.z);}
+  record("Without Rulers: both lounge seats reuse real crew sit, free look, locked movement and safe stand",R.seats.length===2&&seated);
+  S.updateWorld(R.root);let nodes=0,finite=true;const geometries=new Set();const visit=n=>{nodes++;if(n.geometry){geometries.add(n.geometry);finite&&=n.geometry.verts.every(Number.isFinite);}n.children.forEach(visit);};visit(R.root);
+  record("Without Rulers: dense distinct retail zones use bounded shared geometry and three lights",finite&&nodes<1800&&geometries.size<120&&R.lighting.lightCount===3&&R.counts.shirts>=10&&R.counts.hoodies>=10&&R.counts.folded>=35&&R.counts.caps>=45&&R.counts.prints>=16&&R.counts.mannequins===2,JSON.stringify({nodes,geometries:geometries.size,...R.counts}));
+  let lifecycle=true;const childCount=root.children.length,roomRoot=R.root;
+  for(let i=0;i<3;i++){lifecycle&&=weather.inside&&!exterior.visible&&I.audio.stats.active;I.request(R.exit);I.update(.4);lifecycle&&=!I.active&&!weather.inside&&exterior.visible&&!I.audio.stats.active&&!I.audio.stats.connected&&!roomRoot.visible;I.review("without-rulers",true);I.update(.4);lifecycle&&=I.active.room===R&&root.children.length===childCount&&I.rooms.size===1;}
+  C.dispose();I.dispose();record("Without Rulers: three entry/exit cycles reuse one room, suppress exterior, stop room audio and dispose",lifecycle&&targets.size===0&&!root.children.includes(roomRoot)&&!I.audio.stats.contexts);
+  // Rule: real ambience routing stays local and reuses its existing three-source audio pool.
+  const savedAudio=window.AudioContext,activation=Object.getOwnPropertyDescriptor(navigator,"userActivation"),audioNodes=[],contexts=[];
+  const node=()=>{const n={connected:false,stopped:false,gain:{value:0,setTargetAtTime(v){this.value=v;}},frequency:{value:0,setTargetAtTime(v){this.value=v;}},Q:{value:0},connect(){this.connected=true;},disconnect(){this.connected=false;},start(){},stop(){this.stopped=true;}};audioNodes.push(n);return n;};
+  window.AudioContext=class {constructor(){this.destination={};this.currentTime=1;this.sampleRate=8000;this.state="running";contexts.push(this);}createGain(){return node();}createOscillator(){return node();}createBufferSource(){return node();}createBiquadFilter(){return node();}createBuffer(c,n){return {getChannelData:()=>new Float32Array(n)};}close(){this.state="closed";return Promise.resolve();}};
+  Object.defineProperty(navigator,"userActivation",{configurable:true,value:{hasBeenActive:true}});
+  try{const audio=BL.dsbInteriorAudio.create();let clean=true;for(let i=0;i<3;i++){audio.setActive(true,"shop");audio.update(false);clean&&=audio.stats.contexts===1&&audio.stats.sources===3&&audio.stats.connected&&audioNodes[0].gain.value===.12;audio.setActive(false);clean&&=!audio.stats.connected;}audio.setActive(true,"shop");audio.update(true);clean&&=!audio.stats.connected;audio.dispose();record("Without Rulers audio: quiet shop gain, mute, three visits and disposal never duplicate contexts or leak connections",clean&&contexts.length===1&&contexts[0].state==="closed"&&audioNodes.every(n=>!n.connected));}finally{window.AudioContext=savedAudio;if(activation)Object.defineProperty(navigator,"userActivation",activation);else delete navigator.userActivation;}
+  const D=BL.withoutRulersData;
+  record("Without Rulers catalog: all categories and five themes contain real bounded official product previews",D.products.length===14&&D.categories.every(c=>D.filter(c.id).length>0)&&D.collections.every(c=>D.filter("home","",c.id).length>0)&&D.products.every(p=>D.official(p.url)&&p.title&&p.price>0&&/^data:image\/(png|jpeg|webp);base64,/.test(p.image))&&D.collections.every(c=>D.official(c.url)));
+  record("Without Rulers catalog: local search is case insensitive and outbound links reject lookalikes and unsafe URLs",D.filter("home","BiP-85").map(p=>p.id).sort().join() === ["nyknyc-bip-85-t-shirt","nyknyc-bip-85-hoodie-black-and-white","bip-85-bucket-hat"].sort().join()&&D.filter("home","impossible nonproduct").length===0&&["javascript:alert(1)","https://www.without-rulers.com.evil.test/products/a","https://without-rulers.com/products/a","https://user:pass@www.without-rulers.com/","https://www.without-rulers.com/cart","https://www.without-rulers.com/?email=private"].every(u=>!D.official(u)));
+  // Contract: actual menu event handlers, without loading any remote service or customer state.
+  const savedDoc=globalThis.document,listeners=new Map(),elements=[];
+  const element=tag=>{
+    const e={tag,children:[],dataset:{},hidden:false,value:"",attributes:{},parent:null,isConnected:true,textContent:"",listeners:new Map(),
+      setAttribute(k,v){this.attributes[k]=v;},appendChild(c){c.parent=this;this.children.push(c);return c;},replaceChildren(){this.children.forEach(c=>c.parent=null);this.children=[];},
+      contains(n){for(;n;n=n.parent)if(n===this)return true;return false;},closest(s){if(s==="button")return this.tag==="button"?this:this.parent?.closest(s);if(s==="[hidden]")return this.hidden?this:this.parent?.closest(s);return null;},
+      focus(){document.activeElement=this;},blur(){if(document.activeElement===this)document.activeElement=null;},addEventListener(k,f){this.listeners.set(k,f);},removeEventListener(k){this.listeners.delete(k);}
+    };elements.push(e);return e;
+  };
+  const panel=element("section"),selectors=new Map();
+  for(const [q,tag] of [["nav","nav"],[".rulers-results","div"],[".rulers-heading","h3"],["input","input"],[".rulers-search","label"],[".rulers-status","p"],['[data-wr="back"]',"button"],['[data-wr="close"]',"button"]]){const e=element(tag);panel.appendChild(e);selectors.set(q,e);}
+  selectors.get('[data-wr="close"]').dataset.wr="close";selectors.get('[data-wr="back"]').dataset.wr="back";
+  panel.querySelector=q=>selectors.get(q);panel.querySelectorAll=()=>elements.filter(e=>panel.contains(e)&&["button","input","a"].includes(e.tag));
+  globalThis.document={getElementById:()=>panel,createElement:element,activeElement:null,addEventListener:(k,f)=>listeners.set(k,f),removeEventListener:k=>listeners.delete(k)};
+  try{
+    const M=BL.withoutRulersMenu.create(),results=selectors.get(".rulers-results"),search=selectors.get("input");let okay=!M.open();
+    const descendants=(node,out=[])=>{out.push(node);node.children.forEach(c=>descendants(c,out));return out;};
+    const click=(action,value)=>{const b=descendants(panel).find(n=>n.tag==="button"&&n.dataset.wr===action&&(!value||n.dataset.value===value));if(!b)throw Error("Missing menu action "+action);panel.listeners.get("click")({target:b});};
+    for(let i=0;i<3;i++){
+      M.enter();const opened=M.open();okay&&=opened&&M.isOpen&&!panel.hidden&&selectors.get("nav").children.length===8;click("section","hats");okay&&=results.children.filter(c=>c.tag==="article").length===D.filter("hats").length;
+      click("section","search");search.value="BiP-85";search.listeners.get("input")();okay&&=results.children.length===3;
+      click("product",D.products[0].id);const links=descendants(results).filter(n=>n.tag==="a");okay&&=links.length===1&&links[0].href===D.products[0].url&&links[0].target==="_blank"&&links[0].rel==="noopener noreferrer";
+      click("back");click("section","collections");okay&&=results.children.length===5;click("collection","2140");okay&&=results.children.filter(c=>c.tag==="article").length===3;
+      panel.listeners.get("keydown")({type:"keydown",key:"Escape",stopPropagation:noop,preventDefault:noop});okay&&=!M.isOpen&&panel.hidden;
+      M.open();M.leave();okay&&=!M.isOpen&&panel.hidden&&results.children.length===0&&search.value==="";
+    }
+    M.dispose();M.dispose();record("Without Rulers menu: categories, collection search, product redirect, Escape and repeated visits clean all handlers",okay&&listeners.size===0&&elements.every(e=>e.listeners.size===0)&&M.stats.disposed);
+  }finally{globalThis.document=savedDoc;}
+};
+
 const unitChecks = async () => {
   const canvasStub = () => ({
     width: 0, height: 0,
@@ -8272,6 +8334,8 @@ const unitChecks = async () => {
   if(ARGS.includes("exterior-unit"))return;
   maxisChecks(BL);
   if(ARGS.includes("maxis-unit"))return;
+  rulersChecks(BL);
+  if(ARGS.includes("rulers-unit"))return;
   pokerChecks(BL);
   {
     // Analytic half-spaces are an independent normal oracle: an incoming

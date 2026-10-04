@@ -13,7 +13,7 @@
   renderOpts.fog=renderOpts.horizon;
   // Four structural validation lamps, not street dressing. Keep within even the lowest light tier.
   const LAMP_SPOTS=[[-49,-45],[-57,37],[20,63],[64,49]], lamps=[];
-  let clock,water,weather,nature,detail,enrichment,interiors,exterior,noderunner,tv,spaces,studioTools,maxisMedia,maxisButton,maxisReview=false,maxisPick=null,studioReview=false;
+  let clock,water,weather,nature,detail,enrichment,interiors,exterior,noderunner,tv,spaces,studioTools,maxisMedia,maxisButton,maxisReview=false,maxisPick=null,studioReview=false,shopMenu,shopTools,shopPick=null,shopReview=false,shopMenuReview=0;
   const sampleDaylight=()=>{
     daylight.sample(clock.read(),renderOpts,clock.dayOfYear,LATITUDE,clock.continuousDay);
     const k=renderOpts.lampFactor, lights=renderOpts.lights;
@@ -47,7 +47,9 @@
   const nearTv=()=>!overview&&!interiors?.active&&!interiors?.transitioning&&noderunner?.near(avatar.root.position);
   const studioRoom=()=>interiors?.active?.room.id==="dsb-studio"?interiors.active.room:null;
   const maxisRoom=()=>interiors?.active?.room.id==="maxis-club"?interiors.active.room:null;
-  const seatRoom=()=>studioRoom()||maxisRoom();
+  const shopRoom=()=>interiors?.active?.room.id==="without-rulers"?interiors.active.room:null;
+  const seatRoom=()=>studioRoom()||maxisRoom()||shopRoom();
+  const nearShop=()=>{const q=shopRoom()?.mediaAt,p=avatar.root.position;return !!q&&Math.hypot(p.x-q.x,p.z-q.z)<2;};
   const nearMaxis=()=>{const q=maxisRoom()?.mediaAt,p=avatar.root.position;return !!q&&Math.hypot(p.x-q.x,p.z-q.z)<2;};
   const seatNear=()=>{
     const room=seatRoom();if(!room||avatar.camp.seat)return null;
@@ -68,9 +70,10 @@
     if(avatar.camp.seat){input.reset();const stood=crew.standPlayer();if(stood){pilot.exitClose();pilot.showAct();}return stood;}
     if(nearSpaces()){spaces.open();return true;}
     if(nearMaxis()){maxisMedia.open();return true;}
+    if(nearShop()){shopMenu.open();return true;}
     const seat=seatNear();return seat?sit(seat):false;
   };
-  const act=()=>{if(tv?.isOpen||spaces?.isOpen||maxisMedia?.isOpen)return true;if(!interiors?.transitioning&&studioAct())return true;if(nearTv()){tv.open();return true;}if(!overview&&interiors?.request(avatar.root.position))return true;if(interiors?.active)return false;if(nearGate()&&!overview){gate.open();return true;}return false;};
+  const act=()=>{if(tv?.isOpen||spaces?.isOpen||maxisMedia?.isOpen||shopMenu?.isOpen)return true;if(!interiors?.transitioning&&studioAct())return true;if(nearTv()){tv.open();return true;}if(!overview&&interiors?.request(avatar.root.position))return true;if(interiors?.active)return false;if(nearGate()&&!overview){gate.open();return true;}return false;};
   const mute=()=>{const on=weather.toggleMuted(),button=document.getElementById("dsb-mute");interiors?.audio.update(on);button.textContent=on?"Unmute":"Mute";button.setAttribute("aria-pressed",String(on));};
   const action=name=>{if(seatRoom()&&(pilot.modeAction(name)||pilot.weaponAction(name)))return;if(name==="dsb-mute")mute();else if(interiors?.transitioning)return;else if(name==="dsb-lookout")overviewView();else if(name==="reset-view")walk();else if(name==="dsb-context")act();else if(name==="act")pilot.action();else if(name==="leave")hud.toast("Return through the Portara at the summit.");};
   const enter=ctx=>{
@@ -115,7 +118,7 @@
     noderunner=BL.dsbNoderunner.create({root:exterior,land});
     weather=BL.dsbWeather.create({root:exterior,renderer:ctx.renderer,camera,land,water,params,audioFactory:noderunner.createAudio});
     input.add(noderunner.screenFace,{kind:"dsb-tv"});
-    const tap=hooks.onTap;hooks.onTap=(hit,p)=>{if(hit?.owner?.kind==="maxis-media"&&maxisRoom()){maxisMedia.open();return;}if(hit?.owner?.kind==="dsb-tv"){if(nearTv())act();return;}tap?.(hit,p);};
+    const tap=hooks.onTap;hooks.onTap=(hit,p)=>{if(hit?.owner?.kind==="rulers-kiosk"&&shopRoom()){shopMenu.open();return;}if(hit?.owner?.kind==="maxis-media"&&maxisRoom()){maxisMedia.open();return;}if(hit?.owner?.kind==="dsb-tv"){if(nearTv())act();return;}tap?.(hit,p);};
     tv=BL.dsbTv.create(noderunner.screen,ctx.renderer,{play:()=>noderunner.audio?.play(),radioStatus:()=>noderunner.audio?.status||"Press Play radio to enable sound",onOpen:open=>{pilot.setActive(!open);pilot.controls.reset();input.reset();}});
     nature=BL.dsbNature.create({root:exterior,land,renderer:ctx.renderer,camera,weather});
     detail=BL.dsbExterior.create({root:exterior,land,nature});
@@ -129,18 +132,23 @@
         if(maxisPick){maxisPick.setMedia(false);input.remove(maxisPick.screen);input.remove(maxisPick.console);maxisPick=null;}
         if(maxisRoom()){maxisMedia?.enter();maxisPick=maxisRoom();input.add(maxisPick.screen,{kind:"maxis-media"});input.add(maxisPick.console,{kind:"maxis-media"});}
         else maxisMedia?.leave();
+        if(shopPick){input.remove(shopPick.screen);shopPick=null;}
+        if(shopRoom()){shopMenu?.enter();shopPick=shopRoom();input.add(shopPick.screen,{kind:"rulers-kiosk"});}else shopMenu?.leave();
         scene.renderOpts=lighting||renderOpts;hud.setAreaLabel(label);
       }
     });
     spaces=BL.dsbSpaces.create({onOpen:on=>{pilot.setActive(!on&&!interiors.transitioning);pilot.controls.reset();input.reset();crew.setWeaponTrigger(false);},onPlaying:()=>{}});
     maxisMedia=BL.maxisMedia.create({onOpen:on=>{pilot.setActive(!on&&!interiors.transitioning);pilot.controls.reset();input.reset();crew.setWeaponTrigger(false);},onSource:source=>maxisRoom()?.setMedia(!!source)});
+    shopMenu=BL.withoutRulersMenu.create({onOpen:on=>{pilot.setActive(!on&&!interiors.transitioning);pilot.controls.reset();input.reset();crew.setWeaponTrigger(false);}});
+    shopTools=document.createElement("div");shopTools.className="rulers-tools";shopTools.hidden=true;
+    const shopButton=document.createElement("button");shopButton.type="button";shopButton.textContent="Browse Without Rulers";shopButton.onclick=()=>shopMenu.open();shopTools.appendChild(shopButton);document.body.appendChild(shopTools);
     studioTools=document.createElement("div");studioTools.className="dsb-studio-tools";studioTools.hidden=true;
     const tomato=document.createElement("button");tomato.type="button";tomato.textContent="Throw tomato · T";tomato.onclick=()=>{if(seatRoom()&&!spaces.isOpen&&!maxisMedia.isOpen)crew.throwTomato();};studioTools.appendChild(tomato);
     maxisButton=document.createElement("button");maxisButton.type="button";maxisButton.textContent="MAXIS MEDIA";maxisButton.hidden=true;maxisButton.onclick=()=>maxisMedia.open();studioTools.appendChild(maxisButton);
     document.body.appendChild(studioTools);
-    studioReview=false;maxisReview=false;
+    studioReview=false;maxisReview=false;shopReview=false;shopMenuReview=0;
     scene.renderOpts=renderOpts;
-    Object.assign(scene,{root,camera,input,setInterior:weather.setInterior,debug:{weather:weather.shared,renderOpts,daylight:clock,camera,pilot,crew,controls:pilot.controls,hud,dsb:{land,water,weather,nature,detail,enrichment,noderunner,tv,spaces,maxisMedia,interiors,exterior,setInterior:weather.setInterior,gate,avatar,get phase(){return interiors?.active?"interior":"land";},overview:OVERVIEW}}});
+    Object.assign(scene,{root,camera,input,setInterior:weather.setInterior,debug:{weather:weather.shared,renderOpts,daylight:clock,camera,pilot,crew,controls:pilot.controls,hud,dsb:{land,water,weather,nature,detail,enrichment,noderunner,tv,spaces,maxisMedia,shopMenu,interiors,exterior,setInterior:weather.setInterior,gate,avatar,get phase(){return interiors?.active?"interior":"land";},overview:OVERVIEW}}});
     walk();
     if(DEBUG&&params.get("view")==="clearing") {
       const p=land.marks.clearing;
@@ -152,6 +160,7 @@
     if(params.get("overview")==="1")overviewView();
     if(DEBUG&&(params.get("view")==="meme-factory"||params.get("interior")==="meme-factory"))interiors.review("meme-factory",params.get("interior")==="meme-factory");
     if(DEBUG&&(params.get("view")==="maxis-door"||params.get("interior")==="maxis-club"))interiors.review("maxis-club",params.get("interior")==="maxis-club");
+    if(DEBUG&&(params.get("view")==="rulers-door"||params.get("interior")==="without-rulers"))interiors.review("without-rulers",params.get("interior")==="without-rulers");
     if(DEBUG&&(params.get("view")==="studio-door"||params.get("interior")==="dsb-studio"))interiors.review("dsb-studio",params.get("interior")==="dsb-studio");
   };
   const update=(dt,time)=>{
@@ -172,11 +181,18 @@
       if(view==="maxis-seat")sit(room.seats[34]);
       else if(room.reviews[view])pilot.navigate(room.reviews[view]);
     }
-    studioTools.hidden=!seatRoom()||interiors.transitioning||spaces.isOpen||maxisMedia.isOpen;maxisButton.hidden=!maxisRoom();
+    if(DEBUG&&!shopReview&&shopRoom()&&!interiors.transitioning){
+      shopReview=true;const room=shopRoom(),view=params.get("view");
+      if(view==="rulers-seat")sit(room.seats[0]);else if(room.reviews[view])pilot.navigate(room.reviews[view]);
+      if(view==="rulers-menu"){pilot.navigate(room.reviews["rulers-kiosk"]);shopMenuReview=1;}
+    }
+    shopTools.hidden=!shopRoom()||interiors.transitioning||shopMenu.isOpen;
+    studioTools.hidden=!(studioRoom()||maxisRoom())||interiors.transitioning||spaces.isOpen||maxisMedia.isOpen;maxisButton.hidden=!maxisRoom();
     if(maxisRoom())maxisMedia.setGain(maxisRoom().gainAt(avatar.root.position.x,avatar.root.position.z),weather.shared.state.muted);
     spaces.setMuted(weather.shared.state.muted);
     Object.assign(before,avatar.root.position);before.y+=avatar.bodyHeight/2-avatar.baseY;
-    if(!gate.isOpen&&!tv.isOpen&&!spaces.isOpen&&!maxisMedia.isOpen&&!interiors.transitioning){pilot.readInput(dt);if(!overview&&!interiors.transitioning)crew.update(dt,time);pilot.update(dt);}
+    if(!gate.isOpen&&!tv.isOpen&&!spaces.isOpen&&!maxisMedia.isOpen&&!shopMenu.isOpen&&!interiors.transitioning){pilot.readInput(dt);if(!overview&&!interiors.transitioning)crew.update(dt,time);pilot.update(dt);}
+    if(shopMenuReview>0){shopMenuReview=Math.max(0,shopMenuReview-dt);if(shopMenuReview===0&&shopRoom())shopMenu.open();}
     if(studioRoom()&&!interiors.transitioning){
       const p=avatar.root.position,q=studioRoom().jukeboxSource,d=Math.hypot(p.x-q.x,p.z-q.z);
       // Full volume beside the cabinet, steep falloff, hard silent boundary before the theater.
@@ -187,13 +203,14 @@
     if(!interiors.active&&!interiors.transitioning&&!overview&&gate.traverse(before,after,avatar.bodyRadius,1))return;
     detail.update(renderOpts.lampFactor);weather.update(dt,renderOpts);noderunner.update(dt,avatar.root.position,weather.state,renderOpts.lampFactor);tv.update();if(!interiors.active){nature.update(dt,time);enrichment.update(time,renderOpts.lampFactor);}
     const door=interiors.target(avatar.root.position);
-    const studioLabel=seatRoom()?(avatar.camp.seat?"Stand up":nearSpaces()?"Open DSB Spaces":nearMaxis()?"Open MAXIS MEDIA":seatNear()?(maxisRoom()?"Sit · view screen":"Sit · view stage"):null):null;
+    const studioLabel=seatRoom()?(avatar.camp.seat?"Stand up":nearSpaces()?"Open DSB Spaces":nearMaxis()?"Open MAXIS MEDIA":nearShop()?"Browse Without Rulers":seatNear()?(shopRoom()?"Sit · browse corner":maxisRoom()?"Sit · view screen":"Sit · view stage"):null):null;
     const label=studioLabel|| (nearTv()?"Open DSB TV":door?`${interiors.active?"Exit":"Enter"} ${door.building.name}`:"Dial Portara → Bifrost");
     if(context.textContent!==label)context.textContent=label;
-    context.hidden=!!avatar.camp.seat||overview||interiors.transitioning||gate.isOpen||tv.isOpen||spaces.isOpen||maxisMedia.isOpen||(!studioLabel&&!nearTv()&&!door&&(interiors.active||!nearGate()));fx.update(dt);
+    context.hidden=!!avatar.camp.seat||overview||interiors.transitioning||gate.isOpen||tv.isOpen||spaces.isOpen||maxisMedia.isOpen||shopMenu.isOpen||(!studioLabel&&!nearTv()&&!door&&(interiors.active||!nearGate()));fx.update(dt);
   };
   const leave=()=>{
     if(avatar)world.pilot=avatar.traits.name;
+    shopMenu.dispose();shopMenu=null;shopTools.remove();shopTools=null;if(shopPick){input.remove(shopPick.screen);shopPick=null;}
     maxisMedia.dispose();maxisMedia=null;if(maxisPick){maxisPick.setMedia(false);input.remove(maxisPick.screen);input.remove(maxisPick.console);maxisPick=null;}
     spaces.dispose();spaces=null;studioTools.remove();studioTools=maxisButton=null;
     input.remove(noderunner.screenFace);tv.dispose();tv=null;interiors.dispose();interiors=null;exterior=null;scene.renderOpts=renderOpts;
@@ -203,6 +220,6 @@
     lamps.length=0;renderOpts.lightCount=0;clock=null;water=renderOpts.dsbWater=null;
     scene.setInterior=scene.debug=scene.input=null;land=avatar=crew=pilot=gate=fx=hud=input=null;return {targets};
   };
-  Object.assign(scene,{enter,update,leave,onKey:e=>{if(maxisMedia?.isOpen){if(e.key==="Escape")maxisMedia.close();return true;}if(spaces?.isOpen){if(e.key==="Escape")spaces.close();return true;}if(seatRoom()&&(e.key==="1"||e.key==="2"))return pilot.weaponMode(Number(e.key));if(seatRoom()&&e.key.toLowerCase()==="v")return pilot.weaponAction("weapon-fire");if(e.key.toLowerCase()==="t"&&seatRoom()){crew.throwTomato();return true;}if(tv?.isOpen){if(e.key==="Escape")tv.close();return true;}if(e.key.toLowerCase()==="m"){mute();return true;}if(e.key==="Escape"&&!gate.isOpen){overviewView();return true;}return false;},overlay:dt=>{const dpr=Math.min(devicePixelRatio||1,2),w=Math.round(overlayCanvas.clientWidth*dpr),h=Math.round(overlayCanvas.clientHeight*dpr);if(overlayCanvas.width!==w||overlayCanvas.height!==h){overlayCanvas.width=w;overlayCanvas.height=h;}overlayCanvas.getContext("2d").setTransform(dpr,0,0,dpr,0,0);fx.drawOverlay(dt,drawExtra);},stats:()=>({targets:input.targetCount,tweens:0}),liveGeometry:set=>{if(avatar)set.add(avatar.headOpen).add(avatar.headClosed);},onDonation:()=>{},onLootCleared:()=>{}});
+  Object.assign(scene,{enter,update,leave,onKey:e=>{if(shopMenu?.isOpen){if(e.key==="Escape")shopMenu.close();return true;}if(maxisMedia?.isOpen){if(e.key==="Escape")maxisMedia.close();return true;}if(spaces?.isOpen){if(e.key==="Escape")spaces.close();return true;}if(seatRoom()&&(e.key==="1"||e.key==="2"))return pilot.weaponMode(Number(e.key));if(seatRoom()&&e.key.toLowerCase()==="v")return pilot.weaponAction("weapon-fire");if(e.key.toLowerCase()==="t"&&seatRoom()){crew.throwTomato();return true;}if(tv?.isOpen){if(e.key==="Escape")tv.close();return true;}if(e.key.toLowerCase()==="m"){mute();return true;}if(e.key==="Escape"&&!gate.isOpen){overviewView();return true;}return false;},overlay:dt=>{const dpr=Math.min(devicePixelRatio||1,2),w=Math.round(overlayCanvas.clientWidth*dpr),h=Math.round(overlayCanvas.clientHeight*dpr);if(overlayCanvas.width!==w||overlayCanvas.height!==h){overlayCanvas.width=w;overlayCanvas.height=h;}overlayCanvas.getContext("2d").setTransform(dpr,0,0,dpr,0,0);fx.drawOverlay(dt,drawExtra);},stats:()=>({targets:input.targetCount,tweens:0}),liveGeometry:set=>{if(avatar)set.add(avatar.headOpen).add(avatar.headClosed);},onDonation:()=>{},onLootCleared:()=>{}});
   BL.scenes.dsb=scene;
 })();

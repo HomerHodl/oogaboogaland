@@ -7371,3 +7371,60 @@ body[data-poker-table-view="true"] #act { visibility: hidden; }
   .maxis-media header { gap: 5px; }
   .maxis-player-slot:not(:empty) { height: 300px; }
 }
+
+/* Without Rulers owns one local catalog panel; all rules stay scoped to the shop. */
+.rulers-catalog, .rulers-catalog * { box-sizing: border-box; }
+.rulers-catalog { position: fixed; z-index: 56; right: 18px; top: 8dvh; width: min(850px, 94vw); max-height: 84dvh; display: flex; flex-direction: column; color: #eae4d6; background: #191c1e; border: 1px solid #a17547; border-radius: 7px; box-shadow: 0 20px 60px #000b; font: 14px/1.45 system-ui,sans-serif; }
+.rulers-catalog[hidden], .rulers-catalog [hidden], .rulers-tools[hidden] { display: none !important; }
+.rulers-catalog header { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 15px 18px; border-bottom: 3px solid #e89033; }
+.rulers-catalog h2 { font: bold 23px/1.15 monospace; margin: 0; letter-spacing: -.025em; }
+.rulers-catalog h2 span, .rulers-price { color: #ffb95d; }
+.rulers-eyebrow { margin: 0 0 4px; color: #bcad96; font-size: 10px; letter-spacing: .18em; }
+.rulers-catalog button, .rulers-catalog input, .rulers-catalog a, .rulers-tools button { min-height: 44px; font: inherit; }
+.rulers-catalog button, .rulers-tools button { color: #f0e8da; background: #303435; border: 1px solid #606160; border-radius: 4px; padding: 8px 11px; cursor: pointer; }
+.rulers-catalog button:hover, .rulers-catalog button[aria-pressed="true"] { background: #a95820; color: #fff8ec; border-color: #f6b763; }
+.rulers-catalog :focus-visible, .rulers-tools :focus-visible { outline: 2px solid #ffb65a; outline-offset: 3px; }
+.rulers-privacy { font-size: 12px; padding: 10px 18px; margin: 0; color: #d7c9b2; background: #242728; }
+.rulers-catalog nav { display: flex; gap: 6px; padding: 10px 14px; flex-wrap: wrap; border-bottom: 1px solid #414039; }
+.rulers-catalog nav button { font-size: 12px; }
+.rulers-browse { padding: 14px 18px; overflow: auto; min-height: 0; overscroll-behavior: contain; }
+.rulers-bar { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; }
+.rulers-heading { margin: 0; font-size: 17px; }
+.rulers-search { display: flex; align-items: center; gap: 12px; margin-bottom: 15px; font-size: 12px; }
+.rulers-search input { flex: 1; min-width: 0; background: #101516; color: #fff5e6; border: 1px solid #646563; border-radius: 4px; padding: 8px 10px; }
+.rulers-results { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
+.rulers-card, .rulers-collection { background: #24292b; border: 1px solid #464943; border-radius: 4px; padding: 10px; display: flex; flex-direction: column; gap: 8px; }
+.rulers-catalog img { width: 100%; height: auto; aspect-ratio: 1; object-fit: contain; border-radius: 3px; background: #eee9df; }
+.rulers-catalog article h3 { margin: 0; font-size: 13px; overflow-wrap: anywhere; }
+.rulers-catalog article p { margin: 0; font-size: 12px; }
+.rulers-card button { margin-top: auto; }
+.rulers-catalog a { color: #ffc074; display: inline-flex; align-items: center; gap: 4px; overflow-wrap: anywhere; }
+.rulers-catalog a:hover { color: #fff; }
+.rulers-themes { grid-column: 1/-1; display: flex; gap: 7px; flex-wrap: wrap; }
+.rulers-themes button { font-size: 12px; }
+.rulers-detail { grid-column: 1/-1; display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+.rulers-detail h3 { font-size: 19px !important; }
+.rulers-detail p { margin: 12px 0 !important; }
+.rulers-about { grid-column: 1/-1; padding: 16px; }
+.rulers-about p { margin: 12px 0 !important; }
+.rulers-catalog footer { padding: 8px 18px; border-top: 1px solid #535044; background: #212526; }
+.rulers-catalog footer p { margin: 0; font-size: 11px; color: #c5baa7; }
+.rulers-catalog footer a { font-size: 12px; }
+.rulers-tools { position: fixed; z-index: 22; bottom: 92px; right: 14px; }
+.rulers-tools button { background: #34271c; border-color: #b78342; color: #ffe3b4; }
+@media (max-width: 600px) {
+  .rulers-catalog { top: 4dvh; right: 3vw; max-height: 90dvh; font-size: 12px; }
+  .rulers-catalog header { padding: 10px; gap: 6px; }
+  .rulers-catalog h2 { font-size: 17px; }
+  .rulers-catalog header button { max-width: 100px; font-size: 12px; }
+  .rulers-catalog nav { gap: 4px; padding: 7px; }
+  .rulers-catalog nav button { flex: 1 0 21%; font-size: 11px; padding: 5px; }
+  .rulers-privacy, .rulers-browse, .rulers-catalog footer { padding: 8px 10px; }
+  .rulers-heading { font-size: 14px; }
+  .rulers-results { grid-template-columns: repeat(2,minmax(0,1fr)); gap: 8px; }
+  .rulers-search { display: block; }
+  .rulers-search input { width: 100%; margin-top: 4px; }
+  .rulers-card, .rulers-collection { padding: 7px; }
+  .rulers-detail { grid-template-columns: minmax(0,1fr); }
+  .rulers-detail img { max-width: 240px; justify-self: center; }
+}
