@@ -2091,26 +2091,81 @@ const record = (name, ok, detail = "") => {
 };
 const untilReady = async (b) => {
   const t0 = Date.now();
+  const sample = () => b.evaluate(`(() => { const B=window.__ooga;return {scene:B?.scene,frames:B?.renderedFrames||0,curtain:!!document.getElementById("curtain"),renderer:B?.renderer?.kind}; })()`);
+  const isReady = s => s.frames>=2&&!s.curtain;
   for (;;) {
-    let ready = false;
+    let state = null;
     try {
-      ready = await b.evaluate(`!!window.__ooga && window.__ooga.renderedFrames >= 2 && !document.getElementById("curtain")`);
+      state = await sample();
     } catch (err) {
       if (err.driver) throw err;
       // The old document is still tearing down.
     }
-    if (ready) break;
+    if (state&&isReady(state)) break;
     if (Date.now() - t0 > 20000) {
-      const state=await b.evaluate('({scene:window.__ooga?.scene,frames:window.__ooga?.renderedFrames,curtain:!!document.getElementById("curtain"),renderer:window.__ooga?.renderer?.kind})');
-      mkdirSync(join(root,"untracked","dsb-menu-review"),{recursive:true});
-      await b.screenshot(join(root,"untracked","dsb-menu-review","boot-failure.png"));
-      throw driverError("the page did not draw its first frame: "+JSON.stringify(state)+" "+b.logs.join(" | "));
+      // A slow DevTools reply can cross the deadline while the page becomes ready. Judge the
+      // fresh state, not the stale boolean; never synchronously read pixels on a failure path.
+      state=await sample();if(isReady(state))break;
+      throw driverError("page readiness deadline: "+JSON.stringify(state)+" "+b.logs.join(" | "));
     }
     await b.sleep(40);
   }
   // Entering pops the seven cavemen in on tweens, so a drawn scene is not a settled one.
   // Wait for tweenCount() === 0, not the shortened 0.9 s leaf-curtain transition.
   await b.evaluate(`new Promise((resolve) => { const t0 = performance.now(); const tick = () => { if (window.BL.scene.tweenCount() === 0 || performance.now() - t0 > 4000) resolve(); else requestAnimationFrame(tick); }; tick(); })`);
+};
+// Installed only by the shoreline browser tests, before boot. Production code is untouched.
+const shorelineHarness = () => {
+  const P=window.__shoreline={draws:0,attempts:0,readbacks:0,readbackMs:0,maxRenderMs:0,contextsLost:0,simulating:false,tick:0,last:0};
+  const read=WebGL2RenderingContext.prototype.readPixels;
+  WebGL2RenderingContext.prototype.readPixels=function(...args){const t=performance.now();P.readbacks++;try{return read.apply(this,args);}finally{P.readbackMs+=performance.now()-t;}};
+  document.addEventListener("webglcontextlost",()=>P.contextsLost++,true);
+  document.addEventListener("DOMContentLoaded",()=>{
+    const B=window.__ooga,R=B?.renderer;if(!R)return;
+    // Use the existing low tier, including its real shaders/buffers, on the software-GPU lane.
+    // All three tiers' upload capacities and gameplay are additionally covered by water-unit.
+    R.setQuality("low");const render=R.render;
+    R.render=function(...args){
+      if(P.simulating&&++P.tick%60!==0&&P.tick!==P.last)return false;
+      const t=performance.now();P.attempts++;const drawn=render.apply(this,args);
+      P.maxRenderMs=Math.max(P.maxRenderMs,performance.now()-t);if(drawn)P.draws++;return drawn;
+    };
+    // Keep every original 60 Hz director/input/physics step and draw each simulated second
+    // plus the final state. The ordinary requestAnimationFrame loop is never replaced.
+    P.advance=seconds=>{P.simulating=true;P.tick=0;P.last=Math.round(seconds*60);try{B.advance(seconds);}finally{P.simulating=false;}};
+  },{once:true});
+};
+const shorelineState = () => {
+  const B=window.__ooga,D=B?.dsb,P=window.__shoreline,gl=document.getElementById("scene")?.getContext("webgl2");
+  const ext=gl?.getExtension("WEBGL_debug_renderer_info"),errors=[];
+  if(gl)for(let i=0;i<8;i++){const e=gl.getError();if(e===gl.NO_ERROR)break;errors.push(e);}
+  return {scene:B?.scene,kind:B?.renderer.kind,ready:B?.renderer.ready,failure:String(B?.renderer.failure||""),frames:B?.renderedFrames,draws:P.draws,
+    curtain:!!document.getElementById("curtain"),lost:!gl||gl.isContextLost()||P.contextsLost>0,errors,
+    gpu:ext?gl.getParameter(ext.UNMASKED_RENDERER_WEBGL):"unknown",readbacks:P.readbacks,readbackMs:P.readbackMs,maxRenderMs:P.maxRenderMs,timing:B?.timing,
+    initialized:!!(D?.water&&D.waterInteraction&&D.land&&D.avatar&&B.crew&&window.BL.dsbCoast),
+    capacity:D?.waterInteraction.stats.capacity,nodes:D?.waterInteraction.group.children.length,records:B?.renderer.stats.records,textures:B?.renderer.stats.waterTextures};
+};
+const shorelineHealthy = s => s.scene==="dsb"&&s.kind==="webgl2"&&s.ready&&!s.failure&&s.frames>=3&&s.draws>=2&&!s.curtain&&!s.lost&&!s.errors.length&&s.initialized&&s.capacity===24&&s.textures===2;
+const readbackPerformanceNotice = line => /^\[log\.warning\] \[\.WebGL-[^\]]+\]GL Driver Message \(OpenGL, Performance, [^)]*\): GPU stall due to ReadPixels(?: \(this message will no longer repeat\))?$/.test(line);
+const shorelineHarnessChecks = async () => {
+  const now=Date.now;let elapsed=0,calls=0,screenshots=0;
+  const context={window:{__ooga:{scene:"dsb",renderedFrames:1,renderer:{kind:"webgl2"}},BL:{scene:{tweenCount:()=>0}}},document:{getElementById:()=>true},performance:{now:()=>0}};
+  const b={logs:[],sleep:async()=>{},screenshot:async()=>{screenshots++;},evaluate:async expression=>{
+    const result=runInNewContext(expression,context);calls++;
+    if(calls===1){elapsed=20001;context.window.__ooga.renderedFrames=3;context.document.getElementById=()=>null;}
+    return result;
+  }};
+  try{Date.now=()=>elapsed;await untilReady(b);record("Shoreline validator: a late ready reply succeeds without failure-path screenshot readback",calls===3&&screenshots===0);}
+  catch(e){record("Shoreline validator: a late ready reply succeeds without failure-path screenshot readback",false,String(e));}
+  finally{Date.now=now;}
+  let boot=null,ticks=0,renders=0,readbacks=0;const R={setQuality(){},render:()=>{renders++;return true;}};
+  const B={renderer:R,advance:seconds=>{for(let i=0;i<Math.round(seconds*60);i++){ticks++;R.render();}}};
+  const C=class {readPixels(){readbacks++;}};
+  const sandbox={window:{__ooga:B},document:{addEventListener:(name,fn)=>{if(name==="DOMContentLoaded")boot=fn;}},WebGL2RenderingContext:C,performance:{now:()=>0}};
+  runInNewContext(`(${shorelineHarness.toString()})()`,sandbox);boot();const P=sandbox.window.__shoreline;
+  P.advance(2.25);const sampled=renders;R.render();new C().readPixels();
+  B.advance=()=>{throw Error("fixture simulation failure");};try{P.advance(1);}catch{}
+  record("Shoreline validator: sampling preserves every physics tick, final draw, normal rendering and readback forwarding",ticks===135&&sampled===3&&renders===4&&readbacks===1&&P.readbacks===1&&!P.simulating);
 };
 // Frame limiter stays on: unlocked measured 418 fps, turning every `fps >= 50` floor into `418 >= 50`.
 // UNLOCK=1 unlocks the non-measuring lanes so the trade can be measured.
@@ -2135,6 +2190,7 @@ const session = (url, steps, opts, final) => output.run({ lines: [], results: []
     // Watchdog kills Chrome so a wedged session never holds its lane; the longest healthy session is ~20 s.
     const browser = b;
     watchdog = setTimeout(() => { overran = true; browser.close(); }, SESSION_MS);
+    if(steps.some(([name])=>name.startsWith("dsb shoreline")))await b.send("Page.addScriptToEvaluateOnNewDocument",{source:`(${shorelineHarness.toString()})()`});
     // Install before scripts/boot: observe every DSB runtime factory and prohibit live requests.
     if (steps.some(([name]) => name.startsWith("Ooga Portal"))) await b.send("Page.addScriptToEvaluateOnNewDocument", { source: `(() => {
       const counts = window.__gateDormancy = { enter: 0, land: 0, zuzu: 0, data: 0, tv: 0, audio: 0, chat: 0, fetch: 0, socket: 0, radio: 0 };
@@ -2204,7 +2260,9 @@ const session = (url, steps, opts, final) => output.run({ lines: [], results: []
       run.open = open || null;
       try {
         await fn(b);
-        const noise = b.logs.slice(from).filter((l) => !l.includes("WebGL2 renderer failed"));
+        const observed=b.logs.slice(from),notices=b.shorelineHealthy&&b.shorelineSoftware?observed.filter(readbackPerformanceNotice):[];
+        if(notices.length)lines.push(`INFO software WebGL: ${notices.length} driver ReadPixels performance notices; healthy state/GL checks passed (no application readback required).`);
+        const noise = observed.filter((l) => !l.includes("WebGL2 renderer failed")&&!notices.includes(l));
         record(`${name}: clean console`, noise.length === 0, `${((Date.now() - started) / 1000).toFixed(1)}s ${noise.join(" | ").slice(0, 1600)}`);
       } catch (err) {
         if (overran) err = driverError(`the session passed ${SESSION_MS / 1000} s and its Chrome was killed`);
@@ -8749,7 +8807,7 @@ const unitChecks = async () => {
     }
     renderer.dispose();I.dispose();W.dispose();document.createElement=oldCreate;console.log("Exported "+rows.length+" actual Canvas water review views to "+out);return;
   }
-  if(ARGS.includes("water-unit")){waterChecks(BL);return;}
+  if(ARGS.includes("water-unit")){await shorelineHarnessChecks();waterChecks(BL);return;}
   // Offline visual export through the actual Canvas renderer when this workspace cannot start Chrome.
   // Adapter is supplied by the review environment; it is never a production/package dependency.
   if(ARGS.includes("stackchain-review")){
@@ -9412,28 +9470,54 @@ const unitChecks = async () => {
 
 
 const dsbShorelineCheckpoint={name:"dsb shoreline checkpoint",why:"playthrough: actual input wades to the head-depth boundary, returns, visits falls, changes weather and releases scene effects",run:async b=>{
+  const boot=await b.evaluate(`(${shorelineState.toString()})()`);
+  await b.evaluate('new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))');
+  const live=await b.evaluate(`(${shorelineState.toString()})()`);
+  record("DSB shoreline browser: WebGL startup draws and advances without API errors or pixel readback",shorelineHealthy(live)&&live.frames>boot.frames&&live.draws>boot.draws&&live.readbacks===0,JSON.stringify(live));
+  await b.evaluate('__shoreline.advance(.25)');
+  const stable=await b.evaluate(`(${shorelineState.toString()})()`);
+  record("DSB shoreline browser: startup retains fixed water resources and GPU record count",shorelineHealthy(stable)&&stable.nodes===live.nodes&&stable.records===live.records&&stable.draws>live.draws,JSON.stringify(stable));
   const info=await b.evaluate(`(()=>{const B=__ooga,D=B.dsb;return {kind:B.renderer.kind,impulses:D.waterInteraction.stats.capacity,height:D.avatar.bodyHeight,mean:D.water.geometry.verts[1]};})()`);
   record("DSB shoreline browser: shader compiles and approved water surface is retained",info.kind==="webgl2"&&info.impulses===24&&info.mean===-.3,JSON.stringify(info));
-  await b.send("Input.dispatchKeyEvent",{type:"keyDown",key:"w",code:"KeyW"});await b.evaluate('__ooga.advance(24)');await b.send("Input.dispatchKeyEvent",{type:"keyUp",key:"w",code:"KeyW"});
+  await b.send("Input.dispatchKeyEvent",{type:"keyDown",key:"w",code:"KeyW"});await b.evaluate('__shoreline.advance(24)');await b.send("Input.dispatchKeyEvent",{type:"keyUp",key:"w",code:"KeyW"});
   const deep=await b.evaluate('({stats:{...__ooga.dsb.waterInteraction.stats},z:__ooga.dsb.avatar.root.position.z,camera:__ooga.camera.position.y})');
   record("DSB shoreline browser: keyboard reaches safe head depth with ripples and responsive surface camera",deep.stats.depth>info.height*.83&&deep.stats.depth<=info.height*.98&&deep.stats.player>0&&deep.camera>-.3,JSON.stringify(deep));
-  await b.send("Input.dispatchKeyEvent",{type:"keyDown",key:"s",code:"KeyS"});await b.evaluate('__ooga.advance(30)');await b.send("Input.dispatchKeyEvent",{type:"keyUp",key:"s",code:"KeyS"});
+  await b.send("Input.dispatchKeyEvent",{type:"keyDown",key:"s",code:"KeyS"});await b.evaluate('__shoreline.advance(30)');await b.send("Input.dispatchKeyEvent",{type:"keyUp",key:"s",code:"KeyS"});
   record("DSB shoreline browser: reverse input returns to dry land",await b.evaluate('__ooga.dsb.waterInteraction.stats.depth===0&&__ooga.dsb.avatar.root.position.z<76'));
-  const paths=join(root,"untracked/water-review");mkdirSync(paths,{recursive:true});
   for(const [name,hour,weather] of [["noon",12,"clear"],["golden",18,"clear"],["night",23,"clear"],["rain",12,"rain"],["storm",12,"storm"]]){
-    const r=await b.evaluate(`(()=>{const B=__ooga,D=B.dsb,f=D.olympus.impacts[0];B.pilot.navigate({position:{x:f.x+5,y:D.land.heightAt(f.x+5,f.z+3),z:f.z+3},yaw:1.05,pitch:.4,dist:18});B.daylight.read=()=>${hour};B.daylight.continuousDay=B.daylight.dayOfYear-1+${hour}/24;D.weather.setMode(${JSON.stringify(weather)});B.advance(2);return {stats:{...D.waterInteraction.stats},finite:D.water.environment.every(Number.isFinite),light:D.weather.state.mode,nodes:D.waterInteraction.group.children.length};})()`);
-    record("DSB shoreline browser: "+name+" has finite water and bounded waterfall impacts",r.finite&&r.stats.impacts===5&&r.stats.streaks>0&&r.stats.active<=24,JSON.stringify(r));await b.screenshot(join(paths,"waterfall-"+name+".png"));
+    const r=await b.evaluate(`(()=>{const B=__ooga,D=B.dsb,f=D.olympus.impacts[0];B.pilot.navigate({position:{x:f.x+5,y:D.land.heightAt(f.x+5,f.z+3),z:f.z+3},yaw:1.05,pitch:.4,dist:18});B.daylight.read=()=>${hour};B.daylight.continuousDay=B.daylight.dayOfYear-1+${hour}/24;D.weather.setMode(${JSON.stringify(weather)});__shoreline.advance(2);return {stats:{...D.waterInteraction.stats},finite:D.water.environment.every(Number.isFinite),light:D.weather.state.mode,nodes:D.waterInteraction.group.children.length};})()`);
+    record("DSB shoreline browser: "+name+" has finite water and bounded waterfall impacts",r.finite&&r.stats.impacts===5&&r.stats.streaks>0&&r.stats.active<=24,JSON.stringify(r));
   }
   const preserved=await b.evaluate(`(()=>{const D=__ooga.dsb,O=D.olympus,L=D.land,A=D.avatar;let blocked=0;for(let i=1;i<L.trail.length;i++){const a=L.trail[i-1],b=L.trail[i];if(!L.walkable(...a.slice(0,2),...b.slice(0,2),L.heightAt(...a),A.bodyHeight,A)||!O.clearSegment(...a.slice(0,2),...b.slice(0,2),L.heightAt(...a),A.bodyHeight,A))blocked++;}return {blocked,bridges:O.bridges.length,rear:L.heightAt(-55,-91),milestones:D.interiors.registry.size};})()`);
   record("DSB shoreline browser: Sacred Way, both bridges, seven venues and deep rear Olympus remain intact",preserved.blocked===0&&preserved.bridges===2&&preserved.rear===-5&&preserved.milestones===7,JSON.stringify(preserved));
   const before=await b.evaluate('({nodes:__ooga.dsb.waterInteraction.group.children.length,records:__ooga.renderer.stats.records})');
   for(let i=0;i<2;i++){
-    await b.evaluate('window.__oldWater=__ooga.dsb.waterInteraction;__ooga.go("bifrost",null,true);__ooga.advance(.05);__ooga.go("dsb",null,true);__ooga.advance(.05)');
+    await b.evaluate('window.__oldWater=__ooga.dsb.waterInteraction;__ooga.go("bifrost",null,true);__shoreline.advance(.05);__ooga.go("dsb",null,true);__shoreline.advance(.05)');
     const r=await b.evaluate('({cleared:__oldWater.group.children.length===0&&__oldWater.stats.active===0,nodes:__ooga.dsb.waterInteraction.group.children.length,depth:__ooga.dsb.waterInteraction.stats.depth,textures:__ooga.renderer.stats.waterTextures})');
     record("DSB shoreline browser: Portara scene trip "+i+" releases effects and creates a clean bounded visit",r.cleared&&r.nodes===before.nodes&&r.depth===0&&r.textures===2,JSON.stringify(r));
   }
+  const final=await b.evaluate(`(${shorelineState.toString()})()`);
+  record("DSB shoreline browser: playthrough retains WebGL2 with no API error, shader failure or context loss",shorelineHealthy(final),JSON.stringify(final));
+  b.shorelineHealthy=shorelineHealthy(live)&&shorelineHealthy(stable)&&shorelineHealthy(final);
+  b.shorelineSoftware=/SwiftShader|llvmpipe|software/i.test(final.gpu);
+  const evidence=join(root,"untracked/water-review");mkdirSync(evidence,{recursive:true});
+  writeFileSync(join(evidence,"webgl-state.json"),JSON.stringify({boot,live,stable,final,logs:b.logs},null,2));
 }};
-scene("dsb",{label:"shoreline checkpoint",query:"&view=water-dry&weather=clear&time=1200",steps:[dsbShorelineCheckpoint]});
+scene("dsb",{label:"shoreline checkpoint",query:"&view=water-dry&weather=clear&time=1200",opts:{w:480,h:320},steps:[dsbShorelineCheckpoint]});
+
+// Optional human evidence: separate Chrome/session after the functional gate, never its readiness oracle.
+scene("dsb",{label:"shoreline visual evidence",query:"&view=water-dry&weather=clear&time=1200",opts:{w:640,h:400},steps:[{name:"dsb shoreline visual evidence",why:"contract: preserve review screenshots after WebGL readiness without blocking functional deployment validation",run:async b=>{
+  const paths=join(root,"untracked/water-review");mkdirSync(paths,{recursive:true});
+  for(const [name,hour,weather] of [["noon",12,"clear"],["golden",18,"clear"],["night",23,"clear"],["rain",12,"rain"],["storm",12,"storm"]]){
+    await b.evaluate(`(()=>{const B=__ooga,D=B.dsb,f=D.olympus.impacts[0];B.pilot.navigate({position:{x:f.x+5,y:D.land.heightAt(f.x+5,f.z+3),z:f.z+3},yaw:1.05,pitch:.4,dist:18});B.daylight.read=()=>${hour};B.daylight.continuousDay=B.daylight.dayOfYear-1+${hour}/24;D.weather.setMode(${JSON.stringify(weather)});__shoreline.advance(.25);})()`);
+    const state=await b.evaluate(`(${shorelineState.toString()})()`);
+    if(!shorelineHealthy(state))throw Error("Visual evidence WebGL state: "+JSON.stringify(state));
+    b.shorelineHealthy=true;b.shorelineSoftware=/SwiftShader|llvmpipe|software/i.test(state.gpu);
+    const shot=await b.send("Page.captureScreenshot",{format:"png"},5000);
+    if(!shot.result?.data)throw Error("Screenshot capture returned no image");
+    writeFileSync(join(paths,"waterfall-"+name+".png"),Buffer.from(shot.result.data,"base64"));
+  }
+}}]});
 
 const dsbWaterCheckpoint = { name: "dsb water checkpoint", why: "contract: Aegean water preserves movement and releases its GPU textures across Portara trips", run: async b => {
   const r=await b.evaluate(`(() => {

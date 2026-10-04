@@ -54,7 +54,7 @@ jobs:
         run: |
           export CHROME="$(command -v google-chrome)"
           node test/run.mjs exterior-unit
-          ONLY="shoreline checkpoint" node test/run.mjs water-unit dsb
+          VERBOSE=1 ONLY="shoreline checkpoint" node test/run.mjs water-unit dsb
       - name: Validate preview menus and preserved media contracts
         working-directory: preview-src
         run: |
@@ -63,6 +63,13 @@ jobs:
           for checkpoint in "venue menus checkpoint" "radio TV correction" "studio checkpoint" "interior checkpoint"; do
             ONLY="$checkpoint" node test/run.mjs dsb-menus-unit dsb
           done
+      - name: Capture optional shoreline visual evidence after functional validation
+        working-directory: preview-src
+        continue-on-error: true
+        timeout-minutes: 2
+        run: |
+          export CHROME="$(command -v google-chrome)"
+          ONLY="shoreline visual evidence" node test/run.mjs water-unit dsb
       - name: Save menu and interior review screenshots
         if: always()
         uses: actions/upload-artifact@v4
