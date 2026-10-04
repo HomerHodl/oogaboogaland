@@ -20,6 +20,16 @@ The old synchronous playthrough requested roughly 3,800 GPU frames while fast-fo
 
 Five waterfall screenshots (noon/golden/night/rain/storm) run in a separate best-effort workflow step **after both functional browser suites pass**. Each capture has a five-second command budget; the evidence step has a two-minute limit. Capture failure cannot invalidate or replace the functional WebGL gate. Real API errors, shader failures, context loss and runtime exceptions still fail functional validation. Only the exact driver `GPU stall due to ReadPixels` performance notice is reported separately, and only after all sampled WebGL states pass and the GPU identifies as SwiftShader/llvmpipe/software. Logs remain available; application readbacks are counted, not intercepted or suppressed. No readiness/session timeout was increased. Hardware desktop/phone visual quality and frame rate remain manual checks.
 
+## Lifecycle validation repair
+
+The next hosted run reached healthy WebGL startup in 7.8 seconds but sampled two valid states at the wrong times. The 24-second forward walk had already reached the depth boundary and stopped, so its short-lived player rings had expired. Re-entry sampled only 0.05 seconds after leaving Bifrost, while the entrance tunnel deliberately hid the exterior and released its ocean textures.
+
+The test-only simulation observer now samples every normal physics tick and records visible player impulses during movement, including a successful WebGL draw, wake/splash emission and the fixed slot bound. Head-depth and camera assertions remain unchanged. After reverse input returns Yellow to dry land, the test verifies that player rings expire and become hidden normally. No ripple lifetime or gameplay parameter changed.
+
+Each round trip now verifies the Bifrost scene and the tunnel's intentional no-ocean state, walks forward through the entrance with real keyboard input, and waits for the entrance's `done` phase plus an active exterior. The standard reduced-motion browser follows the existing direct arrival; browsers with motion enabled also wait for the existing flight. There is no skip call or forced resource creation. The bounded semantic wait fails if readiness never arrives. Only then does the checkpoint require two ocean textures, finite active water, active interactions, 24 slots, 136 effect nodes, disposed old visits and equal renderer record counts across both completed re-entries.
+
+All of this is confined to `test/run.mjs`; production water, terrain, movement, entrance and rendering code remain unchanged. Software-driver ReadPixels performance notices remain logged and are classified separately only after all functional assertions and sampled WebGL health checks pass. The evidence JSON includes the transient observations and both entrance/resource snapshots.
+
 ## Water sources and licensing
 
 The existing Clearwater adaptation in `dsb-water.js` remains the ocean. Its 64×64 spectrum, inverse FFT, 120-second cycle, Fresnel function, absorption, horizon/reflection and sun-glint calculations retain their original implementation and MIT notice. The mean sea level remains **−0.3 m**. The original FFT bytes are golden-tested against the starting checkpoint.

@@ -2126,13 +2126,15 @@ const shorelineHarness = () => {
     // All three tiers' upload capacities and gameplay are additionally covered by water-unit.
     R.setQuality("low");const render=R.render;
     R.render=function(...args){
-      if(P.simulating&&++P.tick%60!==0&&P.tick!==P.last)return false;
+      if(P.simulating&&++P.tick%60!==0&&P.tick!==P.last){P.observe?.(false);return false;}
       const t=performance.now();P.attempts++;const drawn=render.apply(this,args);
-      P.maxRenderMs=Math.max(P.maxRenderMs,performance.now()-t);if(drawn)P.draws++;return drawn;
+      P.maxRenderMs=Math.max(P.maxRenderMs,performance.now()-t);if(drawn)P.draws++;P.observe?.(drawn);return drawn;
     };
     // Keep every original 60 Hz director/input/physics step and draw each simulated second
     // plus the final state. The ordinary requestAnimationFrame loop is never replaced.
-    P.advance=seconds=>{P.simulating=true;P.tick=0;P.last=Math.round(seconds*60);try{B.advance(seconds);}finally{P.simulating=false;}};
+    P.advance=(seconds,observe=null)=>{P.simulating=true;P.observe=observe;P.tick=0;P.last=Math.round(seconds*60);try{B.advance(seconds);}finally{P.simulating=false;P.observe=null;}};
+    // Simulated time advances through the normal director; readiness, not elapsed time, ends a wait.
+    P.until=(ready,limit=60)=>{let seconds=0;while(!ready()&&seconds<limit){P.advance(1);seconds++;}if(!ready())throw Error("Shoreline lifecycle did not become ready within "+limit+" simulated seconds");return seconds;};
   },{once:true});
 };
 const shorelineState = () => {
@@ -2163,9 +2165,13 @@ const shorelineHarnessChecks = async () => {
   const C=class {readPixels(){readbacks++;}};
   const sandbox={window:{__ooga:B},document:{addEventListener:(name,fn)=>{if(name==="DOMContentLoaded")boot=fn;}},WebGL2RenderingContext:C,performance:{now:()=>0}};
   runInNewContext(`(${shorelineHarness.toString()})()`,sandbox);boot();const P=sandbox.window.__shoreline;
-  P.advance(2.25);const sampled=renders;R.render();new C().readPixels();
+  let observations=0,observedDraws=0,transient=false;
+  P.advance(2.25,drawn=>{observations++;if(drawn)observedDraws++;if(ticks===7)transient=true;});const sampled=renders,sampledTicks=ticks;R.render();new C().readPixels();const ordinary=renders;
+  const waitStart=ticks,waited=P.until(()=>ticks-waitStart>=135,4);
+  let deadline=false;try{P.until(()=>false,1);}catch{deadline=true;}
+  record("Shoreline validator: observes transient simulation ticks and waits for semantic readiness with a bounded deadline",observations===135&&observedDraws===3&&transient&&waited===3&&deadline&&!P.observe);
   B.advance=()=>{throw Error("fixture simulation failure");};try{P.advance(1);}catch{}
-  record("Shoreline validator: sampling preserves every physics tick, final draw, normal rendering and readback forwarding",ticks===135&&sampled===3&&renders===4&&readbacks===1&&P.readbacks===1&&!P.simulating);
+  record("Shoreline validator: sampling preserves every physics tick, final draw, normal rendering and readback forwarding",sampledTicks===135&&sampled===3&&ordinary===4&&readbacks===1&&P.readbacks===1&&!P.simulating&&!P.observe);
 };
 // Frame limiter stays on: unlocked measured 418 fps, turning every `fps >= 50` floor into `418 >= 50`.
 // UNLOCK=1 unlocks the non-measuring lanes so the trade can be measured.
@@ -9479,11 +9485,20 @@ const dsbShorelineCheckpoint={name:"dsb shoreline checkpoint",why:"playthrough: 
   record("DSB shoreline browser: startup retains fixed water resources and GPU record count",shorelineHealthy(stable)&&stable.nodes===live.nodes&&stable.records===live.records&&stable.draws>live.draws,JSON.stringify(stable));
   const info=await b.evaluate(`(()=>{const B=__ooga,D=B.dsb;return {kind:B.renderer.kind,impulses:D.waterInteraction.stats.capacity,height:D.avatar.bodyHeight,mean:D.water.geometry.verts[1]};})()`);
   record("DSB shoreline browser: shader compiles and approved water surface is retained",info.kind==="webgl2"&&info.impulses===24&&info.mean===-.3,JSON.stringify(info));
-  await b.send("Input.dispatchKeyEvent",{type:"keyDown",key:"w",code:"KeyW"});await b.evaluate('__shoreline.advance(24)');await b.send("Input.dispatchKeyEvent",{type:"keyUp",key:"w",code:"KeyW"});
+  await b.send("Input.dispatchKeyEvent",{type:"keyDown",key:"w",code:"KeyW"});
+  const moving=await b.evaluate(`(()=>{const W=__ooga.dsb.waterInteraction,start={...W.stats},seen={player:false,drawn:false,wakes:0,splashes:0,maxActive:0};let wakes=start.wakes,splashes=start.splashes;
+    __shoreline.advance(24,drawn=>{const s=W.stats;seen.maxActive=Math.max(seen.maxActive,s.active);
+      if(s.depth>0&&s.velocity>.1){const visible=W.impulses.slice(5).some(p=>p.age>=0&&p.age<p.life&&p.node.visible&&p.node.smokeOpacity>0);seen.player ||= s.player>0&&visible;seen.drawn ||= drawn&&s.player>0&&visible;seen.wakes+=s.wakes-wakes;seen.splashes+=s.splashes-splashes;}
+      wakes=s.wakes;splashes=s.splashes;
+    });return {...seen,emitted:W.stats.emitted-start.emitted};})()`);
+  await b.send("Input.dispatchKeyEvent",{type:"keyUp",key:"w",code:"KeyW"});
   const deep=await b.evaluate('({stats:{...__ooga.dsb.waterInteraction.stats},z:__ooga.dsb.avatar.root.position.z,camera:__ooga.camera.position.y})');
-  record("DSB shoreline browser: keyboard reaches safe head depth with ripples and responsive surface camera",deep.stats.depth>info.height*.83&&deep.stats.depth<=info.height*.98&&deep.stats.player>0&&deep.camera>-.3,JSON.stringify(deep));
+  record("DSB shoreline browser: keyboard reaches safe head depth with ripples and responsive surface camera",deep.stats.depth>info.height*.83&&deep.stats.depth<=info.height*.98&&moving.player&&moving.drawn&&deep.camera>-.3,JSON.stringify({deep,moving}));
+  record("DSB shoreline browser: movement emits player impulses, wakes and shallow splashes within the fixed budget",moving.emitted>0&&moving.wakes>0&&moving.splashes>0&&moving.maxActive<=24,JSON.stringify(moving));
   await b.send("Input.dispatchKeyEvent",{type:"keyDown",key:"s",code:"KeyS"});await b.evaluate('__shoreline.advance(30)');await b.send("Input.dispatchKeyEvent",{type:"keyUp",key:"s",code:"KeyS"});
   record("DSB shoreline browser: reverse input returns to dry land",await b.evaluate('__ooga.dsb.waterInteraction.stats.depth===0&&__ooga.dsb.avatar.root.position.z<76'));
+  const expired=await b.evaluate(`(()=>{const W=__ooga.dsb.waterInteraction;__shoreline.until(()=>W.stats.player===0,3);return {depth:W.stats.depth,player:W.stats.player,hidden:W.impulses.slice(5).every(p=>p.age<0&&!p.node.visible),capacity:W.stats.capacity};})()`);
+  record("DSB shoreline browser: player ripples expire normally after returning to shore",moving.player&&expired.depth===0&&expired.player===0&&expired.hidden&&expired.capacity===24,JSON.stringify(expired));
   for(const [name,hour,weather] of [["noon",12,"clear"],["golden",18,"clear"],["night",23,"clear"],["rain",12,"rain"],["storm",12,"storm"]]){
     const r=await b.evaluate(`(()=>{const B=__ooga,D=B.dsb,f=D.olympus.impacts[0];B.pilot.navigate({position:{x:f.x+5,y:D.land.heightAt(f.x+5,f.z+3),z:f.z+3},yaw:1.05,pitch:.4,dist:18});B.daylight.read=()=>${hour};B.daylight.continuousDay=B.daylight.dayOfYear-1+${hour}/24;D.weather.setMode(${JSON.stringify(weather)});__shoreline.advance(2);return {stats:{...D.waterInteraction.stats},finite:D.water.environment.every(Number.isFinite),light:D.weather.state.mode,nodes:D.waterInteraction.group.children.length};})()`);
     record("DSB shoreline browser: "+name+" has finite water and bounded waterfall impacts",r.finite&&r.stats.impacts===5&&r.stats.streaks>0&&r.stats.active<=24,JSON.stringify(r));
@@ -9491,17 +9506,31 @@ const dsbShorelineCheckpoint={name:"dsb shoreline checkpoint",why:"playthrough: 
   const preserved=await b.evaluate(`(()=>{const D=__ooga.dsb,O=D.olympus,L=D.land,A=D.avatar;let blocked=0;for(let i=1;i<L.trail.length;i++){const a=L.trail[i-1],b=L.trail[i];if(!L.walkable(...a.slice(0,2),...b.slice(0,2),L.heightAt(...a),A.bodyHeight,A)||!O.clearSegment(...a.slice(0,2),...b.slice(0,2),L.heightAt(...a),A.bodyHeight,A))blocked++;}return {blocked,bridges:O.bridges.length,rear:L.heightAt(-55,-91),milestones:D.interiors.registry.size};})()`);
   record("DSB shoreline browser: Sacred Way, both bridges, seven venues and deep rear Olympus remain intact",preserved.blocked===0&&preserved.bridges===2&&preserved.rear===-5&&preserved.milestones===7,JSON.stringify(preserved));
   const before=await b.evaluate('({nodes:__ooga.dsb.waterInteraction.group.children.length,records:__ooga.renderer.stats.records})');
+  const visits=[];
   for(let i=0;i<2;i++){
-    await b.evaluate('window.__oldWater=__ooga.dsb.waterInteraction;__ooga.go("bifrost",null,true);__shoreline.advance(.05);__ooga.go("dsb",null,true);__shoreline.advance(.05)');
-    const r=await b.evaluate('({cleared:__oldWater.group.children.length===0&&__oldWater.stats.active===0,nodes:__ooga.dsb.waterInteraction.group.children.length,depth:__ooga.dsb.waterInteraction.stats.depth,textures:__ooga.renderer.stats.waterTextures})');
-    record("DSB shoreline browser: Portara scene trip "+i+" releases effects and creates a clean bounded visit",r.cleared&&r.nodes===before.nodes&&r.depth===0&&r.textures===2,JSON.stringify(r));
+    const tunnel=await b.evaluate(`(()=>{window.__oldWater=__ooga.dsb.waterInteraction;window.__oldEntrance=__ooga.dsb.entrance;
+      __ooga.go("bifrost",null,true);__shoreline.until(()=>__ooga.scene==="bifrost"&&!__ooga.transitioning,2);
+      const bifrost=__ooga.scene;__ooga.go("dsb",null,true);__shoreline.until(()=>__ooga.scene==="dsb"&&!__ooga.transitioning,2);
+      const D=__ooga.dsb;return {bifrost,phase:D.entrance?.phase,progress:D.entrance?.progress,exterior:D.exterior.visible,textures:__ooga.renderer.stats.waterTextures};})()`);
+    await b.send("Input.dispatchKeyEvent",{type:"keyDown",key:"w",code:"KeyW"});
+    // Walk the preserved tunnel with real input. Reduced-motion browsers use its normal direct
+    // arrival; other browsers also wait through the flight. Never call entrance.skip().
+    const seconds=await b.evaluate('__shoreline.until(()=>__ooga.dsb.entrance?.phase==="done"&&__ooga.dsb.exterior.visible&&!__ooga.transitioning)');
+    await b.send("Input.dispatchKeyEvent",{type:"keyUp",key:"w",code:"KeyW"});
+    await b.evaluate('__shoreline.advance(.25)');
+    const r=await b.evaluate(`(()=>{const D=__ooga.dsb;return {cleared:__oldWater!==D.waterInteraction&&__oldWater.group.children.length===0&&__oldWater.stats.active===0&&(!__oldEntrance||__oldEntrance.group.children.length===0),
+      phase:D.entrance.phase,progress:D.entrance.progress,exterior:D.exterior.visible,water:D.water.heights.every(Number.isFinite),active:D.waterInteraction.group.visible&&D.waterInteraction.stats.swash>0,
+      nodes:D.waterInteraction.group.children.length,capacity:D.waterInteraction.stats.capacity,depth:D.waterInteraction.stats.depth,textures:__ooga.renderer.stats.waterTextures,records:__ooga.renderer.stats.records};})()`);
+    visits.push({tunnel,seconds,...r});
+    record("DSB shoreline browser: Portara scene trip "+i+" releases effects and creates a clean bounded visit",tunnel.bifrost==="bifrost"&&tunnel.phase==="tunnel"&&tunnel.progress<1&&!tunnel.exterior&&tunnel.textures===0&&r.phase==="done"&&r.progress===1&&r.exterior&&r.water&&r.active&&r.cleared&&r.nodes===before.nodes&&r.capacity===24&&r.depth===0&&r.textures===2,JSON.stringify(visits[i]));
   }
+  record("DSB shoreline browser: completed re-entry retains identical renderer records, water nodes and textures",visits[1].records===visits[0].records&&visits.every(v=>v.nodes===before.nodes&&v.textures===2),JSON.stringify(visits));
   const final=await b.evaluate(`(${shorelineState.toString()})()`);
   record("DSB shoreline browser: playthrough retains WebGL2 with no API error, shader failure or context loss",shorelineHealthy(final),JSON.stringify(final));
-  b.shorelineHealthy=shorelineHealthy(live)&&shorelineHealthy(stable)&&shorelineHealthy(final);
+  b.shorelineHealthy=shorelineHealthy(live)&&shorelineHealthy(stable)&&shorelineHealthy(final)&&output.getStore().results.every(r=>r.ok);
   b.shorelineSoftware=/SwiftShader|llvmpipe|software/i.test(final.gpu);
   const evidence=join(root,"untracked/water-review");mkdirSync(evidence,{recursive:true});
-  writeFileSync(join(evidence,"webgl-state.json"),JSON.stringify({boot,live,stable,final,logs:b.logs},null,2));
+  writeFileSync(join(evidence,"webgl-state.json"),JSON.stringify({boot,live,stable,moving,deep,expired,visits,final,logs:b.logs},null,2));
 }};
 scene("dsb",{label:"shoreline checkpoint",query:"&view=water-dry&weather=clear&time=1200",opts:{w:480,h:320},steps:[dsbShorelineCheckpoint]});
 
