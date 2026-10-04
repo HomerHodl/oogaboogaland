@@ -8160,7 +8160,7 @@ const waterWorld = BL => {
   const olympus=BL.dsbOlympus.create({root,land,nature,detail,enrichment,renderer});
   const noop=()=>{},fx={say:noop,zzzAt:noop,burst:noop,puff:noop,spawnParticle:noop,damageNumber:noop};
   const walkable=(...a)=>land.walkable(...a)&&town.clearSegment(...a)&&olympus.clearSegment(...a);
-  const ground=(x,z)=>olympus.supportAt(x,z,land.heightAt(x,z));
+  const ground=(x,z)=>olympus.supportAt(x,z,land.groundAt(x,z));
   const crew=BL.crew.create({root,world:{level:0},playerName:"YellowBrokeIt",input:{add:noop,remove:noop},hud:{setRosterRow:noop},game:{state:{assignments:{},inventory:[]}},viewYaw:0,groundAt:ground,walkable,fx});
   const avatar=crew.cavemen.get("YellowBrokeIt");crew.control(avatar);
   const dispose=()=>{crew.dispose();olympus.dispose();town.dispose();enrichment.dispose();detail.dispose();nature.dispose();};
@@ -8222,6 +8222,13 @@ const waterChecks = BL => {
   const sails=O.group.children.flatMap(n=>n.children),angles=sails.map(n=>n.rotation.z);O.update(.5,0);
   record("DSB Olympus: both windmills still turn and their original towers remain solid",sails.length===2&&sails.every((n,i)=>n.rotation.z>angles[i])&&O.inside(-14,-58,.4)&&O.inside(-24,-66,.4));
   record("DSB water: approved mean surface stays at -0.3 with no new texture or framebuffer",water.geometry.verts.every((v,i)=>i%3!==1||v===-.3)&&water.size===64&&water.depthSize===256&&water.depths.length===256*256*4);
+  // Execute the actual scalar GLSL foam expression, not a second implementation of its formula.
+  const expression=BL.dsbWater.shader.match(/float foam=([^;]+);/)[1],smoothstep=(a,b,x)=>{const t=Math.max(0,Math.min(1,(x-a)/(b-a)));return t*t*(3-2*t);};
+  const foam=new Function("bed","depth","shoreWave","uDSBEnvironment","smoothstep","return "+expression),sampleFoam=(sand,depth,crest)=>foam({g:sand},depth,crest,{w:3},smoothstep);
+  const mask=(x,z)=>water.depths[(Math.floor((z/650+.5)*256)*256+Math.floor((x/650+.5)*256))*4+1];
+  record("DSB coast foam: non-beach coasts and zero depth have no universal rim; sand shoals retain moving crests",[0,.04,.2,.6,1.2].every(d=>[0,.5,1].every(c=>sampleFoam(0,d,c)===0))&&sampleFoam(1,0,1)===0&&sampleFoam(1,.4,1)>0&&sampleFoam(1,.4,0)===0&&!/foam\s*\+=/.test(BL.dsbWater.shader)&&mask(20,80)>250&&[[-39,54],[85,14],[-55,-91]].every(p=>mask(...p)===0));
+  const apronFaces=L.root.children.flatMap(n=>n.geometry?n.geometry.faces.filter(f=>f.i.every(i=>n.geometry.verts[i*3+1]>=-.29&&n.geometry.verts[i*3+1]<=-.26)):[]);
+  record("DSB coast foam: the old above-water apron strip is wet mineral material, not painted white foam",apronFaces.length>30&&apronFaces.every(f=>Math.max(...f.color)<200&&!f.emissive),JSON.stringify({faces:apronFaces.length}));
   const depths=[-.35,0,.12,.3,.5,.7,.87],positions=depths.map(r=>point(r)),routes=[];
   for(const x of [9,20,39,45]){
     let previous=point(-.35,x),maxStep=0,blocked=0;
@@ -8260,9 +8267,34 @@ const waterChecks = BL => {
   record("DSB swash: front advances, retreats, fades and follows terrain above the mean sea",new Set(wash.map(p=>p[2].toFixed(3))).size>3&&wash.every(p=>p[1]>=C.LEVEL&&p[1]>=L.heightAt(p[0],p[2]))&&Math.max(...wash.map(p=>p[3]))-Math.min(...wash.map(p=>p[3]))>.1,JSON.stringify(wash));
   water.setEnvironment({waveEnergy:3,roughness:1,glint:.2,foam:3});I.update(.02,3,null);const storm=I.contacts[0].node.scale.z;water.setEnvironment({waveEnergy:1,roughness:0,glint:1,foam:1});I.update(.02,3,null);
   record("DSB contact: storm foam is stronger; harbor uses restrained post-sized footprints",storm>I.contacts[0].node.scale.z&&I.contacts.filter(p=>p.harbor).length===16&&I.contacts.filter(p=>p.harbor).every(p=>p.node.scale.x<.5));
+  const rock=I.contacts.find(p=>!p.harbor),pulse=rock.node.smokeOpacity;I.update(.02,3.5,null);
+  record("DSB coast foam: rock contacts remain localized and pulse independently of the sandy swash",I.swash.length>0&&I.contacts.filter(p=>!p.harbor).length>0&&I.contacts.length<50&&rock.node.smokeOpacity!==pulse&&I.swash.every(p=>C.beach(p.x,p.z)>0));
   record("DSB waterfall: retained sheets span every fall and all water/spray surfaces use scene lighting",O.sheets.length===5&&O.sheets.every(f=>f.top>f.bottom&&f.top-f.bottom<15)&&[...geometries].every(g=>g.faces.every(f=>!f.emissive))&&BL.dsbWater.shader.includes("vWorld.y*.8+uWindTime*3.2")&&!BL.dsbWater.shader.includes("lace*.15"));
   I.update(.02,1,null);const streakY=I.streaks[0].node.position.y;I.update(.02,1.05,null);
   record("DSB waterfall: highlights move downward on the unchanged fall sheets",I.streaks[0].node.position.y<streakY);
+  // Marine support never replaces heightAt: optics/immersion still see the original deep seabed.
+  const bridge=BL.dsbInteriors.create({root:W.root,exterior:{visible:true},land:L,weather:{shared:{state:{muted:true}},setInterior(){}},relocate(){},lock(){},onChange(){}});
+  for(const d of L.harborDecks.filter(d=>d.id!=="quay")){
+    let left=d.x-d.w/2,right=d.x+d.w/2,props=0;
+    const edgeProp=(v,m)=>{let lo=Infinity,hi=-Infinity,bottom=Infinity,top=-Infinity,z0=Infinity,z1=-Infinity;
+      for(let j=0;j<v.length;j+=3){const x=m[0]*v[j]+m[8]*v[j+2]+m[12],y=m[1]*v[j]+m[5]*v[j+1]+m[9]*v[j+2]+m[13],z=m[2]*v[j]+m[10]*v[j+2]+m[14];lo=Math.min(lo,x);hi=Math.max(hi,x);bottom=Math.min(bottom,y);top=Math.max(top,y);z0=Math.min(z0,z);z1=Math.max(z1,z);}
+      if(z1<43||z0>58.5||top<=d.top||bottom>=d.top+A.bodyHeight||lo>d.x+2||hi<d.x-2)return;
+      props++;if((lo+hi)/2<d.x)left=Math.max(left,hi);else right=Math.min(right,lo);
+    };
+    for(const f of W.enrichment.fields)for(let i=0;i<f.list.length;i++)if(f.list[i].region==="pier")edgeProp(f.geometry.verts,f.source.subarray(i*20,i*20+16));
+    for(const n of W.detail.group.children)if(n.geometry===BL.dressing.chora("bollard"))edgeProp(n.geometry.verts,[1,0,0,0,0,1,0,0,0,0,1,0,n.position.x,n.position.y,n.position.z,1]);
+    const spine=(left+right)/2;
+    record("DSB pier "+d.id+": existing posts, ropes, lamps and fenders leave a body-wide walking spine",props>10&&right-left>A.bodyRadius*2&&W.walkable(spine,43,spine,57,d.top,A.bodyHeight,A),JSON.stringify({left,right,width:right-left,body:A.bodyRadius*2,props}));
+    crew.relocatePlayer({x:d.x,y:W.ground(d.x,38),z:38},0);I.clear();let ticks=0,error=0,wet=false;
+    while(A.root.position.z<57.6&&ticks++<1200){step(1/60,0,1);if(A.root.position.z>43){error=Math.max(error,Math.abs(A.root.position.y-A.baseY-d.top));wet ||= I.stats.depth>0||I.speedAt(A)!==1;}}
+    const end=A.root.position.z;step(2,0,1);const edge=A.root.position.z;
+    const c={x:d.x,y:-3,z:51};bridge.clampCamera(c);
+    const support=L.groundAt(d.x,51)===d.top&&L.supportAt(d.x,51)===d.top&&bridge.groundAt(d.x,51)===d.top&&c.y===d.top+1;
+    ticks=0;while(A.root.position.z>38.1&&ticks++<1200)step(1/60,0,-1);
+    record("DSB pier "+d.id+": real Yellow walks from shore to deck end and back with dry, exact deck support",end>57.5&&edge<=58.5-A.bodyRadius+1e-6&&A.root.position.z<38.2&&error<1e-6&&!wet&&support,JSON.stringify({end,edge,returned:A.root.position.z,error,wet,support}));
+    record("DSB pier "+d.id+": deck edges retain deep nonwalkable harbor water and unchanged optics",L.heightAt(d.x,51)===-5&&water.depthAt(d.x,51)>=4.7&&L.groundAt(d.x+2,51)===-5&&!W.walkable(d.x,51,d.x+2,51,d.top,A.bodyHeight,A)&&!W.walkable(d.x+2,51,d.x+2,51,-5,A.bodyHeight,A));
+  }
+  bridge.dispose();
   const children=W.root.children.length;let lifecycle=true;
   I.update(.02,5,A,false);lifecycle&&=I.stats.active===0&&I.stats.depth===0&&!I.group.visible;I.dispose();I.dispose();lifecycle&&=I.group.children.length===0&&W.root.children.length===children-1;
   for(let i=0;i<3;i++){const next=BL.dsbWaterInteraction.create(W);next.update(.02,i,A);lifecycle&&=next.group.children.length===nodes&&next.stats.active<=24;next.dispose();lifecycle&&=next.group.children.length===0&&W.root.children.length===children-1;}
@@ -8797,6 +8829,7 @@ const unitChecks = async () => {
       let lo=69,hi=96;for(let i=0;i<30;i++){const z=(lo+hi)/2;if(-.3-W.land.heightAt(20,z)<ratio*A.bodyHeight)lo=z;else hi=z;}rows.push({name,x:20,z:(lo+hi)/2,yaw:Math.PI,dist:7});
     }
     rows.push({name:"rocks",x:73,z:43,yaw:-1.1,dist:11},{name:"harbor",x:-39,z:42,yaw:Math.PI,dist:17});
+    rows.push({name:"pier-west",x:-43,z:46,yaw:Math.PI,dist:6},{name:"pier-east",x:-34,z:46,yaw:Math.PI,dist:6},{name:"harbor-night",x:-39,z:42,yaw:.5,dist:27,hour:23});
     for(const [name,i,hour] of [["falls",0,12],["pool",1,12],["falls-night",0,23],["falls-golden",0,18],["falls-storm",0,12]]){const f=W.olympus.impacts[i];rows.push({name,x:f.x+4,z:f.z+4,yaw:1,dist:12,hour});}
     for(const row of rows){
       const y=W.ground(row.x,row.z);W.crew.relocatePlayer({x:row.x,y,z:row.z},0);
@@ -9534,6 +9567,27 @@ const dsbShorelineCheckpoint={name:"dsb shoreline checkpoint",why:"playthrough: 
 }};
 scene("dsb",{label:"shoreline checkpoint",query:"&view=water-dry&weather=clear&time=1200",opts:{w:480,h:320},steps:[dsbShorelineCheckpoint]});
 
+scene("dsb",{label:"shoreline checkpoint piers",query:"&view=water-pier-west&weather=clear&time=1200",opts:{w:480,h:320},steps:[{name:"dsb shoreline pier access",why:"regression: visible harbor decks must support real keyboard walking without changing the seabed or permitting ocean-floor access",run:async b=>{
+  const visits=[];
+  for(const x of [-43,-34]){
+    await b.evaluate(`__ooga.pilot.navigate({position:{x:${x},y:__ooga.dsb.land.groundAt(${x},38),z:38},yaw:Math.PI,pitch:.16,dist:5});__shoreline.advance(.1)`);
+    await b.send("Input.dispatchKeyEvent",{type:"keyDown",key:"w",code:"KeyW"});
+    await b.evaluate('__shoreline.until(()=>__ooga.dsb.avatar.root.position.z>=57.6,20)');
+    await b.send("Input.dispatchKeyEvent",{type:"keyUp",key:"w",code:"KeyW"});
+    const end=await b.evaluate(`(()=>{const B=__ooga,D=B.dsb,A=D.avatar,p=A.root.position;return {x:p.x,z:p.z,feet:p.y-A.baseY,support:D.interiors.groundAt(p.x,p.z),depth:D.waterInteraction.stats.depth,speed:D.waterInteraction.speedAt(A),camera:B.camera.position.y,bed:D.land.heightAt(p.x,p.z),optics:D.water.depthAt(p.x,p.z),offEdge:D.land.walkable(p.x,p.z,p.x+2,p.z,1.35,A.bodyHeight,A)};})()`);
+    record("DSB pier browser "+x+": shore input reaches the deck end with dry footing above deep harbor water",Math.abs(end.x-x)<.01&&end.z>=57.6&&Math.abs(end.feet-1.35)<1e-6&&end.support===1.35&&end.depth===0&&end.speed===1&&end.camera>1.35&&end.bed===-5&&end.optics>=4.7&&!end.offEdge,JSON.stringify(end));
+    await b.send("Input.dispatchKeyEvent",{type:"keyDown",key:"s",code:"KeyS"});
+    await b.evaluate('__shoreline.until(()=>__ooga.dsb.avatar.root.position.z<38.2,20)');
+    await b.send("Input.dispatchKeyEvent",{type:"keyUp",key:"s",code:"KeyS"});
+    const back=await b.evaluate('({z:__ooga.dsb.avatar.root.position.z,depth:__ooga.dsb.waterInteraction.stats.depth})');
+    record("DSB pier browser "+x+": reverse input returns ashore",back.z<38.2&&back.depth===0,JSON.stringify(back));visits.push({x,end,back});
+  }
+  const state=await b.evaluate(`(${shorelineState.toString()})()`);
+  record("DSB pier browser: revised sea shader and supported harbor retain healthy WebGL and bounded effects",shorelineHealthy(state)&&state.nodes===136&&state.readbacks===0,JSON.stringify(state));
+  b.shorelineHealthy=shorelineHealthy(state)&&output.getStore().results.every(r=>r.ok);b.shorelineSoftware=/SwiftShader|llvmpipe|software/i.test(state.gpu);
+  const evidence=join(root,"untracked/water-review");mkdirSync(evidence,{recursive:true});writeFileSync(join(evidence,"pier-state.json"),JSON.stringify({visits,state,logs:b.logs},null,2));
+}}]});
+
 // Optional human evidence: separate Chrome/session after the functional gate, never its readiness oracle.
 scene("dsb",{label:"shoreline visual evidence",query:"&view=water-dry&weather=clear&time=1200",opts:{w:640,h:400},steps:[{name:"dsb shoreline visual evidence",why:"contract: preserve review screenshots after WebGL readiness without blocking functional deployment validation",run:async b=>{
   const paths=join(root,"untracked/water-review");mkdirSync(paths,{recursive:true});
@@ -9545,6 +9599,17 @@ scene("dsb",{label:"shoreline visual evidence",query:"&view=water-dry&weather=cl
     const shot=await b.send("Page.captureScreenshot",{format:"png"},5000);
     if(!shot.result?.data)throw Error("Screenshot capture returned no image");
     writeFileSync(join(paths,"waterfall-"+name+".png"),Buffer.from(shot.result.data,"base64"));
+  }
+}}]});
+
+scene("dsb",{label:"shoreline visual evidence coast",query:"&view=water-pier-west&weather=clear&time=1200",opts:{w:640,h:400},steps:[{name:"dsb shoreline coast visual evidence",why:"contract: inspect beach, rocky coast and both supported piers after functional validation, including night rain",run:async b=>{
+  const paths=join(root,"untracked/water-review");mkdirSync(paths,{recursive:true});
+  for(const [name,x,z,yaw,pitch,dist,hour,weather] of [["beach",20,76,Math.PI,.22,9,12,"clear"],["rocks",72,45,-1.1,.25,16,12,"clear"],["harbor",-39,42,.5,.42,38,12,"clear"],["pier-west",-43,46,Math.PI,.16,5,12,"clear"],["pier-east",-34,46,Math.PI,.16,5,12,"clear"],["harbor-night-rain",-39,42,.5,.42,38,23,"rain"]]){
+    await b.evaluate(`(()=>{const B=__ooga,D=B.dsb;B.pilot.navigate({position:{x:${x},y:D.land.groundAt(${x},${z}),z:${z}},yaw:${yaw},pitch:${pitch},dist:${dist}});B.daylight.read=()=>${hour};B.daylight.continuousDay=B.daylight.dayOfYear-1+${hour}/24;D.weather.setMode(${JSON.stringify(weather)});__shoreline.advance(.25);})()`);
+    const state=await b.evaluate(`(${shorelineState.toString()})()`);if(!shorelineHealthy(state))throw Error("Coast evidence WebGL state: "+JSON.stringify(state));
+    b.shorelineHealthy=true;b.shorelineSoftware=/SwiftShader|llvmpipe|software/i.test(state.gpu);
+    const shot=await b.send("Page.captureScreenshot",{format:"png"},5000);if(!shot.result?.data)throw Error("Coast screenshot returned no image");
+    writeFileSync(join(paths,"coast-"+name+".png"),Buffer.from(shot.result.data,"base64"));
   }
 }}]});
 

@@ -6,6 +6,7 @@
   const definitions=[{id:"meme-factory",building:"Meme Factory House",ambience:"meme-factory",build:BL.memeFactoryRoom.build},{id:"dsb-studio",building:"DSB Studio Stage",ambience:"studio",build:BL.dsbStudio.build},{id:"maxis-club",building:"Maxis Club Theater",ambience:"studio",build:BL.maxisClub.build},{id:"without-rulers",building:"Without Rulers Shop",ambience:"shop",build:BL.withoutRulersShop.build},{id:"proof-of-ink",building:"Proof Of Ink",ambience:"shop",build:BL.proofOfInkRoom.build},{id:"big-bitcoin",building:"Big Bitcoin",ambience:"shop",build:BL.bigBitcoinRoom.build},{id:"stackchain-magazine",building:"Stackchain Magazine",ambience:"shop",build:BL.stackchainRoom.build}];
   const create=({root,exterior,land,weather,relocate,lock,onChange})=>{
     const rooms=new Map(),registry=new Map(),entries=[];
+    const exteriorGround=land.groundAt||land.heightAt;
     for(const definition of definitions){
       const building=land.buildings.find(b=>b.name===definition.building);
       if(!building)continue;
@@ -62,7 +63,7 @@
       return true;
     };
     const clampCamera=(p,focus)=>{
-      if(!active){p.y=Math.max(p.y,land.heightAt(p.x,p.z)+1);return;}
+      if(!active){p.y=Math.max(p.y,exteriorGround(p.x,p.z)+1);return;}
       const b=active.room.bounds;
       p.x=Math.max(b.minX+.2,Math.min(b.maxX-.2,p.x));p.z=Math.max(b.minZ+.2,Math.min(b.maxZ-.2,p.z));
       p.y=Math.max(active.room.groundAt(p.x,p.z)+.74,Math.min(active.room.ceiling-.7,p.y));
@@ -72,7 +73,7 @@
       get lighting(){return active?.room.lighting||null;},request,target,update,walkable,clampCamera,
       get active(){return active;},get transitioning(){return fade>0;},
       get fade(){return fade>.18?( .36-fade)/.18:fade/.18;},
-      groundAt:(x,z)=>active?active.room.groundAt(x,z):land.heightAt(x,z),
+      groundAt:(x,z)=>active?active.room.groundAt(x,z):exteriorGround(x,z),
       review:(id,inside)=>{if(active||fade>0)return;const d=registry.get(id);if(!d)return;relocate(d.entry,d.building.yaw,7);if(inside)request(d.entry);},
       dispose:()=>{disposed=true;audio.dispose();weather.setInterior(false);for(const room of rooms.values())removeChild(root,room.root);rooms.clear();registry.clear();entries.length=0;active=pending=null;}
     };

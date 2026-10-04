@@ -32,6 +32,16 @@ All of this is confined to `test/run.mjs`; production water, terrain, movement, 
 
 ## Water sources and licensing
 
+### Coastline foam and pier-access correction
+
+The continuous white rim had two contributors: universal shallow-depth shader foam, and the old visual apron's white `[238,244,238]` band at y −0.268…−0.286, above the −0.3 sea. That band now uses wet mineral tones without changing its vertices. Sea-shader foam uses the existing depth texture's beach mask and fades to zero at zero depth; moving shoaling crests remain over submerged sand. The separate advancing/retreating swash, pulsing rock contacts and calmer harbor contacts are unchanged. No extra texture, geometry, renderer or water-level change is introduced.
+
+The existing quay and two 2.4 × 19 m piers now share authored footprint/top definitions with their support queries. Their visible geometry stays at x −43/−34, z 49, top y 1.35. `groundAt`/`supportAt` return the higher of terrain and deck inside those footprints; `heightAt` remains exclusively the original terrain/seabed, so ocean depth and wading do not mistake a pier for sand. Walking samples deck support with the existing 0.55 m step limit and checks a body-wide footprint at marine edges. Exterior ground and camera queries through the interior router use that same support; room behavior is unchanged.
+
+Focused tests walk real Yellow out and back on both piers, check exact foot height, dry movement, deck edges, camera support and the corridor between the unchanged prop bounds. The hosted WebGL pier playthrough runs in its own session, serially after the preserved shoreline suite to avoid software-GPU contention. Optional coast images cover beach, rocks, harbor, both decks and night rain. The normal GPU error checks and timeouts remain in force.
+
+Ground-level review views: `water-pier-west`, `water-pier-east`.
+
 The existing Clearwater adaptation in `dsb-water.js` remains the ocean. Its 64×64 spectrum, inverse FFT, 120-second cycle, Fresnel function, absorption, horizon/reflection and sun-glint calculations retain their original implementation and MIT notice. The mean sea level remains **−0.3 m**. The original FFT bytes are golden-tested against the starting checkpoint.
 
 Changes in that module: a sand mask in an unused channel of the existing depth texture; a small shallow-sand brightness adjustment and moving shoaling foam; static fine tessellation/clipping at the playable beach so Canvas can sort the shore and submerged body; and a separate directional cascade shading function selected for the existing Olympus water faces. There are still exactly two ocean textures, no additional render targets and no vertex FFT displacement. Above-sea stream water reuses the sea's Fresnel, absorption palette, sky fill and sun response. Falling water uses downward-scrolling streak noise, not ocean displacement. Foam brightness is multiplied by scene light, with no constant waterfall bloom.

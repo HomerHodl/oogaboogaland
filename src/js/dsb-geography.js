@@ -3,6 +3,9 @@
   "use strict";
   const BL = window.BL = window.BL || {}, S = BL.scene, M = BL.models;
   const STEP = 1.5, MIN = -99, N = 133, C = BL.dsbCoast;
+  // Authored marine decks share their exact footprints/top with rendering and walking support.
+  // heightAt remains the terrain/seabed query, including beneath these structures.
+  const HARBOR_DECKS=[{id:"quay",x:-39,z:41.5,w:22,d:3,top:1.35},{id:"west",x:-43,z:49,w:2.4,d:19,top:1.35},{id:"east",x:-34,z:49,w:2.4,d:19,top:1.35}];
   const coast = [[-89,-70],[-72,-80],[-54,-88],[-31,-83],[-15,-73],[1,-69],[14,-55],[32,-53],[39,-40],[55,-45],[69,-30],[65,-12],[82,-5],[87,14],[77,25],[78,39],[69,49],[57,70],[42,74],[31,70],[20,76],[3,70],[-2,63],[-20,60],[-30,43],[-47,43],[-56,61],[-68,59],[-77,46],[-73,31],[-86,18],[-82,1],[-94,-19],[-88,-39]];
   // Start five metres in front of Portara; descend the inhabited face, then
   // round only its eastern shoulder. The trail stops at the side clearing.
@@ -222,7 +225,8 @@
       for(let i=0;i<coast.length;i++){const a=coast[i],b=coast[(i+1)%coast.length],len=Math.hypot(b[0]-a[0],b[1]-a[1]),n=Math.ceil(len/1.5);for(let k=0;k<n;k++)pts.push([a[0]+(b[0]-a[0])*k/n,a[1]+(b[1]-a[1])*k/n]);}
       // Two rounds of neighbour averaging soften the polygon's corners into a drawn shoreline.
       for(let pass=0;pass<2;pass++){const copy=pts.map(p=>p.slice());for(let i=0;i<pts.length;i++){const a=copy[(i+pts.length-1)%pts.length],b=copy[(i+1)%pts.length];pts[i][0]=(a[0]+2*copy[i][0]+b[0])/4;pts[i][1]=(a[1]+2*copy[i][1]+b[1])/4;}}
-      const apron={verts:[],faces:[],lines:[],smooth:true,castShadow:false},PROFILE=[[-2.4,null],[-.2,.5],[1.75,-.268],[2.2,-.286],[5.5,-2.2]],INK=[[232,208,160],[205,182,136],[238,244,238],[150,150,126]];
+      // Wet mineral/sand tones, never a painted white foam ribbon above the ocean surface.
+      const apron={verts:[],faces:[],lines:[],smooth:true,castShadow:false},PROFILE=[[-2.4,null],[-.2,.5],[1.75,-.268],[2.2,-.286],[5.5,-2.2]],INK=[[232,208,160],[205,182,136],[166,153,123],[150,150,126]];
       const M4=pts.length;
       for(let i=0;i<M4;i++){
         const a=pts[(i+M4-1)%M4],b=pts[(i+1)%M4];let nx=b[1]-a[1],nz=-(b[0]-a[0]);const l=Math.hypot(nx,nz)||1;nx/=l;nz/=l;
@@ -247,18 +251,28 @@
     place(["Harbor workshop",-35,26,8,6,4.5],[waterfront]);
     place(["Harbor office",-68,38,6,6,4],[waterfront]);
     for(const row of hillside)place(row,[HILL_LANES[row[6]]]);
-    // A waterfront apron ties the district together; no extra town spills into the basin.
-    put("#b7a98d",-39,1,41.5,22,.7,3);
-    // Piers are deliberately marine structures; their shore end seats in the terrain.
-    for(const x of [-43,-34])put("#b7a98d",x,1,49,2.4,.7,19);
+    // The existing quay and two piers: geometry is unchanged; support is separate from the seabed.
+    for(const d of HARBOR_DECKS)put("#b7a98d",d.x,d.top-.35,d.z,d.w,.7,d.d);
+    const groundAt=(x,z)=>{
+      let h=heightAt(x,z);
+      for(const d of HARBOR_DECKS)if(Math.abs(x-d.x)<=d.w/2&&Math.abs(z-d.z)<=d.d/2)h=Math.max(h,d.top);
+      return h;
+    };
     const marks={summit:{x:-45,z:-48},clearing:{x:-13,z:5},chora:{x:32,z:40},harbor:{x:-39,z:51},berth:{x:-38,z:54},choraSign:{x:-10,z:7}};
     for(const p of Object.values(marks))p.y=heightAt(p.x,p.z);
-    const clearAt=(x,z,r=.4)=>heightAt(x,z)>.2&&!buildings.some(b=>{const dx=x-b.x,dz=z-b.z,c=Math.cos(b.yaw),s=Math.sin(b.yaw);return Math.abs(c*dx-s*dz)<b.w/2+r&&Math.abs(s*dx+c*dz)<b.d/2+r;});
+    const clearAt=(x,z,r=.4)=>groundAt(x,z)>.2&&!buildings.some(b=>{const dx=x-b.x,dz=z-b.z,c=Math.cos(b.yaw),s=Math.sin(b.yaw);return Math.abs(c*dx-s*dz)<b.w/2+r&&Math.abs(s*dx+c*dz)<b.d/2+r;});
     const walkable=(ax,az,bx,bz,y,height,actor)=>{
-      const n=Math.max(1,Math.ceil(Math.hypot(bx-ax,bz-az)/.3)),r=actor?.bodyRadius||.4;let last=heightAt(ax,az);
+      const n=Math.max(1,Math.ceil(Math.hypot(bx-ax,bz-az)/.3)),r=actor?.bodyRadius||.4;let last=groundAt(ax,az);
       for(let i=1;i<=n;i++){
-        const x=ax+(bx-ax)*i/n,z=az+(bz-az)*i/n,h=heightAt(x,z);
-        if(h>.2){if(!clearAt(x,z,r))return false;}
+        const x=ax+(bx-ax)*i/n,z=az+(bz-az)*i/n,h=groundAt(x,z);
+        if(h>.2){
+          if(!clearAt(x,z,r))return false;
+          // Keep the body on a deck or its shore landing; the surrounding deep water is still an edge.
+          if(h>heightAt(x,z))for(let k=1;k<=4;k++){
+            const px=x+(k===1?r:k===2?-r:0),pz=z+(k===3?r:k===4?-r:0);
+            if(groundAt(px,pz)<h-.55)return false;
+          }
+        }
         else {
           // A body-wide depth gate follows the steepening shelf, not a wall at the waterline.
           // If an external relocation left a walker too deep, shallower ground is always an escape.
@@ -272,7 +286,7 @@
         if(Math.abs(h-last)>.55)return false;last=h;
       }return true;
     };
-    return {root,sea,heightAt,supportAt:heightAt,groundAt:heightAt,clearAt,walkable,buildings,marks,trail,waterfront,lanes,coast};
+    return {root,sea,heightAt,supportAt:groundAt,groundAt,clearAt,walkable,harborDecks:HARBOR_DECKS,buildings,marks,trail,waterfront,lanes,coast};
   };
   BL.dsbGeography={build};
 })();

@@ -220,6 +220,10 @@
         let lo=69,hi=97;for(let i=0;i<28;i++){const z=(lo+hi)/2;if(BL.dsbCoast.LEVEL-land.heightAt(20,z)<depths[view])lo=z;else hi=z;}
         const z=(lo+hi)/2;pilot.navigate({position:{x:20,y:land.heightAt(20,z),z},yaw:Math.PI,pitch:.16,dist:view==="water-swash"?10:5});
       }else if(view==="water-rocks")pilot.navigate({position:{x:72,y:land.heightAt(72,45),z:45},yaw:Math.PI/2,pitch:.25,dist:13});
+      else if(view==="water-pier-west"||view==="water-pier-east"){
+        const d=land.harborDecks.find(p=>p.id===view.slice(11));
+        pilot.navigate({position:{x:d.x,y:land.groundAt(d.x,42),z:42},yaw:Math.PI,pitch:.16,dist:5});
+      }
       else if(view==="water-harbor"){overview=true;pilot.goPreset("coastal-harbor");}
       else if(view==="water-falls"||view==="water-pool"){
         overview=true;pilot.goPreset(view);

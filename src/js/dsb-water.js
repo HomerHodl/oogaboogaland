@@ -201,10 +201,10 @@ vec3 dsbWaterShade(out vec3 bright) {
   vec3 reflection=mix(uFog,uSky*(.8+.45*max(r.y,0.0)),smoothstep(0.03,0.42,r.y));
   float fres=dsbFresnel(max(dot(v,n),0.0));
   float glint=pow(max(dot(r,uLightDir),0.0),mix(180.0,65.0,uDSBEnvironment.y))*daylight*uDSBEnvironment.z;
-  float foam=(1.0-smoothstep(.1,.85,depth))*smoothstep(.51,.63,a.a)*.22*uDSBEnvironment.w;
-  // Thin shoaling crests move toward the depth contour, separate from the land-side swash ribbons.
+  // Only submerged sand shoals carry crests. Zero-depth water is not an island-wide foam contour;
+  // the interaction layer owns the moving wet-edge swash and localized rock/harbor contacts.
   float shoreWave=.5+.5*sin(depth*7.0-uWindTime*1.7+vnoise(p*.6)*1.5);
-  foam+=bed.g*(1.0-smoothstep(.15,1.15,depth))*smoothstep(.88,.99,shoreWave)*.16*uDSBEnvironment.w;
+  float foam=bed.g*smoothstep(.06,.22,depth)*(1.0-smoothstep(.4,1.15,depth))*smoothstep(.88,.99,shoreWave)*.16*uDSBEnvironment.w;
   vec3 col=mix(body,reflection,fres)+uSun*glint*1.5+vec3(foam*lightLevel);
   bright=uSun*glint*.65;
   return col;
