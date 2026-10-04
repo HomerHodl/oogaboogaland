@@ -114,7 +114,8 @@
       const a=land.trail[i-1],b=land.trail[i],dx=b[0]-a[0],dz=b[1]-a[1],len=Math.hypot(dx,dz);
       for(const side of [-1,1])ground("marker",(a[0]+b[0])/2+side*dz/len*4,(a[1]+b[1])/2-side*dx/len*4,.4,0,.8,"trail");
     }
-    for(const f of fields.values())S.addChild(group,S.createNode({geometry:f.geometry,instanceData:new Float32Array(f.data),instanceCount:f.data.length/20,instanceVersion:0,fixedInstanceCapacity:true,sightHidden:true,cullSphere:new Float32Array([0,20,0,140])}));
+    // Each fixed field owns a renderer record; only the immutable shape arrays are shared with other layers.
+    for(const f of fields.values())S.addChild(group,S.createNode({geometry:{...f.geometry},instanceData:new Float32Array(f.data),instanceCount:f.data.length/20,instanceVersion:0,fixedInstanceCapacity:true,sightHidden:true,cullSphere:new Float32Array([0,20,0,140])}));
     // Existing clearing sign was absent at this checkpoint; a wall-height marker stays off its approach.
     const p=land.marks.choraSign,signRoot=S.createNode({position:{x:p.x,y:p.y,z:p.z}});S.addChild(group,signRoot);
     block(signRoot,"#87745a",0,1,0,.12,2,.12);block(signRoot,"#fbf8f1",0,1.8,0,2.4,.6,.14);

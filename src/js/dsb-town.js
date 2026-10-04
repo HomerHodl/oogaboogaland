@@ -88,7 +88,8 @@
     for(const k of Object.values(kinds)){
       const n=k.list.length/7,data=new Float32Array(n*20);
       for(let i=0;i<n;i++){const o=i*20,p=i*7,c=Math.cos(k.list[p+6]),s=Math.sin(k.list[p+6]);data[o]=c*k.list[p+3];data[o+2]=-s*k.list[p+3];data[o+5]=k.list[p+4];data[o+8]=s*k.list[p+5];data[o+10]=c*k.list[p+5];data[o+12]=k.list[p];data[o+13]=k.list[p+1];data[o+14]=k.list[p+2];data[o+15]=1;}
-      if(n)S.addChild(group,S.createNode({geometry:k.geometry,instanceData:data,instanceCount:n,instanceVersion:0,fixedInstanceCapacity:true,sightHidden:true,cullSphere:new Float32Array([0,20,0,150])}));
+      // Pots/vines share shape arrays with dressing, but this fixed instance pool owns its record.
+      if(n)S.addChild(group,S.createNode({geometry:{...k.geometry},instanceData:data,instanceCount:n,instanceVersion:0,fixedInstanceCapacity:true,sightHidden:true,cullSphere:new Float32Array([0,20,0,150])}));
       k.list.length=0;
     }
     stats.solids=solids.length/6;

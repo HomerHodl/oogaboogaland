@@ -2,6 +2,14 @@
 
 Starting checkpoint: `f578f9cda6e77468049b5e000e3002ce9711809b`, the approved Olympus merge. No swimming, new beaches, boats, interior changes, audio additions or new renderer is included.
 
+## WebGL upload repair
+
+The shoreline checkpoint exposed pre-existing geometry-identity aliasing between explicit fixed instance fields in exterior/enrichment/town dressing and ordinary Olympus props. The renderer keys its upload record by geometry object, so a later ordinary rock or olive extended the count of an unrelated fixed field. At high quality the enrichment rock pool requested 3,640 floats from a 200-float array (800-byte GPU buffer); the olive pool requested 640 floats from 40 (160 bytes). Source offset and GPU destination offset were both zero. The same ranges reproduce against the preceding Olympus checkpoint, independently of the water effects. Other aliases silently replaced earlier fields, including planters, grass, windows, nets and driftwood.
+
+Each affected explicit field now owns a shallow geometry wrapper, including enrichment's low-detail alternative. Immutable vertex/face arrays remain cached and shared; instance arrays, placement counts, quality filtering and reserved capacities are unchanged. Rock uploads are now 200 floats into 800 bytes, olives 40 into 160 bytes. Ordinary Olympus props batch separately. No ocean, navigation, waterfall, interior or renderer algorithm changed.
+
+The focused regression exercises the real WebGL renderer's collector and uploader against a byte-bounded buffer sink across high/medium/low/high and three camera positions. It checks exclusive field ownership, finite stable source arrays, exact upload counts, source/GPU bounds and disposal. This deterministic sink does not claim shader/pixel validation: the existing Chrome WebGL shoreline checkpoint remains mandatory and unchanged.
+
 ## Water sources and licensing
 
 The existing Clearwater adaptation in `dsb-water.js` remains the ocean. Its 64×64 spectrum, inverse FFT, 120-second cycle, Fresnel function, absorption, horizon/reflection and sun-glint calculations retain their original implementation and MIT notice. The mean sea level remains **−0.3 m**. The original FFT bytes are golden-tested against the starting checkpoint.

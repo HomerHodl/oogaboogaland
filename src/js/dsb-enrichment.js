@@ -183,8 +183,11 @@
     const matrix=(p,a,o)=>{const c=Math.cos(p.yaw),s=Math.sin(p.yaw);a[o]=c*p.sx;a[o+1]=(p.gx*c-p.gz*s)*p.sx;a[o+2]=-s*p.sx;a[o+5]=p.sy;a[o+8]=s*p.sz;a[o+9]=(p.gx*s+p.gz*c)*p.sz;a[o+10]=c*p.sz;a[o+12]=p.x;a[o+13]=p.y;a[o+14]=p.z;a[o+15]=1;};
     for(const f of batches.values()){
       const source=new Float32Array(f.list.length*20);f.list.forEach((p,i)=>matrix(p,source,i*20));
-      const node=S.createNode({geometry:f.geometry,instanceData:new Float32Array(source.length),instanceCount:0,instanceVersion:0,fixedInstanceCapacity:true,sightHidden:true,cullSphere:new Float32Array([0,20,0,145])});S.addChild(group,node);
-      fields.push({...f,node,source,lowGeometry:f.kind==="flowerbox"||f.kind==="vine"?BL.dressing.coastal(f.kind+"-low"):f.geometry});if(f.kind==="glass"||f.kind==="windowglow")glows.push(node);
+      // Geometry identity keys the renderer's instance record. Own that identity at both tiers;
+      // cached vertices/faces stay shared, but Olympus' ordinary props must not extend this fixed pool.
+      const geometry={...f.geometry},lowGeometry=f.kind==="flowerbox"||f.kind==="vine"?{...BL.dressing.coastal(f.kind+"-low")}:geometry;
+      const node=S.createNode({geometry,instanceData:new Float32Array(source.length),instanceCount:0,instanceVersion:0,fixedInstanceCapacity:true,sightHidden:true,cullSphere:new Float32Array([0,20,0,145])});S.addChild(group,node);
+      fields.push({...f,geometry,node,source,lowGeometry});if(f.kind==="glass"||f.kind==="windowglow")glows.push(node);
     }
     const stats={total:placements.length,visible:0,batches:fields.length+surfaces.length,tier:"",foam:foamSubset.length,sandFaces:sand.faces.length,lights:0};
     let lastX=Infinity,lastZ=Infinity,lastY=Infinity,lastWash=-1,lastGlow=-1,disposed=false;

@@ -8109,6 +8109,42 @@ const waterGolden = W => {
   W.water.update(0);
   return {ground:hash(ground),olympus:hash(nodes),bridges:hash(W.olympus.bridges),buildings:hash(W.land.buildings),fft:hash(Array.from(W.water.pixels))};
 };
+// Regression: cached dressing shapes used by explicit fields and ordinary Olympus nodes must not
+// alias a renderer record. Exercise the real collector/uploader against a byte-bounded GL sink;
+// shader compilation and pixels remain the separate, mandatory WebGL browser checkpoint.
+const waterUploadProbe = (BL, W) => {
+  const buffers=new Map(),bindings=new Map(),errors=[],uploads=new Map(),listeners=new Set();let serial=0,tier="",draws=0;
+  const api={
+    getExtension:()=>null,getProgramParameter:()=>true,getParameter:()=>4,
+    createBuffer:()=>{const b={id:++serial};buffers.set(b,0);return b;},
+    bindBuffer:(target,b)=>bindings.set(target,b),
+    bufferData:(target,data)=>buffers.set(bindings.get(target),typeof data==="number"?data:data.byteLength),
+    bufferSubData:(target,offset,data,start=0,length=0)=>{
+      const count=length||data.length-start,capacity=buffers.get(bindings.get(target)),end=offset+count*data.BYTES_PER_ELEMENT;
+      if(start<0||count<0||start+count>data.length||end>capacity)errors.push({tier,source:data.length,start,length:count,capacity,offset});
+      uploads.set(data,{count,capacity});
+    },
+    deleteBuffer:b=>buffers.delete(b),drawArraysInstanced:()=>draws++
+  };
+  const gl=new Proxy(api,{get:(o,k)=>k in o?o[k]:o[k]=/^[A-Z0-9_]+$/.test(k)?++serial:k.startsWith("create")||k==="getUniformLocation"?()=>({id:++serial}):()=>{}});
+  const canvas={clientWidth:64,clientHeight:64,getContext:()=>gl,addEventListener:k=>listeners.add(k),removeEventListener:k=>listeners.delete(k)};
+  const R=BL.glRenderer.createRenderer(canvas),opts={...BL.scenes.dsb.renderOpts,dsbWater:W.water},rows=[];
+  const arrays=new Map();BL.scene.traverseVisible(W.root,n=>{if(n.instanceData)arrays.set(n,n.instanceData);});
+  for(tier of ["high","medium","low","high"]){
+    W.renderer.quality=tier;R.setQuality(tier);
+    for(const [x,y,z] of [[20,8,83],[-40,25,-8],[0,110,1]]){
+      Object.assign(W.camera.position,{x,y,z});W.nature.update(.02,1);W.enrichment.update(1,0);W.olympus.update(.02,0);
+      const owners=new Map();BL.scene.traverseVisible(W.root,n=>{if(n.geometry){const a=owners.get(n.geometry)||[];a.push(n);owners.set(n.geometry,a);}});
+      let exclusive=true,bounded=true;
+      for(const nodes of owners.values())for(const n of nodes)if(n.instanceData){exclusive&&=nodes.length===1;bounded&&=Number.isInteger(n.instanceCount)&&n.instanceCount>=0&&n.instanceCount*20<=n.instanceData.length&&n.instanceData===arrays.get(n)&&n.instanceData.every(Number.isFinite);}
+      uploads.clear();const drawn=R.render(W.root,W.camera,opts);
+      let exact=true;for(const [n,data] of arrays)if(uploads.has(data)){const upload=uploads.get(data);exact&&=upload.count===n.instanceCount*20&&upload.capacity===data.byteLength;}
+      rows.push({tier,x,y,z,exclusive,bounded,drawn,exact});
+    }
+  }
+  R.releaseUnused(new Set());const released=R.stats.records===0&&R.stats.waterTextures===0;R.dispose();
+  return {rows,errors,draws,released,buffers:buffers.size,listeners:listeners.size};
+};
 const waterChecks = BL => {
   const W=waterWorld(BL),{land:L,water,olympus:O,crew,avatar:A,renderer,camera}=W,C=BL.dsbCoast;
   const I=BL.dsbWaterInteraction.create(W),input=I.steering(crew,()=>true),point=(ratio,x=20)=>{
@@ -8167,6 +8203,8 @@ const waterChecks = BL => {
   I.update(.02,5,A,false);lifecycle&&=I.stats.active===0&&I.stats.depth===0&&!I.group.visible;I.dispose();I.dispose();lifecycle&&=I.group.children.length===0&&W.root.children.length===children-1;
   for(let i=0;i<3;i++){const next=BL.dsbWaterInteraction.create(W);next.update(.02,i,A);lifecycle&&=next.group.children.length===nodes&&next.stats.active<=24;next.dispose();lifecycle&&=next.group.children.length===0&&W.root.children.length===children-1;}
   record("DSB water lifecycle: indoor gating and repeat disposal/re-entry clear impulses without growing nodes",lifecycle);
+  const upload=waterUploadProbe(BL,W);
+  record("DSB WebGL uploads: independent dressing fields own their records across tiers, views and disposal",upload.rows.every(r=>r.exclusive&&r.bounded&&r.drawn&&r.exact)&&!upload.errors.length&&upload.draws>0&&upload.released&&!upload.buffers&&!upload.listeners,JSON.stringify(upload));
   W.dispose();
 };
 // Recorded from f578f9cda6e77468049b5e000e3002ce9711809b before applying the water extension.
