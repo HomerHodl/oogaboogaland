@@ -30,7 +30,7 @@ export const createCoordinator = (gh, bot, now = () => new Date()) => {
   const deployMerged = async (pr) => {
     // GITHUB_TOKEN merges suppress push workflows. A durable marker permits
     // recovery if a run stops after merging; duplicate dispatches are harmless.
-    if (!isBundle(pr, bot) || !pr.merged_at || pr.merged_by?.login !== bot) return;
+    if (bot !== BOT || !isBundle(pr, bot) || !pr.merged_at || pr.merged_by?.login !== bot) return;
     const key = `build-${pr.merge_commit_sha}`, marker = `<!-- obl-character-bundle:${key} -->`;
     if ((await gh.list(`issues/${pr.number}/comments`)).some((row) => row.user.login === bot && row.body.includes(marker))) return;
     await gh.api("actions/workflows/pages.yml/dispatches", "POST", { ref: "rock", inputs: { merge_sha: pr.merge_commit_sha } });
@@ -48,7 +48,19 @@ export const createCoordinator = (gh, bot, now = () => new Date()) => {
   const ensure = async (lane) => {
     const found = (await openBundles()).filter((pr) => pr.head.ref.startsWith(branchPrefix(lane)));
     if (found.length > 1) throw new Error("Multiple open bundles for one lane; maintainer reconciliation required");
-    if (found.length) return gh.api(`pulls/${found[0].number}`);
+    if (found.length) {
+      const pr = await gh.api(`pulls/${found[0].number}`);
+      if (bot !== BOT && pr.user.login === BOT) {
+        const head = await gh.api(`commits/${pr.head.sha}`);
+        if (head.author?.login === BOT) {
+          const checked = await validateBundle(gh, pr, BOT, await ref("rock"));
+          if (checked.entries.length) throw new Error("Only empty Actions placeholders can be adopted automatically");
+          await gh.commit(pr.head.ref, pr.head.sha, [{ path: manifestPath(lane), source: manifestText({ ...checked.state, automation: bot }) }], [], `Adopt empty ${lane} bundle with repository App`);
+          return gh.api(`pulls/${pr.number}`);
+        }
+      }
+      return pr;
+    }
     const rock = await ref("rock"), branch = `${branchPrefix(lane)}${rock.slice(0, 12)}`;
     let existing = await gh.api(`git/ref/heads/${encodeURIComponent(branch)}`, "GET", undefined, true);
     if (!existing) existing = await gh.api("git/refs", "POST", { ref: `refs/heads/${branch}`, sha: rock });
@@ -268,7 +280,8 @@ export const createCoordinator = (gh, bot, now = () => new Date()) => {
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
   const gh = createGitHub(process.env.GITHUB_REPOSITORY, process.env.CHARACTER_TOKEN);
   const coordinator = createCoordinator(gh, process.env.CHARACTER_BOT_LOGIN);
-  if (process.env.CHARACTER_BOT_LOGIN !== BOT) throw new Error("Only the repository Actions token is configured for this pipeline");
+  const expectedBot = process.env.CHARACTER_APP_SLUG ? `${process.env.CHARACTER_APP_SLUG}[bot]` : BOT;
+  if (process.env.CHARACTER_BOT_LOGIN !== expectedBot) throw new Error("Configured bot does not match the workflow's token identity");
   const event = JSON.parse(readFileSync(process.env.GITHUB_EVENT_PATH, "utf8"));
   if (process.env.GITHUB_EVENT_NAME === "workflow_dispatch" && (!isOperator(event.sender)
     || !OPERATORS.some((operator) => operator.login === process.env.GITHUB_TRIGGERING_ACTOR))) throw new Error("Only w-s-bitcoin and 2140data may operate manual automation runs");

@@ -109,14 +109,23 @@ When unrelated changes advance `rock`, the coordinator updates the bundle branch
 GitHub's expected-head update API and waits for fresh checks. A manual bundle's
 new head also requires a new approval.
 
-The pipeline uses the repository's short-lived `GITHUB_TOKEN`; no personal token,
-GitHub App private key or additional secret is stored. Bot-created PRs do not
-reliably start further Actions runs, so the coordinator publishes required checks
-itself after revalidating their complete diff and sources. After a bot merge it
-explicitly dispatches Pages with the merged SHA for contributor reconciliation.
-A comment records dispatch completion; sweeps recover missed dispatches among the
-100 most recently updated closed PRs. An interrupted dispatch can repeat safely.
-Human merges already trigger Pages normally. Cloudflare deployment stays manual.
+The coordinator and artifact writer use short-lived installation tokens from a
+private GitHub App installed only on OBL. Its private key lives in the repository
+Actions secret `CHARACTER_APP_PRIVATE_KEY`; no personal access token is stored.
+The read-only Pages deploy job still uses its read-only Actions token.
+
+The initial `GITHUB_TOKEN` rollout could create the two empty PRs, but GitHub
+refuses that built-in integration in restricted push/bypass lists. Therefore the
+private App is required for protected merges and the existing generated artifact
+writer. On its first run the App validates and adopts only empty Actions-created
+placeholders, preserving their PR numbers; nonempty queues require explicit repair.
+The App's actual slug must match the configured bot login. Every later bundle
+head must be a verified commit by that App.
+
+App merges trigger the existing post-merge workflows normally. The retained
+Actions-token fallback explicitly dispatches Pages after a bot merge and records
+a recovery marker; it cannot merge under the production branch restrictions.
+Cloudflare deployment stays manual.
 
 ## Operators and repository configuration
 
@@ -134,25 +143,30 @@ the existing Maintain/Admin exception for authoring other profiles is unchanged.
 Policy and workflow edits require one of these operators as PR author. Manual
 workflow dispatches and reruns of them are limited to these two accounts.
 
-Setup uses GitHub CLI/API:
+Setup uses an owner-approved GitHub App registration and GitHub CLI/API:
 
-1. Allow Actions to create PRs in repository workflow permissions, retaining the
-   default read-only token. The coordinator alone requests Contents, Pull requests,
-   Commit statuses and Actions write, plus Checks read. Actions write is needed
-   only for the explicit post-merge Pages dispatch.
-2. Set the repository variable `CHARACTER_BUNDLES_ENABLED=true` after publishing
-   these workflows on `rock`, then dispatch **Character bundles** as an operator.
-3. Protect `rock`: require PRs and the three checks **Character identity ownership**,
-   **Character intake**, **Character bundle safety**, restrict human merge/push
-   authority to the two operators, and allow the GitHub Actions integration to
-   merge checked daily bundles and write the existing generated site artifact.
-   The artifact writer publishes its generated commit on a temporary branch,
-   attaches its statuses, then fast-forwards `rock`; a race fails without overwriting.
-4. Protect `automation/characters-*` from arbitrary branch edits/deletion. The bot
-   and operators may repair queues; repairs still need verified bot provenance to
-   pass validation. Repository administrators can change repository settings, so
-   keep administrative access restricted separately. All trusted workflows share
-   the GitHub Actions integration identity; repository write access remains trusted.
+1. Create a private organization-owned App, disable webhooks and user OAuth, and
+   install it on **oogaboogaland only**. Grant repository Contents, Pull requests
+   and Commit statuses read/write, plus Checks read. No organization permissions,
+   administrator permission or Actions-write permission is needed by the App.
+2. Save its private key as `CHARACTER_APP_PRIVATE_KEY`; set repository variables
+   `CHARACTER_APP_CLIENT_ID` and `CHARACTER_BOT_LOGIN` (`<app-slug>[bot]`). The
+   coordinator requests only its needed permissions; the separate artifact job
+   requests only Contents and Commit statuses write. Neither imports PR code.
+3. Protect `rock`: require PRs, an up-to-date base, and **Character identity ownership**,
+   **Character intake**, **Character bundle safety**. Bind intake and safety to
+   the installed App. Identity is emitted by the read-only Actions checker for
+   source PRs and by the App for validated bundles and generated artifacts.
+   Restrict human push/merge authority to the two operators and allow the installed
+   App as a writer. Give only the App the PR requirement exception needed for
+   the existing generated artifact commit; do not bypass required status checks.
+4. Protect `automation/characters-*` against arbitrary creation, updates and
+   deletion using a ruleset whose operator list is the App and two account IDs.
+   Repository administrators retain the ability to change repository settings;
+   keep that administrative access restricted separately.
+5. Set `CHARACTER_BUNDLES_ENABLED=true` and dispatch **Character bundles** on
+   `rock` as an operator. Verify both placeholders, App-signed heads and passing
+   revalidation. An empty bundle must remain blocked from merging.
 
 Disabling `CHARACTER_BUNDLES_ENABLED` stops bundle operations while preserving
 open PRs and provenance. It does not disable the required checks. Existing

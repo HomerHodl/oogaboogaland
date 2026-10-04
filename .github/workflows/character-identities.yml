@@ -27,4 +27,4 @@ jobs:
         run: node scripts/contributor-pr.mjs
         env:
           GITHUB_TOKEN: ${{ github.token }}
-          CHARACTER_BOT_LOGIN: github-actions[bot]
+          CHARACTER_BOT_LOGIN: ${{ vars.CHARACTER_BOT_LOGIN || 'github-actions[bot]' }}

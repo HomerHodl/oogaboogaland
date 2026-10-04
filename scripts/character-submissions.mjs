@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { declaredIdentity } from "./character-identity.mjs";
-import { isOperator } from "./character-operators.mjs";
+import { BOT, isOperator } from "./character-operators.mjs";
 import { CharacterRejection, characterPath, touchesCharacters, scanCharacter, checkOwner, safeCharacterSource } from "./character-safety.mjs";
 
 export const LANES = ["daily", "manual"];
@@ -113,7 +113,9 @@ export const checkRegistry = async (gh, rock, entries) => {
   }
 };
 
-export const isBundle = (pr, bot) => bot && pr.user.login === bot && pr.head.repo?.full_name === pr.base.repo.full_name
+// The initial empty PRs were opened by Actions; a configured App can adopt them.
+// The current head must still be a verified commit by the configured bot.
+export const isBundle = (pr, bot) => bot && [bot, BOT].includes(pr.user.login) && pr.head.repo?.full_name === pr.base.repo.full_name
   && LANES.some((lane) => pr.head.ref.startsWith(branchPrefix(lane)));
 
 export const reviewDecision = async (gh, pr) => {

@@ -10,7 +10,7 @@ import { declaredIdentity, mayAuthorIdentity } from "../../scripts/character-ide
 import { CharacterRejection, parseSafeCharacter, scanCharacter, safeCharacterSource, checkOwner } from "../../scripts/character-safety.mjs";
 import { digest, due, inspectSubmission, manifestPath, readManifest, reviewDecision } from "../../scripts/character-submissions.mjs";
 import { createCoordinator } from "../../scripts/character-bundles.mjs";
-import { OPERATORS, isOperator } from "../../scripts/character-operators.mjs";
+import { BOT, OPERATORS, isOperator } from "../../scripts/character-operators.mjs";
 
 const NOW = Date.parse("2026-10-04T12:00:00Z");
 const person = (login, extra = {}) => ({ login, counts: { commits: 1 }, first_seen_at: "2026-09-01T00:00:00Z", last_seen_at: "2026-10-04T11:00:00Z", ...extra });
@@ -91,6 +91,8 @@ test("Actions-token merges explicitly dispatch the post-merge build and recover 
   const dispatches = calls.filter((call) => call.path.endsWith("/dispatches"));
   assert.equal(dispatches.length, 1);
   assert.deepEqual(dispatches[0].data, { ref: "rock", inputs: { merge_sha: pr.merge_commit_sha } });
+  await createCoordinator(gh, "private-app[bot]").deployMerged({ ...pr, user: { login: "private-app[bot]" }, merged_by: { login: "private-app[bot]" } });
+  assert.equal(calls.filter((call) => call.path.endsWith("/dispatches")).length, 1); // App merges already emit push events.
 });
 
 test("an otherwise validated overdue daily bundle never calls merge when conflicted or its mergeability is unknown", async () => {
@@ -150,8 +152,9 @@ test("the scanner checks earlier character revisions and extracts only character
   await assert.rejects(inspectSubmission(gh, { pr: 7, head }, rock), CharacterRejection);
 });
 
-test("bundle placeholders stay open without merging and both lanes reopen after their own merge", async () => {
-  const bot = "character-app[bot]", repo = "example/land", refs = new Map([["rock", "1".repeat(40)]]), files = new Map(), prs = [];
+test("empty placeholders migrate to the scoped App without duplication, never merge empty, and reopen after merging", async () => {
+  let bot = BOT, unexpected = false;
+  const repo = "example/land", refs = new Map([["rock", "1".repeat(40)]]), files = new Map(), authors = new Map(), prs = [];
   let sequence = 2, mergeCalls = 0;
   const gh = {
     repo,
@@ -161,6 +164,7 @@ test("bundle placeholders stay open without merging and both lanes reopen after 
     commit: async (branch, expected, additions) => {
       assert.equal(refs.get(branch), expected);
       const sha = String(sequence++).padStart(40, "0"); refs.set(branch, sha);
+      authors.set(sha, bot);
       for (const file of additions) files.set(`${sha}:${file.path}`, { source: file.source, sha });
       return sha;
     },
@@ -171,17 +175,33 @@ test("bundle placeholders stay open without merging and both lanes reopen after 
         const pr = { number: prs.length + 1, state: "open", user: { login: bot }, head: { ref: data.head, sha: refs.get(data.head), repo: { full_name: repo } }, base: { ref: "rock", repo: { full_name: repo } } };
         prs.push(pr); return pr;
       }
-      if (/^pulls\/\d+$/.test(path)) return prs.find((pr) => pr.number === Number(path.split("/")[1]));
-      if (path.startsWith("commits/")) return { author: { login: bot }, commit: { verification: { verified: true } } };
-      if (path.startsWith("compare/")) return { files: [{ filename: manifestPath("daily"), status: "added" }] };
+      if (/^pulls\/\d+$/.test(path)) {
+        const pr = prs.find((pr) => pr.number === Number(path.split("/")[1]));
+        pr.head.sha = refs.get(pr.head.ref); return pr;
+      }
+      if (path.startsWith("commits/")) return { author: { login: authors.get(path.slice(8)) }, commit: { verification: { verified: true } } };
+      if (path.startsWith("compare/")) {
+        const sha = path.split("...")[1], lane = files.has(`${sha}:${manifestPath("daily")}`) ? "daily" : "manual";
+        return { files: [{ filename: manifestPath(lane), status: "added" }, ...(unexpected ? [{ filename: "unsafe.js", status: "added" }] : [])] };
+      }
       if (path.endsWith("/merge")) { mergeCalls++; throw new Error("Empty bundle must never merge"); }
       throw new Error(`Unexpected API call ${path}`);
     }
   };
-  const coordinator = createCoordinator(gh, bot, () => new Date(NOW));
+  let coordinator = createCoordinator(gh, bot, () => new Date(NOW));
   const daily = await coordinator.ensure("daily"), manual = await coordinator.ensure("manual");
   assert.notEqual(daily.number, manual.number);
   assert.equal((await coordinator.ensure("daily")).number, daily.number);
+  bot = "private-app[bot]";
+  coordinator = createCoordinator(gh, bot, () => new Date(NOW));
+  unexpected = true;
+  await assert.rejects(coordinator.ensure("daily"), /unexpected files/);
+  unexpected = false;
+  for (const lane of ["daily", "manual"]) {
+    const adopted = await coordinator.ensure(lane);
+    assert.equal(authors.get(adopted.head.sha), bot);
+  }
+  assert.equal(prs.length, 2);
   await coordinator.mergeDaily();
   assert.equal(mergeCalls, 0);
   manual.state = "closed"; refs.set("rock", "f".repeat(40));

@@ -120,7 +120,7 @@ filtered Oogatron snapshot. Lookups coalesce and cache for one minute per Worker
 isolate, run only on requests, time out after four seconds, and grant no new
 identity on failure. No background polling, new secret or D1 migration is needed
 for sign-in. The separate [character bundle pipeline](character-bundles.md) uses
-GitHub's repository Actions token for daily and manual-review PRs.
+a repository-scoped GitHub App for protected daily and manual-review PRs.
 
 Before building the first scene, the browser waits for the bounded account lookup
 (at most six seconds) and can register one temporary default character matching
