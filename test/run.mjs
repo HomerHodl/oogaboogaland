@@ -2323,7 +2323,7 @@ const orbitFlow = async (b) => {
 const SCENES = ["hub", "lab", "race", "drop", "orbit", "mine", "pool", "dsb", "factory", "bifrost", "poker", "arcade", "skee", "hoops", "shy", "claw", "hockey", "billiards", "darts", "pinball", "ride", "invaders", "snake", "pong", "stampede", "flap", "breaker", "dash", "stacker"];
 const LANES = Number(process.env.LANES) || 8;
 const ARGS = process.argv.slice(2);
-for (const a of ARGS) if (!SCENES.includes(a) && !["unit", "maxis-unit", "exterior-unit", "rulers-unit", "ink-unit", "perf", "full", "poker-protocol"].includes(a)) throw new Error(`Unknown argument "${a}" (unit | perf | full | poker-protocol | ${SCENES.join(" | ")})`);
+for (const a of ARGS) if (!SCENES.includes(a) && !["unit", "maxis-unit", "exterior-unit", "rulers-unit", "ink-unit", "big-unit", "perf", "full", "poker-protocol"].includes(a)) throw new Error(`Unknown argument "${a}" (unit | perf | full | poker-protocol | ${SCENES.join(" | ")})`);
 const ONLY = process.env.ONLY || ""; // Optional substring within the requested scenes; defaults are unchanged.
 const FULL = ARGS.includes("full");
 const PICKED = FULL ? SCENES : SCENES.filter((s) => ARGS.includes(s));
@@ -8347,6 +8347,59 @@ const inkChecks = BL => {
   }finally{globalThis.document=savedDoc;}
 };
 
+// Rule/contract: exercise the real room collision and shared crew seating at Yellow's dimensions.
+const bigBitcoinChecks = BL => {
+  const noop=()=>{},S=BL.scene,root=S.createNode(),targets=new Set(),exterior={visible:true},weather={shared:{state:{muted:true}},inside:false,setInterior(on){this.inside=on;}};
+  const land=BL.dsbGeography.build();let returned=null;
+  const I=BL.dsbInteriors.create({root,exterior,land,weather,relocate:p=>returned={...p},lock:noop,onChange:noop});
+  const entry=I.registry.get("big-bitcoin");I.review("big-bitcoin",true);I.update(.4);const R=I.active.room;
+  const C=BL.crew.create({root,world:{level:0},playerName:"YellowBrokeIt",input:{add:n=>targets.add(n),remove:n=>targets.delete(n)},hud:{setRosterRow:noop},game:{state:{assignments:{},inventory:[]}},viewYaw:0,groundAt:I.groundAt,walkable:I.walkable,fx:{say:noop,zzzAt:noop,burst:noop,puff:noop,spawnParticle:noop,damageNumber:noop}});
+  const A=C.cavemen.get("YellowBrokeIt");C.control(A);
+  const clear=(ax,az,bx=ax,bz=az)=>I.walkable(ax,az,bx,bz,0,A.bodyHeight,A);
+  const step=.3,minX=-20.4,minZ=-26.4,w=137,h=177,seen=new Uint8Array(w*h),queue=[];
+  const index=(x,z)=>Math.round((z-minZ)/step)*w+Math.round((x-minX)/step),start=index(R.spawn.x,R.spawn.z);seen[start]=1;queue.push(start);
+  for(let head=0;head<queue.length;head++){
+    const n=queue[head],ix=n%w,iz=Math.floor(n/w),x=minX+ix*step,z=minZ+iz*step;
+    for(const [dx,dz] of [[1,0],[-1,0],[0,1],[0,-1]]){const nx=ix+dx,nz=iz+dz,i=nz*w+nx;if(nx<0||nx>=w||nz<0||nz>=h||seen[i]||!clear(x,z,x+dx*step,z+dz*step))continue;seen[i]=1;queue.push(i);}
+  }
+  const reachable=p=>{const i=index(p.x,p.z),ix=i%w,iz=Math.floor(i/w);for(let dx=-1;dx<=1;dx++)for(let dz=-1;dz<=1;dz++){const nx=ix+dx,nz=iz+dz;if(nx>=0&&nx<w&&nz>=0&&nz<h&&seen[nz*w+nx]&&clear(minX+nx*step,minZ+nz*step,p.x,p.z))return true;}return false;};
+  const goals=[R.exit,R.mediaAt,...R.browseGoals];
+  record("BIG BITCOIN navigation: Yellow reaches every wing, review, terminal and seat from the actual facade entrance",clear(R.spawn.x,R.spawn.z)&&goals.every(reachable),JSON.stringify({radius:A.bodyRadius,unreachable:goals.filter(p=>!reachable(p))}));
+  let seating=true;
+  for(const seat of R.seats){Object.assign(A.root.position,{x:seat.walkAt.x,y:A.baseY,z:seat.walkAt.z});A.hop=A.hopV=0;seating&&=C.sitPlayer(seat);C.steer(.6,0);C.look(seat.ry,.2,1);C.update(.2,1);seating&&=A.camp.seat===seat&&A.root.position.x===seat.x&&A.root.position.z===seat.z;C.steer(0,0);seating&&=C.standPlayer()&&!A.camp.seat&&!seat.sitter&&clear(A.root.position.x,A.root.position.z);}
+  record("BIG BITCOIN seating: boardroom, press, control and archive use shared sit/free-look/stand with safe exits",seating&&R.seats.filter(s=>s.zone==="boardroom").length===10&&R.seats.filter(s=>s.zone==="press").length===12,JSON.stringify(R.seats.filter(s=>!clear(s.walkAt.x,s.walkAt.z))));
+  let nodes=0,finite=true;const geometry=new Set();const visit=n=>{nodes++;if(n.geometry){geometry.add(n.geometry);finite&&=n.geometry.verts.every(Number.isFinite);}n.children.forEach(visit);};S.updateWorld(R.root);visit(R.root);
+  record("BIG BITCOIN render budget: dense room uses finite shared assemblies, static screens and seven lights",finite&&nodes<2400&&geometry.size<180&&R.lighting.lightCount===7&&R.counts.books>=400&&R.counts.monitors>=20,JSON.stringify({nodes,geometry:geometry.size,...R.counts}));
+  let cameraClear=true;for(const x of [-7.2,7.2])for(const z of [-10,10]){const focus={x:x<0?x+1:x-1,y:2,z},p={x:x<0?x-3:x+3,y:2,z};R.clampCamera(p,focus);cameraClear&&=x<0?p.x>x+.17:p.x<x-.17;}
+  record("BIG BITCOIN camera: trailing view stays on the player's side of solid partitions",cameraClear);
+  let lifecycle=true;const count=root.children.length;
+  for(let i=0;i<3;i++){lifecycle&&=weather.inside&&!exterior.visible&&I.audio.stats.active;I.request(R.exit);I.update(.4);lifecycle&&=!I.active&&!weather.inside&&exterior.visible&&!I.audio.stats.active&&!I.audio.stats.connected&&!R.root.visible&&returned.x===entry.entry.x&&returned.z===entry.entry.z;I.review("big-bitcoin",true);I.update(.4);lifecycle&&=I.active.room===R&&root.children.length===count&&I.rooms.size===1;}
+  C.dispose();I.dispose();record("BIG BITCOIN lifecycle: repeat entry/exit returns to the same building, restores exterior and reuses/disposes room resources",lifecycle&&targets.size===0&&!root.children.includes(R.root)&&!I.audio.stats.contexts);
+  const D=BL.bigBitcoinData,source=readFileSync(new URL("../src/js/big-bitcoin-menu.js",import.meta.url),"utf8"),scene=readFileSync(new URL("../src/js/scene-dsb.js",import.meta.url),"utf8");
+  record("BIG BITCOIN privacy: bounded official destinations, no live prices, customer collection, polling or persistence",D.cards.every(c=>D.official(c.url)&&c.url.startsWith(D.home)&&!c.price)&&["javascript:alert(1)","https://podconf.xyz.evil.test/","https://podconf.xyz/?email=x","https://podconf.xyz/cart/"].every(u=>!D.official(u))&&!/fetch\(|XMLHttpRequest|localStorage|sessionStorage|setInterval|createElement\("(?:iframe|form|input)"/.test(source)&&scene.includes("context.hidden=!!avatar.camp.seat"));
+  // Contract: the actual terminal event handlers must reset all content and listeners each visit.
+  const savedDoc=globalThis.document,listeners=new Map(),elements=[];
+  const element=tag=>{
+    const e={tag,children:[],dataset:{},hidden:false,attributes:{},parent:null,isConnected:true,textContent:"",listeners:new Map(),
+      setAttribute(k,v){this.attributes[k]=v;},appendChild(c){c.parent=this;this.children.push(c);return c;},replaceChildren(){this.children.forEach(c=>c.parent=null);this.children=[];},
+      contains(n){for(;n;n=n.parent)if(n===this)return true;return false;},closest(s){if(s==="button")return this.tag==="button"?this:this.parent?.closest(s);if(s==="[hidden]")return this.hidden?this:this.parent?.closest(s);return null;},focus(){document.activeElement=this;},addEventListener(k,f){this.listeners.set(k,f);},removeEventListener(k){this.listeners.delete(k);}
+    };elements.push(e);return e;
+  };
+  const panel=element("section"),selectors=new Map();for(const [q,tag] of [["nav","nav"],[".big-results","div"],['[data-big="close"]',"button"]]){const e=element(tag);panel.appendChild(e);selectors.set(q,e);}selectors.get('[data-big="close"]').dataset.big="close";
+  panel.querySelector=q=>selectors.get(q);panel.querySelectorAll=()=>elements.filter(e=>panel.contains(e)&&["button","a"].includes(e.tag));
+  globalThis.document={getElementById:()=>panel,createElement:element,activeElement:null,addEventListener:(k,f)=>listeners.set(k,f),removeEventListener:k=>listeners.delete(k)};
+  try{
+    const M=BL.bigBitcoinMenu.create(),results=selectors.get(".big-results"),nav=selectors.get("nav");let okay=!M.open();
+    for(let i=0;i<3;i++){
+      M.enter();okay&&=M.open()&&M.isOpen&&nav.children.length===D.sections.length;
+      for(const [id] of D.sections){const b=nav.children.find(n=>n.dataset.section===id);panel.listeners.get("click")({target:b});okay&&=results.children.length===D.cards.filter(c=>c.section===id).length&&results.children.every(c=>{const a=c.children.find(n=>n.tag==="a");return D.official(a.href)&&a.target==="_blank"&&a.rel==="noopener noreferrer"&&a.referrerPolicy==="no-referrer";});}
+      panel.listeners.get("keydown")({type:"keydown",key:"Escape",stopPropagation:noop,preventDefault:noop});okay&&=!M.isOpen&&panel.hidden;
+      M.open();M.leave();okay&&=!M.isOpen&&panel.hidden&&!nav.children.length&&!results.children.length&&M.stats.section==="overview";
+    }
+    M.dispose();M.dispose();record("BIG BITCOIN terminal: actual sections, safe redirects, Escape and three visits leave one panel with no stale handlers",okay&&listeners.size===0&&elements.every(e=>e.listeners.size===0));
+  }finally{globalThis.document=savedDoc;}
+};
+
 const unitChecks = async () => {
   const canvasStub = () => ({
     width: 0, height: 0,
@@ -8405,6 +8458,8 @@ const unitChecks = async () => {
   if(ARGS.includes("rulers-unit"))return;
   inkChecks(BL);
   if(ARGS.includes("ink-unit"))return;
+  bigBitcoinChecks(BL);
+  if(ARGS.includes("big-unit"))return;
   pokerChecks(BL);
   {
     // Analytic half-spaces are an independent normal oracle: an incoming

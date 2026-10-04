@@ -7429,6 +7429,42 @@ body[data-poker-table-view="true"] #act { visibility: hidden; }
   .rulers-detail img { max-width: 240px; justify-self: center; }
 }
 
+/* BIG BITCOIN: browse-only information terminal, scoped to this headquarters. */
+.big-terminal { position: fixed; z-index: 45; inset: 7dvh 5vw auto auto; width: min(860px,90vw); max-height: 86dvh; display: flex; flex-direction: column; background: #17171b; color: #e6dcc5; border: 1px solid #a18a5c; box-shadow: 0 20px 80px #000c; font-family: system-ui,sans-serif; }
+.big-terminal[hidden] { display: none; }
+.big-terminal header { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 20px; border-bottom: 3px solid #a92825; background: #242126; }
+.big-terminal h2 { margin: 4px 0 0; font-size: 32px; letter-spacing: .035em; color: #f04b35; }
+.big-eyebrow { color: #c8ad76; font-size: 10px; letter-spacing: .13em; text-transform: uppercase; margin: 0; }
+.big-terminal button { min-height: 44px; border: 1px solid #8a754f; background: #302a2c; color: #f0e2c4; padding: 8px 12px; cursor: pointer; }
+.big-terminal button:hover, .big-terminal button[aria-pressed="true"] { background: #79252a; border-color: #d8b875; }
+.big-terminal :focus-visible { outline: 2px solid #edc878; outline-offset: 3px; }
+.big-privacy { padding: 10px 20px; margin: 0; font-size: 12px; line-height: 1.5; background: #302729; }
+.big-terminal nav { display: flex; flex-wrap: wrap; gap: 6px; padding: 12px 20px; border-bottom: 1px solid #5e503c; }
+.big-terminal nav button { flex: 1; font-size: 12px; }
+.big-results { min-height: 0; overflow: auto; overscroll-behavior: contain; display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 14px; padding: 20px; }
+.big-results article { display: flex; flex-direction: column; gap: 12px; background: #28252a; border: 1px solid #63563e; border-top: 3px solid #9e2928; padding: 18px; }
+.big-results h3 { margin: 0; font-size: 18px; overflow-wrap: anywhere; }
+.big-results p { margin: 0; font-size: 13px; line-height: 1.6; }
+.big-results .big-eyebrow { font-size: 10px; }
+.big-results a { color: #efc97b; font-size: 13px; margin-top: auto; padding-top: 6px; }
+.big-terminal footer { font-size: 11px; line-height: 1.5; color: #b8aa91; border-top: 1px solid #5e503c; padding: 12px 20px; }
+.dsb-context.big-context { border-color: #b59964; background: #4d2429; color: #f2ddb4; }
+@media (pointer: coarse), (max-width: 720px) {
+  .dsb-context.big-context { position: fixed; left: var(--big-action-x,50%); top: var(--big-action-y,65%); bottom: auto; transform: translate(-50%,-100%); width: var(--big-action-width,140px); max-width: none; box-sizing: border-box; min-height: 44px; padding: 8px 6px; font-size: 11px; line-height: 1.35; white-space: normal; }
+}
+@media (max-width: 600px), (max-height: 500px) {
+  .big-terminal { inset: 2dvh 3vw auto auto; width: 94vw; max-height: 96dvh; }
+  .big-terminal header, .big-terminal nav, .big-results { padding: 10px; }
+  .big-terminal h2 { font-size: 23px; }
+  .big-terminal header button { max-width: 100px; font-size: 11px; }
+  .big-terminal nav button { padding: 6px; font-size: 11px; }
+  .big-terminal footer, .big-privacy { padding: 8px 10px; font-size: 10px; }
+  .big-results { gap: 9px; }
+  .big-results article { padding: 12px; }
+  .big-results h3 { font-size: 15px; }
+}
+@media (max-width: 430px) { .big-results { grid-template-columns: 1fr; } }
+
 /* Proof of Ink: workshop catalog, isolated from the existing showrooms. */
 .ink-catalog { position: fixed; z-index: 45; top: 6dvh; right: 4vw; width: min(880px,92vw); max-height: 86dvh; display: flex; flex-direction: column; background: #191e20; color: #efe2cb; border: 1px solid #ad7945; border-radius: 5px; box-shadow: 0 18px 70px #000b; font-family: system-ui,sans-serif; }
 .ink-catalog[hidden], .ink-tools[hidden] { display: none; }

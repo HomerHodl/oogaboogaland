@@ -15,6 +15,7 @@
   const LAMP_SPOTS=[[-49,-45],[-57,37],[20,63],[64,49]], lamps=[];
   let clock,water,weather,nature,detail,enrichment,interiors,exterior,noderunner,tv,spaces,studioTools,maxisMedia,maxisButton,maxisReview=false,maxisPick=null,studioReview=false,shopMenu,shopTools,shopPick=null,shopReview=false,shopMenuReview=0;
   let inkMenu,inkTools,inkPick=null,inkReview=false,inkMenuReview=0,inkLayoutObserver,inkLayoutPending=false;
+  let bigMenu,bigPick=null,bigReview=false,bigMenuReview=0;
   const requestInkLayout=()=>{inkLayoutPending=true;};
   // Measure only on layout changes; both Proof of Ink browse affordances share Jump's anchor.
   const layoutInkBrowse=()=>{
@@ -68,8 +69,10 @@
   const maxisRoom=()=>interiors?.active?.room.id==="maxis-club"?interiors.active.room:null;
   const shopRoom=()=>interiors?.active?.room.id==="without-rulers"?interiors.active.room:null;
   const inkRoom=()=>interiors?.active?.room.id==="proof-of-ink"?interiors.active.room:null;
+  const bigRoom=()=>interiors?.active?.room.id==="big-bitcoin"?interiors.active.room:null;
+  const nearBig=()=>{const q=bigRoom()?.mediaAt,p=avatar.root.position;return !!q&&Math.hypot(p.x-q.x,p.z-q.z)<2;};
   const nearInk=()=>{const q=inkRoom()?.mediaAt,p=avatar.root.position;return !!q&&Math.hypot(p.x-q.x,p.z-q.z)<2;};
-  const seatRoom=()=>studioRoom()||maxisRoom()||shopRoom()||inkRoom();
+  const seatRoom=()=>studioRoom()||maxisRoom()||shopRoom()||inkRoom()||bigRoom();
   const nearShop=()=>{const q=shopRoom()?.mediaAt,p=avatar.root.position;return !!q&&Math.hypot(p.x-q.x,p.z-q.z)<2;};
   const nearMaxis=()=>{const q=maxisRoom()?.mediaAt,p=avatar.root.position;return !!q&&Math.hypot(p.x-q.x,p.z-q.z)<2;};
   const seatNear=()=>{
@@ -93,9 +96,10 @@
     if(nearMaxis()){maxisMedia.open();return true;}
     if(nearShop()){shopMenu.open();return true;}
     if(nearInk()){inkMenu.open();return true;}
+    if(nearBig()){bigMenu.open();return true;}
     const seat=seatNear();return seat?sit(seat):false;
   };
-  const act=()=>{if(tv?.isOpen||spaces?.isOpen||maxisMedia?.isOpen||shopMenu?.isOpen||inkMenu?.isOpen)return true;if(!interiors?.transitioning&&studioAct())return true;if(nearTv()){tv.open();return true;}if(!overview&&interiors?.request(avatar.root.position))return true;if(interiors?.active)return false;if(nearGate()&&!overview){gate.open();return true;}return false;};
+  const act=()=>{if(tv?.isOpen||spaces?.isOpen||maxisMedia?.isOpen||shopMenu?.isOpen||inkMenu?.isOpen||bigMenu?.isOpen)return true;if(!interiors?.transitioning&&studioAct())return true;if(nearTv()){tv.open();return true;}if(!overview&&interiors?.request(avatar.root.position))return true;if(interiors?.active)return false;if(nearGate()&&!overview){gate.open();return true;}return false;};
   const mute=()=>{const on=weather.toggleMuted(),button=document.getElementById("dsb-mute");interiors?.audio.update(on);button.textContent=on?"Unmute":"Mute";button.setAttribute("aria-pressed",String(on));};
   const action=name=>{if(seatRoom()&&(pilot.modeAction(name)||pilot.weaponAction(name)))return;if(name==="dsb-mute")mute();else if(interiors?.transitioning)return;else if(name==="dsb-lookout")overviewView();else if(name==="reset-view")walk();else if(name==="dsb-context")act();else if(name==="act")pilot.action();else if(name==="leave")hud.toast("Return through the Portara at the summit.");};
   const enter=ctx=>{
@@ -140,7 +144,7 @@
     noderunner=BL.dsbNoderunner.create({root:exterior,land});
     weather=BL.dsbWeather.create({root:exterior,renderer:ctx.renderer,camera,land,water,params,audioFactory:noderunner.createAudio});
     input.add(noderunner.screenFace,{kind:"dsb-tv"});
-    const tap=hooks.onTap;hooks.onTap=(hit,p)=>{if(hit?.owner?.kind==="ink-kiosk"&&inkRoom()){inkMenu.open();return;}if(hit?.owner?.kind==="rulers-kiosk"&&shopRoom()){shopMenu.open();return;}if(hit?.owner?.kind==="maxis-media"&&maxisRoom()){maxisMedia.open();return;}if(hit?.owner?.kind==="dsb-tv"){if(nearTv())act();return;}tap?.(hit,p);};
+    const tap=hooks.onTap;hooks.onTap=(hit,p)=>{if(hit?.owner?.kind==="big-terminal"&&bigRoom()){bigMenu.open();return;}if(hit?.owner?.kind==="ink-kiosk"&&inkRoom()){inkMenu.open();return;}if(hit?.owner?.kind==="rulers-kiosk"&&shopRoom()){shopMenu.open();return;}if(hit?.owner?.kind==="maxis-media"&&maxisRoom()){maxisMedia.open();return;}if(hit?.owner?.kind==="dsb-tv"){if(nearTv())act();return;}tap?.(hit,p);};
     tv=BL.dsbTv.create(noderunner.screen,ctx.renderer,{play:()=>noderunner.audio?.play(),radioStatus:()=>noderunner.audio?.status||"Press Play radio to enable sound",onOpen:open=>{pilot.setActive(!open);pilot.controls.reset();input.reset();}});
     nature=BL.dsbNature.create({root:exterior,land,renderer:ctx.renderer,camera,weather});
     detail=BL.dsbExterior.create({root:exterior,land,nature});
@@ -159,6 +163,8 @@
         if(inkPick){input.remove(inkPick.screen);inkPick=null;}
         requestInkLayout();
         if(inkRoom()){inkMenu?.enter();inkPick=inkRoom();input.add(inkPick.screen,{kind:"ink-kiosk"});}else inkMenu?.leave();
+        if(bigPick){input.remove(bigPick.screen);bigPick=null;}
+        if(bigRoom()){bigMenu?.enter();bigPick=bigRoom();input.add(bigPick.screen,{kind:"big-terminal"});}else bigMenu?.leave();
         scene.renderOpts=lighting||renderOpts;hud.setAreaLabel(label);
       }
     });
@@ -168,6 +174,7 @@
     shopTools=document.createElement("div");shopTools.className="rulers-tools";shopTools.hidden=true;
     const shopButton=document.createElement("button");shopButton.type="button";shopButton.textContent="Browse Without Rulers";shopButton.onclick=()=>shopMenu.open();shopTools.appendChild(shopButton);document.body.appendChild(shopTools);
     inkMenu=BL.proofOfInkMenu.create({onOpen:on=>{pilot.setActive(!on&&!interiors.transitioning);pilot.controls.reset();input.reset();crew.setWeaponTrigger(false);}});
+    bigMenu=BL.bigBitcoinMenu.create({action:context,onOpen:on=>{pilot.setActive(!on&&!interiors.transitioning);pilot.controls.reset();input.reset();crew.setWeaponTrigger(false);}});
     inkTools=document.createElement("div");inkTools.className="ink-tools";inkTools.hidden=true;
     const inkButton=document.createElement("button");inkButton.type="button";inkButton.textContent="Browse Proof of Ink";inkButton.onclick=()=>inkMenu.open();inkTools.appendChild(inkButton);document.body.appendChild(inkTools);
     inkLayoutObserver=new ResizeObserver(requestInkLayout);
@@ -178,8 +185,9 @@
     maxisButton=document.createElement("button");maxisButton.type="button";maxisButton.textContent="MAXIS MEDIA";maxisButton.hidden=true;maxisButton.onclick=()=>maxisMedia.open();studioTools.appendChild(maxisButton);
     document.body.appendChild(studioTools);
     studioReview=false;maxisReview=false;shopReview=false;shopMenuReview=0;inkReview=false;inkMenuReview=0;
+    bigReview=false;bigMenuReview=0;
     scene.renderOpts=renderOpts;
-    Object.assign(scene,{root,camera,input,setInterior:weather.setInterior,debug:{weather:weather.shared,renderOpts,daylight:clock,camera,pilot,crew,controls:pilot.controls,hud,dsb:{land,water,weather,nature,detail,enrichment,noderunner,tv,spaces,maxisMedia,shopMenu,inkMenu,interiors,exterior,setInterior:weather.setInterior,gate,avatar,get phase(){return interiors?.active?"interior":"land";},overview:OVERVIEW}}});
+    Object.assign(scene,{root,camera,input,setInterior:weather.setInterior,debug:{weather:weather.shared,renderOpts,daylight:clock,camera,pilot,crew,controls:pilot.controls,hud,dsb:{land,water,weather,nature,detail,enrichment,noderunner,tv,spaces,maxisMedia,shopMenu,inkMenu,bigMenu,interiors,exterior,setInterior:weather.setInterior,gate,avatar,get phase(){return interiors?.active?"interior":"land";},overview:OVERVIEW}}});
     walk();
     if(DEBUG&&params.get("view")==="clearing") {
       const p=land.marks.clearing;
@@ -193,6 +201,7 @@
     if(DEBUG&&(params.get("view")==="maxis-door"||params.get("interior")==="maxis-club"))interiors.review("maxis-club",params.get("interior")==="maxis-club");
     if(DEBUG&&(params.get("view")==="rulers-door"||params.get("interior")==="without-rulers"))interiors.review("without-rulers",params.get("interior")==="without-rulers");
     if(DEBUG&&(params.get("view")==="ink-door"||params.get("interior")==="proof-of-ink"))interiors.review("proof-of-ink",params.get("interior")==="proof-of-ink");
+    if(DEBUG&&(params.get("view")==="big-door"||params.get("interior")==="big-bitcoin"))interiors.review("big-bitcoin",params.get("interior")==="big-bitcoin");
     if(DEBUG&&(params.get("view")==="studio-door"||params.get("interior")==="dsb-studio"))interiors.review("dsb-studio",params.get("interior")==="dsb-studio");
   };
   const update=(dt,time)=>{
@@ -223,13 +232,20 @@
       if(view==="ink-seat")sit(room.seats[1]);else if(room.reviews[view])pilot.navigate(room.reviews[view]);
       if(view==="ink-catalog"){pilot.navigate(room.reviews["ink-kiosk"]);inkMenuReview=1;}
     }
+    if(DEBUG&&!bigReview&&bigRoom()&&!interiors.transitioning){
+      bigReview=true;const room=bigRoom(),view=params.get("view");
+      if(view==="big-seat")sit(room.seats[0]);else if(room.reviews[view])pilot.navigate(room.reviews[view]);
+      if(view==="big-info"){pilot.navigate(room.reviews["big-terminal"]);bigMenuReview=1;}
+    }
+    bigMenu.layout();
     inkTools.hidden=!inkRoom()||interiors.transitioning||inkMenu.isOpen||nearInk();
     shopTools.hidden=!shopRoom()||interiors.transitioning||shopMenu.isOpen;
     studioTools.hidden=!(studioRoom()||maxisRoom())||interiors.transitioning||spaces.isOpen||maxisMedia.isOpen;maxisButton.hidden=!maxisRoom();
     if(maxisRoom())maxisMedia.setGain(maxisRoom().gainAt(avatar.root.position.x,avatar.root.position.z),weather.shared.state.muted);
     spaces.setMuted(weather.shared.state.muted);
     Object.assign(before,avatar.root.position);before.y+=avatar.bodyHeight/2-avatar.baseY;
-    if(!gate.isOpen&&!tv.isOpen&&!spaces.isOpen&&!maxisMedia.isOpen&&!shopMenu.isOpen&&!inkMenu.isOpen&&!interiors.transitioning){pilot.readInput(dt);if(!overview&&!interiors.transitioning)crew.update(dt,time);pilot.update(dt);}
+    if(!gate.isOpen&&!tv.isOpen&&!spaces.isOpen&&!maxisMedia.isOpen&&!shopMenu.isOpen&&!bigMenu.isOpen&&!inkMenu.isOpen&&!interiors.transitioning){pilot.readInput(dt);if(!overview&&!interiors.transitioning)crew.update(dt,time);pilot.update(dt);}
+    if(bigMenuReview>0){bigMenuReview=Math.max(0,bigMenuReview-dt);if(bigMenuReview===0&&bigRoom())bigMenu.open();}
     if(inkMenuReview>0){inkMenuReview=Math.max(0,inkMenuReview-dt);if(inkMenuReview===0&&inkRoom())inkMenu.open();}
     if(shopMenuReview>0){shopMenuReview=Math.max(0,shopMenuReview-dt);if(shopMenuReview===0&&shopRoom())shopMenu.open();}
     if(studioRoom()&&!interiors.transitioning){
@@ -242,17 +258,18 @@
     if(!interiors.active&&!interiors.transitioning&&!overview&&gate.traverse(before,after,avatar.bodyRadius,1))return;
     detail.update(renderOpts.lampFactor);weather.update(dt,renderOpts);noderunner.update(dt,avatar.root.position,weather.state,renderOpts.lampFactor);tv.update();if(!interiors.active){nature.update(dt,time);enrichment.update(time,renderOpts.lampFactor);}
     const door=interiors.target(avatar.root.position);
-    const studioLabel=seatRoom()?(avatar.camp.seat?"Stand up":nearSpaces()?"Open DSB Spaces":nearMaxis()?"Open MAXIS MEDIA":nearShop()?"Browse Without Rulers":nearInk()?"Browse Proof of Ink":seatNear()?((shopRoom()||inkRoom())?"Sit · browse corner":maxisRoom()?"Sit · view screen":"Sit · view stage"):null):null;
+    const studioLabel=seatRoom()?(avatar.camp.seat?"Stand up":nearSpaces()?"Open DSB Spaces":nearMaxis()?"Open MAXIS MEDIA":nearShop()?"Browse Without Rulers":nearInk()?"Browse Proof of Ink":nearBig()?"BIG BITCOIN Info":seatNear()?(bigRoom()?"Sit":(shopRoom()||inkRoom())?"Sit · browse corner":maxisRoom()?"Sit · view screen":"Sit · view stage"):null):null;
     const label=studioLabel|| (nearTv()?"Open DSB TV":door?`${interiors.active?"Exit":"Enter"} ${door.building.name}`:"Dial Portara → Bifrost");
     if(context.textContent!==label)context.textContent=label;
     context.classList.toggle("ink-context-browse",!!inkRoom()&&studioLabel==="Browse Proof of Ink");
     if(inkLayoutPending&&inkRoom()){inkLayoutPending=false;layoutInkBrowse();}
-    context.hidden=!!avatar.camp.seat||overview||interiors.transitioning||gate.isOpen||tv.isOpen||spaces.isOpen||maxisMedia.isOpen||shopMenu.isOpen||inkMenu.isOpen||(!studioLabel&&!nearTv()&&!door&&(interiors.active||!nearGate()));fx.update(dt);
+    context.hidden=!!avatar.camp.seat||overview||interiors.transitioning||gate.isOpen||tv.isOpen||spaces.isOpen||maxisMedia.isOpen||shopMenu.isOpen||inkMenu.isOpen||bigMenu.isOpen||(!studioLabel&&!nearTv()&&!door&&(interiors.active||!nearGate()));fx.update(dt);
   };
   const leave=()=>{
     if(avatar)world.pilot=avatar.traits.name;
     inkLayoutObserver.disconnect();inkLayoutObserver=null;window.removeEventListener("resize",requestInkLayout);
     context.classList.remove("ink-context-browse");
+    bigMenu.dispose();bigMenu=null;if(bigPick){input.remove(bigPick.screen);bigPick=null;}
     inkMenu.dispose();inkMenu=null;inkTools.remove();inkTools=null;if(inkPick){input.remove(inkPick.screen);inkPick=null;}
     shopMenu.dispose();shopMenu=null;shopTools.remove();shopTools=null;if(shopPick){input.remove(shopPick.screen);shopPick=null;}
     maxisMedia.dispose();maxisMedia=null;if(maxisPick){maxisPick.setMedia(false);input.remove(maxisPick.screen);input.remove(maxisPick.console);maxisPick=null;}
@@ -264,6 +281,6 @@
     lamps.length=0;renderOpts.lightCount=0;clock=null;water=renderOpts.dsbWater=null;
     scene.setInterior=scene.debug=scene.input=null;land=avatar=crew=pilot=gate=fx=hud=input=null;return {targets};
   };
-  Object.assign(scene,{enter,update,leave,onKey:e=>{if(inkMenu?.isOpen){if(e.key==="Escape")inkMenu.close();return true;}if(shopMenu?.isOpen){if(e.key==="Escape")shopMenu.close();return true;}if(maxisMedia?.isOpen){if(e.key==="Escape")maxisMedia.close();return true;}if(spaces?.isOpen){if(e.key==="Escape")spaces.close();return true;}if(seatRoom()&&(e.key==="1"||e.key==="2"))return pilot.weaponMode(Number(e.key));if(seatRoom()&&e.key.toLowerCase()==="v")return pilot.weaponAction("weapon-fire");if(e.key.toLowerCase()==="t"&&seatRoom()){crew.throwTomato();return true;}if(tv?.isOpen){if(e.key==="Escape")tv.close();return true;}if(e.key.toLowerCase()==="m"){mute();return true;}if(e.key==="Escape"&&!gate.isOpen){overviewView();return true;}return false;},overlay:dt=>{const dpr=Math.min(devicePixelRatio||1,2),w=Math.round(overlayCanvas.clientWidth*dpr),h=Math.round(overlayCanvas.clientHeight*dpr);if(overlayCanvas.width!==w||overlayCanvas.height!==h){overlayCanvas.width=w;overlayCanvas.height=h;}overlayCanvas.getContext("2d").setTransform(dpr,0,0,dpr,0,0);fx.drawOverlay(dt,drawExtra);},stats:()=>({targets:input.targetCount,tweens:0}),liveGeometry:set=>{if(avatar)set.add(avatar.headOpen).add(avatar.headClosed);},onDonation:()=>{},onLootCleared:()=>{}});
+  Object.assign(scene,{enter,update,leave,onKey:e=>{if(bigMenu?.isOpen){if(e.key==="Escape")bigMenu.close();return true;}if(inkMenu?.isOpen){if(e.key==="Escape")inkMenu.close();return true;}if(shopMenu?.isOpen){if(e.key==="Escape")shopMenu.close();return true;}if(maxisMedia?.isOpen){if(e.key==="Escape")maxisMedia.close();return true;}if(spaces?.isOpen){if(e.key==="Escape")spaces.close();return true;}if(seatRoom()&&(e.key==="1"||e.key==="2"))return pilot.weaponMode(Number(e.key));if(seatRoom()&&e.key.toLowerCase()==="v")return pilot.weaponAction("weapon-fire");if(e.key.toLowerCase()==="t"&&seatRoom()){crew.throwTomato();return true;}if(tv?.isOpen){if(e.key==="Escape")tv.close();return true;}if(e.key.toLowerCase()==="m"){mute();return true;}if(e.key==="Escape"&&!gate.isOpen){overviewView();return true;}return false;},overlay:dt=>{const dpr=Math.min(devicePixelRatio||1,2),w=Math.round(overlayCanvas.clientWidth*dpr),h=Math.round(overlayCanvas.clientHeight*dpr);if(overlayCanvas.width!==w||overlayCanvas.height!==h){overlayCanvas.width=w;overlayCanvas.height=h;}overlayCanvas.getContext("2d").setTransform(dpr,0,0,dpr,0,0);fx.drawOverlay(dt,drawExtra);},stats:()=>({targets:input.targetCount,tweens:0}),liveGeometry:set=>{if(avatar)set.add(avatar.headOpen).add(avatar.headClosed);},onDonation:()=>{},onLootCleared:()=>{}});
   BL.scenes.dsb=scene;
 })();
