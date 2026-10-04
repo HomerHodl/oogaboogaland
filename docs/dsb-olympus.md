@@ -15,8 +15,9 @@ untouched. No chapel.
 - **The sacred way.** The existing trail gets stone steps where it is steep (112), a low wall or rope posts on the
   drop side, ten lanterns that light with the island's lamps, three wayside shrines, and a lookout with a bench and a
   signpost at the first switchback.
-- **Spring and waterfall.** A kerbed spring at (−32, −31) feeds a stream that runs down to the sea in five falls with pools and foam. It uses the renderer's existing animated water faces. The trail crosses it twice on
-  arched stone bridges.
+- **Spring and waterfall.** A kerbed spring at (−32, −31) feeds a stream that runs down to the sea in five falls with
+  pools and foam. It uses the renderer's existing animated water faces. The trail crosses it twice on arched stone
+  bridges.
 - **Windmills.** Two, at (−14, −58) and (−24, −66), on the back of the mountain away from the trail. The sails turn.
 
 ## How it sits in the scene
@@ -29,14 +30,17 @@ detail layer's; `olympus.clearSegment(...)` joined to the town's in the walk's c
 shrines, mills and bridge parapets are solid; `olympus.supportAt(x, z, ground)` in `groundAt`, so the bridges are
 walked over; dispose in `leave`. `__ooga.dsb.olympus` carries `stats` and `bridges`.
 
-`BL.dsbOlympus.reserved(x, z, r)` is true in the stream's course and on the mill footings. `dsb-nature.js` and
-`dsb-enrichment.js` each ask it once, so nothing is planted in the water. Planting elsewhere is unchanged.
+`BL.dsbOlympus.reserved(x, z, r)` is true in the stream's course and on the mill footings. The planting layers run
+exactly as they did before this layer existed. Once the mountain is built it calls `nature.rehome(reserved, room)` and
+`enrichment.rehome(reserved, room)`: each plant or ground piece standing in a reserved spot moves to ground
+close by that is free of the other layers' props and of every wall and crag here, and keeps its index in its layer's
+lists. 145 nature plants (grass, meadow, shrubs, rocks, ground cover, two cypresses) and four enrichment pieces move;
+the other 10,684 plants and 1,897 pieces stand where they stood, and both totals are unchanged.
 
 Quality: rocks, crops and small stones carry a tier and are hidden at lower quality (844 nodes visible at high, 787
 at medium, 574 at low). The module adds about 218,000 triangles in 32 geometries at high.
 
-Three props of the detail layer (two rocks and a trail marker) still stand in the stream's corridor. That layer was
-left alone.
+One rock of the detail layer still stands at the stream's mouth. That layer was left alone.
 
 ## Checked
 
@@ -45,5 +49,8 @@ Headless, on the built page. WebGL: every trail segment and every door approach 
 lifted 0.95 m at its crown; a terrace wall and a mill stop the walker; the three quality tiers; two re-entries with
 identical node, geometry, GPU record and target counts; no page errors. Canvas 2D boots and paints. Unit targets
 `exterior-unit`, `big-unit`, `maxis-unit`, `ink-unit`, `rulers-unit`, `stackchain-unit` and `dsb-menus-unit` pass.
+
+In Node, against the layers built without this one: the nature, detail and enrichment placements are identical entry
+for entry except the 149 that move, and every instance row matches its placement.
 
 Not run: the browser suite, and any real GPU or phone, so frame rate on a device is unmeasured.

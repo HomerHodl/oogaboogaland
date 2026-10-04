@@ -116,7 +116,7 @@
 
   const create = ({ root, land, nature, detail, enrichment, renderer }) => {
     const group = S.createNode(); S.addChild(root, group);
-    const rand = BL.math.mulberry32(51039), h = land.heightAt, stats = { crags: 0, terraces: 0, crops: 0, steps: 0, lanterns: 0, stones: 0, solids: 0 }, lamps = [], wheels = [], thin = [];
+    const rand = BL.math.mulberry32(51039), h = land.heightAt, stats = { crags: 0, terraces: 0, crops: 0, steps: 0, lanterns: 0, stones: 0, solids: 0, moved: 0 }, lamps = [], wheels = [], thin = [];
     const add = (geometry, x, y, z, yaw = 0, scale = 1, hidden = true) => {
       const n = S.createNode({ geometry, position: { x, y, z }, rotation: { x: 0, y: yaw, z: 0 }, scale: { x: scale, y: scale, z: scale }, sightHidden: hidden });
       S.addChild(group, n); return n;
@@ -128,10 +128,11 @@
     };
     const lines = [...land.lanes, land.waterfront];
     // What the earlier layers planted and placed: a wall or a crag leaves room for it.
+    // Anything standing in the stream's course or under a mill is left out: it is moved once all of this is built.
     const taken = [];
-    for (const p of nature.placements) if (p.kind === "olive" || p.kind === "cypress") taken.push(p.x, p.z, 0.9 * p.scale);
+    for (const p of nature.placements) if ((p.kind === "olive" || p.kind === "cypress") && !reserved(p.x, p.z, p.scale)) taken.push(p.x, p.z, 0.9 * p.scale);
     for (const p of detail.placements) if (p.r && p.kind !== "grass" && p.kind !== "flowers") taken.push(p.x, p.z, Math.min(p.r, 1.3));
-    for (const p of enrichment.placements) if (p.r && p.region !== "foam") taken.push(p.x, p.z, Math.min(p.r, 1.3));
+    for (const p of enrichment.placements) if (p.r && p.region !== "foam" && !reserved(p.x, p.z, p.r)) taken.push(p.x, p.z, Math.min(p.r, 1.3));
     const open = (x, z, r) => { for (let i = 0; i < taken.length; i += 3) if (Math.hypot(x - taken[i], z - taken[i + 1]) < r + taken[i + 2]) return false; return true; };
     // Solids are oriented boxes: x, z, half width, half depth, cos, sin. A grid of cells indexes them.
     const solids = [], grid = new Map();
@@ -368,6 +369,10 @@
       if (renderer.quality !== quality) { quality = renderer.quality; const cut = quality === "low" ? 1 : quality === "medium" ? 2 : 3; for (let i = 0; i < thin.length; i++) thin[i].visible = thin[i].tier < cut; }
     };
     const dispose = () => { S.removeChild(root, group); while (group.children.length) S.removeChild(group, group.children[group.children.length - 1]); lamps.length = wheels.length = thin.length = solids.length = taken.length = bridges.length = 0; grid.clear(); };
+    // What the earlier layers planted in the stream's course or under a mill moves to free ground close by, clear of
+    // their own props and of every wall and crag here. Nothing else of theirs changes.
+    const room = (x, z, r) => open(x, z, r) && !inside(x, z, r);
+    stats.moved = nature.rehome(reserved, room) + enrichment.rehome(reserved, room);
     update(0, 0);
     return { group, stats, bridges, update, clearSegment, supportAt, inside, dispose };
   };

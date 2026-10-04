@@ -21,7 +21,6 @@
       const p={kind,x,y,z,yaw,sx,sy,sz,gx,gz,region,priority};batches.get(kind).list.push(p);placements.push(p);return p;
     };
     const reserved=(x,z,r,harbor=false)=>{
-      if(BL.dsbOlympus.reserved(x,z,r))return true;
       if(distance(land.trail,x,z)<2.9+r||distance(land.waterfront,x,z)<3.65+r)return true;
       for(const l of land.lanes)if(distance(l,x,z)<1.85+r)return true;
       if(distance(BEACH_ROUTE,x,z)<1.15+r||distance(RUIN_ROUTE,x,z)<1.2+r)return true;
@@ -202,8 +201,23 @@
       if(changed||glow!==lastGlow){lastGlow=glow;for(const n of glows){n.glow=glow;for(let i=0;i<n.instanceCount;i++)n.instanceData[i*20+16]=glow;n.instanceVersion++;}}
       const wash=Math.floor(time*6);if(tier!=="low"&&wash!==lastWash){lastWash=wash;const f=fields[fields.length-1],a=f.node.instanceData,width=.65+.35*Math.sin(time*1.2);for(let i=0;i<f.node.instanceCount;i++){const o=i*20,len=Math.hypot(a[o],a[o+2]),w=.065+width*.1;a[o+8]=-a[o+2]/len*w;a[o+10]=a[o]/len*w;}f.node.instanceVersion++;}
     };
+    // As the nature layer's: a ground piece standing where a later layer needs room moves to free ground close by.
+    const rehome=(blocked,free)=>{
+      const rng=BL.math.mulberry32(104039),count=placements.length;let moved=0;
+      for(let i=0;i<count;i++){
+        const old=placements[i];if(!old.r||old.bottom===undefined||!blocked(old.x,old.z,old.r))continue;
+        const f=fields.find(f=>f.kind===old.kind),j=f.list.indexOf(old);
+        for(let n=0;n<160;n++){
+          const a=rng()*Math.PI*2,d=old.r+2+n*.15+rng()*2,x=old.x+Math.cos(a)*d,z=old.z+Math.sin(a)*d;
+          if(blocked(x,z,old.r)||!free(x,z,old.r))continue;
+          const p=ground(old.kind,x,z,old.r,old.yaw,old.sx,old.region,old.priority);if(!p)continue;
+          placements.pop();f.list.pop();Object.assign(old,p);matrix(old,f.source,j*20);moved++;break;
+        }
+      }
+      lastX=Infinity;return moved;
+    };
     const dispose=()=>{if(disposed)return;disposed=true;S.removeChild(root,group);while(group.children.length)S.removeChild(group,group.children[group.children.length-1]);placements.length=fields.length=glows.length=surfaces.length=0;batches.clear();stats.total=stats.visible=0;};
-    return {group,placements,fields,surfaces,stats,reserved,update,dispose,beachRoute:BEACH_ROUTE,ruinRoute:RUIN_ROUTE};
+    return {group,placements,fields,surfaces,stats,reserved,rehome,update,dispose,beachRoute:BEACH_ROUTE,ruinRoute:RUIN_ROUTE};
   };
   BL.dsbEnrichment={create,REVIEWS};
 })();
