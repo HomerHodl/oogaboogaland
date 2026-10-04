@@ -135,13 +135,14 @@
         if(add(kind,x,z,scale,yaw))count++;
       }
     }
+    const row=(source,i,p)=>{
+      const o=i*20,c=Math.cos(p.yaw)*p.scale,s=Math.sin(p.yaw)*p.scale;
+      source[o]=c;source[o+1]=p.gx*c-p.gz*s;source[o+2]=-s;source[o+5]=p.scale;source[o+8]=s;source[o+9]=p.gx*s+p.gz*c;source[o+10]=c;
+      source[o+12]=p.x;source[o+13]=p.y;source[o+14]=p.z;source[o+15]=1;
+    };
     for(const [kind,spec] of Object.entries(TYPES)) {
       const list=placements.filter(p=>p.kind===kind),source=new Float32Array(list.length*20);
-      for(let i=0;i<list.length;i++) {
-        const p=list[i],o=i*20,c=Math.cos(p.yaw)*p.scale,s=Math.sin(p.yaw)*p.scale;
-        source[o]=c;source[o+1]=p.gx*c-p.gz*s;source[o+2]=-s;source[o+5]=p.scale;source[o+8]=s;source[o+9]=p.gx*s+p.gz*c;source[o+10]=c;
-        source[o+12]=p.x;source[o+13]=p.y;source[o+14]=p.z;source[o+15]=1;
-      }
+      for(let i=0;i<list.length;i++)row(source,i,list[i]);
       // A visit-local wrapper owns sway. Shared immutable vertices/faces survive scene re-entry.
       const geometry={...BL.dressing.mediterranean(kind),sway:0};
       const node=S.createNode({geometry,instanceData:new Float32Array(source.length),instanceCount:0,instanceVersion:0,fixedInstanceCapacity:true,sightHidden:true,cullSphere:new Float32Array([0,20,0,140])});
@@ -176,8 +177,26 @@
       flock.node.visible=stats.gulls>0;flock.node.instanceCount=stats.gulls;
       if(stats.gulls)flock.update(time);
     };
+    // A later layer that needs ground cleared (Olympus' stream and mills) moves what grows where `blocked` says to
+    // ground close by that it calls `free`. Each plant keeps its place in the lists, so nothing else on the island
+    // shifts and the tiers keep theirs.
+    const rehome=(blocked,free)=>{
+      const rng=mulberry32(SEED^fnv1a("rehome"));let moved=0;
+      for(let i=0;i<placements.length;i++) {
+        const old=placements[i],r=TYPES[old.kind].r*old.scale;
+        if(old.architectural||!blocked(old.x,old.z,r))continue;
+        const at=occupied.findIndex(o=>o.x===old.x&&o.z===old.z);if(at>=0)occupied.splice(at,1);
+        for(let n=0;n<160;n++) {
+          const a=rng()*Math.PI*2,d=2+n*.15+rng()*2,x=old.x+Math.cos(a)*d,z=old.z+Math.sin(a)*d;
+          if(blocked(x,z,r)||!free(x,z,r)||!add(old.kind,x,z,old.scale,old.yaw))continue;
+          const p=placements.pop(),f=fields.find(f=>f.kind===p.kind),j=f.list.indexOf(old);
+          placements[i]=p;f.list[j]=p;row(f.source,j,p);moved++;break;
+        }
+      }
+      lastX=Infinity;return moved;
+    };
     const dispose=()=>{if(disposed)return;disposed=true;S.removeChild(root,group);while(group.children.length)S.removeChild(group,group.children[group.children.length-1]);placements.length=fields.length=occupied.length=0;stats.total=stats.visible=stats.gulls=0;};
-    return {group,placements,fields,stats,allowed,update,dispose};
+    return {group,placements,fields,stats,allowed,rehome,update,dispose};
   };
   BL.dsbNature={create,SEED};
 })();

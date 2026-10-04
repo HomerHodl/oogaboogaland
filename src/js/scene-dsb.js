@@ -51,7 +51,7 @@
     atmosphere?.lights(renderOpts);
   };
   const scene={id:"dsb",renderOpts};
-  let atmosphere=null,town=null,entrance=null;
+  let atmosphere=null,town=null,entrance=null,olympus=null;
   let root,camera,land,pilot,crew,avatar,hud,input,fx,gate,world,go,overlayCanvas,panel,context,oldSheet,leaving=false,overview=false;
   const drawExtra=()=>{
     const overlay=overlayCanvas.getContext("2d");entrance?.overlay(overlay,overlayCanvas.clientWidth,overlayCanvas.clientHeight);
@@ -136,7 +136,7 @@
     const shared={
       tomatoContact:(x,y,z,p)=>seatRoom()?.tomatoContact(x,y,z,p,avatar.camp.seat),
       onTomatoImpact:p=>{if(!seatRoom())return;for(let i=0;i<7;i++){const a=i*Math.PI*2/7;fx.spawnParticle(splatGeometry,p.x,p.y,p.z,Math.cos(a)*1.8,.8+(i%3)*.3,Math.sin(a)*1.8,.4,3,5,interiors.groundAt(p.x,p.z)+.06);}},
-      root,input,hud,game:ctx.game,world:{level:0,weapons:new Map(),magazine:{owned:false,count:0,ammo:0,carrier:null}},playerName:name,reloadPolicy:{near:()=>false,available:()=>false},fx,viewYaw:Math.PI,groundAt:(x,z)=>interiors?interiors.groundAt(x,z):land.groundAt(x,z),walkable:(ax,az,bx,bz,y,h,a)=>(interiors?interiors.walkable(ax,az,bx,bz,y,h,a):land.walkable(ax,az,bx,bz,y,h,a))&&(!noderunner||interiors?.active||noderunner.clearSegment(ax,az,bx,bz,y,h,a))&&(!town||interiors?.active||town.clearSegment(ax,az,bx,bz,y,h,a))};
+      root,input,hud,game:ctx.game,world:{level:0,weapons:new Map(),magazine:{owned:false,count:0,ammo:0,carrier:null}},playerName:name,reloadPolicy:{near:()=>false,available:()=>false},fx,viewYaw:Math.PI,groundAt:(x,z)=>{const y=interiors?interiors.groundAt(x,z):land.groundAt(x,z);return olympus&&!interiors?.active?olympus.supportAt(x,z,y):y;},walkable:(ax,az,bx,bz,y,h,a)=>(interiors?interiors.walkable(ax,az,bx,bz,y,h,a):land.walkable(ax,az,bx,bz,y,h,a))&&(!noderunner||interiors?.active||noderunner.clearSegment(ax,az,bx,bz,y,h,a))&&(!town||interiors?.active||town.clearSegment(ax,az,bx,bz,y,h,a))&&(!olympus||interiors?.active||olympus.clearSegment(ax,az,bx,bz,y,h,a))};
     crew=shared.crew=BL.crew.create(shared);pilot.bind(shared);avatar=crew.cavemen.get(name);
     Object.assign(avatar.root.position,{x:-45,y:land.heightAt(-45,-43)+avatar.baseY,z:-43});avatar.root.rotation.y=0;
     Object.assign(hooks,pilot.hooks);hud.onAction(action);hud.onPreset(()=>overviewView());
@@ -158,6 +158,7 @@
     detail=BL.dsbExterior.create({root:exterior,land,nature});
     enrichment=BL.dsbEnrichment.create({root:exterior,land,nature,detail,renderer:ctx.renderer,camera});
     town=BL.dsbTown.create({root:exterior,land,nature,detail,enrichment});
+    olympus=BL.dsbOlympus.create({root:exterior,land,nature,detail,enrichment,renderer:ctx.renderer});
     interiors=BL.dsbInteriors.create({root,exterior,land,weather,
       relocate:(position,yaw,dist)=>{overview=false;pilot.setActive(true);if(pilot.player!==avatar)pilot.possess(avatar);pilot.navigate({position,yaw,pitch:.22,dist});pilot.setActive(!interiors?.transitioning);},
       lock:on=>{pilot.setActive(!on);pilot.controls.reset();input.reset();},
@@ -201,7 +202,7 @@
     studioReview=false;maxisReview=false;shopReview=false;shopMenuReview=0;inkReview=false;inkMenuReview=0;
     bigReview=false;bigMenuReview=0;memeReview=false;contextReview=false;stackchainReview=false;
     scene.renderOpts=renderOpts;
-    Object.assign(scene,{root,camera,input,setInterior:weather.setInterior,debug:{get audio(){return entrance?.audio;},weather:weather.shared,renderOpts,daylight:clock,camera,pilot,crew,controls:pilot.controls,hud,dsb:{land,water,weather,nature,detail,enrichment,get town(){return town;},get atmosphere(){return atmosphere;},get entrance(){return entrance;},noderunner,tv,spaces,maxisMedia,shopMenu,inkMenu,bigMenu,memeMenu,stackchainMenu,menuZone,openVenue,interiors,exterior,setInterior:weather.setInterior,gate,avatar,get phase(){return interiors?.active?"interior":"land";},overview:OVERVIEW}}});
+    Object.assign(scene,{root,camera,input,setInterior:weather.setInterior,debug:{get audio(){return entrance?.audio;},weather:weather.shared,renderOpts,daylight:clock,camera,pilot,crew,controls:pilot.controls,hud,dsb:{land,water,weather,nature,detail,enrichment,get town(){return town;},get atmosphere(){return atmosphere;},get entrance(){return entrance;},get olympus(){return olympus;},noderunner,tv,spaces,maxisMedia,shopMenu,inkMenu,bigMenu,memeMenu,stackchainMenu,menuZone,openVenue,interiors,exterior,setInterior:weather.setInterior,gate,avatar,get phase(){return interiors?.active?"interior":"land";},overview:OVERVIEW}}});
     walk();
     if(ctx.from==="bifrost"||DEBUG&&params.has("entrance"))entrance=BL.dsbEntrance.create({root,camera,avatar,pilot,fx,exterior,scene,renderOpts,land,gate,hold:on=>{overview=on;},muted:()=>weather.shared.state.muted,onArrive:walk,onLeave:()=>{if(leaving)return;world.pilot=avatar.traits.name;leaving=go("bifrost");}});
     if(DEBUG&&params.get("view")==="clearing") {
@@ -297,7 +298,7 @@
     }
     Object.assign(after,avatar.root.position);after.y+=avatar.bodyHeight/2-avatar.baseY;
     if(!interiors.active&&!interiors.transitioning&&!overview&&gate.traverse(before,after,avatar.bodyRadius,1))return;
-    detail.update(renderOpts.lampFactor);weather.update(dt,renderOpts);atmosphere.update(time,renderOpts,!interiors.active);noderunner.update(dt,avatar.root.position,weather.state,renderOpts.lampFactor);tv.update();if(!interiors.active){nature.update(dt,time);enrichment.update(time,renderOpts.lampFactor);}
+    detail.update(renderOpts.lampFactor);olympus.update(dt,renderOpts.lampFactor);weather.update(dt,renderOpts);atmosphere.update(time,renderOpts,!interiors.active);noderunner.update(dt,avatar.root.position,weather.state,renderOpts.lampFactor);tv.update();if(!interiors.active){nature.update(dt,time);enrichment.update(time,renderOpts.lampFactor);}
     const door=interiors.target(avatar.root.position);
     const nearbySeat=seatRoom()?seatNear():null,zone=menuZone();
     const studioLabel=avatar.camp.seat?"Stand up":nearSpaces()?"Open DSB Spaces":nearbySeat?"Sit":!door&&zone?zone.label:null;
@@ -320,7 +321,7 @@
     spaces.dispose();spaces=null;studioTools.remove();studioTools=maxisButton=null;
     input.remove(noderunner.screenFace);tv.dispose();tv=null;interiors.dispose();interiors=null;exterior=null;scene.renderOpts=renderOpts;
     noderunner.dispose();noderunner=null;
-    entrance?.dispose();entrance=null;town.dispose();town=null;atmosphere.dispose();atmosphere=null;enrichment.dispose();enrichment=null;detail.dispose();detail=null;nature.dispose();nature=null;weather.dispose();weather=null;gate.dispose();pilot.dispose();crew.dispose();fx.dispose();const targets=input.targetCount;input.dispose();hud.el.sheet.hidden=oldSheet;hud.dispose();context.hidden=true;
+    entrance?.dispose();entrance=null;olympus.dispose();olympus=null;town.dispose();town=null;atmosphere.dispose();atmosphere=null;enrichment.dispose();enrichment=null;detail.dispose();detail=null;nature.dispose();nature=null;weather.dispose();weather=null;gate.dispose();pilot.dispose();crew.dispose();fx.dispose();const targets=input.targetCount;input.dispose();hud.el.sheet.hidden=oldSheet;hud.dispose();context.hidden=true;
     document.body.classList.remove("dsb-active","dsb-studio-active","maxis-club-active");while(root.children.length)S.removeChild(root,root.children[root.children.length-1]);
     lamps.length=0;renderOpts.lightCount=0;clock=null;water=renderOpts.dsbWater=null;
     scene.setInterior=scene.debug=scene.input=null;land=avatar=crew=pilot=gate=fx=hud=input=null;return {targets};
