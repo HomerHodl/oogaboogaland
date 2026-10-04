@@ -156,7 +156,8 @@ vec3 dsbWaterShade(out vec3 bright) {
   float caustic=clamp(1.0-curvature*7.0,.55,1.7);
   vec3 bottom=vec3(.68,.63,.43)*sand*(1.0+(caustic-1.0)*daylight*exp(-depth*.22));
   vec3 body=mix(vec3(.012,.22,.32),bottom,transmission)*lightLevel;
-  vec3 reflection=uSky*(.8+.45*max(r.y,0.0));
+  // PROTOTYPE: grazing rays reflect the horizon, so far water brightens into the sky pass's sea instead of ending navy.
+  vec3 reflection=mix(uFog,uSky*(.8+.45*max(r.y,0.0)),smoothstep(0.03,0.42,r.y));
   float fres=dsbFresnel(max(dot(v,n),0.0));
   float glint=pow(max(dot(r,uLightDir),0.0),mix(180.0,65.0,uDSBEnvironment.y))*daylight*uDSBEnvironment.z;
   float foam=(1.0-smoothstep(.1,.85,depth))*smoothstep(.51,.63,a.a)*.22*uDSBEnvironment.w;

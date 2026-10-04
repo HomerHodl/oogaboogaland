@@ -1357,6 +1357,8 @@ void main() {
     const activeRecords = [];
     let activeCount = 0;
     let dsbGPU=null;
+    // PROTOTYPE: a scene at sea level can switch off the hub's dropped haze horizon (`hazeDrop: 0`).
+    let skyHaze=1;
     const res = { programs: {}, fbo: null, shadow: null, bloom: null, quadVao: null, matrixTexture: null };
     const mirror = { node: null, record: null, geometry: null, program: null, programReady: false, fb: null, tex: null, depth: null, width: 0, height: 0, renderWidth: 0, renderHeight: 0, portal: false, reveal: 0, frontFacing: false, walkThrough: false, captureValid: false, bodyTex: null, bodyState: null, bodyVersion: -1, shards: 0 };
     const environment = { program: null, ready: false, fb: null, tex: null, depth: null, size: 0, next: 0, valid: 0, frame: 0, origin: new Float32Array(3) };
@@ -2554,7 +2556,7 @@ void main() {
       const p = res.programs.sky;
       gl.useProgram(p.prog);
       gl.uniformMatrix4fv(p.u.uInvViewProj, false, inv);
-      gl.uniform1f(p.u.uHazeDrop, BL.daylight.hazeDropAt(eyeHeight));
+      gl.uniform1f(p.u.uHazeDrop, BL.daylight.hazeDropAt(eyeHeight) * skyHaze);
       gl.depthFunc(gl.LEQUAL);
       gl.depthMask(false);
       gl.bindVertexArray(res.quadVao);
@@ -2933,6 +2935,7 @@ void main() {
         clouds = 0,
         sea = null
       } = opts;
+      skyHaze=opts.hazeDrop===undefined?1:opts.hazeDrop;
       if(dsbGPU && dsbGPU.state!==opts.dsbWater){dsbGPU.dispose();dsbGPU=null;}
       if(opts.dsbWater && !dsbGPU)dsbGPU=BL.dsbWater.gpu(gl,opts.dsbWater);
       if(dsbGPU)dsbGPU.bind(res.programs.mesh);

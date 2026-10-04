@@ -9,18 +9,27 @@
     const parts=[],stone="#d8ccb0",blue="#376e9a",wood="#94704a",rope="#c1a47a",leaf="#637851";
     const box=(x,y,z,w,h,d,color,rz=0)=>{const g=M.box({w,h,d,color,emissive:color==="#ffd18a"||color==="#eebd77"?1:0});if(rz)M.turnedZ(g,rz);parts.push(M.moved(g,x,y,z));};
     const beam=(a,b,w,color)=>parts.push(M.beam(...a,...b,w,color));
-    if(shape==="flowerbox"||shape==="vine"){
-      if(shape==="flowerbox"){box(0,.13,0,1.5,.26,.48,"#b88762");box(0,.28,0,1.58,.1,.55,"#d0a27b");}
-      for(let j=0;j<(simple?6:18);j++){
-        const i=simple?j*3:j;
-        const x=Math.sin(i*2.4)*.78,y=shape==="vine"?i*.19:.36+Math.sin(i)*.14,z=Math.cos(i*2.4)*.2;
-        box(x,y,z,.4,.3,.32,leaf);
-        box(x+.12,y+.1,z+.13,.27,.2,.25,["#bc3178","#d55094","#e079ad"][i%3]);
+    if(shape==="flowerbox"||shape==="vine"||kind==="agave"||kind==="herbs"){
+      // PROTOTYPE: cartoon foliage from the island's own kit in place of cube chains.
+      const H=BL.hubModels,T=l=>l.map(BL.math.hexToRgb),rand=BL.math.mulberry32(BL.math.fnv1a(kind));
+      const GREEN=T(["#3f6a35","#528243","#689a52","#82b266"]),BRACT=T(["#96205f","#bb2f7b","#d94d98","#ee7fb6"]),RED=T(["#a8261f","#c8362c","#e04c3c","#f47a62"]);
+      const g={verts:[],faces:[],lines:[],normals:[]};
+      if(shape==="flowerbox"){
+        H.flatInto(g,M.bevelBox({w:1.5,h:.28,d:.46,color:"#3f72a0",bevel:.05,offset:{x:0,y:.14,z:0}}));
+        for(let j=0;j<(simple?2:3);j++){const x=(j-(simple?.5:1))*.5;H.puff(g,x,.42,.02,.3,.2,.24,GREEN,rand,simple?3:4,6);H.puff(g,x+.08,.53,.1,.17,.13,.14,j%2?BRACT:RED,rand,3,5,1);}
+      }else if(shape==="vine"){
+        H.limb(g,0,0,0,.06,1.7,0,.045,.03,4,T(["#6c5e4b"])[0]);H.limb(g,.06,1.7,0,-.1,3.3,0,.03,.02,4,T(["#6c5e4b"])[0]);H.padNormals(g);
+        for(let j=0;j<(simple?4:8);j++){const i=simple?j*2:j,x=Math.sin(i*2.4)*.55,y=.5+i*.38,z=.12+Math.cos(i*2.4)*.08;H.puff(g,x,y,z,.42,.3,.2,i%3?BRACT:GREEN,rand,simple?3:4,simple?5:7);if(!simple)H.puff(g,x+.2,y+.16,z+.08,.2,.16,.13,BRACT,rand,3,5,1);}
+      }else if(kind==="agave"){
+        const A=T(["#4d7763","#6f9a85"]);
+        for(let i=0;i<11;i++){const a=i*2.4,up=.35+(i%4)*.22,l=Math.hypot(Math.cos(a),up,Math.sin(a));H.pointedLeaf(g,0,.04,0,Math.cos(a)/l,up/l,Math.sin(a)/l,-Math.sin(a),0,Math.cos(a),0,1,0,.62+(i%3)*.1,A[1],A[0]);}
+      }else{
+        const S=T(["#5b6c45","#738456","#8d9c6b","#a8b584"]);
+        H.puff(g,0,.16,0,.3,.24,.28,S,rand,4,7);H.puff(g,.22,.12,.12,.2,.18,.18,S,rand,3,6);
+        for(let i=0;i<3;i++){const a=i*2.1;H.flower(g,Math.cos(a)*.16,.38,Math.sin(a)*.16,Math.cos(a)*.3,.9,Math.sin(a)*.3,BL.math.hexToRgb("#9a78c6"),BL.math.hexToRgb("#f1d44c"),.055,rand);}
       }
-    }else if(kind==="agave"){
-      for(let i=0;i<9;i++){const a=i*Math.PI*2/9,r=.45+(i%2)*.15;beam([0,.08,0],[Math.cos(a)*r,.35+i%3*.17,Math.sin(a)*r],.12,i%2?"#789a85":"#527963");}
-    }else if(kind==="herbs"){
-      for(let i=0;i<11;i++){const a=i*2.4,r=.12+i*.035;box(Math.cos(a)*r,.16+i%3*.04,Math.sin(a)*r,.24,.3,.25,["#879767","#647e59","#b4a173"][i%3]);}
+      for(let i=1;i<g.verts.length;i+=3)if(g.verts[i]<0)g.verts[i]=0;
+      H.padNormals(g);g.normals=Float32Array.from(g.normals);g.castShadow=false;cache.set(kind,g);return g;
     }else if(kind==="lantern"||kind==="glass"){
       if(kind==="glass")box(0,.52,0,.23,.35,.23,"#ffd18a");
       else{
