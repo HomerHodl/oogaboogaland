@@ -154,7 +154,7 @@ To add your Ooga, add one file to `src/characters/` named after your GitHub hand
 
 ## Privacy
 
-No analytics and no personal data. Read-only requests only, nothing about the visitor sent: mempool.space (falling back to Esplora), Coinbase and other public price feeds, the oogatron stats worker and Timechain Index. The donation handle and message stay in localStorage.
+No analytics and no personal data. Read-only requests only, nothing about the visitor sent: mempool.space (falling back to Esplora), Coinbase and other public price feeds, the oogatron stats worker and Timechain Index. The donation handle and message stay in localStorage. The **Leak Check** kiosk under the Oogatron shows what your browser tells any page it visits; it reads it only in your browser when you open it, and stores and sends none of it.
 
 On the Cloudflare site, signing in with GitHub is optional. A signed-in player's GitHub id, login, avatar URL, display name and session records are kept in the site's database until they sign out, the session expires or they delete the account (`DELETE /api/me`). The GitHub token is used once and never stored. Nothing is kept for visitors who don't sign in.
 

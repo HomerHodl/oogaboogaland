@@ -208,6 +208,7 @@
       board: $("board-modal"), boardTitle: $("board-title"), boardScreen: $("board-screen"), boardCaption: $("board-caption"), boardNote: $("board-note"),
       boardDots: $("board-dots"), boardPrev: $("board-prev"), boardNext: $("board-next"), boardHelp: $("board-help"),
       boardHead: $("board-head"), boardPause: $("board-pause"), boardResize: $("board-resize"),
+      leakForm: $("leak-form"),
       act: $("act"),
       mode: $("mode-hud"),
       modeDestination: $("destination-hud"),
@@ -890,7 +891,7 @@
     const createBoardWindow = (node, floatingId = 0, saved = null) => {
       const el = { board: node };
       const ids = {
-        boardTitle: "board-title", boardScreen: "board-screen", boardCaption: "board-caption", boardNote: "board-note",
+        boardTitle: "board-title", boardScreen: "board-screen", boardCaption: "board-caption", boardNote: "board-note", boardPanel: "board-panel",
         boardDots: "board-dots", boardPrev: "board-prev", boardNext: "board-next", boardHelp: "board-help",
         boardHead: "board-head", boardPause: "board-pause", boardResize: "board-resize",
         boardFilter: "board-filter", boardFilterMenu: "board-filter-menu", boardFilterList: "board-filter-list", boardRollup: "board-rollup",
@@ -901,6 +902,9 @@
       if (floatingId) {
         node.id += `-${floatingId}`;
         for (const child of node.querySelectorAll("[id]")) child.id += `-${floatingId}`;
+        // A copy never carries the panels, so their ids stay unique.
+        el.boardPanel.replaceChildren();
+        el.boardPanel.hidden = true;
         node.setAttribute("aria-labelledby", el.boardTitle.id);
       }
       el.boardFilter.setAttribute("aria-controls", el.boardFilterMenu.id);
@@ -917,8 +921,10 @@
       // `go(index)`, plus optional `wide` and `captionAbove` layouts. The dialog copies the canvas, captions the page, lays one dot per page and pages with the
       // chevrons, the dots and the arrow keys; it never learns what a board shows, so a board can change freely.
       // `updateBoard` repaints whenever the open board's version moves.
-      // A `floating` board also supplies `paused` and `setPaused`, and keeps island input available.
-      let board = null, boardShown = -1, boardDots = -1;
+      // A `floating` board also supplies `paused` and `setPaused`, and keeps island input available. A board may
+      // also carry a `panel`, a node of its own controls in the dialog's `#board-panel`, shown under the note while it
+      // is set, and an `onClose` the dialog calls when it closes or another board takes its place.
+      let board = null, boardShown = -1, boardDots = -1, boardPanel = null;
       let filterTab = "repos", filterShown = -1;
       const filterTabs = [el.boardFilterRepos, el.boardFilterUsers, el.boardFilterTypes];
       const typeLabels = { commit: "Commits", pr: "Pull requests", review: "Reviews", merge: "Merges", issue: "Issues", comment: "Comments" };
@@ -1091,6 +1097,8 @@
         el.boardNote.textContent = board.note || "";
         el.boardNote.hidden = !!board.floating || !board.note;
         if (board.floating || board.carousel) paintBoardPause();
+        const panel = board.panel || null;
+        if (panel !== boardPanel) showPanel(panel);
         if (board.floating) {
           el.boardRollup.checked = board.rollup;
           el.boardFilter.dataset.active = String(board.rollup || board.filters.repos !== null || board.filters.users !== null || board.filters.types !== null);
@@ -1115,8 +1123,16 @@
         if (!el.boardFilterMenu.hidden) positionFilters();
         if (floatingId) scheduleBoardSave();
       };
+      // Panels live in the dialog's `#board-panel` from the markup; the dialog only shows the one that is up.
+      const showPanel = (panel) => {
+        if (boardPanel) boardPanel.hidden = true;
+        boardPanel = panel;
+        if (panel) panel.hidden = false;
+        el.boardPanel.hidden = !panel;
+      };
       const openBoard = (next) => {
         finishBoardPointer();
+        if (board && board !== next && board.onClose) board.onClose();
         if (el.board.open && !!board?.floating !== !!next.floating) el.board.close();
         board = next;
         boardDots = -1;
@@ -1170,6 +1186,8 @@
         finishBoardPointer();
         const closing = board;
         board = null;
+        if (boardPanel) showPanel(null);
+        if (closing?.onClose) closing.onClose();
         if (el.board.open) el.board.close();
         if (floatingId) {
           if (lastBoard === controller) { lastBoardWidth = boardWindow.width; lastBoard = null; }
@@ -1203,6 +1221,8 @@
           if (!el.boardFilterMenu.hidden) showFilters(false);
           else closeBoard();
         }
+        // The arrows move the caret in a panel's text box rather than page the board.
+        else if (e.target.tagName === "INPUT") return;
         else if (e.key === "ArrowLeft") pageBoard(-1);
         else if (e.key === "ArrowRight") pageBoard(1);
         else return;

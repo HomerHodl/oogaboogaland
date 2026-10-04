@@ -170,6 +170,8 @@
   const DRESSING_LAMPS = BL.dressing.LIGHT_RGB.map(([r, g, b]) => ({ r, g, b, radius: 5.5, glow: 0.9, hide: false }));
   const dressingLights = [];
   const PILE_POST_DEGREES = [315, 78, 195], pilePosts = [];
+  // The Leak Check kiosk: on the meadow at the foot of the south stairs, under the Oogatron.
+  const LEAK_KIOSK_X = 3.5, LEAK_KIOSK_Z = 19.6;
   const PILE_POST_NIGHT_BOOST = 0.25, PILE_POST_NIGHT_REACH = 2;
   const PILE_SCALE = 0.45;
   // How tall a remote visitor's Ooga stands for the crew's walkers (`outsideActorHeight`).
@@ -662,7 +664,8 @@
     rubble: ["Rubble", "chip", ["Loose rocks.", "Ooga kicks a pebble."]],
     bench: ["Log bench", "dust", ["A good log for sitting."]],
     vine: ["Vines", "leaf", ["The vines swing.", "Rustle rustle."]],
-    boards: ["Boarded up · coming soon", "dust", ["Boarded up. Coming soon.", "Ooga peeks through a gap. Dark."]]
+    boards: ["Boarded up · coming soon", "dust", ["Boarded up. Coming soon.", "Ooga peeks through a gap. Dark."]],
+    kiosk: ["Leak Check · what your browser tells Ooga", "spark", null]
   };
   const PIECE_BURST = { spark: SPARK, dust: DUST, chip: CHIP, leaf: LEAF };
   const pokePiece = (o) => {
@@ -5891,6 +5894,7 @@
           const bounds = document.getElementById("scene").getBoundingClientRect();
           chalkboard.open({ x: bounds.left + p.x, y: bounds.top + p.y });
         }
+        else if (o.piece === "kiosk") openLeakCheck();
         else pokePiece(o);
         break;
       case "clanker":
@@ -7074,6 +7078,13 @@
     go: (i) => jumbotron.goToView(i)
   };
   const openJumbotron = () => hud.openBoard(jumbotronBoard);
+  // The Leak Check kiosk's board, made on the visit's first poke; it reads the browser only as it opens.
+  let leakBoard = null;
+  const openLeakCheck = () => {
+    if (!leakBoard) leakBoard = BL.leakCheck.create(hud.el.leakForm);
+    leakBoard.open();
+    hud.openBoard(leakBoard);
+  };
   // Contribution fireworks: shells rise from the jumbotron and burst in the
   // board's stat colors. Queued with absolute scene-clock times and stepped in
   // update(), so a waiting shell costs nothing per frame.
@@ -9193,6 +9204,25 @@
         } else if (event.type === "contribution") launchFireworks(event.delta);
       });
     }
+    // The Leak Check kiosk faces the pile from under the Oogatron; its set bakes once for each island.
+    {
+      const kx = LEAK_KIOSK_X, kz = LEAK_KIOSK_Z, ky = island.surfaceAt(kx, kz), kry = Math.atan2(-kx, -kz);
+      let byIsland = DRESSED.get(island);
+      if (!byIsland) DRESSED.set(island, byIsland = new Map());
+      let baked = byIsland.get("kiosk");
+      if (!baked) {
+        const set = BL.dressing.set();
+        set.put("kiosk", 0, 0, 0);
+        byIsland.set("kiosk", baked = set.build());
+      }
+      const node = createNode({ position: { x: kx, y: ky, z: kz }, rotation: { x: 0, y: kry, z: 0 } });
+      addChild(root, node);
+      placed.push(node);
+      addDressing(baked, node, kx, ky, kz, "leak-kiosk", false);
+      const cr = Math.cos(kry), sr = Math.sin(kry);
+      addPieceTargets(baked.picks, (px, py, pz) => ({ x: kx + cr * px + sr * pz, y: ky + py, z: kz - sr * px + cr * pz }));
+      claim(kx, kz, 0.8);
+    }
     meadowDressing(firePos);
     buildPilePosts();
     plantPalms();
@@ -10116,6 +10146,10 @@
     if (jumbotron) {
       jumbotron.dispose(renderer);
       jumbotron = null;
+    }
+    if (leakBoard) {
+      leakBoard.dispose();
+      leakBoard = null;
     }
     for (const node of targets) input.remove(node);
     for (const node of placed) removeChild(root, node);
