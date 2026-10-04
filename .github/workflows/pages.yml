@@ -49,6 +49,22 @@ jobs:
           mkdir -p ../_site/dsb-preview/src/js
           cp -R src/maxis-player ../_site/dsb-preview/src/maxis-player
           cp src/js/maxis-media-data.js ../_site/dsb-preview/src/js/maxis-media-data.js
+      - name: Validate preview menus and preserved media contracts
+        working-directory: preview-src
+        run: |
+          export CHROME="$(command -v google-chrome)"
+          for checkpoint in "venue menus checkpoint" "radio TV correction" "studio checkpoint" "interior checkpoint"; do
+            ONLY="$checkpoint" node test/run.mjs dsb-menus-unit dsb
+          done
+      - name: Save menu and interior review screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: dsb-menu-review
+          path: |
+            preview-src/untracked/dsb-menu-review
+            preview-src/untracked/test-ledger.json
+          if-no-files-found: ignore
       - uses: actions/upload-pages-artifact@v4
         with:
           path: _site

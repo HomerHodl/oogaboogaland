@@ -2,6 +2,7 @@
 // Nothing from that HTML enters the live DOM. One media element and a visit-local, bounded cache.
 (() => {
   "use strict";
+  const BL=window.BL;
   const YEARS=[[2679,"Year five"],[1537,"Year four"],[1261,"Year three"],[1233,"Year two"],[2,"Year one"]];
   const parse=html=>{
     const page=new DOMParser().parseFromString(html,"text/html"),items=[],seen=new Set();
@@ -15,7 +16,8 @@
     }
     return items.sort((a,b)=>b.date.localeCompare(a.date)).slice(0,150);
   };
-  const create=({onOpen,onPlaying})=>{
+  const create=({onOpen:notify,onPlaying})=>{
+    const onOpen=on=>{BL.dsbMenuShell.present(dialog,on);notify(on);};
     const dialog=document.createElement("dialog");dialog.className="dsb-spaces";dialog.setAttribute("aria-label","DSB Spaces archive");
     dialog.innerHTML='<header><div><small><a href="https://hodlerhiq.net/" target="_blank" rel="noopener noreferrer">HODLERHIQ ARCHIVE ↗</a></small><h2>DSB SPACES</h2></div><button type="button" data-close aria-label="Close archive">Close</button></header><div class="spaces-filters"><label>Archive <select aria-label="Archive year"></select></label><label>Search <input type="search" maxlength="100" placeholder="Find a Space"></label></div><p data-status role="status">Choose an archive.</p><div class="spaces-list" role="group" aria-label="Available Spaces"></div><section class="spaces-playing"><strong data-title>Nothing playing</strong><p data-date></p><p data-state aria-live="polite">Stopped</p><div class="spaces-controls"><button type="button" data-prev>Previous</button><button type="button" data-play>Play</button><button type="button" data-next>Next</button><button type="button" data-stop>Stop</button></div><label class="spaces-progress">Progress <input aria-label="Playback position" type="range" min="0" max="1000" value="0" disabled></label><output>0:00 / —</output></section>';
     document.body.appendChild(dialog);

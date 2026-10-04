@@ -2,7 +2,8 @@
 (() => {
   "use strict";
   const BL=window.BL,D=BL.withoutRulersData;
-  const create=({onOpen=()=>{}}={})=>{
+  const create=({onOpen:notify=()=>{}}={})=>{
+    const onOpen=on=>{BL.dsbMenuShell.present(root,on);notify(on);};
     const root=document.getElementById("rulers-catalog"),one=s=>root.querySelector(s),nav=one("nav"),results=one(".rulers-results"),heading=one(".rulers-heading"),search=one("input"),searchWrap=one(".rulers-search"),status=one(".rulers-status"),back=one('[data-wr="back"]');
     let active=false,opened=false,disposed=false,section="home",collection="",selected=null,previous=null;
     const el=(tag,text,className)=>{const n=document.createElement(tag);if(text)n.textContent=text;if(className)n.className=className;return n;};
@@ -35,11 +36,12 @@
       status.textContent=found.length+" curated items · prices checked "+D.checked+". Confirm current price and availability on the official site.";
     };
     const choose=(next="home",id="")=>{if(!["home","collections","search","about",...D.categories.map(c=>c.id)].includes(next))return;section=next;collection=id;selected=null;search.value="";render();if(section==="search")search.focus();};
-    const open=()=>{
+    const open=(route="home")=>{
       if(!active||disposed)return false;if(opened)return true;
       previous=document.activeElement;root.hidden=false;opened=true;
       if(!nav.children.length)for(const [id,title] of [["home","Home / Featured"],...D.categories.map(c=>[c.id,c.label]),["collections","Collections"],["search","Search"],["about","About / Contact"]])nav.appendChild(button(title,"section",id));
-      render();onOpen(true);one('[data-wr="close"]').focus();return true;
+      const c=D.collections.find(c=>c.id===route);
+      choose(c?"collections":["home","about","search",...D.categories.map(c=>c.id)].includes(route)?route:"home",c?.id||"");onOpen(true);one('[data-wr="close"]').focus();return true;
     };
     const close=()=>{if(!opened)return;root.hidden=true;opened=false;onOpen(false);if(previous?.isConnected)previous.focus();previous=null;};
     const leave=()=>{active=false;close();section="home";collection="";selected=null;search.value="";results.replaceChildren();nav.replaceChildren();status.textContent="";previous=null;};
@@ -54,7 +56,7 @@
     const outside=e=>{if(opened&&!root.contains(e.target)&&!e.target.closest(".rulers-tools"))close();};
     root.addEventListener("click",click);root.addEventListener("keydown",keys);root.addEventListener("keyup",keys);search.addEventListener("input",filter);document.addEventListener("pointerdown",outside);
     return {enter:()=>{if(!disposed)active=true;},open,close,leave,choose,
-      get isOpen(){return opened;},get stats(){return {active,opened,disposed,products:D.products.length,panels:1};},
+      get isOpen(){return opened;},get stats(){return {active,opened,disposed,section,collection,products:D.products.length,panels:1};},
       dispose:()=>{if(disposed)return;leave();disposed=true;root.removeEventListener("click",click);root.removeEventListener("keydown",keys);root.removeEventListener("keyup",keys);search.removeEventListener("input",filter);document.removeEventListener("pointerdown",outside);}
     };
   };

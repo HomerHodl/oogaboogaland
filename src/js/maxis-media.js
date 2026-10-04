@@ -3,15 +3,16 @@
   "use strict";
   const BL=window.BL,data=BL.maxisMediaData;
   const script=document.currentScript?.src;
-  const create=({onOpen=()=>{},onSource=()=>{}}={})=>{
+  const create=({onOpen:notify=()=>{},onSource=()=>{}}={})=>{
     const playerUrl=new URL(script?"../maxis-player/index.html":"src/maxis-player/index.html",script||location.href).href;
+    const onOpen=on=>{BL.dsbMenuShell.present(root,on);notify(on);};
     const root=document.createElement("section");root.className="maxis-media";root.hidden=true;root.setAttribute("aria-label","Maxis Media");
     // Static markup only; all supplied titles, URLs and provider messages are assigned through textContent.
     root.innerHTML='<header><h2>MAXIS MEDIA</h2><button type="button" data-do="menu">Sources</button><button type="button" data-do="close">Return to club</button></header><div class="maxis-browser"><nav aria-label="Media sources"></nav><div class="maxis-source"><p class="maxis-help"></p><form><label>Media URL<input type="url" required placeholder="https://…" autocomplete="off"></label><button type="submit">Load media</button></form><label class="maxis-search">Search Maxis Picks<input type="search" placeholder="Title, topic or source"></label><div class="maxis-picks"></div><button type="button" data-do="live" hidden>LIVE FROM YELLOW</button></div></div><div class="maxis-playback"><div class="maxis-player-slot"></div><p class="maxis-status" role="status">Choose a source. Playback is local to your browser.</p><footer><button type="button" data-do="fullscreen">FULLSCREEN</button><button type="button" data-do="stop">Stop</button><label>Volume<input class="maxis-volume" type="range" min="0" max="1" step="0.05" value="0.8"></label><a target="_blank" rel="noopener noreferrer" hidden>Open original</a></footer></div>';
     document.body.appendChild(root);
     const one=s=>root.querySelector(s),browser=one(".maxis-browser"),nav=one("nav"),help=one(".maxis-help"),form=one("form"),url=form.querySelector("input"),searchWrap=one(".maxis-search"),search=searchWrap.querySelector("input"),picks=one(".maxis-picks"),liveButton=one('[data-do="live"]'),slot=one(".maxis-player-slot"),status=one(".maxis-status"),original=one("a"),volume=one(".maxis-volume");
-    let active=false,disposed=false,isOpen=false,frame=null,source=null,category="picks",gain=.8,muted=false,lastVolume=-1,timeout=0,filling=false,epoch=0;
-    const sections=[["picks","MAXIS PICKS"],["youtube","YOUTUBE"],["twitch","TWITCH"],["x","X / TWITTER"],["direct","DIRECT URL"],["live","LIVE"],["search","SEARCH"]];
+    let active=false,disposed=false,isOpen=false,frame=null,source=null,category="home",gain=.8,muted=false,lastVolume=-1,timeout=0,filling=false,epoch=0;
+    const sections=[["home","MEDIA HOME"],["picks","MAXIS PICKS"],["youtube","YOUTUBE"],["twitch","TWITCH"],["x","X / TWITTER"],["direct","DIRECT URL"],["live","LIVE"],["search","SEARCH"]];
     for(const [key,label] of sections){const b=document.createElement("button");b.type="button";b.dataset.category=key;b.textContent=label;nav.appendChild(b);}
     const command=(action,extra={})=>frame?.contentWindow?.postMessage({kind:"maxis-command",action,...extra},location.origin);
     const applyVolume=()=>{
@@ -31,12 +32,12 @@
       if(!found.length)picks.textContent="No matching configured sources.";
     };
     const choose=key=>{
-      category=key;form.hidden=["picks","search","live"].includes(key);searchWrap.hidden=!["picks","search"].includes(key);picks.hidden=searchWrap.hidden;liveButton.hidden=key!=="live";
+      key=sections.some(s=>s[0]===key)?key:"home";category=key;form.hidden=["home","picks","search","live"].includes(key);searchWrap.hidden=!["picks","search"].includes(key);picks.hidden=key!=="home"&&searchWrap.hidden;liveButton.hidden=key!=="live";
       for(const b of nav.children)b.setAttribute("aria-pressed",String(b.dataset.category===key));
-      help.textContent=key==="live"?"Yellow’s broadcast will appear here when a public playback endpoint is configured.":key==="x"?"Public post embeds only. X controls availability and playback. Returning to the club closes the post.":key==="twitch"?"Channels, VODs and clips. Twitch needs at least 400 × 300 pixels; use landscape or fullscreen on a narrow phone.":key==="youtube"?"Paste a video or playlist URL. Playback uses YouTube’s own controls.":key==="direct"?"HTTPS MP4, WebM or browser-playable audio. HLS requires native browser support.":"Filter the owner-configured picks below. Provider-wide search is not connected.";
+      help.textContent=key==="home"?"Choose Maxis Picks or a media source. Load a link to begin your screening.":key==="live"?"Yellow’s broadcast will appear here when a public playback endpoint is configured.":key==="x"?"Public post embeds only. X controls availability and playback. Returning to the club closes the post.":key==="twitch"?"Channels, VODs and clips. Twitch needs at least 400 × 300 pixels; use landscape or fullscreen on a narrow phone.":key==="youtube"?"Paste a video or playlist URL. Playback uses YouTube’s own controls.":key==="direct"?"HTTPS MP4, WebM or browser-playable audio. HLS requires native browser support.":"Filter the owner-configured picks below. Provider-wide search is not connected.";
       list();
     };
-    const open=()=>{if(!active||disposed)return;root.hidden=false;browser.hidden=false;isOpen=true;root.classList.remove("maxis-docked");onOpen(true);};
+    const open=(route="home")=>{if(!active||disposed)return;if(!isOpen){search.value="";choose(route);}root.hidden=false;browser.hidden=false;isOpen=true;root.classList.remove("maxis-docked");onOpen(true);};
     const close=()=>{
       fullOff();if(source?.provider==="x"||source?.clip)stop("Post / clip closed. Reopen its source to watch again.");
       isOpen=false;browser.hidden=true;root.hidden=!frame;root.classList.add("maxis-docked");onOpen(false);document.activeElement?.blur();
@@ -76,16 +77,16 @@
     };
     const visible=()=>{if(document.hidden&&(source?.provider==="x"||source?.clip))stop("Post / clip stopped while this page was hidden.");applyVolume();};
     const fullChange=()=>{if(!document.fullscreenElement){const wasFull=filling;filling=false;root.classList.remove("maxis-fullscreen");if(wasFull)onOpen(isOpen);}};
-    const keys=e=>{e.stopPropagation();if(e.key==="Escape"){e.preventDefault();if(filling)fullOff();else close();}};
-    root.addEventListener("click",click);root.addEventListener("keydown",keys);form.addEventListener("submit",submit);search.addEventListener("input",list);volume.addEventListener("input",applyVolume);
+    const keys=e=>{e.stopPropagation();if(e.type==="keydown"&&e.key==="Escape"){e.preventDefault();if(filling)fullOff();else close();}};
+    root.addEventListener("click",click);root.addEventListener("keydown",keys);root.addEventListener("keyup",keys);form.addEventListener("submit",submit);search.addEventListener("input",list);volume.addEventListener("input",applyVolume);
     window.addEventListener("message",receive);document.addEventListener("visibilitychange",visible);document.addEventListener("fullscreenchange",fullChange);
-    choose("picks");
-    const leave=()=>{active=false;stop();close();root.hidden=true;};
+    choose("home");
+    const leave=()=>{active=false;stop();close();choose("home");search.value="";url.value="";root.hidden=true;};
     return {open,close,load,stop,fullscreen,enter:()=>{active=true;},leave,
       get isOpen(){return isOpen||filling;},get active(){return !!source;},
       setGain:(value,mute=false)=>{gain=Math.max(0,Math.min(1,value));muted=!!mute;applyVolume();},
-      get stats(){return {active,provider:source?.provider||null,players:frame?1:0,open:isOpen,pending:timeout?1:0,disposed,gain,lastVolume};},
-      dispose:()=>{if(disposed)return;leave();disposed=true;window.removeEventListener("message",receive);document.removeEventListener("visibilitychange",visible);document.removeEventListener("fullscreenchange",fullChange);root.removeEventListener("click",click);root.removeEventListener("keydown",keys);form.removeEventListener("submit",submit);search.removeEventListener("input",list);volume.removeEventListener("input",applyVolume);root.remove();}
+      get stats(){return {active,provider:source?.provider||null,players:frame?1:0,open:isOpen,pending:timeout?1:0,disposed,category,gain,lastVolume};},
+      dispose:()=>{if(disposed)return;leave();disposed=true;window.removeEventListener("message",receive);document.removeEventListener("visibilitychange",visible);document.removeEventListener("fullscreenchange",fullChange);root.removeEventListener("click",click);root.removeEventListener("keydown",keys);root.removeEventListener("keyup",keys);form.removeEventListener("submit",submit);search.removeEventListener("input",list);volume.removeEventListener("input",applyVolume);root.remove();}
     };
   };
   BL.maxisMedia={create};

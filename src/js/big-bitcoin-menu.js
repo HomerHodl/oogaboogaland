@@ -2,7 +2,8 @@
 (() => {
   "use strict";
   const BL=window.BL,D=BL.bigBitcoinData;
-  const create=({onOpen=()=>{},action=null}={})=>{
+  const create=({onOpen:notify=()=>{},action=null}={})=>{
+    const onOpen=on=>{BL.dsbMenuShell.present(root,on);notify(on);};
     const root=document.getElementById("big-terminal"),nav=root.querySelector("nav"),results=root.querySelector(".big-results"),closeButton=root.querySelector('[data-big="close"]');
     let active=false,opened=false,disposed=false,section="overview",previous=null,pending=false,observer=null;
     const el=(type,text)=>{const n=document.createElement(type);if(text)n.textContent=text;return n;};
@@ -17,11 +18,11 @@
       }
     };
     const choose=id=>{if(!D.sections.some(s=>s[0]===id))return;section=id;if(opened)render();};
-    const open=()=>{
+    const open=(route="overview")=>{
       if(!active||disposed)return false;if(opened)return true;
       previous=document.activeElement;opened=true;root.hidden=false;
       if(!nav.children.length)for(const [id,title] of D.sections){const b=el("button",title);b.type="button";b.dataset.section=id;nav.appendChild(b);}
-      render();onOpen(true);closeButton.focus();return true;
+      section=D.sections.some(s=>s[0]===route)?route:"overview";render();onOpen(true);closeButton.focus();return true;
     };
     const close=()=>{if(!opened)return;opened=false;root.hidden=true;onOpen(false);if(previous?.isConnected)previous.focus();previous=null;};
     const requestLayout=()=>{pending=true;};

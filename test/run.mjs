@@ -2323,7 +2323,7 @@ const orbitFlow = async (b) => {
 const SCENES = ["hub", "lab", "race", "drop", "orbit", "mine", "pool", "dsb", "factory", "bifrost", "poker", "arcade", "skee", "hoops", "shy", "claw", "hockey", "billiards", "darts", "pinball", "ride", "invaders", "snake", "pong", "stampede", "flap", "breaker", "dash", "stacker"];
 const LANES = Number(process.env.LANES) || 8;
 const ARGS = process.argv.slice(2);
-for (const a of ARGS) if (!SCENES.includes(a) && !["unit", "maxis-unit", "exterior-unit", "rulers-unit", "ink-unit", "big-unit", "perf", "full", "poker-protocol"].includes(a)) throw new Error(`Unknown argument "${a}" (unit | perf | full | poker-protocol | ${SCENES.join(" | ")})`);
+for (const a of ARGS) if (!SCENES.includes(a) && !["unit", "dsb-menus-unit", "maxis-unit", "exterior-unit", "rulers-unit", "ink-unit", "big-unit", "perf", "full", "poker-protocol"].includes(a)) throw new Error(`Unknown argument "${a}" (unit | perf | full | poker-protocol | ${SCENES.join(" | ")})`);
 const ONLY = process.env.ONLY || ""; // Optional substring within the requested scenes; defaults are unchanged.
 const FULL = ARGS.includes("full");
 const PICKED = FULL ? SCENES : SCENES.filter((s) => ARGS.includes(s));
@@ -8181,7 +8181,7 @@ const maxisChecks = BL => {
   record("Maxis media: rejects unsafe URLs and unsupported provider shapes",bad.every(([p,u])=>{try{D.parse(p,u);return false;}catch{return true;}}));
   record("Maxis media: offline Live and local filtering require no backend or credentials",D.parse("live","").offline&&D.search("yellow").length===1&&D.search("not configured").length===1&&D.search("absent title").length===0);
   // Contract: exercise the actual media controller with a small DOM transport double, without fetching providers.
-  const saved={document:globalThis.document,location:globalThis.location,add:window.addEventListener,remove:window.removeEventListener},listeners=new Map(),frames=[];
+  const saved={shell:BL.dsbMenuShell,document:globalThis.document,location:globalThis.location,add:window.addEventListener,remove:window.removeEventListener},listeners=new Map(),frames=[];
   const element=tag=>{
     const selectors=new Map(),e={tag,children:[],dataset:{},value:tag==="input"?"":"",hidden:false,parent:null,
       classList:{add:noop,remove:noop,toggle:noop},setAttribute:noop,removeAttribute:noop,addEventListener:noop,removeEventListener:noop,
@@ -8193,6 +8193,7 @@ const maxisChecks = BL => {
   globalThis.location={href:"https://yellowbrokeit.github.io/oogaboogaland/dsb-preview/index.html",origin:"https://yellowbrokeit.github.io"};
   window.addEventListener=(k,f)=>listeners.set("w:"+k,f);window.removeEventListener=k=>listeners.delete("w:"+k);
   try{
+    BL.dsbMenuShell={present:noop};
     const M=BL.maxisMedia.create();let okay=true;
     const reply=(frame,state,message="",origin=location.origin)=>listeners.get("w:message")({source:frame.contentWindow,origin,data:{kind:"maxis-player",state,message}});
     for(let pass=0;pass<3;pass++){
@@ -8215,7 +8216,7 @@ const maxisChecks = BL => {
       okay&&=!M.load(provider,url)&&M.stats.players===0;M.setGain(.8,false);M.load(provider,url);document.hidden=true;listeners.get("d:visibilitychange")();okay&&=M.stats.players===0;document.hidden=false;
     }
     M.dispose();record("Maxis media: switching, stale replies, fullscreen, mute and three visit cycles retain one player then dispose",okay&&listeners.size===0&&document.body.children.length===0&&M.stats.disposed);
-  }finally{globalThis.document=saved.document;globalThis.location=saved.location;window.addEventListener=saved.add;window.removeEventListener=saved.remove;}
+  }finally{BL.dsbMenuShell=saved.shell;globalThis.document=saved.document;globalThis.location=saved.location;window.addEventListener=saved.add;window.removeEventListener=saved.remove;}
 };
 
 // Rule: the showroom must be reachable by the real Yellow and must only expose public catalog links.
@@ -8251,7 +8252,7 @@ const rulersChecks = BL => {
   record("Without Rulers catalog: all categories and five themes contain real bounded official product previews",D.products.length===14&&D.categories.every(c=>D.filter(c.id).length>0)&&D.collections.every(c=>D.filter("home","",c.id).length>0)&&D.products.every(p=>D.official(p.url)&&p.title&&p.price>0&&/^data:image\/(png|jpeg|webp);base64,/.test(p.image))&&D.collections.every(c=>D.official(c.url)));
   record("Without Rulers catalog: local search is case insensitive and outbound links reject lookalikes and unsafe URLs",D.filter("home","BiP-85").map(p=>p.id).sort().join() === ["nyknyc-bip-85-t-shirt","nyknyc-bip-85-hoodie-black-and-white","bip-85-bucket-hat"].sort().join()&&D.filter("home","impossible nonproduct").length===0&&["javascript:alert(1)","https://www.without-rulers.com.evil.test/products/a","https://without-rulers.com/products/a","https://user:pass@www.without-rulers.com/","https://www.without-rulers.com/cart","https://www.without-rulers.com/?email=private"].every(u=>!D.official(u)));
   // Contract: actual menu event handlers, without loading any remote service or customer state.
-  const savedDoc=globalThis.document,listeners=new Map(),elements=[];
+  const savedDoc=globalThis.document,savedShell=BL.dsbMenuShell,listeners=new Map(),elements=[];
   const element=tag=>{
     const e={tag,children:[],dataset:{},hidden:false,value:"",attributes:{},parent:null,isConnected:true,textContent:"",listeners:new Map(),
       setAttribute(k,v){this.attributes[k]=v;},appendChild(c){c.parent=this;this.children.push(c);return c;},replaceChildren(){this.children.forEach(c=>c.parent=null);this.children=[];},
@@ -8265,6 +8266,7 @@ const rulersChecks = BL => {
   panel.querySelector=q=>selectors.get(q);panel.querySelectorAll=()=>elements.filter(e=>panel.contains(e)&&["button","input","a"].includes(e.tag));
   globalThis.document={getElementById:()=>panel,createElement:element,activeElement:null,addEventListener:(k,f)=>listeners.set(k,f),removeEventListener:k=>listeners.delete(k)};
   try{
+    BL.dsbMenuShell={present:noop};
     const M=BL.withoutRulersMenu.create(),results=selectors.get(".rulers-results"),search=selectors.get("input");let okay=!M.open();
     const descendants=(node,out=[])=>{out.push(node);node.children.forEach(c=>descendants(c,out));return out;};
     const click=(action,value)=>{const b=descendants(panel).find(n=>n.tag==="button"&&n.dataset.wr===action&&(!value||n.dataset.value===value));if(!b)throw Error("Missing menu action "+action);panel.listeners.get("click")({target:b});};
@@ -8276,8 +8278,9 @@ const rulersChecks = BL => {
       panel.listeners.get("keydown")({type:"keydown",key:"Escape",stopPropagation:noop,preventDefault:noop});okay&&=!M.isOpen&&panel.hidden;
       M.open();M.leave();okay&&=!M.isOpen&&panel.hidden&&results.children.length===0&&search.value==="";
     }
+    for(const route of ["shirts","hoodies","hats","art","bip85","samourai","slavery","cartel","2140","nonsense"]){M.enter();M.open(route);okay&&=D.collections.some(c=>c.id===route)?M.stats.collection===route:M.stats.section===(D.categories.some(c=>c.id===route)?route:"home");M.leave();}
     M.dispose();M.dispose();record("Without Rulers menu: categories, collection search, product redirect, Escape and repeated visits clean all handlers",okay&&listeners.size===0&&elements.every(e=>e.listeners.size===0)&&M.stats.disposed);
-  }finally{globalThis.document=savedDoc;}
+  }finally{globalThis.document=savedDoc;BL.dsbMenuShell=savedShell;}
 };
 
 // Proof of Ink uses the real player collision, seating, transition and menu handlers.
@@ -8310,12 +8313,12 @@ const inkChecks = BL => {
   all.dispose();const NR=BL.dsbNoderunner.create({root:allRoot,land:realLand});const near=NR.near(NR.review);NR.update(.016,NR.review,{audioEnabled:false},.5);const nrScreen=!!NR.screenFace.geometry,quiet=NR.stats.sources===0;NR.dispose();
   record("DSB preservation: all five real doors return to their own facades; existing interiors and Noderunner still build and dispose",preserved&&near&&nrScreen&&quiet&&allRoot.children.length===0);
   const sceneSource=readFileSync(new URL("../src/js/scene-dsb.js",import.meta.url),"utf8"),menuSource=readFileSync(new URL("../src/js/proof-of-ink-menu.js",import.meta.url),"utf8");
-  record("Proof of Ink privacy and shared controls: no network or customer persistence, and one shared stand action",!/fetch\(|XMLHttpRequest|localStorage|sessionStorage|setInterval|createElement\("(?:iframe|form)"/.test(menuSource)&&sceneSource.includes("context.hidden=!!avatar.camp.seat")&&sceneSource.includes("inkMenu.isOpen&&!interiors.transitioning")&&sceneSource.includes("else inkMenu?.leave()"));
+  record("Proof of Ink privacy and shared controls: no network or customer persistence, and one shared stand action",!/fetch\(|XMLHttpRequest|localStorage|sessionStorage|setInterval|createElement\("(?:iframe|form)"/.test(menuSource)&&sceneSource.includes("context.hidden=!!avatar.camp.seat")&&sceneSource.includes("!menuOpen()&&!interiors.transitioning")&&sceneSource.includes("else inkMenu?.leave()"));
   const D=BL.proofOfInkData;
   record("Proof of Ink catalog: verified products cover every available category and curated collection",D.products.length===18&&D.categories.filter(c=>c.id!=="tanks").every(c=>D.filter("featured","",c.id).length>0)&&D.filter("featured","","tanks").length===0&&D.collections.filter(c=>c.kind!=="service").every(c=>D.filter("featured","",c.id).length>0)&&D.products.every(p=>D.official(p.url)&&p.title&&p.price>0&&/^data:image\/jpeg;base64,/.test(p.image))&&D.collections.every(c=>D.official(c.url)));
   record("Proof of Ink catalog: local search and exact official destination allowlist",D.filter("search","bTc SeSSions").length===4&&D.filter("search","no such artwork").length===0&&["javascript:alert(1)","https://proofofink.com.evil.test/","https://user:pass@proofofink.com/","https://proofofink.com/cart","https://proofofink.com/?email=private","https://proofofink.com:443/cart"].every(u=>!D.official(u)));
   // Contract: actual menu event handlers, without loading any remote service or customer state.
-  const savedDoc=globalThis.document,listeners=new Map(),elements=[];
+  const savedDoc=globalThis.document,savedShell=BL.dsbMenuShell,listeners=new Map(),elements=[];
   const element=tag=>{
     const e={tag,children:[],dataset:{},hidden:false,value:"",attributes:{},parent:null,isConnected:true,textContent:"",listeners:new Map(),
       setAttribute(k,v){this.attributes[k]=v;},appendChild(c){c.parent=this;this.children.push(c);return c;},replaceChildren(){this.children.forEach(c=>c.parent=null);this.children=[];},
@@ -8329,6 +8332,7 @@ const inkChecks = BL => {
   panel.querySelector=q=>selectors.get(q);panel.querySelectorAll=()=>elements.filter(e=>panel.contains(e)&&["button","input","a"].includes(e.tag));
   globalThis.document={getElementById:()=>panel,createElement:element,activeElement:null,addEventListener:(k,f)=>listeners.set(k,f),removeEventListener:k=>listeners.delete(k)};
   try{
+    BL.dsbMenuShell={present:noop};
     const M=BL.proofOfInkMenu.create(),results=selectors.get(".ink-results"),search=selectors.get("input");let okay=!M.open();
     const descendants=(node,out=[])=>{out.push(node);node.children.forEach(c=>descendants(c,out));return out;};
     const click=(action,value)=>{const b=descendants(panel).find(n=>n.tag==="button"&&n.dataset.ink===action&&(!value||n.dataset.value===value));if(!b)throw Error("Missing menu action "+action);panel.listeners.get("click")({target:b});};
@@ -8343,8 +8347,9 @@ const inkChecks = BL => {
       panel.listeners.get("keydown")({type:"keydown",key:"Escape",stopPropagation:noop,preventDefault:noop});okay&&=!M.isOpen&&panel.hidden;
       M.open();M.leave();okay&&=!M.isOpen&&panel.hidden&&results.children.length===0&&search.value===""&&selectors.get("nav").children.length===0;
     }
+    for(const route of ["featured","apparel","shirts","hats","fine-arts","collabs","stackchain-magazine","proof-of-work","nonsense"]){M.enter();M.open(route);okay&&=route==="nonsense"?M.stats.section==="featured":M.stats.section===route||M.stats.tag===route;M.leave();}
     M.dispose();M.dispose();record("Proof of Ink menu: categories, collection search, product redirect, Escape and repeated visits clean all handlers",okay&&listeners.size===0&&elements.every(e=>e.listeners.size===0)&&M.stats.disposed);
-  }finally{globalThis.document=savedDoc;}
+  }finally{globalThis.document=savedDoc;BL.dsbMenuShell=savedShell;}
 };
 
 // Rule/contract: exercise the real room collision and shared crew seating at Yellow's dimensions.
@@ -8378,7 +8383,7 @@ const bigBitcoinChecks = BL => {
   const D=BL.bigBitcoinData,source=readFileSync(new URL("../src/js/big-bitcoin-menu.js",import.meta.url),"utf8"),scene=readFileSync(new URL("../src/js/scene-dsb.js",import.meta.url),"utf8");
   record("BIG BITCOIN privacy: bounded official destinations, no live prices, customer collection, polling or persistence",D.cards.every(c=>D.official(c.url)&&c.url.startsWith(D.home)&&!c.price)&&["javascript:alert(1)","https://podconf.xyz.evil.test/","https://podconf.xyz/?email=x","https://podconf.xyz/cart/"].every(u=>!D.official(u))&&!/fetch\(|XMLHttpRequest|localStorage|sessionStorage|setInterval|createElement\("(?:iframe|form|input)"/.test(source)&&scene.includes("context.hidden=!!avatar.camp.seat"));
   // Contract: the actual terminal event handlers must reset all content and listeners each visit.
-  const savedDoc=globalThis.document,listeners=new Map(),elements=[];
+  const savedDoc=globalThis.document,savedShell=BL.dsbMenuShell,listeners=new Map(),elements=[];
   const element=tag=>{
     const e={tag,children:[],dataset:{},hidden:false,attributes:{},parent:null,isConnected:true,textContent:"",listeners:new Map(),
       setAttribute(k,v){this.attributes[k]=v;},appendChild(c){c.parent=this;this.children.push(c);return c;},replaceChildren(){this.children.forEach(c=>c.parent=null);this.children=[];},
@@ -8389,6 +8394,7 @@ const bigBitcoinChecks = BL => {
   panel.querySelector=q=>selectors.get(q);panel.querySelectorAll=()=>elements.filter(e=>panel.contains(e)&&["button","a"].includes(e.tag));
   globalThis.document={getElementById:()=>panel,createElement:element,activeElement:null,addEventListener:(k,f)=>listeners.set(k,f),removeEventListener:k=>listeners.delete(k)};
   try{
+    BL.dsbMenuShell={present:noop};
     const M=BL.bigBitcoinMenu.create(),results=selectors.get(".big-results"),nav=selectors.get("nav");let okay=!M.open();
     for(let i=0;i<3;i++){
       M.enter();okay&&=M.open()&&M.isOpen&&nav.children.length===D.sections.length;
@@ -8396,8 +8402,92 @@ const bigBitcoinChecks = BL => {
       panel.listeners.get("keydown")({type:"keydown",key:"Escape",stopPropagation:noop,preventDefault:noop});okay&&=!M.isOpen&&panel.hidden;
       M.open();M.leave();okay&&=!M.isOpen&&panel.hidden&&!nav.children.length&&!results.children.length&&M.stats.section==="overview";
     }
+    for(const route of ["overview","news","research","merch","fictional-boardroom"]){M.enter();M.open(route);okay&&=M.stats.section===(route==="fictional-boardroom"?"overview":route);M.leave();}
     M.dispose();M.dispose();record("BIG BITCOIN terminal: actual sections, safe redirects, Escape and three visits leave one panel with no stale handlers",okay&&listeners.size===0&&elements.every(e=>e.listeners.size===0));
-  }finally{globalThis.document=savedDoc;}
+  }finally{globalThis.document=savedDoc;BL.dsbMenuShell=savedShell;}
+};
+
+// Rule: the concept's sections and every seat must be reachable by the real Yellow controller.
+const memeFactoryChecks = BL => {
+  const noop=()=>{},S=BL.scene,root=S.createNode(),targets=new Set(),exterior={visible:true},weather={shared:{state:{muted:true}},inside:false,setInterior(on){this.inside=on;}};
+  const land=BL.dsbGeography.build();let returned=null;
+  const I=BL.dsbInteriors.create({root,exterior,land,weather,relocate:p=>returned={...p},lock:noop,onChange:noop});
+  I.review("meme-factory",true);I.update(.4);const R=I.active.room;
+  const C=BL.crew.create({root,world:{level:0},playerName:"YellowBrokeIt",input:{add:n=>targets.add(n),remove:n=>targets.delete(n)},hud:{setRosterRow:noop},game:{state:{assignments:{},inventory:[]}},viewYaw:0,groundAt:I.groundAt,walkable:I.walkable,fx:{say:noop,zzzAt:noop,burst:noop,puff:noop,spawnParticle:noop,damageNumber:noop}});
+  const A=C.cavemen.get("YellowBrokeIt");C.control(A);
+  const clear=(ax,az,bx=ax,bz=az)=>I.walkable(ax,az,bx,bz,0,A.bodyHeight,A);
+  const step=.25,minX=-17.5,minZ=-20.5,w=141,h=165,seen=new Uint8Array(w*h),queue=[];
+  const index=(x,z)=>Math.round((z-minZ)/step)*w+Math.round((x-minX)/step),start=index(R.spawn.x,R.spawn.z);seen[start]=1;queue.push(start);
+  for(let head=0;head<queue.length;head++){
+    const n=queue[head],ix=n%w,iz=Math.floor(n/w),x=minX+ix*step,z=minZ+iz*step;
+    for(const [dx,dz] of [[1,0],[-1,0],[0,1],[0,-1]]){const nx=ix+dx,nz=iz+dz,i=nz*w+nx;if(nx<0||nx>=w||nz<0||nz>=h||seen[i]||!clear(x,z,x+dx*step,z+dz*step))continue;seen[i]=1;queue.push(i);}
+  }
+  const reachable=p=>{const i=index(p.x,p.z),ix=i%w,iz=Math.floor(i/w);for(let dx=-1;dx<=1;dx++)for(let dz=-1;dz<=1;dz++){const nx=ix+dx,nz=iz+dz;if(nx>=0&&nx<w&&nz>=0&&nz<h&&seen[nz*w+nx]&&clear(minX+nx*step,minZ+nz*step,p.x,p.z))return true;}return false;};
+  const goals=[R.exit,...R.browseGoals,...R.seats.map(s=>s.walkAt),...R.menuZones.filter(z=>z.priority===3)];
+  record("Meme Factory navigation: real Yellow reaches six sections, every portrait, all seats and exit",clear(R.spawn.x,R.spawn.z)&&goals.every(reachable),JSON.stringify({radius:A.bodyRadius,unreachable:goals.filter(p=>!reachable(p))}));
+  let seating=true;
+  for(const seat of R.seats){Object.assign(A.root.position,{x:seat.walkAt.x,y:A.baseY,z:seat.walkAt.z});A.hop=A.hopV=0;seating&&=C.sitPlayer(seat);C.steer(.6,0);C.look(seat.ry,.3,1);C.update(.2,1);seating&&=A.camp.seat===seat&&A.root.position.x===seat.x&&A.root.position.z===seat.z;C.steer(0,0);seating&&=C.standPlayer()&&!A.camp.seat&&!seat.sitter&&clear(A.root.position.x,A.root.position.z);}
+  record("Meme Factory seating: seven shared seats support pose, free look, movement lock and safe stand",seating&&R.seats.length===7);
+  let nodes=0,finite=true,faces=0;const geometries=new Set();const visit=n=>{nodes++;if(n.geometry){geometries.add(n.geometry);finite&&=n.geometry.verts.every(Number.isFinite);}n.children.forEach(visit);};S.updateWorld(R.root);visit(R.root);for(const g of geometries)faces+=g.faces.length;
+  record("Meme Factory resource budget: cached furniture and portraits, static screens and six lights",finite&&nodes<2200&&geometries.size<190&&faces<35000&&R.lighting.lightCount===6&&R.counts.workstations===4,JSON.stringify({nodes,geometries:geometries.size,faces,...R.counts}));
+  const Z=BL.dsbMenuZones,route=(x,z)=>Z.resolve(R,{x,z}).route;
+  const cases=[[0,16,"home"],[-8,-9.7,"laser"],[10.8,-11.5,"contributors"],[9.2,-18.3,"yellow"],[-11.4,12,"home"],[0,.2,"podcast"],[7.2,11,"home"]];
+  record("Meme Factory context: physical sections select real pages, exact portraits override gallery, production/archive fall home",cases.every(([x,z,r])=>route(x,z)===r)&&R.menuZones.filter(z=>z.priority===3).every(z=>route(z.x,z.z)===z.route),JSON.stringify(cases.map(([x,z,r])=>({want:r,got:route(x,z)}))));
+  const venues={"without-rulers":[[-5.3,1.5,"shirts"],[5.3,1.5,"hoodies"],[9.4,-.85,"hats"],[8.1,6,"art"],[-9.5,-7.8,"bip85"],[0,7,"home"]],"proof-of-ink":[[0,11,"featured"],[-10.6,1,"fine-arts"],[8,-10.1,"collabs"],[-9,8.8,"stackchain-magazine"],[0,-7,"featured"]],"big-bitcoin":[[0,17,"overview"],[14.2,-17,"news"],[14.2,0,"research"],[-14.2,17,"merch"],[-14.2,-17,"overview"]],"maxis-club":[[7.4,-10.4,"home"],[0,0,"home"]]};
+  for(const [id,checks] of Object.entries(venues)){const r={id};r.menuZones=Z.forRoom(r);record("DSB contextual routes: "+id,checks.every(([x,z,want])=>Z.resolve(r,{x,z}).route===want),JSON.stringify(checks.map(([x,z,want])=>({want,got:Z.resolve(r,{x,z}).route}))));}
+  let lifecycle=true;const childCount=root.children.length,entry=I.registry.get("meme-factory").entry;
+  for(let i=0;i<10;i++){lifecycle&&=weather.inside&&!exterior.visible&&I.audio.stats.active;I.request(R.exit);I.update(.4);lifecycle&&=!I.active&&!weather.inside&&exterior.visible&&!I.audio.stats.active&&!I.audio.stats.connected&&returned.x===entry.x&&returned.z===entry.z;I.review("meme-factory",true);I.update(.4);lifecycle&&=I.active.room===R&&root.children.length===childCount;}
+  // Exercise the merged entrance's actual tunnel, Portara flight and return to exterior with a deterministic input source.
+  const savedW=globalThis.innerWidth,savedH=globalThis.innerHeight;globalThis.innerWidth=1440;globalThis.innerHeight=900;
+  let external=false,held=false,arrivals=0,received=0,finished=0;
+  const pilot={controls:{read:()=>({y:1})},setExternalControl:on=>external=on},camera={position:{x:0,y:0,z:0},target:{x:0,y:0,z:0}},scene={renderOpts:{}},renderOpts=scene.renderOpts;
+  const entrance=BL.dsbEntrance.create({root,camera,avatar:A,pilot,fx:{update:noop},exterior,scene,renderOpts,land,gate:{root:{position:{x:-58,y:0,z:-64}},receive:()=>received++,finishReceiving:()=>finished++},hold:on=>held=on,muted:()=>true,onArrive:()=>arrivals++,onLeave:noop});
+  entrance.update(1/60,0);entrance.update(1/60,1/60);const tunnel=entrance.phase==="tunnel"&&entrance.group.visible&&!exterior.visible&&external;
+  for(let i=0;i<1500&&entrance.phase==="tunnel";i++)entrance.update(1/60,i/60);
+  const arrival=entrance.phase==="arrival"&&held&&received===1&&exterior.visible&&!entrance.group.visible,poses=[];
+  for(let i=0;i<1200&&entrance.phase!=="done";i++){entrance.update(1/60,i/60);if(i%120===0)poses.push({...camera.position});}
+  record("Merged DSB entrance: walking crosses wormhole, receives at Portara, flies island and returns controls to exterior",tunnel&&arrival&&entrance.phase==="done"&&!held&&!external&&arrivals===1&&finished===1&&scene.renderOpts===renderOpts&&poses.length>5&&poses.every(p=>Object.values(p).every(Number.isFinite)),JSON.stringify({tunnel,arrival,phase:entrance.phase,arrivals,received,finished,poses:poses.length}));
+  entrance.dispose();globalThis.innerWidth=savedW;globalThis.innerHeight=savedH;
+  C.dispose();I.dispose();record("Meme Factory lifecycle: ten visits preserve facade return/audio gating and release scene/input resources",lifecycle&&targets.size===0&&!root.children.includes(R.root)&&!I.audio.stats.contexts);
+};
+
+// Contract: actual shared shell + lazy menu lifecycle, using a DOM transport double (no browser layout claims).
+const menuShellChecks = BL => {
+  const keys=["document","innerWidth","innerHeight","visualViewport","addEventListener","removeEventListener"],saved=Object.fromEntries(keys.map(k=>[k,globalThis[k]]));
+  const listeners=new Map(),vlisteners=new Map(),elements=[],noop=()=>{};
+  const eventHost=map=>({addEventListener:(k,f)=>map.set(k,f),removeEventListener:k=>map.delete(k)});
+  const element=tag=>{
+    const classes=new Set(),styles=new Map();
+    const e={tag,children:[],dataset:{},attributes:{},style:{setProperty:(k,v)=>styles.set(k,v),getPropertyValue:k=>styles.get(k)},hidden:false,inert:false,open:false,parentElement:null,textContent:"",listeners:new Map(),
+      classList:{add:(...v)=>v.forEach(x=>classes.add(x)),remove:(...v)=>v.forEach(x=>classes.delete(x)),contains:v=>classes.has(v)},
+      setAttribute(k,v){this.attributes[k]=v;},removeAttribute(k){delete this.attributes[k];},appendChild(c){c.parentElement=this;this.children.push(c);return c;},append(...v){v.forEach(x=>this.appendChild(x));},replaceChildren(){this.children.forEach(c=>c.parentElement=null);this.children=[];},
+      contains(n){for(;n;n=n.parentElement)if(n===this)return true;return false;},closest(q){if(q==="button")return this.tag==="button"?this:this.parentElement?.closest(q);if(q==="[hidden]")return this.hidden?this:this.parentElement?.closest(q);return null;},
+      querySelectorAll(q){const out=[];const walk=n=>{for(const c of n.children){if(q.includes(c.tag))out.push(c);walk(c);}};walk(this);return out;},querySelector(q){return this.querySelectorAll(q)[0]||null;},
+      getClientRects:()=>[{}],focus(){document.activeElement=this;},showModal(){this.open=true;},close(){this.open=false;},remove(){if(this.parentElement)this.parentElement.children=this.parentElement.children.filter(n=>n!==this);this.parentElement=null;},
+      addEventListener(k,f){this.listeners.set(k,f);},removeEventListener(k){this.listeners.delete(k);},get isConnected(){return this===document.body||!!this.parentElement;}
+    };elements.push(e);return e;
+  };
+  const body=element("body"),world=element("main"),trigger=element("button");world.append(trigger);body.append(world);
+  globalThis.document={body,createElement:element,activeElement:trigger,...eventHost(listeners)};
+  globalThis.innerWidth=1440;globalThis.innerHeight=900;globalThis.visualViewport={width:1440,height:900,offsetLeft:0,offsetTop:0,...eventHost(vlisteners)};
+  const windowListeners=new Map();Object.assign(globalThis,eventHost(windowListeners));
+  try{
+    let notices=0;const M=BL.memeFactoryMenu.create({onOpen:()=>notices++});M.enter();
+    let routes=true,isolated=true,positions=true;const initial=["home","laser","contributors","yellow","podcast","invalid"];
+    for(let i=0;i<12;i++){
+      const route=initial[i%initial.length];M.open(route);const panel=body.children.find(n=>n.tag==="dialog");routes&&=M.stats.route===(route==="invalid"?"home":route);isolated&&=world.inert&&BL.dsbMenuShell.count===1&&body.classList.contains("dsb-menu-open");
+      for(const [width,height] of [[1440,900],[390,844],[844,390]]){Object.assign(visualViewport,{width,height,offsetTop:8,offsetLeft:2});vlisteners.get("resize")();positions&&=panel.style.getPropertyValue("--menu-x")===(width/2+2)+"px"&&panel.style.getPropertyValue("--menu-y")===(height/2+8)+"px";}
+      // Navigation is free after physical entry; an already-open call cannot move the page behind the user.
+      const nav=panel.children.find(n=>n.tag==="nav"),button=nav.children.find(n=>n.dataset.route==="contributors");panel.listeners.get("click")({target:button});M.open("home");routes&&=M.stats.route==="contributors";
+      M.close();isolated&&=!world.inert&&BL.dsbMenuShell.count===0&&!body.classList.contains("dsb-menu-open")&&document.activeElement===trigger&&listeners.size===0&&vlisteners.size===0&&windowListeners.size===0;
+      M.leave();M.enter();routes&&=M.stats.route==="home";
+    }
+    record("DSB shell: visual-viewport coordinates follow desktop, portrait, landscape and offsets",positions);
+    record("DSB shell: twelve openings isolate world, restore focus and leave no listeners/shades",isolated&&notices===24&&body.children.length===2);
+    record("Meme menu: fresh context, direct person priority, free navigation and exit reset",routes);
+    const destinations=BL.memeFactoryData;record("Meme sources: twelve real public profiles, official listening links and sourced laser history",destinations.contributors.length===12&&destinations.contributors.every(p=>/^https:\/\/www.memefactorytm.com\//.test(p.url)&&p.image.startsWith("data:image/jpeg"))&&destinations.history.includes("knowyourmeme.com/memes/laser-eyes-bitcoin-trend-laserrayuntil100k")&&destinations.links.length>=6);
+    M.dispose();record("Meme menu: lazy singleton disposal releases all handlers and panel",body.children.length===1&&elements.every(e=>!e.listeners.size)&&BL.dsbMenuShell.count===0);
+  }finally{for(const [k,v] of Object.entries(saved))globalThis[k]=v;}
 };
 
 const unitChecks = async () => {
@@ -8438,6 +8528,8 @@ const unitChecks = async () => {
   globalThis.requestAnimationFrame = () => 0;
   globalThis.cancelAnimationFrame = () => {};
   globalThis.devicePixelRatio = 1;
+  globalThis.addEventListener = () => {};
+  globalThis.removeEventListener = () => {};
   if (!globalThis.crypto) Object.defineProperty(globalThis, "crypto", { value: { getRandomValues: (a) => a.fill(1) } });
 
   const order = [...readFileSync(join(root, "src/index.html"), "utf8").matchAll(/<script src="js\/([^"]+)"><\/script>/g)].map((m) => m[1]);
@@ -8450,6 +8542,7 @@ const unitChecks = async () => {
     }
   }
   const BL = globalThis.BL;
+  if(ARGS.includes("dsb-menus-unit")){memeFactoryChecks(BL);menuShellChecks(BL);maxisChecks(BL);rulersChecks(BL);inkChecks(BL);bigBitcoinChecks(BL);return;}
   exteriorEnrichmentChecks(BL);
   if(ARGS.includes("exterior-unit"))return;
   maxisChecks(BL);
@@ -9271,13 +9364,13 @@ const dsbInteriorCheckpoint = { name: "dsb interior checkpoint", why: "rule: a r
   await b.key(" ");await step();
   const entry=await b.evaluate(`(()=>{const B=__ooga,D=B.dsb,I=D.interiors,S=D.weather.shared.state;window.__interiorCheck={avatar:D.avatar,land:D.land,nature:D.nature,water:D.water,indoor:I.lighting,read:B.daylight.read};
     return {active:!!I.active,exterior:D.exterior.visible,drops:S.drops,master:S.masterLevel,feet:D.avatar.root.position.y-D.avatar.baseY,camera:{...B.camera.position},audio:I.audio.stats,label:document.querySelector("#dsb-context").textContent};})()`);
-  record("DSB interior: Space at the exterior door enters, gates weather and starts one workshop graph",entry.active&&!entry.exterior&&entry.drops===0&&entry.master===0&&Math.abs(entry.feet-.06)<.001&&Math.abs(entry.camera.x)<2&&entry.audio.connected&&entry.audio.sources===3,JSON.stringify(entry));
+  record("DSB interior: Space at the exterior door enters, gates weather and starts one workshop graph",entry.active&&!entry.exterior&&entry.drops===0&&entry.master===0&&Math.abs(entry.feet-0)<.001&&Math.abs(entry.camera.x)<2&&entry.audio.connected&&entry.audio.sources===3,JSON.stringify(entry));
   // Actual held movement, then a supported doorway return through the same controller.
   const before=await b.evaluate('({...__ooga.dsb.avatar.root.position})');
   await b.send("Input.dispatchKeyEvent",{type:"keyDown",key:"d",code:"KeyD"});await step();
   await b.send("Input.dispatchKeyEvent",{type:"keyUp",key:"d",code:"KeyD"});
-  const moved=await b.evaluate(`(()=>{const D=__ooga.dsb,I=D.interiors,p=D.avatar.root.position;return {p:{...p},floor:I.groundAt(p.x,p.z),wall:I.walkable(0,8,0,12,.06,2,D.avatar),counter:I.walkable(0,-3,0,-7,.06,2,D.avatar),table:I.walkable(0,7,0,3,.06,2,D.avatar)};})()`);
-  record("DSB interior: held movement works on the floor and swept collision blocks walls, tables and counter",Math.hypot(moved.p.x-before.x,moved.p.z-before.z)>.2&&moved.floor===.06&&!moved.wall&&!moved.counter&&!moved.table,JSON.stringify(moved));
+  const moved=await b.evaluate(`(()=>{const D=__ooga.dsb,I=D.interiors,p=D.avatar.root.position;return {p:{...p},floor:I.groundAt(p.x,p.z),wall:I.walkable(0,18,0,23,0,2,D.avatar),counter:I.walkable(0,-1,0,-7,0,2,D.avatar),table:I.walkable(0,7,0,3,0,2,D.avatar)};})()`);
+  record("DSB interior: held movement works on the floor and swept collision blocks walls, tables and counter",Math.hypot(moved.p.x-before.x,moved.p.z-before.z)>.2&&moved.floor===0&&!moved.wall&&!moved.counter&&!moved.table,JSON.stringify(moved));
   await b.evaluate('(()=>{const B=__ooga,I=B.dsb.interiors;B.pilot.navigate({position:I.active.room.spawn,yaw:0,pitch:.22,dist:3});B.dsb.weather.setMode("rain");B.daylight.read=()=>0;for(let i=0;i<480;i++)BL.scenes.dsb.update(1/60,i/60);})()');
   const isolation=await b.evaluate('({same:BL.scenes.dsb.renderOpts===__interiorCheck.indoor,exterior:__ooga.dsb.weather.state.exterior,drops:__ooga.dsb.weather.shared.state.drops,night:__ooga.renderOpts.day})');
   await tap();
@@ -9303,6 +9396,63 @@ const dsbInteriorCheckpoint = { name: "dsb interior checkpoint", why: "rule: a r
 }};
 scene("dsb",{label:"interior checkpoint",query:"&view=meme-factory&weather=storm&time=1200",steps:[dsbInteriorCheckpoint]});
 scene("dsb",{label:"interior checkpoint phone",query:"&view=meme-factory&weather=storm&time=1200",opts:{w:390,h:844,mobile:true},steps:[dsbInteriorCheckpoint]});
+
+// Rule: measure the actual rendered shell and real physical-route controller in all supported orientations.
+const dsbVenueMenusCheckpoint={name:"dsb venue menus checkpoint",why:"rule: spatial menus center within the viewport, isolate gameplay and release resources without stale routes",run:async b=>{
+  const step=()=>b.evaluate('for(let i=0;i<30;i++)BL.scenes.dsb.update(1/60,i/60)');
+  await step();
+  const snapshot=async()=>{
+    const obj=await b.send("Runtime.evaluate",{expression:"document"});
+    const result=await b.send("DOMDebugger.getEventListeners",{objectId:obj.result.result.objectId});
+    await b.send("Runtime.releaseObject",{objectId:obj.result.result.objectId});
+    return {listeners:result.result.listeners.length,dom:await b.evaluate('document.querySelectorAll(".dsb-menu-shade").length')};
+  };
+  const baseline=await snapshot();
+  const venues=[
+    ["meme-factory","memeMenu",".meme-menu",[-8,-9.7],"laser","route"],
+    ["without-rulers","shopMenu","#rulers-catalog",[5.3,1.5],"hoodies","section"],
+    ["proof-of-ink","inkMenu","#ink-catalog",[-10.6,1],"fine-arts","tag"],
+    ["big-bitcoin","bigMenu","#big-terminal",[14.2,0],"research","section"],
+    ["maxis-club","maxisMedia",".maxis-media",[7.4,-10.4],"home","category"]
+  ];
+  const paths=join(root,"untracked","dsb-menu-review");mkdirSync(paths,{recursive:true});
+  for(const [id,controller,selector,point,want,key] of venues){
+    await b.evaluate(`(()=>{const B=__ooga,D=B.dsb,I=D.interiors;if(I.active){I.request(I.active.room.exit);I.update(.4);}I.review(${JSON.stringify(id)},true);I.update(.4);const R=I.active.room;B.pilot.navigate({position:{x:${point[0]},y:R.groundAt(${point[0]},${point[1]}),z:${point[1]}},yaw:0,pitch:.12,dist:3});})()`);await step();
+    if(id==="meme-factory"){
+      for(const view of ["meme-entrance","meme-laser","meme-contributors","meme-production","meme-recording","meme-archive"]){await b.evaluate(`__ooga.pilot.navigate(__ooga.dsb.interiors.active.room.reviews[${JSON.stringify(view)}])`);await step();await b.screenshot(join(paths,view+".png"));}
+      await b.evaluate(`__ooga.pilot.navigate({position:{x:-8,y:0,z:-9.7},yaw:0,pitch:.12,dist:3})`);await step();
+    }
+    for(const [w,h] of [[1440,900],[390,844],[844,390]]){
+      await b.send("Emulation.setDeviceMetricsOverride",{width:w,height:h,deviceScaleFactor:1,mobile:w!==1440});
+      await b.evaluate('__ooga.dsb.openVenue()');await step();
+      const r=await b.evaluate(`(()=>{const D=__ooga.dsb,m=D[${JSON.stringify(controller)}],p=document.querySelector(${JSON.stringify(selector)})||document.querySelector('.dsb-menu-engaged'),r=p.getBoundingClientRect(),v=visualViewport;return {route:m.stats[${JSON.stringify(key)}],stats:m.stats,cx:Math.abs(r.x+r.width/2-v.offsetLeft-v.width/2),cy:Math.abs(r.y+r.height/2-v.offsetTop-v.height/2),fits:r.x>=v.offsetLeft&&r.y>=v.offsetTop&&r.right<=v.offsetLeft+v.width+.5&&r.bottom<=v.offsetTop+v.height+.5,scroll:p.scrollWidth<=p.clientWidth+1,isolated:document.body.classList.contains('dsb-menu-open')&&BL.dsbMenuShell.count===1,hud:getComputedStyle(document.getElementById('dsb-context')).visibility,overflow:getComputedStyle(p).overflowY};})()`);
+      // Fine Arts is a legitimate main section in this catalog; collections use its tag field.
+      const correct=r.route===want||id==="proof-of-ink"&&r.stats.section===want;
+      record(`DSB menus ${id} ${w}x${h}: contextual route, centered scrolling shell, safe bounds and hidden controls`,correct&&r.cx<1&&r.cy<1&&r.fits&&r.scroll&&r.isolated&&r.hud==="hidden"&&["auto","scroll"].includes(r.overflow),JSON.stringify(r));
+      await b.screenshot(join(paths,id+"-menu-"+w+".png"));
+      await b.evaluate(`__ooga.dsb[${JSON.stringify(controller)}].close()`);await step();
+      record(`DSB menus ${id} ${w}x${h}: close restores control layer`,await b.evaluate('!document.body.classList.contains("dsb-menu-open")&&BL.dsbMenuShell.count===0&&!document.querySelector(".dsb-menu-shade")'));
+    }
+    await b.evaluate(`(()=>{const D=__ooga.dsb,I=D.interiors;I.request(I.active.room.exit);I.update(.4);I.review(${JSON.stringify(id)},true);I.update(.4);D.openVenue();})()`);await step();
+    const fallback={"meme-factory":"home","without-rulers":"home","proof-of-ink":"featured","big-bitcoin":"overview","maxis-club":"home"}[id];
+    record(`DSB menus ${id}: exit and fresh entrance discard stale route`,await b.evaluate(`(()=>{const s=__ooga.dsb[${JSON.stringify(controller)}].stats;return (s.route||s.section||s.category)===${JSON.stringify(fallback)};})()`));
+    await b.evaluate(`__ooga.dsb[${JSON.stringify(controller)}].close()`);
+  }
+  await b.evaluate('(()=>{const D=__ooga.dsb,I=D.interiors;I.request(I.active.room.exit);I.update(.4);I.review("dsb-studio",true);I.update(.4);__ooga.pilot.navigate({position:I.active.room.jukeboxAt,yaw:Math.PI/2,pitch:.12,dist:3});})()');await step();
+  await b.key(" ");await step();
+  record("DSB Spaces: physical jukebox opens shared centered dialog",await b.evaluate('__ooga.dsb.spaces.isOpen&&document.querySelector(".dsb-spaces").classList.contains("dsb-menu-engaged")'));
+  await b.evaluate('__ooga.dsb.spaces.close();__ooga.dsb.interiors.request(__ooga.dsb.interiors.active.room.exit);__ooga.dsb.interiors.update(.4)');
+  for(const route of ["main","radio","jukebox"]){
+    await b.evaluate(`__ooga.dsb.tv.open(${JSON.stringify(route)})`);await step();
+    const r=await b.evaluate('(()=>{const D=__ooga.dsb,e=document.getElementById("dsb-tv"),r=e.getBoundingClientRect(),v=visualViewport;return {route:D.tv.stats.route,cx:Math.abs(r.x+r.width/2-v.width/2),cy:Math.abs(r.y+r.height/2-v.height/2),width:e.scrollWidth<=e.clientWidth+1,focus:document.activeElement.id};})()');
+    record(`Noderunner ${route}: centered context and request focus`,r.route===route&&r.cx<1&&r.cy<1&&r.width&&(route!=="jukebox"||r.focus==="dsb-tv-query"),JSON.stringify(r));
+    await b.screenshot(join(paths,"noderunner-"+route+".png"));await b.evaluate('__ooga.dsb.tv.close()');
+  }
+  for(let i=0;i<12;i++)await b.evaluate('__ooga.dsb.tv.open("radio");__ooga.dsb.tv.close()');
+  const after=await snapshot();record("DSB menu lifecycle: repeated openings release shared listeners and shade",after.listeners===baseline.listeners&&after.dom===baseline.dom,JSON.stringify({baseline,after}));
+  record("DSB contextual menus: runtime console remains clean",b.logs.length===0,b.logs.join(" | "));
+}};
+scene("dsb",{label:"venue menus checkpoint",query:"&interior=meme-factory&view=meme-entrance&weather=clear&time=1200",steps:[dsbVenueMenusCheckpoint]});
 
 const dsbNatureCheckpoint = { name: "dsb nature checkpoint", why: "rule: terrain contact, deterministic layout, clear routes and bounded tier populations survive scene re-entry", run: async b => {
   const exterior=await b.evaluate(`(()=>{

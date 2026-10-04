@@ -7538,3 +7538,69 @@ body[data-poker-table-view="true"] #act { visibility: hidden; }
   .ink-detail { grid-template-columns: 1fr; }
   .ink-detail img { max-width: 240px; justify-self: center; }
 }
+
+/* All full venue interfaces share one safe, visual-viewport-centred shell. Docked Maxis
+   playback and native fullscreen retain their existing layout and their same iframe. */
+.dsb-menu-shade { position: fixed; inset: 0; z-index: 990; background: #060b12b8; }
+.maxis-media.dsb-menu-engaged:is(:fullscreen,.maxis-fullscreen) { z-index: 1001; }
+:is(#dsb-tv,.dsb-menu-shell).dsb-menu-engaged:not(.maxis-fullscreen):not(:fullscreen) {
+  --menu-edge: max(12px,env(safe-area-inset-top),env(safe-area-inset-bottom),env(safe-area-inset-left),env(safe-area-inset-right));
+  position: fixed; z-index: 1000; left: var(--menu-x,50vw); top: var(--menu-y,50dvh); right: auto; bottom: auto;
+  transform: translate(-50%,-50%); margin: 0; box-sizing: border-box;
+  width: min(900px,calc(var(--menu-w,100vw) - 2 * var(--menu-edge)));
+  height: auto; max-width: none; max-height: calc(var(--menu-h,100dvh) - 2 * var(--menu-edge));
+  display: block; overflow: auto; overscroll-behavior: contain; scrollbar-gutter: stable;
+  padding: 0; font: 14px/1.5 system-ui,sans-serif;
+}
+.dsb-menu-engaged::backdrop { background: #060b1280; }
+.dsb-menu-engaged > header { position: sticky; top: 0; z-index: 2; margin: 0; padding: 14px 18px; }
+.dsb-menu-engaged header h2 { white-space: normal; overflow-wrap: anywhere; }
+.dsb-menu-engaged button { min-height: 44px; white-space: normal; }
+.dsb-menu-engaged input:not([type="range"]),.dsb-menu-engaged select { font-size: 16px; }
+.dsb-menu-engaged :is(.rulers-browse,.ink-browse,.big-results,.dsb-tv-glass) { max-height: none; overflow: visible; }
+.dsb-menu-engaged :is(.rulers-results,.ink-results,.big-results) { min-width: 0; }
+.dsb-menu-engaged :is(nav button,.rulers-themes button,.ink-filters button) { font-size: 14px; }
+.dsb-menu-engaged :is(.rulers-card p,.ink-card p,.big-results p) { font-size: 14px; }
+body.dsb-menu-open :is(.bottom-hud,.top-hud,#joy-move,#joy-look,#act,.weapon-hud,.dsb-context,.dsb-studio-tools,.rulers-tools,.ink-tools,.world-block,.world-clock) { visibility: hidden !important; pointer-events: none !important; }
+.dsb-spaces.dsb-menu-engaged .spaces-filters,.dsb-spaces.dsb-menu-engaged [data-status],.dsb-spaces.dsb-menu-engaged .spaces-playing { margin: 12px 18px; }
+.dsb-spaces.dsb-menu-engaged .spaces-list { margin: 12px 18px; max-height: 32dvh; min-height: 60px; }
+.dsb-tv-routes { display: flex; flex-wrap: wrap; gap: 8px; padding: 10px 16px; }
+.dsb-tv-routes button { flex: 1; min-height: 44px; }
+#dsb-tv.dsb-menu-engaged .dsb-tv-glass { margin: 0 16px 16px; }
+#dsb-tv.dsb-menu-engaged header { top: 0; padding: 14px 18px; }
+.meme-menu { color: #eee4ce; background: #191f26; border: 1px solid #b27f49; border-radius: 8px; }
+.meme-menu header { display: flex; justify-content: space-between; align-items: center; gap: 18px; background: #27292a; border-bottom: 3px solid #ce5238; }
+.meme-menu h2 { font-size: clamp(19px,3vw,29px); margin: 4px 0; }
+.meme-menu small { color: #d7a260; letter-spacing: .14em; }
+.meme-menu nav { display: flex; flex-wrap: wrap; gap: 8px; padding: 12px 18px; border-bottom: 1px solid #56616a; }
+.meme-menu button { color: #f5e8d0; background: #313c47; border: 1px solid #778491; border-radius: 4px; padding: 9px 12px; font: inherit; cursor: pointer; }
+.meme-menu button:hover,.meme-menu button[aria-pressed="true"] { border-color: #f1b866; background: #6a302d; }
+.meme-menu :focus-visible { outline: 3px solid #f8c77b; outline-offset: 2px; }
+.meme-content { padding: 18px; font-size: 16px; }
+.meme-content h3 { font-size: 26px; margin: 0 0 16px; overflow-wrap: anywhere; }
+.meme-menu a { color: #f7c482; display: inline-block; padding: 10px 0; overflow-wrap: anywhere; }
+.meme-statement { font-size: 27px; margin: 0 0 12px; }
+.meme-gallery { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 14px; margin-top: 20px; }
+.meme-gallery figure { margin: 0; }
+.meme-gallery img { width: 100%; height: auto; aspect-ratio: 1; object-fit: cover; display: block; border-radius: 3px; }
+.meme-profile { display: grid; gap: 10px; text-align: left; }
+.meme-profile span { overflow-wrap: anywhere; }
+.meme-person img { float: left; margin: 0 24px 24px 0; border: 1px solid #b9915d; }
+.meme-person { display: flow-root; }
+.meme-destinations { display: flex; flex-wrap: wrap; gap: 12px 24px; margin-top: 16px; }
+@media (max-width:600px) {
+  .meme-menu header { gap: 10px; padding: 12px; }
+  .meme-menu header button { max-width: 110px; }
+  .meme-menu nav { padding: 10px; gap: 5px; }
+  .meme-menu nav button { flex: 1 0 40%; }
+  .meme-gallery { grid-template-columns: repeat(2,minmax(0,1fr)); gap: 9px; }
+  .meme-content { padding: 14px; }
+  .meme-statement { font-size: 22px; }
+  .meme-person img { float: none; }
+  .dsb-menu-engaged > header { gap: 10px; padding: 12px; }
+  .dsb-menu-engaged header > button { flex-shrink: 0; }
+  .dsb-tv-routes { padding: 8px; gap: 5px; }
+}
+@media (pointer:coarse),(max-width:720px) {
+  .dsb-active .dsb-context:not(.big-context):not(.ink-context-browse) { position: fixed; left: 50%; top: auto; bottom: max(145px,calc(env(safe-area-inset-bottom) + 132px)); transform: translateX(-50%); max-width: 180px; min-height: 44px; padding: 8px; white-space: normal; }
+}

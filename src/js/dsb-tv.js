@@ -46,7 +46,8 @@
     }
     return geo;
   };
-  const create = (screen, renderer, { play = () => {}, radioStatus = () => "", onOpen = () => {} } = {}) => {
+  const create = (screen, renderer, { play = () => {}, radioStatus = () => "", onOpen: notify = () => {} } = {}) => {
+    const onOpen=on=>{BL.dsbMenuShell.present(dialog,on);notify(on);};
     const dialog = document.getElementById("dsb-tv"), channel = document.getElementById("dsb-tv-channel"), closeButton = document.getElementById("dsb-tv-close");
     const el = (id) => document.getElementById("dsb-tv-" + id);
     let streamStatus = radioStatus(), returnFocus = null;
@@ -136,23 +137,25 @@
     const copy = async () => { const epoch=paymentEpoch;if(!invoice)return;try { await navigator.clipboard.writeText(invoice); if (!disposed&&epoch===paymentEpoch) el("payment-status").textContent = "Invoice copied. Pay it in your Lightning wallet."; } catch { if (!disposed&&epoch===paymentEpoch) { el("invoice-text").focus(); el("invoice-text").select(); el("payment-status").textContent = "Invoice selected - copy it into your wallet."; } } };
     el("search").addEventListener("click", search); el("query").addEventListener("keydown", queryKey); el("results").addEventListener("click", resultClick); el("copy").addEventListener("click", copy); el("cancel-invoice").addEventListener("click", cancelInvoice);
     el("query").value = ""; el("request-status").textContent = "Search for a song to request it with sats."; el("search").disabled = false; cancelInvoice();
-    const back = () => { channel.setAttribute("aria-expanded", "false"); el("radio").hidden = true; el("welcome").hidden = false; el("menu").hidden = false; channel.focus(); };
-    const select = () => { el("menu").hidden = true; channel.setAttribute("aria-expanded", "true"); el("radio").hidden = false; el("welcome").hidden = true; el("back").focus(); };
+    let route="main";
+    const back = () => { route="main"; channel.setAttribute("aria-expanded", "false"); el("radio").hidden = true; el("welcome").hidden = false; el("menu").hidden = false; channel.focus(); };
+    const select = () => { route="radio"; el("menu").hidden = true; channel.setAttribute("aria-expanded", "true"); el("radio").hidden = false; el("welcome").hidden = true; el("back").focus(); };
+    const jukebox=()=>{select();route="jukebox";el("query").focus();el("query").scrollIntoView({block:"center"});};
     const close = () => { cancelInvoice(); if (dialog.open) {dialog.close();onOpen(false);if(returnFocus?.isConnected)returnFocus.focus();} };
-    const keydown = (event) => { if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); close(); } };
+    const keydown = (event) => { event.stopPropagation();if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); close(); } };
     const cancel = (event) => { event.preventDefault(); close(); };
-    el("play").addEventListener("click", play);
+    el("play").addEventListener("click", play);el("request-route").addEventListener("click",jukebox);el("radio-route").addEventListener("click",select);el("main-route").addEventListener("click",back);
     el("back").addEventListener("click", back); channel.addEventListener("click", select); closeButton.addEventListener("click", close); dialog.addEventListener("cancel", cancel); dialog.addEventListener("keydown", keydown);
     BL.qr.drawTo(el("qr"), JUKEBOX);
     render(); poll();
     return {
-      open: () => { if (disposed || dialog.open) return; channel.setAttribute("aria-expanded", "false"); el("radio").hidden = true; el("welcome").hidden = false; el("menu").hidden = false; returnFocus=document.activeElement;dialog.showModal();onOpen(true);closeButton.focus(); },
+      open: (initial="main") => { if (disposed || dialog.open) return;route="main"; channel.setAttribute("aria-expanded", "false"); el("radio").hidden = true; el("welcome").hidden = false; el("menu").hidden = false; returnFocus=document.activeElement;dialog.showModal();onOpen(true);closeButton.focus();if(initial==="radio")select();if(initial==="jukebox")jukebox(); },
       close,
       update:()=>{const next=radioStatus();if(next!==streamStatus){streamStatus=next;render();}},
-      get stats(){return {disposed,timers:Number(!!timer)+Number(!!watchdog)+Number(!!paymentTimer),requests:requests.size,invoice:!!invoice,paymentEpoch};},
+      get stats(){return {disposed,route,timers:Number(!!timer)+Number(!!watchdog)+Number(!!paymentTimer),requests:requests.size,invoice:!!invoice,paymentEpoch};},
       get isOpen() { return dialog.open; },
       get status() { return status; },
-      dispose: () => { disposed = true; close(); cancelInvoice(); for (const abort of requests.keys()) abort.abort(); requests.clear(); el("play").removeEventListener("click",play); el("search").removeEventListener("click", search); el("query").removeEventListener("keydown", queryKey); el("results").removeEventListener("click", resultClick); el("copy").removeEventListener("click", copy); el("cancel-invoice").removeEventListener("click", cancelInvoice); el("results").replaceChildren(); searchResults.length = 0; clearTimeout(timer); clearTimeout(watchdog);timer=watchdog=0; if (controller) controller.abort(); el("back").removeEventListener("click", back); channel.removeEventListener("click", select); closeButton.removeEventListener("click", close); dialog.removeEventListener("cancel", cancel); dialog.removeEventListener("keydown", keydown); if (screen.geometry) renderer.releaseGeometry(screen.geometry); screen.geometry = null; el("queue").replaceChildren(); el("history").replaceChildren(); }
+      dispose: () => { disposed = true; close();el("request-route").removeEventListener("click",jukebox);el("radio-route").removeEventListener("click",select);el("main-route").removeEventListener("click",back); cancelInvoice(); for (const abort of requests.keys()) abort.abort(); requests.clear(); el("play").removeEventListener("click",play); el("search").removeEventListener("click", search); el("query").removeEventListener("keydown", queryKey); el("results").removeEventListener("click", resultClick); el("copy").removeEventListener("click", copy); el("cancel-invoice").removeEventListener("click", cancelInvoice); el("results").replaceChildren(); searchResults.length = 0; clearTimeout(timer); clearTimeout(watchdog);timer=watchdog=0; if (controller) controller.abort(); el("back").removeEventListener("click", back); channel.removeEventListener("click", select); closeButton.removeEventListener("click", close); dialog.removeEventListener("cancel", cancel); dialog.removeEventListener("keydown", keydown); if (screen.geometry) renderer.releaseGeometry(screen.geometry); screen.geometry = null; el("queue").replaceChildren(); el("history").replaceChildren(); }
     };
   };
   BL.dsbTv = { create, clean, station, results, validInvoice };
