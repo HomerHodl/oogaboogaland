@@ -39,6 +39,8 @@
       const spec=TYPES[kind],r=spec.r*scale,y=land.heightAt(x,z);
       if(y<.85||y>spec.maxY||!land.clearAt(x,z,kind==="bougainvillea"?.18:r+.5))return false;
       if(distance(land.trail,x,z)<2.9+r||distance(land.waterfront,x,z)<3.8+r)return false;
+      // Olympus' stream bed and mill footings stay clear.
+      if(BL.dsbOlympus.reserved(x,z,r))return false;
       for(const lane of land.lanes)if(distance(lane,x,z)<2+r)return false;
       if(Math.hypot(x-land.marks.summit.x,z-land.marks.summit.z)<18+r)return false;
       if(Math.hypot(x-land.marks.choraSign.x,z-land.marks.choraSign.z)<4+r)return false;

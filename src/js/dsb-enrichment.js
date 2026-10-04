@@ -21,6 +21,7 @@
       const p={kind,x,y,z,yaw,sx,sy,sz,gx,gz,region,priority};batches.get(kind).list.push(p);placements.push(p);return p;
     };
     const reserved=(x,z,r,harbor=false)=>{
+      if(BL.dsbOlympus.reserved(x,z,r))return true;
       if(distance(land.trail,x,z)<2.9+r||distance(land.waterfront,x,z)<3.65+r)return true;
       for(const l of land.lanes)if(distance(l,x,z)<1.85+r)return true;
       if(distance(BEACH_ROUTE,x,z)<1.15+r||distance(RUIN_ROUTE,x,z)<1.2+r)return true;
