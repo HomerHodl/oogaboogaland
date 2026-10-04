@@ -1,13 +1,13 @@
 // The roster, built from the character registry, with bounded repository activity from oogatron snapshots
 // (schemas 1-3; a schema-3 snapshot's `repos[].contributors` fans last-seen onto per-repository keys so
 // work routes pick the matching cave). It gives each contributor a working (<1h), chilling (<24h) or
-// sleeping state, the active solo roster, and hashed traits with each character's `look` laid over them.
+// sleeping (through 30 days) or away state, the active solo roster, and hashed traits with each character's `look` laid over them.
 (() => {
   "use strict";
   const BL = window.BL = window.BL || {};
   // Clanking (working) within one hour, chillin until a day has passed,
-  // asleep after that. The 60s hub interval re-samples these thresholds.
-  const MINUTE = 60 * 1e3, HOUR = 60 * MINUTE, WORK_WINDOW = HOUR, CHILL_WINDOW = 24 * HOUR;
+  // asleep through 30 days, then away. The 60s hub interval re-samples these thresholds.
+  const MINUTE = 60 * 1e3, HOUR = 60 * MINUTE, WORK_WINDOW = HOUR, CHILL_WINDOW = 24 * HOUR, AWAY_WINDOW = 30 * 24 * HOUR;
   const ENTROPY = "oogaboogax/entropylab", MAX_REPOS = 64;
   const ISO_TIME = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/;
   // Historical EntropyLab activity; a backend can refresh it with applyActivity.
@@ -90,15 +90,16 @@
     const age = at - stamp;
     if (!Number.isFinite(age) || stamp <= 0 || age < 0) return "sleeping";
     if (age < WORK_WINDOW) return "working";
-    return age < CHILL_WINDOW ? "chilling" : "sleeping";
+    return age < CHILL_WINDOW ? "chilling" : age <= AWAY_WINDOW ? "sleeping" : "away";
   };
+  const contributionAt = (contributor) => contributor.lastContributionAt > 0 ? contributor.lastContributionAt : contributor.lastCommitAt;
   const stateFor = (contributor, at = Date.now()) => {
     if (debugRoster) return debugModes.get(contributor)?.state || "sleeping";
     if (debugState) return debugState;
-    if (contributor.maintainer) return "working";
-    return stateAt(contributor.lastCommitAt, at);
+    const state = stateAt(contributionAt(contributor), at);
+    return contributor.maintainer && state !== "away" ? "working" : state;
   };
-  const contributionStateFor = (contributor, at = Date.now()) => stateAt(contributor.lastContributionAt, at);
+  const contributionStateFor = (contributor, at = Date.now()) => stateAt(contributionAt(contributor), at);
   const ageAt = (stamp, at) => {
     if (!Number.isFinite(stamp) || stamp <= 0) return "no activity";
     const minutes = Math.max(0, Math.floor((at - stamp) / MINUTE));
@@ -108,7 +109,7 @@
     return `${Math.floor(hours / 24)}d ago`;
   };
   const ageLabel = (contributor, at = Date.now()) => contributor.maintainer ? "building" : ageAt(contributor.lastCommitAt, at);
-  const contributionAgeLabel = (contributor, at = Date.now()) => ageAt(contributor.lastContributionAt, at);
+  const contributionAgeLabel = (contributor, at = Date.now()) => ageAt(contributionAt(contributor), at);
   const recordContribution = (contributor, stamp) => {
     if (stamp <= contributor.lastContributionAt) return false;
     contributor.lastContributionAt = stamp;
@@ -214,6 +215,7 @@
       const contributor = roster[i];
       const age = i < 3 ? i * 30000 : i < 6 ? 8 * HOUR + i * 60000 : CHILL_WINDOW;
       contributor.lastCommitAt = at - age;
+      contributor.lastContributionAt = contributor.lastCommitAt;
       contributor.activity.clear();
       contributor.activity.set(ENTROPY, contributor.lastCommitAt);
     }

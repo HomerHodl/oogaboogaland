@@ -2552,7 +2552,7 @@
   const timechainResidentPose = (cave, dt) => {
     if (!timechainIsland || cave.traits.name !== "SaniExp") return false;
     const T = timechainIsland, s = T.seat, parts = cave.parts;
-    if (cave === pilot?.player || contributors.debugState || contributors.debugRoster) {
+    if (cave.state === "away" || cave === pilot?.player || contributors.debugState || contributors.debugRoster) {
       T.beer.pause();
       if (s.active) {
         s.active = false; cave.root.rotation.x = cave.root.rotation.z = 0;

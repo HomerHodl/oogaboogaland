@@ -656,7 +656,10 @@
       cavemen.set(contributor.name, cave);
       crewList.push(cave);
     });
-    const stateOf = (cave) => cave.override || contributors.stateFor(cave.contributor);
+    const stateOf = (cave) => {
+      const activity = contributors.stateFor(cave.contributor);
+      return activity === "away" && !ctx.playerName ? "away" : cave.override || activity;
+    };
     const groundY = (cave) => {
       const p = cave.root.position;
       const feet = p.y - cave.baseY + cave.restLower;
@@ -685,7 +688,7 @@
       cave.bedroll = null;
     };
     const stateCounts = () => {
-      const counts = { working: 0, chilling: 0, sleeping: 0 };
+      const counts = { working: 0, chilling: 0, sleeping: 0, away: 0 };
       for (let i = 0; i < crewList.length; i++) counts[crewList[i].state]++;
       return counts;
     };
@@ -1103,7 +1106,19 @@
           runBed(cave, 0);
         } else startBedRoute(cave, cave.bedroll, true);
       }
-      else { cave.bedTravel.mode = "waiting"; cave.bedTravel.toBed = true; cave.bedTravel.retry = 1; }
+      else {
+        // A full HQ must not leave new sleepers at the model origin inside the pile.
+        // Reuse the scene's collision- and occupancy-checked recovery spots; if all
+        // are occupied, remain hidden and retry instead of stacking at a fallback.
+        cave.walk = null;
+        cave.act.kind = "bed";
+        if (!visible || settle) {
+          r.visible = !!ctx.npcRecoverySpot && ctx.npcRecoverySpot(cave, NPC_RECOVERY_SPOT);
+          if (r.visible) setVec(r.position, NPC_RECOVERY_SPOT.x, cave.baseY + NPC_RECOVERY_SPOT.y, NPC_RECOVERY_SPOT.z);
+          cave.hop = cave.hopV = 0;
+        }
+        cave.bedTravel.mode = "waiting"; cave.bedTravel.toBed = true; cave.bedTravel.retry = 1;
+      }
       refreshRosterRow(cave);
     };
     const applyState = (cave, state, settle = false) => {
@@ -1161,7 +1176,11 @@
     };
     const beginWalk = (cave, state = "working") => {
       if (cave === player && cave.bedTravel.manual && cave.state === "sleeping") { wakePlayer(); return; }
+      if (cave.state === "away") { applyState(cave, state, true); return; }
       if (ctx.bedRoute && cave.state === "sleeping") {
+        // An overflow sleeper may have neither a bed nor a visible waiting spot.
+        // Settle a newly active Ooga normally instead of routing from an absent bed.
+        if (!cave.bedroll) { cave.state = "away"; applyState(cave, state, true); return; }
         const bed = cave.bedroll;
         standFromBed(cave);
         releaseBedroll(cave);
@@ -1300,6 +1319,7 @@
       assignFanSlots(entries, (cave) => next.get(cave) === "working");
       for (const cave of entries) {
         const target = next.get(cave);
+        if (target === "away") { applyState(cave, target, settle); refreshRosterRow(cave); continue; }
         if (cave === player) {
           if (target !== "sleeping" && !cave.bedTravel.manual) cave.state = target;
           refreshRosterRow(cave);
@@ -3789,6 +3809,15 @@
         return;
       }
       if (travel.mode === "waiting") {
+        if (travel.toBed && !cave.bedroll) {
+          travel.retry -= dt;
+          if (travel.retry <= 0) {
+            if (!cave.root.visible) startSleep(cave, true);
+            else if (claimBedroll(cave)) startBedRoute(cave, cave.bedroll, true);
+            else travel.retry = 1;
+          }
+          return;
+        }
         if (!grounded(cave)) { startBedRoute(cave, travel.toBed ? cave.bedroll : travel.bed, travel.toBed); return; }
         if (travel.plan) return;
         travel.retry -= dt;

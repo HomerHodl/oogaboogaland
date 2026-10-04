@@ -4,7 +4,8 @@
   const { canvasRenderer } = BL;
   const { formatLarge } = BL.game;
   const { createNode, addChild, createCamera, boundsOf } = BL.scene;
-  const STATE_LABELS = { working: "clank", chilling: "chill", sleeping: "sleep", away: "chill", online: "online" };
+  const STATE_LABELS = { working: "clank", chilling: "chill", sleeping: "sleep", away: "away", online: "online" };
+  const ROSTER_ORDER = { working: 0, chilling: 1, sleeping: 2, away: 3 };
   // Tooltip dots retain their human-presence color without changing NPC activity.
   const statusFor = (cave) => {
     const actor = cave.tooltipOwner || cave;
@@ -292,7 +293,19 @@
     };
     let toastTimer = 0, toastHideTimer = 0, hintTimer = 0, hintHideTimer = 0, copyTimer = 0;
     const rosterRows = new Map();
-    const orderedRoster = [...roster].sort((a, b) => b.lastContributionAt - a.lastContributionAt);
+    let showAway = false, awayCount = 0;
+    const awayRow = document.createElement("li"), awayButton = document.createElement("button");
+    awayRow.className = "roster-away";
+    awayButton.type = "button";
+    awayButton.setAttribute("aria-expanded", "false");
+    awayRow.append(awayButton);
+    const updateAwayButton = () => {
+      awayRow.hidden = awayCount === 0;
+      awayButton.textContent = `${showAway ? "Hide" : "Show"} away (${awayCount})`;
+    };
+    const orderedRoster = [...roster].sort((a, b) =>
+      ROSTER_ORDER[BL.contributors.contributionStateFor(a)] - ROSTER_ORDER[BL.contributors.contributionStateFor(b)] ||
+      (b.lastContributionAt || b.lastCommitAt) - (a.lastContributionAt || a.lastCommitAt));
     for (let rosterIndex = 0; rosterIndex < orderedRoster.length; rosterIndex++) {
       const contributor = orderedRoster[rosterIndex];
       const li = document.createElement("li");
@@ -314,17 +327,31 @@
       const activity = BL.contributors.contributionStateFor(contributor);
       state.dataset.state = activity;
       state.append(STATE_LABELS[activity]);
+      if (activity === "away") {
+        if (!awayRow.parentElement) el.roster.append(awayRow);
+        li.hidden = true; awayCount++;
+      }
       li.append(presence, name, age, state);
       el.roster.append(li);
       rosterRows.set(contributor.name, { li, presence, state, age, contributor, rosterIndex, online: false });
     }
+    if (!awayRow.parentElement) el.roster.append(awayRow);
+    updateAwayButton();
+    on(awayButton, "click", () => {
+      showAway = !showAway;
+      awayButton.setAttribute("aria-expanded", String(showAway));
+      for (const row of rosterRows.values()) if (row.state.dataset.state === "away") row.li.hidden = !showAway;
+      updateAwayButton();
+    });
     const placeRosterRow = (row) => {
-      let before = null;
+      const rank = ROSTER_ORDER[row.state.dataset.state], stamp = row.contributor.lastContributionAt || row.contributor.lastCommitAt;
+      let before = rank === ROSTER_ORDER.away ? null : awayRow;
       for (const sibling of el.roster.children) {
-        if (sibling === row.li) continue;
+        if (sibling === row.li || sibling === awayRow) continue;
         const other = rosterRows.get(sibling.dataset.name);
-        if (other.contributor.lastContributionAt < row.contributor.lastContributionAt ||
-          other.contributor.lastContributionAt === row.contributor.lastContributionAt && other.rosterIndex > row.rosterIndex) { before = sibling; break; }
+        const otherRank = ROSTER_ORDER[other.state.dataset.state], otherStamp = other.contributor.lastContributionAt || other.contributor.lastCommitAt;
+        if (otherRank > rank) { before = otherRank === ROSTER_ORDER.away ? awayRow : sibling; break; }
+        if (otherRank === rank && (otherStamp < stamp || otherStamp === stamp && other.rosterIndex > row.rosterIndex)) { before = sibling; break; }
       }
       if (before) {
         if (row.li.nextElementSibling !== before) el.roster.insertBefore(row.li, before);
@@ -338,8 +365,12 @@
       const activity = BL.contributors.contributionStateFor(row.contributor);
       const ageText = BL.contributors.contributionAgeLabel(row.contributor);
       if (row.state.dataset.state !== activity) {
+        if (row.state.dataset.state === "away") awayCount--;
+        if (activity === "away") awayCount++;
         row.state.dataset.state = activity;
         row.state.firstChild.data = STATE_LABELS[activity] || activity;
+        row.li.hidden = activity === "away" && !showAway;
+        updateAwayButton();
       }
       if (row.age.firstChild.data !== ageText) row.age.firstChild.data = ageText;
       if (row.online !== online) {

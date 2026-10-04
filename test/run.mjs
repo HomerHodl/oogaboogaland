@@ -1627,7 +1627,8 @@ const { contributorActivityProbe } = (() => {
     const saved = roster.map((entry) => ({ at: entry.lastCommitAt, activity: [...entry.activity] }));
     const state = (age) => stateFor({ lastCommitAt: at - age }, at);
     const boundaries = state(0) === "working" && state(HOUR - 1) === "working" && state(HOUR) === "chilling" &&
-      state(24 * HOUR - 1) === "chilling" && state(24 * HOUR) === "sleeping" && state(8 * 24 * HOUR) === "sleeping";
+      state(24 * HOUR - 1) === "chilling" && state(24 * HOUR) === "sleeping" && state(8 * 24 * HOUR) === "sleeping"
+      && state(30 * 24 * HOUR) === "sleeping" && state(30 * 24 * HOUR + 1) === "away";
     const invalidStates = [NaN, Infinity, 0, -1, at + 1].every((lastCommitAt) => stateFor({ lastCommitAt }, at) === "sleeping");
     const labels = ageLabel({ lastCommitAt: at }, at) === "0m ago" &&
       ageLabel({ lastCommitAt: at - HOUR / 2 }, at) === "30m ago" &&
@@ -8794,6 +8795,54 @@ const unitChecks = async () => {
     record("Ooga Portal receiving: host owns duration then restores reusable outbound cycle", receiving && fading && !gate.receiving && gate.state === "OFF" && gate.activate(0));
     gate.dispose();
     document.getElementById = get; window.addEventListener = listen; window.removeEventListener = unlisten;
+  }
+  {
+    // A larger cast must never put sleepers at the pile origin when HQ is full.
+    const S = BL.scene, root = S.createNode(), noop = () => {}, C = BL.contributors, now = Date.now(), day = 86400000;
+    const saved = C.roster.map(c => ({ lastCommitAt: c.lastCommitAt, lastContributionAt: c.lastContributionAt, maintainer: c.maintainer }));
+    for (const c of C.roster) { c.lastCommitAt = c.lastContributionAt = now - 2 * day; c.maintainer = false; }
+    const beds = [], spots = [{ x: 10, y: 0, z: 10 }, { x: 14, y: 0, z: 10 }, { x: 18, y: 0, z: 10 }];
+    let crew;
+    try {
+      crew = BL.crew.create({ root, world: { level: 0 }, input: { add: noop, remove: noop }, hud: { setRosterRow: noop },
+        game: { state: { assignments: {}, inventory: [] } }, pile: { footprintEdge: 1, pileEdge: () => 1 }, viewYaw: 0,
+        buildSpots: [], walkIn: { x: 0, z: 3 }, groundAt: () => 0, walkable: () => true, bedrolls: beds,
+        bedRoute: (cave, bed) => [{ x: bed.x, y: bed.y, z: bed.z }],
+        npcRecoverySpot: (cave, out) => {
+          const free = spots.find(s => crew.list.every(other => other === cave || !other.root.visible || Math.hypot(s.x - other.root.position.x, s.z - other.root.position.z) > 1));
+          if (!free) return false;
+          Object.assign(out, free); return true;
+        },
+        fx: { say: noop, zzzAt: noop, burst: noop, puff: noop, spawnParticle: noop, damageNumber: noop }
+      });
+      crew.refreshStates(true);
+      const visible = crew.list.filter(c => c.root.visible), hidden = crew.list.find(c => !c.root.visible);
+      const separated = visible.length === spots.length && new Set(visible.map(c => `${c.root.position.x},${c.root.position.z}`)).size === visible.length
+        && visible.every(c => Math.hypot(c.root.position.x, c.root.position.z) > 5 && c.state === "sleeping" && !c.bedroll);
+      crew.update(1.1, 1.1);
+      const noOrigin = crew.list.every(c => !c.root.visible || Math.hypot(c.root.position.x, c.root.position.z) > 5);
+      const retired = visible[0];
+      retired.contributor.lastContributionAt = now - 31 * day;
+      retired.override = "chilling"; // Resident overrides cannot keep inactive Oogas on the island.
+      crew.refreshStates();
+      const away = retired.state === "away" && !retired.root.visible && crew.stateCounts().away === 1;
+      crew.update(1.1, 2.2);
+      const recovered = hidden.root.visible && hidden.state === "sleeping" && Math.hypot(hidden.root.position.x, hidden.root.position.z) > 5;
+      retired.override = null;
+      // Org-wide activity must wake them even if per-repository routing data is old.
+      C.applySnapshot({ meta: { org: "OogaBoogaX", schema_version: 3 }, contributors: [{ login: retired.contributor.name, last_seen_at: new Date(now).toISOString() }],
+        repos: [{ name: "oogaboogaland", contributors: [] }] }, now);
+      crew.refreshStates();
+      const returned = retired.state === "working" && retired.root.visible && Number.isFinite(retired.root.position.x) && !retired.bedTravel.mode;
+      const bed = { x: 30, y: 0, z: 30 }; beds.push(bed);
+      crew.update(1.1, 3.3);
+      const reserved = !!bed.sleeper && crew.list.filter(c => c.bedroll === bed).length === 1;
+      record("crew capacity: full HQ uses separate safe waiting spots, hides overflow, retries vacancies, and wakes away contributors", separated && noOrigin && away && recovered && returned && reserved,
+        JSON.stringify({ separated, noOrigin, away, recovered, returned, reserved }));
+    } finally {
+      if (crew) crew.dispose();
+      C.roster.forEach((c, i) => Object.assign(c, saved[i]));
+    }
   }
   {
     // Regression: all canonical physical bodies fit DSB's portal and landmark lanes.
