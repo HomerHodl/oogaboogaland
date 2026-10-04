@@ -33,13 +33,13 @@
     for(const x of [-17.5,17.5])for(const z of [-18,-10,-2,6,14]){block(root,C.steel,x,3.6,z,.26,7.2,.26);familiar("lantern",x,3.5,z);}
     for(const x of [-16,-6,6,16]){block(root,C.steel,x,6.85,0,.14,.14,41);block(root,"#936142",x+.19,6.84,0,.04,.04,41);}
     // Entry brand portal and side statements leave a generous view toward the laser room.
-    for(const x of [-5.4,5.4]){block(root,C.black,x,1.8,13,.42,3.6,.55);solid(x,13,.42,.55);}
-    block(root,C.black,0,4.1,13,11.4,1.05,.55);label(root,"THE MEME FACTORY",0,3.92,13.31,.92);label(root,"TM",5.0,4.36,13.32,.17);
-    block(root,C.amber,0,3.53,13.32,10.6,.055,.045,.85);
+    for(const x of [-5.4,5.4]){block(root,C.black,x,1.8,9,.42,3.6,.55);solid(x,9,.42,.55,true);}
+    block(root,C.black,0,4.1,9,11.4,1.05,.55);label(root,"THE MEME FACTORY",0,3.92,9.31,.92);label(root,"TM",5.0,4.36,9.32,.17);
+    block(root,C.amber,0,3.53,9.32,10.6,.055,.045,.85);
     const statement=group(-10,17);
-    block(statement,C.black,0,2.8,0,6.5,5.3,.23);solid(-10,17,6.5,.23);
+    block(statement,C.black,0,2.8,0,6.5,5.3,.23);solid(-10,17,6.5,.23,true);
     for(const [i,t] of ["THE MEME FACTORY","DOES NOT EXIST","WE ARE THE REASON","YOUR MOTHER HAS","LASER EYES IN HER","PROFILE PIC"].entries())label(statement,t,0,4.7-i*.61,.15,i<2?.39:.3,i<2?C.white:C.amber);
-    const entryRight=group(10,17);block(entryRight,C.black,0,2.8,0,5.5,5.3,.23);solid(10,17,5.5,.23);
+    const entryRight=group(10,17);block(entryRight,C.black,0,2.8,0,5.5,5.3,.23);solid(10,17,5.5,.23,true);
     for(const [i,t] of ["MEMES","PODCASTS","CREATORS","CULTURE","BITCOIN"].entries())label(entryRight,t,0,4.65-i*.7,.15,.5,C.blue);
     for(const x of [-14.2,-6,6,14.2]){familiar("planter",x,0,17.2);solid(x,17.2,.7,.7);}
     block(root,C.black,0,.022,17,7,.025,4.5);const floorWord=label(root,"BITCOIN",0,.055,17.7,.78,C.amber);floorWord.rotation.x=-Math.PI/2;
@@ -129,7 +129,7 @@
       "meme-production":{position:{x:-11.4,y:0,z:12},yaw:0,pitch:.16,dist:3},
       "meme-studio":{position:{x:0,y:0,z:9},yaw:0,pitch:.12,dist:3},
       "meme-recording":{position:{x:0,y:0,z:.2},yaw:0,pitch:.14,dist:3},
-      "meme-archive":{position:{x:8.1,y:0,z:15},yaw:-.65,pitch:.04,dist:3}
+      "meme-archive":{position:{x:8,y:0,z:10.8},yaw:-1.35,pitch:-.08,dist:3}
     };
     const clampCamera=(p,focus)=>{
       if(!focus)return;const dx=p.x-focus.x,dz=p.z-focus.z;let limit=1;
