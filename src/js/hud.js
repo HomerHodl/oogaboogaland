@@ -208,7 +208,7 @@
       board: $("board-modal"), boardTitle: $("board-title"), boardScreen: $("board-screen"), boardCaption: $("board-caption"), boardNote: $("board-note"),
       boardDots: $("board-dots"), boardPrev: $("board-prev"), boardNext: $("board-next"), boardHelp: $("board-help"),
       boardHead: $("board-head"), boardPause: $("board-pause"), boardResize: $("board-resize"),
-      leakForm: $("leak-form"),
+      leakForm: $("leak-form"), leakTyping: $("leak-typing"), leakMouse: $("leak-mouse"),
       act: $("act"),
       mode: $("mode-hud"),
       modeDestination: $("destination-hud"),

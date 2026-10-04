@@ -3111,6 +3111,23 @@ body[data-active-scene="arcade"] .magazine-hud {
   margin-top: 8px;
 }
 
+.leak-pad {
+  display: grid;
+  place-items: center;
+  height: 110px;
+  margin-top: 10px;
+  border: 2px dashed var(--stone-dk);
+  border-radius: 9px 7px 10px 8px;
+  background: var(--tablet);
+  box-shadow: var(--tablet-shadow);
+  color: rgba(243, 239, 228, 0.75);
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  touch-action: none;
+  user-select: none;
+}
+
 .leak-hidden {
   position: absolute;
   top: 0;
