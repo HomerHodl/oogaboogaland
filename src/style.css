@@ -5088,6 +5088,9 @@ body.orbit-dragging #tooltip {
 
 .dsb-entry .dsb-panel { top: 24px; bottom: auto; left: 24px; right: auto; transform: none; width: min(340px, 75vw); text-align: left; }
 @media (max-width: 720px) { .dsb-entry .dsb-panel { top: 12px; left: 50%; transform: translateX(-50%); width: 85vw; max-height: 30%; text-align: center; } }
+/* The passage from ₿IFRÖST and the flight after it show their own card and nothing of the walk's. */
+.dsb-entry .dsb-panel { background: #060a1cb8; border-radius: 12px; padding: 12px 16px; }
+.dsb-entry .equipment-hud, .dsb-entry #act, .dsb-entry .dsb-context, .dsb-arrival .equipment-hud, .dsb-arrival .dsb-context { display: none; }
 
 /* Nearby, opt-in CRT menu. The broadcast continues with the cabinet closed. */
 #dsb-tv { width: min(820px, 94vw); max-height: 90dvh; overflow: auto; padding: 20px; border: 8px solid #78543b; border-radius: 24px; background: #392739; color: #e6fff2; box-shadow: 0 20px 90px #000b; }
