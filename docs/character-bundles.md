@@ -11,8 +11,8 @@ The automation never merges the manual lane. A queued update invalidates old
 approval; operator requests for changes block either lane. After either PR
 merges, its replacement opens. An idle PR has a small
 `.github/character-bundles/<lane>.json` manifest as its only change, since GitHub
-cannot open a PR with an identical tree. Empty bundles fail the identity merge
-check and remain open; the automatic merger also refuses them. The first
+cannot open a PR with an identical tree. Valid empty bundles pass identity
+validation but keep their merge gates pending; the automatic merger also refuses them. The first
 submission to a reused daily placeholder starts its UTC day.
 
 ## Intake and ownership

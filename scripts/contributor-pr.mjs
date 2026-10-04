@@ -67,8 +67,9 @@ export const checkCharacterIdentities = async (pr, apply = false) => {
     const rock = apply ? (await gh.api(`commits/${pr.merge_commit_sha}`)).parents[0].sha
       : (await gh.api("git/ref/heads/rock")).object.sha;
     const checked = await validateBundle(gh, pr, process.env.CHARACTER_BOT_LOGIN, rock);
-    if (!checked.entries.length) throw new Error("Empty character bundle: keep it open until a submission arrives");
-    // The coordinator publishes the mandatory exact-head review status separately.
+    if (apply && !checked.entries.length) throw new Error("Empty character bundle: keep it open until a submission arrives");
+    // Valid empty placeholders pass validation; the coordinator keeps their merge gates pending.
+    // The coordinator also publishes the mandatory exact-head review status separately.
     // This identity check stays independent so approving a review need not rerun it.
     return [];
   }
