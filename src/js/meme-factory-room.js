@@ -33,9 +33,9 @@
     for(const x of [-17.5,17.5])for(const z of [-18,-10,-2,6,14]){block(root,C.steel,x,3.6,z,.26,7.2,.26);familiar("lantern",x,3.5,z);}
     for(const x of [-16,-6,6,16]){block(root,C.steel,x,6.85,0,.14,.14,41);block(root,"#936142",x+.19,6.84,0,.04,.04,41);}
     // Entry brand portal and side statements leave a generous view toward the laser room.
-    for(const x of [-5.4,5.4]){block(root,C.black,x,2.65,13,.42,5.3,.55);solid(x,13,.42,.55);}
-    block(root,C.black,0,5.65,13,11.4,1.1,.55);label(root,"THE MEME FACTORY",0,5.56,13.31,.92);label(root,"TM",5.0,6.0,13.32,.17);
-    block(root,C.amber,0,5.04,13.32,10.6,.055,.045,.85);
+    for(const x of [-5.4,5.4]){block(root,C.black,x,1.8,13,.42,3.6,.55);solid(x,13,.42,.55);}
+    block(root,C.black,0,4.1,13,11.4,1.05,.55);label(root,"THE MEME FACTORY",0,3.92,13.31,.92);label(root,"TM",5.0,4.36,13.32,.17);
+    block(root,C.amber,0,3.53,13.32,10.6,.055,.045,.85);
     const statement=group(-10,17);
     block(statement,C.black,0,2.8,0,6.5,5.3,.23);solid(-10,17,6.5,.23);
     for(const [i,t] of ["THE MEME FACTORY","DOES NOT EXIST","WE ARE THE REASON","YOUR MOTHER HAS","LASER EYES IN HER","PROFILE PIC"].entries())label(statement,t,0,4.7-i*.61,.15,i<2?.39:.3,i<2?C.white:C.amber);
@@ -46,7 +46,7 @@
     zone("home","Explore Meme Factory",0,17,5,4);
     // Laser exhibit: portrait mosaic, radiant eye bars and suspended elliptical light ring.
     const laser=group(-8,-20.65);block(laser,C.black,0,3.5,0,17,6.8,.15);
-    label(laser,"#LASERRAYUNTIL100K",0,6.25,.15,.67,C.red);
+    label(laser,"#LASERRAYUNTIL100K",0,6.02,.15,.67,C.red);
     portrait(laser,"chairforce",0,3.85,.15,4.1);
     for(const [i,id] of ["yellow","gregzaj","rd","plan-marcus"].entries())portrait(laser,id,i<2?-5.5:5.5,2.2+(i%2)*2.6,.18,2.1);
     for(const side of [-1,1]){
@@ -54,7 +54,7 @@
       const ray=block(laser,C.red,side*2.55,4.3,.33,4.3,.035,.04,1);ray.rotation.z=side*.12;
     }
     for(let i=0;i<44;i++){
-      const a=i*Math.PI*2/44,n=block(root,i%3?C.red:C.amber,-8+Math.cos(a)*7.7,6.22,-15.6+Math.sin(a)*4.2,1.1,.045,.06,.95);n.rotation.y=-a;
+      const a=i*Math.PI*2/44,n=block(root,i%3?C.red:C.amber,-8+Math.cos(a)*7.7,6.22,-15.6+Math.sin(a)*4.2,Math.hypot(7.7*Math.sin(a),4.2*Math.cos(a))*Math.PI*2/44+.035,.045,.06,.95);n.rotation.y=Math.atan2(-4.2*Math.cos(a),-7.7*Math.sin(a));
     }
     for(const x of [-14,-2])block(root,C.steel,x,6.79,-15.6,.03,1.18,.03);
     for(const x of [-13,-9,-5])seat(x,-12.8,0,x,-11.05);
@@ -92,9 +92,11 @@
     for(const x of [-3.6,3.6]){prop("rack",x,0,5.4);solid(x,5.4,1.15,.9);}
     zone("podcast","Listen to Podcast",0,-3,4.35,5.1);zone("podcast","Listen to Podcast",0,5.8,4.9,2.1);
     // Production benches: paired monitor arrays, export lights, rolling carts and overhead cable trays.
+    let editingPortrait=0;
     for(const x of [-14,-8.7])for(const z of [1.5,7.9]){
       prop("desk",x,0,z);solid(x,z,3.8,1.65);
       for(const dx of [-.86,.86])prop("monitor",x+dx,1.09,z-.5);
+      portrait(root,D.contributors[editingPortrait++*3].id,x-.95,1.91,z-.44,.62);
       prop("chair",x,0,z+1.6);solid(x,z+1.6,1.42,1.03);
       prop("box",x-1.05,.24,z);familiar("books",x+.9,1.09,z+.26);
       block(root,C.steel,x,6.26,z,4.2,.16,.34);block(root,C.amber,x,6.16,z,3.9,.025,.12,.7);
@@ -121,13 +123,13 @@
       lights:new Float32Array([0,4.8,16,13,1,.65,.33,0,-8,4.8,-15,13,1,.13,.12,0,12,4.8,-12,12,.36,.57,.9,0,0,4.2,-3,8,1,.69,.4,0,-11,4.8,4,12,1,.67,.37,0,11,4.6,9,10,1,.69,.41,0]),lightCount:6};
     const reviews={
       "meme-entrance":{position:{x:0,y:0,z:18.5},yaw:0,pitch:.13,dist:3},
-      "meme-laser":{position:{x:-8,y:0,z:-9.7},yaw:0,pitch:.08,dist:3},
-      "meme-contributors":{position:{x:10.8,y:0,z:-11.5},yaw:-.5,pitch:.08,dist:3},
+      "meme-laser":{position:{x:-8,y:0,z:-9.7},yaw:0,pitch:-.06,dist:3},
+      "meme-contributors":{position:{x:10.8,y:0,z:-11.5},yaw:-.5,pitch:-.06,dist:3},
       "meme-yellow":{position:{x:9.2,y:0,z:-18.3},yaw:0,pitch:-.18,dist:3},
       "meme-production":{position:{x:-11.4,y:0,z:12},yaw:0,pitch:.16,dist:3},
       "meme-studio":{position:{x:0,y:0,z:9},yaw:0,pitch:.12,dist:3},
       "meme-recording":{position:{x:0,y:0,z:.2},yaw:0,pitch:.14,dist:3},
-      "meme-archive":{position:{x:7.2,y:0,z:11},yaw:-1.15,pitch:.13,dist:3}
+      "meme-archive":{position:{x:8.1,y:0,z:15},yaw:-.65,pitch:.04,dist:3}
     };
     const clampCamera=(p,focus)=>{
       if(!focus)return;const dx=p.x-focus.x,dz=p.z-focus.z;let limit=1;
