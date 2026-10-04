@@ -2323,7 +2323,7 @@ const orbitFlow = async (b) => {
 const SCENES = ["hub", "lab", "race", "drop", "orbit", "mine", "pool", "dsb", "factory", "bifrost", "poker", "arcade", "skee", "hoops", "shy", "claw", "hockey", "billiards", "darts", "pinball", "ride", "invaders", "snake", "pong", "stampede", "flap", "breaker", "dash", "stacker"];
 const LANES = Number(process.env.LANES) || 8;
 const ARGS = process.argv.slice(2);
-for (const a of ARGS) if (!SCENES.includes(a) && !["unit", "maxis-unit", "exterior-unit", "rulers-unit", "perf", "full", "poker-protocol"].includes(a)) throw new Error(`Unknown argument "${a}" (unit | perf | full | poker-protocol | ${SCENES.join(" | ")})`);
+for (const a of ARGS) if (!SCENES.includes(a) && !["unit", "maxis-unit", "exterior-unit", "rulers-unit", "ink-unit", "perf", "full", "poker-protocol"].includes(a)) throw new Error(`Unknown argument "${a}" (unit | perf | full | poker-protocol | ${SCENES.join(" | ")})`);
 const ONLY = process.env.ONLY || ""; // Optional substring within the requested scenes; defaults are unchanged.
 const FULL = ARGS.includes("full");
 const PICKED = FULL ? SCENES : SCENES.filter((s) => ARGS.includes(s));
@@ -8280,6 +8280,73 @@ const rulersChecks = BL => {
   }finally{globalThis.document=savedDoc;}
 };
 
+// Proof of Ink uses the real player collision, seating, transition and menu handlers.
+const inkChecks = BL => {
+  const noop=()=>{},S=BL.scene,root=S.createNode(),targets=new Set(),exterior={visible:true},weather={shared:{state:{muted:true}},inside:false,setInterior(on){this.inside=on;}};
+  const land={buildings:[{name:"Proof Of Ink",x:0,z:0,yaw:0,d:6}],heightAt:()=>0,walkable:()=>true};
+  const I=BL.dsbInteriors.create({root,exterior,land,weather,relocate:noop,lock:noop,onChange:noop});
+  I.review("proof-of-ink",true);I.update(.4);const R=I.active.room;
+  const C=BL.crew.create({root,world:{level:0},playerName:"YellowBrokeIt",input:{add:n=>targets.add(n),remove:n=>targets.delete(n)},hud:{setRosterRow:noop},game:{state:{assignments:{},inventory:[]}},viewYaw:0,groundAt:I.groundAt,walkable:I.walkable,fx:{say:noop,zzzAt:noop,burst:noop,puff:noop,spawnParticle:noop,damageNumber:noop}});
+  const A=C.cavemen.get("YellowBrokeIt");C.control(A);
+  const clear=(ax,az,bx=ax,bz=az)=>I.walkable(ax,az,bx,bz,0,A.bodyHeight,A);
+  const step=.25,w=109,h=101,seen=new Uint8Array(w*h),queue=[],index=(x,z)=>Math.round((z+12.5)/step)*w+Math.round((x+13.5)/step),start=index(R.spawn.x,R.spawn.z);seen[start]=1;queue.push(start);
+  for(let head=0;head<queue.length;head++){
+    const n=queue[head],ix=n%w,iz=Math.floor(n/w),x=-13.5+ix*step,z=-12.5+iz*step;
+    for(const [dx,dz] of [[1,0],[-1,0],[0,1],[0,-1]]){const nx=ix+dx,nz=iz+dz,i=nz*w+nx;if(nx<0||nx>=w||nz<0||nz>=h||seen[i]||!clear(x,z,x+dx*step,z+dz*step))continue;seen[i]=1;queue.push(i);}
+  }
+  const reachable=p=>{const i=index(p.x,p.z),ix=i%w,iz=Math.floor(i/w);for(let dx=-1;dx<=1;dx++)for(let dz=-1;dz<=1;dz++){const nx=ix+dx,nz=iz+dz;if(nx>=0&&nx<w&&nz>=0&&nz<h&&seen[nz*w+nx]&&clear(-13.5+nx*step,-12.5+nz*step,p.x,p.z))return true;}return false;};
+  const goals=[R.exit,...R.browseGoals,...Object.values(R.reviews).map(v=>v.position)];record("Proof of Ink: entrance reaches kiosk, apparel, print gallery, desk and three lounge seats at Yellow scale",clear(R.spawn.x,R.spawn.z)&&goals.every(reachable),JSON.stringify({radius:A.bodyRadius,unreachable:goals.filter(p=>!reachable(p))}));
+  let seated=true;for(const seat of R.seats){Object.assign(A.root.position,{x:seat.walkAt.x,y:A.baseY,z:seat.walkAt.z});A.hop=A.hopV=0;seated&&=C.sitPlayer(seat);C.steer(.5,0);C.look(seat.ry,.2,1);C.update(.2,1);seated&&=A.camp.seat===seat&&A.root.position.x===seat.x&&A.root.position.z===seat.z;C.steer(0,0);seated&&=C.standPlayer()&&!A.camp.seat&&!seat.sitter&&clear(A.root.position.x,A.root.position.z);}
+  record("Proof of Ink: three lounge seats reuse real crew sit, free look, locked movement and safe stand",R.seats.length===3&&seated);
+  S.updateWorld(R.root);let nodes=0,finite=true;const geometries=new Set();const visit=n=>{nodes++;if(n.geometry){geometries.add(n.geometry);finite&&=n.geometry.verts.every(Number.isFinite);}n.children.forEach(visit);};visit(R.root);
+  record("Proof of Ink: dense distinct retail zones use bounded shared geometry and three lights",finite&&nodes<2000&&geometries.size<150&&R.lighting.lightCount===3&&R.counts.apparel>=15&&R.counts.folded>=40&&R.counts.caps>=25&&R.counts.art>=18&&R.counts.ink>=70&&R.counts.presses===2&&R.counts.dryers===2,JSON.stringify({nodes,geometries:geometries.size,...R.counts}));
+  let lifecycle=true;const childCount=root.children.length,roomRoot=R.root;
+  for(let i=0;i<3;i++){lifecycle&&=weather.inside&&!exterior.visible&&I.audio.stats.active;I.request(R.exit);I.update(.4);lifecycle&&=!I.active&&!weather.inside&&exterior.visible&&!I.audio.stats.active&&!I.audio.stats.connected&&!roomRoot.visible;I.review("proof-of-ink",true);I.update(.4);lifecycle&&=I.active.room===R&&root.children.length===childCount&&I.rooms.size===1;}
+  C.dispose();I.dispose();record("Proof of Ink: three entry/exit cycles reuse one room, suppress exterior, stop room audio and dispose",lifecycle&&targets.size===0&&!root.children.includes(roomRoot)&&!I.audio.stats.contexts);
+  // Preserve the real exterior door registry and all previously implemented room factories.
+  const realLand=BL.dsbGeography.build(),allRoot=S.createNode(),allExterior={visible:true};let lastPoint=null;
+  const all=BL.dsbInteriors.create({root:allRoot,exterior:allExterior,land:realLand,weather,relocate:p=>lastPoint={...p},lock:noop,onChange:noop});let preserved=true;
+  for(const id of ["meme-factory","dsb-studio","maxis-club","without-rulers","proof-of-ink"]){const entry=all.registry.get(id);preserved&&=all.target(entry.entry)?.id===id;all.review(id,true);all.update(.4);preserved&&=all.active?.room.id===id&&!allExterior.visible&&weather.inside;const room=all.active.room;all.request(room.exit);all.update(.4);preserved&&=!all.active&&allExterior.visible&&!weather.inside&&lastPoint.x===entry.entry.x&&lastPoint.z===entry.entry.z&&!all.audio.stats.connected;}
+  all.dispose();const NR=BL.dsbNoderunner.create({root:allRoot,land:realLand});const near=NR.near(NR.review);NR.update(.016,NR.review,{audioEnabled:false},.5);const nrScreen=!!NR.screenFace.geometry,quiet=NR.stats.sources===0;NR.dispose();
+  record("DSB preservation: all five real doors return to their own facades; existing interiors and Noderunner still build and dispose",preserved&&near&&nrScreen&&quiet&&allRoot.children.length===0);
+  const sceneSource=readFileSync(new URL("../src/js/scene-dsb.js",import.meta.url),"utf8"),menuSource=readFileSync(new URL("../src/js/proof-of-ink-menu.js",import.meta.url),"utf8");
+  record("Proof of Ink privacy and shared controls: no network or customer persistence, and one shared stand action",!/fetch\(|XMLHttpRequest|localStorage|sessionStorage|setInterval|createElement\("(?:iframe|form)"/.test(menuSource)&&sceneSource.includes("context.hidden=!!avatar.camp.seat")&&sceneSource.includes("inkMenu.isOpen&&!interiors.transitioning")&&sceneSource.includes("else inkMenu?.leave()"));
+  const D=BL.proofOfInkData;
+  record("Proof of Ink catalog: verified products cover every available category and curated collection",D.products.length===18&&D.categories.filter(c=>c.id!=="tanks").every(c=>D.filter("featured","",c.id).length>0)&&D.filter("featured","","tanks").length===0&&D.collections.filter(c=>c.kind!=="service").every(c=>D.filter("featured","",c.id).length>0)&&D.products.every(p=>D.official(p.url)&&p.title&&p.price>0&&/^data:image\/jpeg;base64,/.test(p.image))&&D.collections.every(c=>D.official(c.url)));
+  record("Proof of Ink catalog: local search and exact official destination allowlist",D.filter("search","bTc SeSSions").length===4&&D.filter("search","no such artwork").length===0&&["javascript:alert(1)","https://proofofink.com.evil.test/","https://user:pass@proofofink.com/","https://proofofink.com/cart","https://proofofink.com/?email=private","https://proofofink.com:443/cart"].every(u=>!D.official(u)));
+  // Contract: actual menu event handlers, without loading any remote service or customer state.
+  const savedDoc=globalThis.document,listeners=new Map(),elements=[];
+  const element=tag=>{
+    const e={tag,children:[],dataset:{},hidden:false,value:"",attributes:{},parent:null,isConnected:true,textContent:"",listeners:new Map(),
+      setAttribute(k,v){this.attributes[k]=v;},appendChild(c){c.parent=this;this.children.push(c);return c;},replaceChildren(){this.children.forEach(c=>c.parent=null);this.children=[];},
+      contains(n){for(;n;n=n.parent)if(n===this)return true;return false;},closest(s){if(s==="button")return this.tag==="button"?this:this.parent?.closest(s);if(s==="[hidden]")return this.hidden?this:this.parent?.closest(s);return null;},
+      focus(){document.activeElement=this;},blur(){if(document.activeElement===this)document.activeElement=null;},addEventListener(k,f){this.listeners.set(k,f);},removeEventListener(k){this.listeners.delete(k);}
+    };elements.push(e);return e;
+  };
+  const panel=element("section"),selectors=new Map();
+  for(const [q,tag] of [["nav","nav"],[".ink-results","div"],[".ink-heading","h3"],["input","input"],[".ink-filters","div"],[".ink-status","p"],['[data-ink="back"]',"button"],['[data-ink="close"]',"button"]]){const e=element(tag);panel.appendChild(e);selectors.set(q,e);}
+  selectors.get('[data-ink="close"]').dataset.ink="close";selectors.get('[data-ink="back"]').dataset.ink="back";
+  panel.querySelector=q=>selectors.get(q);panel.querySelectorAll=()=>elements.filter(e=>panel.contains(e)&&["button","input","a"].includes(e.tag));
+  globalThis.document={getElementById:()=>panel,createElement:element,activeElement:null,addEventListener:(k,f)=>listeners.set(k,f),removeEventListener:k=>listeners.delete(k)};
+  try{
+    const M=BL.proofOfInkMenu.create(),results=selectors.get(".ink-results"),search=selectors.get("input");let okay=!M.open();
+    const descendants=(node,out=[])=>{out.push(node);node.children.forEach(c=>descendants(c,out));return out;};
+    const click=(action,value)=>{const b=descendants(panel).find(n=>n.tag==="button"&&n.dataset.ink===action&&(!value||n.dataset.value===value));if(!b)throw Error("Missing menu action "+action);panel.listeners.get("click")({target:b});};
+    for(let i=0;i<3;i++){
+      M.enter();const opened=M.open();okay&&=opened&&M.isOpen&&!panel.hidden&&selectors.get("nav").children.length===6;
+      click("section","apparel");click("filter","hats");okay&&=results.children.filter(c=>c.tag==="article").length===D.filter("apparel","","hats").length;
+      click("filter","tanks");okay&&=results.children.some(c=>c.textContent.includes("no tank products"));
+      click("section","search");search.value="BTC Sessions";search.listeners.get("input")();okay&&=results.children.filter(c=>c.tag==="article"&&c.className==="ink-card").length===4;
+      click("product",D.products[0].id);const links=descendants(results).filter(n=>n.tag==="a");okay&&=links.length===1&&links[0].href===D.products[0].url&&links[0].target==="_blank"&&links[0].rel==="noopener noreferrer"&&links[0].referrerPolicy==="no-referrer";
+      click("back");click("section","collections");okay&&=results.children.length===6;click("filter","nakamoto-collection");okay&&=results.children.filter(c=>c.tag==="article").length===4;
+      click("section","studio");okay&&=descendants(results).some(c=>c.href===D.wholesale)&&descendants(results).some(c=>c.href?.endsWith("/proof-of-work"));
+      panel.listeners.get("keydown")({type:"keydown",key:"Escape",stopPropagation:noop,preventDefault:noop});okay&&=!M.isOpen&&panel.hidden;
+      M.open();M.leave();okay&&=!M.isOpen&&panel.hidden&&results.children.length===0&&search.value===""&&selectors.get("nav").children.length===0;
+    }
+    M.dispose();M.dispose();record("Proof of Ink menu: categories, collection search, product redirect, Escape and repeated visits clean all handlers",okay&&listeners.size===0&&elements.every(e=>e.listeners.size===0)&&M.stats.disposed);
+  }finally{globalThis.document=savedDoc;}
+};
+
 const unitChecks = async () => {
   const canvasStub = () => ({
     width: 0, height: 0,
@@ -8336,6 +8403,8 @@ const unitChecks = async () => {
   if(ARGS.includes("maxis-unit"))return;
   rulersChecks(BL);
   if(ARGS.includes("rulers-unit"))return;
+  inkChecks(BL);
+  if(ARGS.includes("ink-unit"))return;
   pokerChecks(BL);
   {
     // Analytic half-spaces are an independent normal oracle: an incoming

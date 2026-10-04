@@ -7428,3 +7428,61 @@ body[data-poker-table-view="true"] #act { visibility: hidden; }
   .rulers-detail { grid-template-columns: minmax(0,1fr); }
   .rulers-detail img { max-width: 240px; justify-self: center; }
 }
+
+/* Proof of Ink: workshop catalog, isolated from the existing showrooms. */
+.ink-catalog { position: fixed; z-index: 45; top: 6dvh; right: 4vw; width: min(880px,92vw); max-height: 86dvh; display: flex; flex-direction: column; background: #191e20; color: #efe2cb; border: 1px solid #ad7945; border-radius: 5px; box-shadow: 0 18px 70px #000b; font-family: system-ui,sans-serif; }
+.ink-catalog[hidden], .ink-tools[hidden] { display: none; }
+.ink-catalog header { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 16px 20px; background: #262927; border-bottom: 3px solid #cc7e36; }
+.ink-catalog h2 { font-size: 25px; letter-spacing: .025em; margin: 4px 0; }
+.ink-catalog h2 span { color: #ed913d; }
+.ink-eyebrow { font-size: 10px !important; letter-spacing: .13em; color: #d6a366; margin: 0; }
+.ink-catalog button { cursor: pointer; border: 1px solid #656355; border-radius: 3px; color: #efe2cb; background: #303534; padding: 8px 12px; min-height: 38px; }
+.ink-catalog button:hover, .ink-catalog button[aria-pressed="true"] { background: #a86128; color: #fff5e5; border-color: #f2b571; }
+.ink-catalog :focus-visible, .ink-tools :focus-visible { outline: 2px solid #ffc176; outline-offset: 3px; }
+.ink-privacy { padding: 9px 20px; margin: 0; font-size: 12px; background: #36382f; color: #e0d5bd; }
+.ink-catalog nav, .ink-filters { display: flex; flex-wrap: wrap; gap: 6px; padding: 10px 18px; }
+.ink-catalog nav { border-bottom: 1px solid #535346; }
+.ink-catalog nav button { font-size: 12px; }
+.ink-browse { overflow: auto; overscroll-behavior: contain; min-height: 0; padding: 16px 20px; }
+.ink-bar { display: flex; align-items: center; gap: 12px; margin-bottom: 14px; }
+.ink-heading { font-size: 18px; margin: 0; }
+.ink-search { display: flex; align-items: center; gap: 15px; font-size: 12px; }
+.ink-search input { min-width: 0; flex: 1; padding: 9px 12px; color: #fff3e0; background: #101719; border: 1px solid #686e67; border-radius: 3px; }
+.ink-filters { padding: 10px 0; }
+.ink-filters button { font-size: 12px; }
+.ink-results { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 14px; }
+.ink-card { display: flex; flex-direction: column; gap: 9px; padding: 11px; background: #2a302f; border: 1px solid #51574e; border-top: 3px solid #ac7745; border-radius: 3px; }
+.ink-catalog img { width: 100%; height: auto; aspect-ratio: 1; object-fit: contain; background: #eee9e1; border-radius: 2px; }
+.ink-catalog article h3 { font-size: 14px; margin: 0; overflow-wrap: anywhere; }
+.ink-catalog article p { font-size: 12px; margin: 0; line-height: 1.5; }
+.ink-card button { margin-top: auto; }
+.ink-price { color: #f1bf83; }
+.ink-catalog a { color: #ffc17c; display: inline-block; font-size: 12px; overflow-wrap: anywhere; }
+.ink-catalog a:hover { color: #fff; }
+.ink-process { aspect-ratio: 1; display: grid; place-items: center; padding: 20px; text-align: center; background: repeating-linear-gradient(135deg,#343d3b,#343d3b 12px,#2c3332 12px,#2c3332 24px); color: #eeb171; font-size: 25px; font-weight: 800; }
+.ink-about, .ink-empty { grid-column: 1/-1; padding: 15px; }
+.ink-about p, .ink-about a { margin: 12px 12px 0 0 !important; }
+.ink-detail { grid-column: 1/-1; display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+.ink-detail h3 { font-size: 21px !important; }
+.ink-detail p, .ink-detail a { margin: 15px 0 !important; }
+.ink-detail a { padding: 12px; background: #a96125; color: #fff5e5; border-radius: 3px; }
+.ink-catalog footer { border-top: 1px solid #53584e; padding: 9px 20px; background: #242b2a; }
+.ink-status { font-size: 11px; color: #c5bea8; margin: 0 0 4px; }
+.ink-tools { position: fixed; right: 14px; bottom: 92px; z-index: 22; }
+.ink-tools button { background: #3b3025; color: #ffdeb0; border-color: #c79453; }
+@media (max-width: 600px) {
+  .ink-catalog { top: 4dvh; right: 3vw; max-height: 91dvh; width: 94vw; }
+  .ink-catalog header, .ink-browse, .ink-catalog footer { padding: 10px; }
+  .ink-catalog h2 { font-size: 19px; }
+  .ink-catalog header button { max-width: 104px; font-size: 11px; }
+  .ink-privacy { padding: 8px 10px; font-size: 11px; }
+  .ink-catalog nav { padding: 7px; gap: 4px; }
+  .ink-catalog nav button { flex: 1 0 27%; font-size: 11px; padding: 6px; }
+  .ink-search { display: block; }
+  .ink-search input { width: 100%; box-sizing: border-box; margin-top: 5px; }
+  .ink-results { grid-template-columns: repeat(2,minmax(0,1fr)); gap: 8px; }
+  .ink-card { padding: 7px; }
+  .ink-card h3 { font-size: 12px !important; }
+  .ink-detail { grid-template-columns: 1fr; }
+  .ink-detail img { max-width: 240px; justify-self: center; }
+}
