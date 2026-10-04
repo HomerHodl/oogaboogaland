@@ -2328,7 +2328,7 @@ const orbitFlow = async (b) => {
 const SCENES = ["hub", "lab", "race", "drop", "orbit", "mine", "pool", "dsb", "factory", "bifrost", "poker", "arcade", "skee", "hoops", "shy", "claw", "hockey", "billiards", "darts", "pinball", "ride", "invaders", "snake", "pong", "stampede", "flap", "breaker", "dash", "stacker"];
 const LANES = Number(process.env.LANES) || 8;
 const ARGS = process.argv.slice(2);
-for (const a of ARGS) if (!SCENES.includes(a) && !["unit", "dsb-menus-unit", "maxis-unit", "exterior-unit", "rulers-unit", "ink-unit", "big-unit", "perf", "full", "poker-protocol"].includes(a)) throw new Error(`Unknown argument "${a}" (unit | perf | full | poker-protocol | ${SCENES.join(" | ")})`);
+for (const a of ARGS) if (!SCENES.includes(a) && !["unit", "stackchain-review", "stackchain-unit", "dsb-menus-unit", "maxis-unit", "exterior-unit", "rulers-unit", "ink-unit", "big-unit", "perf", "full", "poker-protocol"].includes(a)) throw new Error(`Unknown argument "${a}" (unit | perf | full | poker-protocol | ${SCENES.join(" | ")})`);
 const ONLY = process.env.ONLY || ""; // Optional substring within the requested scenes; defaults are unchanged.
 const FULL = ARGS.includes("full");
 const PICKED = FULL ? SCENES : SCENES.filter((s) => ARGS.includes(s));
@@ -8456,6 +8456,37 @@ const memeFactoryChecks = BL => {
   C.dispose();I.dispose();record("Meme Factory lifecycle: ten visits preserve facade return/audio gating and release scene/input resources",lifecycle&&targets.size===0&&!root.children.includes(R.root)&&!I.audio.stats.contexts);
 };
 
+// Rule: the publication's real content, navigation, seat and exterior contracts are bounded.
+const stackchainChecks = BL => {
+  const rootPath=root;
+  const noop=()=>{},S=BL.scene,roomRoot=S.createNode(),targets=new Set(),exterior={visible:true},weather={shared:{state:{muted:true}},inside:false,setInterior(on){this.inside=on;}};
+  const land=BL.dsbGeography.build();let returned=null;
+  const I=BL.dsbInteriors.create({root:roomRoot,exterior,land,weather,relocate:p=>returned={...p},lock:noop,onChange:noop});
+  I.review("stackchain-magazine",true);I.update(.4);const R=I.active.room,D=BL.stackchainData;
+  const C=BL.crew.create({root:roomRoot,world:{level:0},playerName:"YellowBrokeIt",input:{add:n=>targets.add(n),remove:n=>targets.delete(n)},hud:{setRosterRow:noop},game:{state:{assignments:{},inventory:[]}},viewYaw:0,groundAt:I.groundAt,walkable:I.walkable,fx:{say:noop,zzzAt:noop,burst:noop,puff:noop,spawnParticle:noop,damageNumber:noop}});
+  const A=C.cavemen.get("YellowBrokeIt");C.control(A);
+  const clear=(ax,az,bx=ax,bz=az)=>I.walkable(ax,az,bx,bz,0,A.bodyHeight,A),step=.25,minX=-15.5,minZ=-18.5,w=125,h=149,seen=new Uint8Array(w*h),queue=[];
+  const index=(x,z)=>Math.round((z-minZ)/step)*w+Math.round((x-minX)/step),start=index(R.spawn.x,R.spawn.z);seen[start]=1;queue.push(start);
+  for(let head=0;head<queue.length;head++){const n=queue[head],ix=n%w,iz=Math.floor(n/w),x=minX+ix*step,z=minZ+iz*step;
+    for(const [dx,dz] of [[1,0],[-1,0],[0,1],[0,-1]]){const nx=ix+dx,nz=iz+dz,i=nz*w+nx;if(nx<0||nx>=w||nz<0||nz>=h||seen[i]||!clear(x,z,x+dx*step,z+dz*step))continue;seen[i]=1;queue.push(i);}}
+  const reachable=p=>{const i=index(p.x,p.z),ix=i%w,iz=Math.floor(i/w);for(let dx=-1;dx<=1;dx++)for(let dz=-1;dz<=1;dz++){const nx=ix+dx,nz=iz+dz;if(nx>=0&&nx<w&&nz>=0&&nz<h&&seen[nz*w+nx]&&clear(minX+nx*step,minZ+nz*step,p.x,p.z))return true;}return false;};
+  const goals=[R.exit,...R.browseGoals,...R.seats.map(s=>s.walkAt)];
+  record("Stackchain navigation: real Yellow reaches all review areas, every seat and the existing exit",clear(R.spawn.x,R.spawn.z)&&goals.every(reachable),JSON.stringify({radius:A.bodyRadius,unreachable:goals.filter(p=>!reachable(p))}));
+  let seating=true;for(const seat of R.seats){Object.assign(A.root.position,{x:seat.walkAt.x,y:A.baseY,z:seat.walkAt.z});A.hop=A.hopV=0;seating&&=C.sitPlayer(seat);C.steer(.6,0);C.look(seat.ry,.3,1);C.update(.2,1);seating&&=A.camp.seat===seat&&A.root.position.x===seat.x&&A.root.position.z===seat.z;C.steer(0,0);seating&&=C.standPlayer()&&!A.camp.seat&&!seat.sitter&&clear(A.root.position.x,A.root.position.z);}
+  record("Stackchain seating: eight shared seats support pose, look, movement lock and safe stand",seating&&R.seats.length===8);
+  const cases=[[0,16.5,"home"],[-8,1,"articles"],[-10,8.5,"articles"],[6,-13,"articles"],[0,-14,"articles"],[10,11.5,"pleb-losophy"],[5,2,"submissions"],[10,2,"newsletter"],[-6,15,"donations"],[6,15,"contact"],[9,-4.5,"physical-copies"],[0,4,"home"]];
+  record("Stackchain context: all ten semantic areas select official routes with Home fallback and specific priority",cases.every(([x,z,r])=>reachable({x,z})&&BL.dsbMenuZones.resolve(R,{x,z}).route===r),JSON.stringify(cases.map(([x,z,want])=>({want,got:BL.dsbMenuZones.resolve(R,{x,z}).route,reachable:reachable({x,z})}))));
+  let nodes=0,finite=true,faces=0;const geometry=new Set();const visit=n=>{nodes++;if(n.geometry){geometry.add(n.geometry);finite&&=n.geometry.verts.every(Number.isFinite);}n.children.forEach(visit);};S.updateWorld(R.root);visit(R.root);for(const g of geometry)faces+=g.faces.length;
+  record("Stackchain budget: cached magazine/library meshes, four workstations, static screens and six lights",finite&&nodes<2300&&geometry.size<190&&faces<35000&&R.lighting.lightCount===6&&R.counts.workstations===4,JSON.stringify({nodes,geometries:geometry.size,faces,...R.counts}));
+  record("Stackchain editorial data: bounded dated article selection with actual bylines and official full-reading links",D.articles.length===6&&D.articles.every(a=>a.title&&a.author&&/^2026-09-\d\d$/.test(a.date)&&a.summary.length<200&&new URL(a.url).hostname==="www.stackchainmagazine.net"&&BL.stackchainArt[a.art].source.startsWith("https://www.stackchainmagazine.net/"))&&D.articles.map(a=>a.author).join("|")==="Dug|Spoonman|Anthony & Ratpoison|Ratpoison|Ratpoison|Sosy");
+  record("Stackchain physical copies: only authorized category products, exact displayed prices and public stock labels",D.shopSource==="https://proofofink.com/stackchain-magazine"&&D.products.length===12&&D.products.every(p=>new URL(p.url).hostname==="proofofink.com"&&new URL(p.url).pathname.startsWith("/product/")&&/^\$\d+\.\d\d$/.test(p.price)&&["Listed available","Pre-order","Out of stock"].includes(p.status))&&D.products[0].price==="$69.00"&&D.products.find(p=>p.id==="copy-11").title==="Protective Magazine Top-loader");
+  const source=readFileSync(join(rootPath,"src/js/stackchain-menu.js"),"utf8")+readFileSync(join(rootPath,"src/js/stackchain-room.js"),"utf8");
+  record("Stackchain privacy: browse-only, no customer storage, forms, checkout, tracking or polling",!/fetch\(|XMLHttpRequest|localStorage|sessionStorage|setInterval|createElement\("(?:iframe|form)"/.test(source)&&D.pages.every(p=>p.id==="physical-copies"?p.url===D.shopSource:new URL(p.url).hostname==="www.stackchainmagazine.net"));
+  let lifecycle=true;const children=roomRoot.children.length,entry=I.registry.get("stackchain-magazine").entry;
+  for(let i=0;i<10;i++){lifecycle&&=weather.inside&&!exterior.visible&&I.audio.stats.active;I.request(R.exit);I.update(.4);lifecycle&&=!I.active&&!weather.inside&&exterior.visible&&!I.audio.stats.active&&!I.audio.stats.connected&&returned.x===entry.x&&returned.z===entry.z;I.review("stackchain-magazine",true);I.update(.4);lifecycle&&=I.active.room===R&&roomRoot.children.length===children;}
+  C.dispose();I.dispose();record("Stackchain lifecycle: ten visits preserve exterior return and audio gates without growing room/input resources",lifecycle&&targets.size===0&&!roomRoot.children.includes(R.root)&&!I.audio.stats.contexts);
+};
+
 // Contract: actual shared shell + lazy menu lifecycle, using a DOM transport double (no browser layout claims).
 const menuShellChecks = BL => {
   const keys=["document","innerWidth","innerHeight","visualViewport","addEventListener","removeEventListener"],saved=Object.fromEntries(keys.map(k=>[k,globalThis[k]]));
@@ -8492,6 +8523,20 @@ const menuShellChecks = BL => {
     record("Meme menu: fresh context, direct person priority, free navigation and exit reset",routes);
     const destinations=BL.memeFactoryData;record("Meme sources: twelve real public profiles, official listening links and sourced laser history",destinations.contributors.length===12&&destinations.contributors.every(p=>/^https:\/\/www.memefactorytm.com\//.test(p.url)&&p.image.startsWith("data:image/jpeg"))&&destinations.history.includes("knowyourmeme.com/memes/laser-eyes-bitcoin-trend-laserrayuntil100k")&&destinations.links.length>=6);
     M.dispose();record("Meme menu: lazy singleton disposal releases all handlers and panel",body.children.length===1&&elements.every(e=>!e.listeners.size)&&BL.dsbMenuShell.count===0);
+    const P=BL.stackchainMenu.create();let okay=!P.open(),search=true;P.enter();
+    for(let i=0;i<12;i++){
+      const route=BL.stackchainData.pages[i%9].id;P.open(route);const panel=body.children.find(n=>n.tag==="dialog"),nav=panel.children.find(n=>n.tag==="nav");
+      okay&&=P.stats.route===route&&world.inert&&BL.dsbMenuShell.count===1;panel.listeners.get("click")({target:nav.children.find(n=>n.dataset.route==="articles")});
+      const input=panel.querySelectorAll("input").find(n=>n.tag==="input");input.value="Spoonman";panel.listeners.get("input")({target:input});search&&=panel.querySelectorAll("article").filter(n=>n.tag==="article").length===1;
+      input.value="no-such-author";panel.listeners.get("input")({target:input});search&&=panel.querySelectorAll("article").filter(n=>n.tag==="article").length===0;
+      panel.listeners.get("click")({target:nav.children.find(n=>n.dataset.route==="physical-copies")});
+      const links=panel.querySelectorAll("a");okay&&=links.length===13&&links.every(a=>a.href.startsWith("https://proofofink.com/")&&a.target==="_blank"&&a.rel==="noopener noreferrer");
+      P.open("home");okay&&=P.stats.route==="physical-copies";P.leave();okay&&=!world.inert&&P.stats.route==="home"&&P.stats.query===""&&BL.dsbMenuShell.count===0&&listeners.size===0&&vlisteners.size===0;P.enter();
+    }
+    P.open("unsupported");okay&&=P.stats.route==="home";P.dispose();
+    record("Stackchain menu: article search and empty results over bounded titles, bylines and summaries",search);
+    record("Stackchain menu: twelve visits, free browsing, safe product links, Home reset and complete listener disposal",okay&&body.children.length===1&&elements.every(e=>!e.listeners.size)&&!windowListeners.size);
+
   }finally{for(const [k,v] of Object.entries(saved))globalThis[k]=v;}
 };
 
@@ -8547,7 +8592,29 @@ const unitChecks = async () => {
     }
   }
   const BL = globalThis.BL;
-  if(ARGS.includes("dsb-menus-unit")){memeFactoryChecks(BL);menuShellChecks(BL);maxisChecks(BL);rulersChecks(BL);inkChecks(BL);bigBitcoinChecks(BL);return;}
+  // Offline visual export through the actual Canvas renderer when this workspace cannot start Chrome.
+  // Adapter is supplied by the review environment; it is never a production/package dependency.
+  if(ARGS.includes("stackchain-review")){
+    if(!process.env.STACKCHAIN_CANVAS)throw Error("Set STACKCHAIN_CANVAS to a Canvas 2D adapter module for offline review");
+    const {createCanvas}=await import(process.env.STACKCHAIN_CANVAS),oldCreate=document.createElement;
+    document.createElement=tag=>tag==="canvas"?createCanvas(1,1):oldCreate(tag);
+    const S=BL.scene,sceneRoot=S.createNode(),R=BL.stackchainRoom.build(),noop=()=>{};
+    R.root.visible=true;S.addChild(sceneRoot,R.root);
+    const crew=BL.crew.create({root:sceneRoot,world:{level:0},playerName:"YellowBrokeIt",input:{add:noop,remove:noop},hud:{setRosterRow:noop},game:{state:{assignments:{},inventory:[]}},viewYaw:0,groundAt:()=>0,walkable:()=>true,fx:{say:noop,zzzAt:noop,burst:noop,puff:noop,spawnParticle:noop,damageNumber:noop}});
+    const avatar=crew.cavemen.get("YellowBrokeIt");crew.control(avatar);
+    const canvas=createCanvas(1440,900),renderer=BL.canvasRenderer.createRenderer(canvas,{width:1440,height:900}),camera=S.createCamera({fov:56,near:.1,far:100}),out=join(root,"untracked/stackchain-review");mkdirSync(out,{recursive:true});
+    for(const [name,pose] of Object.entries(R.reviews)){
+      const p=pose.position;Object.assign(avatar.root.position,{x:p.x,y:avatar.baseY,z:p.z});avatar.root.rotation.y=pose.yaw+Math.PI;
+      Object.assign(camera.position,{x:p.x+Math.sin(pose.yaw)*3.3,y:2.9,z:p.z+Math.cos(pose.yaw)*3.3});
+      Object.assign(camera.target,{x:p.x-Math.sin(pose.yaw)*4,y:2.9-Math.sin(pose.pitch)*7,z:p.z-Math.cos(pose.yaw)*4});
+      camera.position.x=Math.max(-15.3,Math.min(15.3,camera.position.x));camera.position.z=Math.max(-18.3,Math.min(18.3,camera.position.z));
+      renderer.render(sceneRoot,camera,R.lighting);writeFileSync(join(out,name+".png"),canvas.toBuffer("image/png"));
+    }
+    renderer.dispose();crew.dispose();document.createElement=oldCreate;
+    console.log("Rendered seven actual room views to "+out+" (visual export, no browser assertions)");return;
+  }
+  if(ARGS.includes("stackchain-unit")){stackchainChecks(BL);menuShellChecks(BL);return;}
+  if(ARGS.includes("dsb-menus-unit")){stackchainChecks(BL);memeFactoryChecks(BL);menuShellChecks(BL);maxisChecks(BL);rulersChecks(BL);inkChecks(BL);bigBitcoinChecks(BL);return;}
   exteriorEnrichmentChecks(BL);
   if(ARGS.includes("exterior-unit"))return;
   maxisChecks(BL);

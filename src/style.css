@@ -7604,3 +7604,36 @@ body.dsb-menu-open :is(.bottom-hud,.top-hud,#joy-move,#joy-look,#act,.weapon-hud
 @media (pointer:coarse),(max-width:720px) {
   .dsb-active .dsb-context:not(.big-context):not(.ink-context-browse) { position: fixed; left: 50%; top: auto; bottom: max(145px,calc(env(safe-area-inset-bottom) + 132px)); transform: translateX(-50%); max-width: 180px; min-height: 44px; padding: 8px; white-space: normal; }
 }
+
+/* Stackchain's publication styling uses the existing shared viewport/focus shell. */
+.stackchain-menu { color: #eee2c9; background: #20272b; border: 1px solid #b08b52; border-radius: 8px; }
+.stackchain-menu header { display: flex; align-items: center; justify-content: space-between; gap: 16px; background: #282a29; border-bottom: 3px solid #a68149; }
+.stackchain-menu h2 { font-size: clamp(18px,3vw,28px); margin: 4px 0; }
+.stackchain-menu header small { color: #d1b27e; letter-spacing: .12em; }
+.stackchain-menu nav { display: flex; flex-wrap: wrap; gap: 7px; padding: 12px 18px; border-bottom: 1px solid #635845; }
+.stackchain-menu button { color: #f1e7d0; background: #303a40; border: 1px solid #8b816d; border-radius: 4px; font: inherit; padding: 8px 12px; cursor: pointer; }
+.stackchain-menu button:hover,.stackchain-menu button[aria-pressed="true"] { background: #634f36; border-color: #e9be79; }
+.stackchain-menu :focus-visible { outline: 3px solid #f5c57b; outline-offset: 2px; }
+.stackchain-content { padding: 18px; font-size: 16px; }
+.stackchain-content h3 { margin: 0 0 10px; font-size: 25px; overflow-wrap: anywhere; }
+.stackchain-menu a { display: inline-block; color: #f1c98a; padding: 12px 0; overflow-wrap: anywhere; }
+.stackchain-motto { color: #e0bf85; font-size: 22px; letter-spacing: .1em; }
+.stackchain-grid { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 16px; margin: 18px 0; }
+.stackchain-card { padding: 12px; border: 1px solid #72634b; border-radius: 4px; background: #292f31; min-width: 0; }
+.stackchain-card h3 { font-size: 18px; line-height: 1.35; margin-top: 12px; }
+.stackchain-card img { width: 100%; height: auto; aspect-ratio: 1.5; object-fit: cover; display: block; }
+.stackchain-product img { aspect-ratio: .85; object-fit: contain; background: #171e22; }
+.stackchain-meta,.stackchain-stamp { color: #c6bca7; font-size: 13px; }
+.stackchain-stamp { display: block; margin-top: 18px; }
+.stackchain-price { color: #f5d398; }
+.stackchain-count { grid-column: 1 / -1; margin: 0; }
+.stackchain-content label { display: grid; gap: 8px; }
+.stackchain-content input { box-sizing: border-box; width: 100%; padding: 12px; color: #f4e8d2; background: #151f25; border: 1px solid #a48960; border-radius: 4px; }
+@media (max-width:600px) {
+  .stackchain-menu header button { max-width: 106px; }
+  .stackchain-menu nav { padding: 10px; gap: 5px; }
+  .stackchain-menu nav button { flex: 1 0 42%; }
+  .stackchain-content { padding: 14px; }
+  .stackchain-grid { grid-template-columns: 1fr; gap: 12px; }
+  .stackchain-card img { max-height: 235px; object-fit: contain; }
+}
