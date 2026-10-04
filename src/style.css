@@ -7470,6 +7470,19 @@ body[data-poker-table-view="true"] #act { visibility: hidden; }
 .ink-status { font-size: 11px; color: #c5bea8; margin: 0 0 4px; }
 .ink-tools { position: fixed; right: 14px; bottom: 92px; z-index: 22; }
 .ink-tools button { background: #3b3025; color: #ffdeb0; border-color: #c79453; }
+@media (pointer: coarse), (max-width: 720px) {
+  .ink-tools, .dsb-context.ink-context-browse {
+    position: fixed; left: var(--ink-action-x, 50%); top: var(--ink-action-y, 65%);
+    right: auto; bottom: auto; transform: translate(-50%, -100%);
+    width: var(--ink-action-width, 140px); max-width: none;
+  }
+  .ink-tools button, .dsb-context.ink-context-browse {
+    box-sizing: border-box; width: var(--ink-action-width, 140px);
+    min-height: 44px; padding: 8px 6px; font-size: 11px; line-height: 1.35;
+    white-space: normal; overflow-wrap: break-word;
+  }
+}
+
 @media (max-width: 600px) {
   .ink-catalog { top: 4dvh; right: 3vw; max-height: 91dvh; width: 94vw; }
   .ink-catalog header, .ink-browse, .ink-catalog footer { padding: 10px; }

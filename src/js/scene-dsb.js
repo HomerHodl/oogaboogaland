@@ -14,7 +14,25 @@
   // Four structural validation lamps, not street dressing. Keep within even the lowest light tier.
   const LAMP_SPOTS=[[-49,-45],[-57,37],[20,63],[64,49]], lamps=[];
   let clock,water,weather,nature,detail,enrichment,interiors,exterior,noderunner,tv,spaces,studioTools,maxisMedia,maxisButton,maxisReview=false,maxisPick=null,studioReview=false,shopMenu,shopTools,shopPick=null,shopReview=false,shopMenuReview=0;
-  let inkMenu,inkTools,inkPick=null,inkReview=false,inkMenuReview=0;
+  let inkMenu,inkTools,inkPick=null,inkReview=false,inkMenuReview=0,inkLayoutObserver,inkLayoutPending=false;
+  const requestInkLayout=()=>{inkLayoutPending=true;};
+  // Measure only on layout changes; both Proof of Ink browse affordances share Jump's anchor.
+  const layoutInkBrowse=()=>{
+    if(!matchMedia("(pointer: coarse), (max-width: 720px)").matches)return;
+    const jump=document.getElementById("act").getBoundingClientRect();
+    if(!jump.width)return;
+    const x=jump.left+jump.width/2;
+    let half=Math.min(90,x-12,document.documentElement.clientWidth-x-12);
+    for(const id of ["joy-move","joy-look"]){
+      const r=document.getElementById(id).getBoundingClientRect();
+      if(r.width)half=Math.min(half,x>r.right?x-r.right-8:r.left>x?r.left-x-8:half);
+    }
+    for(const el of [inkTools,context]){
+      el.style.setProperty("--ink-action-x",`${x}px`);
+      el.style.setProperty("--ink-action-y",`${jump.top-8}px`);
+      el.style.setProperty("--ink-action-width",`${Math.max(44,half*2)}px`);
+    }
+  };
   const sampleDaylight=()=>{
     daylight.sample(clock.read(),renderOpts,clock.dayOfYear,LATITUDE,clock.continuousDay);
     const k=renderOpts.lampFactor, lights=renderOpts.lights;
@@ -139,6 +157,7 @@
         if(shopPick){input.remove(shopPick.screen);shopPick=null;}
         if(shopRoom()){shopMenu?.enter();shopPick=shopRoom();input.add(shopPick.screen,{kind:"rulers-kiosk"});}else shopMenu?.leave();
         if(inkPick){input.remove(inkPick.screen);inkPick=null;}
+        requestInkLayout();
         if(inkRoom()){inkMenu?.enter();inkPick=inkRoom();input.add(inkPick.screen,{kind:"ink-kiosk"});}else inkMenu?.leave();
         scene.renderOpts=lighting||renderOpts;hud.setAreaLabel(label);
       }
@@ -151,6 +170,9 @@
     inkMenu=BL.proofOfInkMenu.create({onOpen:on=>{pilot.setActive(!on&&!interiors.transitioning);pilot.controls.reset();input.reset();crew.setWeaponTrigger(false);}});
     inkTools=document.createElement("div");inkTools.className="ink-tools";inkTools.hidden=true;
     const inkButton=document.createElement("button");inkButton.type="button";inkButton.textContent="Browse Proof of Ink";inkButton.onclick=()=>inkMenu.open();inkTools.appendChild(inkButton);document.body.appendChild(inkTools);
+    inkLayoutObserver=new ResizeObserver(requestInkLayout);
+    for(const el of [document.getElementById("act"),document.querySelector(".bottom-hud"),document.documentElement])inkLayoutObserver.observe(el);
+    window.addEventListener("resize",requestInkLayout);requestInkLayout();
     studioTools=document.createElement("div");studioTools.className="dsb-studio-tools";studioTools.hidden=true;
     const tomato=document.createElement("button");tomato.type="button";tomato.textContent="Throw tomato · T";tomato.onclick=()=>{if(seatRoom()&&!spaces.isOpen&&!maxisMedia.isOpen)crew.throwTomato();};studioTools.appendChild(tomato);
     maxisButton=document.createElement("button");maxisButton.type="button";maxisButton.textContent="MAXIS MEDIA";maxisButton.hidden=true;maxisButton.onclick=()=>maxisMedia.open();studioTools.appendChild(maxisButton);
@@ -223,10 +245,14 @@
     const studioLabel=seatRoom()?(avatar.camp.seat?"Stand up":nearSpaces()?"Open DSB Spaces":nearMaxis()?"Open MAXIS MEDIA":nearShop()?"Browse Without Rulers":nearInk()?"Browse Proof of Ink":seatNear()?((shopRoom()||inkRoom())?"Sit · browse corner":maxisRoom()?"Sit · view screen":"Sit · view stage"):null):null;
     const label=studioLabel|| (nearTv()?"Open DSB TV":door?`${interiors.active?"Exit":"Enter"} ${door.building.name}`:"Dial Portara → Bifrost");
     if(context.textContent!==label)context.textContent=label;
+    context.classList.toggle("ink-context-browse",!!inkRoom()&&studioLabel==="Browse Proof of Ink");
+    if(inkLayoutPending&&inkRoom()){inkLayoutPending=false;layoutInkBrowse();}
     context.hidden=!!avatar.camp.seat||overview||interiors.transitioning||gate.isOpen||tv.isOpen||spaces.isOpen||maxisMedia.isOpen||shopMenu.isOpen||inkMenu.isOpen||(!studioLabel&&!nearTv()&&!door&&(interiors.active||!nearGate()));fx.update(dt);
   };
   const leave=()=>{
     if(avatar)world.pilot=avatar.traits.name;
+    inkLayoutObserver.disconnect();inkLayoutObserver=null;window.removeEventListener("resize",requestInkLayout);
+    context.classList.remove("ink-context-browse");
     inkMenu.dispose();inkMenu=null;inkTools.remove();inkTools=null;if(inkPick){input.remove(inkPick.screen);inkPick=null;}
     shopMenu.dispose();shopMenu=null;shopTools.remove();shopTools=null;if(shopPick){input.remove(shopPick.screen);shopPick=null;}
     maxisMedia.dispose();maxisMedia=null;if(maxisPick){maxisPick.setMedia(false);input.remove(maxisPick.screen);input.remove(maxisPick.console);maxisPick=null;}
