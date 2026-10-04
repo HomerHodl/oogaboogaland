@@ -2100,7 +2100,12 @@ const untilReady = async (b) => {
       // The old document is still tearing down.
     }
     if (ready) break;
-    if (Date.now() - t0 > 20000) throw driverError("the page did not draw its first frame");
+    if (Date.now() - t0 > 20000) {
+      const state=await b.evaluate('({scene:window.__ooga?.scene,frames:window.__ooga?.renderedFrames,curtain:!!document.getElementById("curtain"),renderer:window.__ooga?.renderer?.kind})');
+      mkdirSync(join(root,"untracked","dsb-menu-review"),{recursive:true});
+      await b.screenshot(join(root,"untracked","dsb-menu-review","boot-failure.png"));
+      throw driverError("the page did not draw its first frame: "+JSON.stringify(state)+" "+b.logs.join(" | "));
+    }
     await b.sleep(40);
   }
   // Entering pops the seven cavemen in on tweens, so a drawn scene is not a settled one.
@@ -3082,7 +3087,7 @@ const adaptiveQualityChecks = async () => {
 // A scene is the unit of testing: one Chrome session running that scene's steps, side by side with the
 // other picked scenes. Every step says why it exists; a step with `open` is a known, unfixed bug whose
 // failure prints OPEN and does not fail the run.
-const sceneUrl = (id, query = "") => `${src}?debug=1&nosim=1${id === "hub" ? "" : `&scene=${id}`}${clock(query)}`;
+const sceneUrl = (id, query = "") => `${src}?debug=1&nosim=1${id === "hub" ? "" : `&scene=${id}`}${process.env.TEST_CANVAS2D==="1"?"&canvas2d=1":""}${clock(query)}`;
 const tourGo = (b, id) => b.evaluate(`(() => { const B = window.__ooga; B.go("${id}"); for (let i = 0; i < 150 && (B.transitioning || B.scene !== "${id}"); i++) B.advance(1 / 30, 1 / 30); B.advance(0.3, 1 / 30); B.housekeep(); const s = B.stats(); return { scene: B.scene, records: B.renderer.stats.records, nodes: s.allNodes, targets: s.targets, dom: s.dom }; })()`);
 // Away and back twice. The director's ?debug=1 leave contract throws inside advance on a broken leave,
 // and the second visit may hold no more GPU records, nodes, input targets or DOM than the first.
@@ -9441,12 +9446,17 @@ const dsbVenueMenusCheckpoint={name:"dsb venue menus checkpoint",why:"rule: spat
   await b.evaluate('(()=>{const D=__ooga.dsb,I=D.interiors;I.request(I.active.room.exit);I.update(.4);I.review("dsb-studio",true);I.update(.4);__ooga.pilot.navigate({position:I.active.room.jukeboxAt,yaw:Math.PI/2,pitch:.12,dist:3});})()');await step();
   await b.key(" ");await step();
   record("DSB Spaces: physical jukebox opens shared centered dialog",await b.evaluate('__ooga.dsb.spaces.isOpen&&document.querySelector(".dsb-spaces").classList.contains("dsb-menu-engaged")'));
+  for(const [w,h] of [[1440,900],[390,844],[844,390]]){
+    await b.send("Emulation.setDeviceMetricsOverride",{width:w,height:h,deviceScaleFactor:1,mobile:w!==1440});await step();
+    record(`DSB Spaces ${w}x${h}: centered and internally scrollable`,await b.evaluate('(()=>{const p=document.querySelector(".dsb-spaces"),r=p.getBoundingClientRect(),v=visualViewport;return Math.abs(r.x+r.width/2-v.width/2)<1&&Math.abs(r.y+r.height/2-v.height/2)<1&&r.x>=0&&r.y>=0&&r.bottom<=v.height+.5&&p.scrollWidth<=p.clientWidth+1&&getComputedStyle(p).overflowY==="auto";})()'));
+  }
   await b.evaluate('__ooga.dsb.spaces.close();__ooga.dsb.interiors.request(__ooga.dsb.interiors.active.room.exit);__ooga.dsb.interiors.update(.4)');
-  for(const route of ["main","radio","jukebox"]){
+  for(const route of ["main","radio","jukebox"])for(const [w,h] of [[1440,900],[390,844],[844,390]]){
+    await b.send("Emulation.setDeviceMetricsOverride",{width:w,height:h,deviceScaleFactor:1,mobile:w!==1440});
     await b.evaluate(`__ooga.dsb.tv.open(${JSON.stringify(route)})`);await step();
     const r=await b.evaluate('(()=>{const D=__ooga.dsb,e=document.getElementById("dsb-tv"),r=e.getBoundingClientRect(),v=visualViewport;return {route:D.tv.stats.route,cx:Math.abs(r.x+r.width/2-v.width/2),cy:Math.abs(r.y+r.height/2-v.height/2),width:e.scrollWidth<=e.clientWidth+1,focus:document.activeElement.id};})()');
-    record(`Noderunner ${route}: centered context and request focus`,r.route===route&&r.cx<1&&r.cy<1&&r.width&&(route!=="jukebox"||r.focus==="dsb-tv-query"),JSON.stringify(r));
-    await b.screenshot(join(paths,"noderunner-"+route+".png"));await b.evaluate('__ooga.dsb.tv.close()');
+    record(`Noderunner ${route} ${w}x${h}: centered context and request focus`,r.route===route&&r.cx<1&&r.cy<1&&r.width&&(route!=="jukebox"||r.focus==="dsb-tv-query"),JSON.stringify(r));
+    await b.screenshot(join(paths,"noderunner-"+route+"-"+w+".png"));await b.evaluate('__ooga.dsb.tv.close()');
   }
   for(let i=0;i<12;i++)await b.evaluate('__ooga.dsb.tv.open("radio");__ooga.dsb.tv.close()');
   const after=await snapshot();record("DSB menu lifecycle: repeated openings release shared listeners and shade",after.listeners===baseline.listeners&&after.dom===baseline.dom,JSON.stringify({baseline,after}));

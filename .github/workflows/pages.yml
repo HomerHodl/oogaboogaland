@@ -53,6 +53,7 @@ jobs:
         working-directory: preview-src
         run: |
           export CHROME="$(command -v google-chrome)"
+          export TEST_CANVAS2D=1
           for checkpoint in "venue menus checkpoint" "radio TV correction" "studio checkpoint" "interior checkpoint"; do
             ONLY="$checkpoint" node test/run.mjs dsb-menus-unit dsb
           done

@@ -50,25 +50,25 @@ Noderunner service functions are preserved: stream, metadata polling, queue/hist
 - The actual merged entrance controller is stepped through wormhole walking, Portara receive, island flight and restored exterior controls.
 - Eighteen protected entrance/world/other-room/radio source files are byte-identical to the starting commit; `scene-dsb.js` retains entrance construction/update/disposal and receives only menu/seating/review wiring.
 - Build, changed JavaScript syntax, whitespace and complete site packaging are checked locally.
-- Local Chrome cannot start because the workspace denies its socket. The Pages workflow therefore runs the new measured browser menu checks, plus the existing radio/Lightning, Studio and interior checkpoints, before deployment. It retains screenshots and a failure ledger as `dsb-menu-review`.
-- Real provider playback, real wallet/payment completion, actual iOS/Android keyboards/notches, hardware frame rates and native provider fullscreen still require manual checks. Deterministic service fixtures do not prove provider availability.
+- Local Chrome cannot start because the workspace denies its socket. The first hosted WebGL attempt timed out before a first frame (49 unit checks passed, no menu assertions ran). The Pages workflow uses the supported Canvas 2D backend for DOM/interaction validation on its software runner and runs the new measured browser menu checks, plus the existing radio/Lightning, Studio and interior checkpoints, before deployment. It retains screenshots and a failure ledger as `dsb-menu-review`.
+- WebGL visual fidelity on a hardware GPU, real provider playback, real wallet/payment completion, actual iOS/Android keyboards/notches, hardware frame rates and native provider fullscreen still require manual checks. Deterministic service fixtures do not prove provider availability.
 - `oogaboogaland.html` is a generated local build output; repository instructions assign generated output commits to CI. Source and tests are committed; that local generated output is not manually committed.
 
 ## Review links
 
 Use the preview, not the stable root. `debug=1` enables these review poses and menu entry links. Query routes select actual semantic zones and choose a walkable point before opening. Close a menu to inspect its room.
 
-- [Factory entrance](https://yellowbrokeit.github.io/oogaboogaland/dsb-preview/?scene=dsb&debug=1&interior=meme-factory&view=meme-entrance)
-- [Laser booth](https://yellowbrokeit.github.io/oogaboogaland/dsb-preview/?scene=dsb&debug=1&interior=meme-factory&view=meme-laser)
-- [Contributors](https://yellowbrokeit.github.io/oogaboogaland/dsb-preview/?scene=dsb&debug=1&interior=meme-factory&view=meme-contributors)
-- [Production floor](https://yellowbrokeit.github.io/oogaboogaland/dsb-preview/?scene=dsb&debug=1&interior=meme-factory&view=meme-production)
-- [Recording studio](https://yellowbrokeit.github.io/oogaboogaland/dsb-preview/?scene=dsb&debug=1&interior=meme-factory&view=meme-recording)
-- [Archive](https://yellowbrokeit.github.io/oogaboogaland/dsb-preview/?scene=dsb&debug=1&interior=meme-factory&view=meme-archive)
-- [Laser menu](https://yellowbrokeit.github.io/oogaboogaland/dsb-preview/?scene=dsb&debug=1&interior=meme-factory&menu=laser), [Yellow contributor](https://yellowbrokeit.github.io/oogaboogaland/dsb-preview/?scene=dsb&debug=1&interior=meme-factory&menu=yellow), [Podcast](https://yellowbrokeit.github.io/oogaboogaland/dsb-preview/?scene=dsb&debug=1&interior=meme-factory&menu=podcast)
-- [Without Rulers hoodies](https://yellowbrokeit.github.io/oogaboogaland/dsb-preview/?scene=dsb&debug=1&interior=without-rulers&menu=hoodies)
-- [Proof of Ink fine arts](https://yellowbrokeit.github.io/oogaboogaland/dsb-preview/?scene=dsb&debug=1&interior=proof-of-ink&menu=fine-arts)
-- [BIG BITCOIN research](https://yellowbrokeit.github.io/oogaboogaland/dsb-preview/?scene=dsb&debug=1&interior=big-bitcoin&menu=research)
-- [Maxis Media Home](https://yellowbrokeit.github.io/oogaboogaland/dsb-preview/?scene=dsb&debug=1&interior=maxis-club&menu=home)
-- [DSB Studio jukebox](https://yellowbrokeit.github.io/oogaboogaland/dsb-preview/?scene=dsb&debug=1&interior=dsb-studio&view=studio-jukebox&menu=spaces)
-- [Noderunner TV](https://yellowbrokeit.github.io/oogaboogaland/dsb-preview/?scene=dsb&debug=1&view=noderunner&menu=main), [Radio](https://yellowbrokeit.github.io/oogaboogaland/dsb-preview/?scene=dsb&debug=1&view=noderunner&menu=radio), [Jukebox / Request](https://yellowbrokeit.github.io/oogaboogaland/dsb-preview/?scene=dsb&debug=1&view=noderunner&menu=jukebox)
-- [Preserved wormhole arrival](https://yellowbrokeit.github.io/oogaboogaland/dsb-preview/?scene=dsb&debug=1&entrance=1)
+- [Factory entrance](https://yellowbrokeit.github.io/oogaboogaland/dsb-preview/index.html?scene=dsb&debug=1&interior=meme-factory&view=meme-entrance)
+- [Laser booth](https://yellowbrokeit.github.io/oogaboogaland/dsb-preview/index.html?scene=dsb&debug=1&interior=meme-factory&view=meme-laser)
+- [Contributors](https://yellowbrokeit.github.io/oogaboogaland/dsb-preview/index.html?scene=dsb&debug=1&interior=meme-factory&view=meme-contributors)
+- [Production floor](https://yellowbrokeit.github.io/oogaboogaland/dsb-preview/index.html?scene=dsb&debug=1&interior=meme-factory&view=meme-production)
+- [Recording studio](https://yellowbrokeit.github.io/oogaboogaland/dsb-preview/index.html?scene=dsb&debug=1&interior=meme-factory&view=meme-recording)
+- [Archive](https://yellowbrokeit.github.io/oogaboogaland/dsb-preview/index.html?scene=dsb&debug=1&interior=meme-factory&view=meme-archive)
+- [Laser menu](https://yellowbrokeit.github.io/oogaboogaland/dsb-preview/index.html?scene=dsb&debug=1&interior=meme-factory&menu=laser), [Yellow contributor](https://yellowbrokeit.github.io/oogaboogaland/dsb-preview/index.html?scene=dsb&debug=1&interior=meme-factory&menu=yellow), [Podcast](https://yellowbrokeit.github.io/oogaboogaland/dsb-preview/index.html?scene=dsb&debug=1&interior=meme-factory&menu=podcast)
+- [Without Rulers hoodies](https://yellowbrokeit.github.io/oogaboogaland/dsb-preview/index.html?scene=dsb&debug=1&interior=without-rulers&menu=hoodies)
+- [Proof of Ink fine arts](https://yellowbrokeit.github.io/oogaboogaland/dsb-preview/index.html?scene=dsb&debug=1&interior=proof-of-ink&menu=fine-arts)
+- [BIG BITCOIN research](https://yellowbrokeit.github.io/oogaboogaland/dsb-preview/index.html?scene=dsb&debug=1&interior=big-bitcoin&menu=research)
+- [Maxis Media Home](https://yellowbrokeit.github.io/oogaboogaland/dsb-preview/index.html?scene=dsb&debug=1&interior=maxis-club&menu=home)
+- [DSB Studio jukebox](https://yellowbrokeit.github.io/oogaboogaland/dsb-preview/index.html?scene=dsb&debug=1&interior=dsb-studio&view=studio-jukebox&menu=spaces)
+- [Noderunner TV](https://yellowbrokeit.github.io/oogaboogaland/dsb-preview/index.html?scene=dsb&debug=1&view=noderunner&menu=main), [Radio](https://yellowbrokeit.github.io/oogaboogaland/dsb-preview/index.html?scene=dsb&debug=1&view=noderunner&menu=radio), [Jukebox / Request](https://yellowbrokeit.github.io/oogaboogaland/dsb-preview/index.html?scene=dsb&debug=1&view=noderunner&menu=jukebox)
+- [Preserved wormhole arrival](https://yellowbrokeit.github.io/oogaboogaland/dsb-preview/index.html?scene=dsb&debug=1&entrance=1)

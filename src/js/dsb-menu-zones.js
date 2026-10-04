@@ -8,13 +8,13 @@
     "without-rulers":[
       zone("shirts","Browse Shirts",-5.3,1.5,2.5,1.3),zone("hoodies","Browse Hoodies",5.3,1.5,2.5,1.3),
       zone("hats","Browse Hats",9.4,-.85,1.5,2.2),zone("art","View Art Prints",8.1,6,1.9,3.7),
-      zone("bip85","Explore BIP-85",-9.5,-7.8,1.8,2),zone("samourai","Explore #FreeSamourai",-9.5,-2.5,1.8,2),
-      zone("slavery","Bitcoin or Slavery",-7.25,-8.8,2.1,1.6),zone("cartel","Banking Cartel",7.25,-8.8,2.1,1.6),zone("2140","Explore 2140",9.4,-6.8,1.8,2)
+      zone("bip85","Explore BIP-85",-9.5,-7.8,1.8,2,3),zone("samourai","Explore #FreeSamourai",-9.5,-2.5,1.8,2,3),
+      zone("slavery","Bitcoin or Slavery",-7.25,-8.8,2.1,1.6,3),zone("cartel","Banking Cartel",7.25,-8.8,2.1,1.6,3),zone("2140","Explore 2140",9.4,-6.8,1.8,2,3)
     ],
     "proof-of-ink":[
       zone("apparel","Browse Apparel",-3.55,-1.2,2.3,6),zone("shirts","Browse Shirts",-11.1,-8,1.8,2.1),
       zone("hats","Browse Hats",2.75,3.6,1.8,1),zone("fine-arts","View Fine Arts",-10.6,1,2.7,5.5),
-      zone("collabs","Explore Collabs",8,-10.1,2.8,1.4),zone("stackchain-magazine","Read Stackchain Magazine",-9,8.8,3.4,3.4),
+      zone("collabs","Explore Collabs",8,-10.1,2.8,1.4),zone("stackchain-magazine","Read Stackchain Magazine",-9,8.8,3.4,3.4,3),
       zone("proof-of-work","Explore Proof Of Work",9.5,-1,3.4,9)
     ],
     "big-bitcoin":[zone("news","Open News",14.2,-17,6.6,8.6),zone("research","Open Research",14.2,0,6.6,7.7),zone("merch","Browse Merch",-14.2,17,6.6,8.6)],
