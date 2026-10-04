@@ -49,6 +49,12 @@ jobs:
           mkdir -p ../_site/dsb-preview/src/js
           cp -R src/maxis-player ../_site/dsb-preview/src/maxis-player
           cp src/js/maxis-media-data.js ../_site/dsb-preview/src/js/maxis-media-data.js
+      - name: Validate shoreline, Olympus and preserved exterior
+        working-directory: preview-src
+        run: |
+          export CHROME="$(command -v google-chrome)"
+          node test/run.mjs exterior-unit
+          ONLY="shoreline checkpoint" node test/run.mjs water-unit dsb
       - name: Validate preview menus and preserved media contracts
         working-directory: preview-src
         run: |
@@ -63,6 +69,7 @@ jobs:
         with:
           name: dsb-menu-review
           path: |
+            preview-src/untracked/water-review
             preview-src/untracked/dsb-menu-review
             preview-src/untracked/test-ledger.json
           if-no-files-found: ignore

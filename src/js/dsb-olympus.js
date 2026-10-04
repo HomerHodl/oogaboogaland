@@ -156,7 +156,7 @@
     };
     const slope = (x, z, out) => { out.x = (h(x + 0.75, z) - h(x - 0.75, z)) / 1.5; out.z = (h(x, z + 0.75) - h(x, z - 0.75)) / 1.5; return Math.hypot(out.x, out.z); };
     // The stream, sampled every 0.6 m, with its water level: on the ground, or standing level behind a lip.
-    const stream = [], FALLS = [];
+    const stream = [], FALLS = [], impacts = [], sheets = [];
     {
       const cr = (a, b, c, d, t) => 0.5 * (2 * b + (c - a) * t + (2 * a - 5 * b + 4 * c - d) * t * t + (3 * b - a - 3 * c + d) * t * t * t);
       let s = 0, px = COURSE[0][0], pz = COURSE[0][1];
@@ -236,7 +236,7 @@
 
     // ---- The stream: its water, the ledges it stands on, the falls, the pools at their feet, the stones along it.
     {
-      const water = M.geometry(), ink = rgb(WATER), lit = { emissive: 0.04 }, quad = (a, b, c, d, up) => {
+      const water = M.geometry(), ink = rgb(WATER), lit = { emissive: 0 }, quad = (a, b, c, d, up) => {
         const v = water.verts, q = [a, b, c, d], p = a * 3, r = b * 3, t = c * 3;
         const ny = (v[r + 2] - v[p + 2]) * (v[t] - v[p]) - (v[r] - v[p]) * (v[t + 2] - v[p + 2]);
         if (up && ny < 0) q.reverse();
@@ -246,16 +246,17 @@
       for (let i = 0; i < stream.length; i++) {
         const p = stream[i], q = stream[Math.min(stream.length - 1, i + 1)], o = stream[Math.max(0, i - 1)], dx = q.x - o.x, dz = q.z - o.z, l = Math.hypot(dx, dz) || 1, nx = -dz / l, nz = dx / l;
         const pool = FALLS.some(([lip]) => p.s > lip + 0.8 && p.s < lip + 4.2), wide = (p.level ? 1.15 : pool ? 1.9 : 0.75) + 0.12 * Math.sin(p.s * 1.7);
+        p.width = wide;
         const a = M.pushVert(water, p.x + nx * wide, p.y, p.z + nz * wide), b = M.pushVert(water, p.x - nx * wide, p.y, p.z - nz * wide);
         if (left >= 0) {
           // A lip: the sheet falls from the level reach to the water below it, facing downstream.
-          if (o.level && !p.level) { const c = M.pushVert(water, o.x + nx * 1.3 + dx / l * 0.7, p.y, o.z + nz * 1.3 + dz / l * 0.7), d = M.pushVert(water, o.x - nx * 1.3 + dx / l * 0.7, p.y, o.z - nz * 1.3 + dz / l * 0.7); quad(left, right, d, c, false); quad(right, left, c, d, false); left = c; right = d; }
+          if (o.level && !p.level) { const c = M.pushVert(water, o.x + nx * 1.3 + dx / l * 0.7, p.y, o.z + nz * 1.3 + dz / l * 0.7), d = M.pushVert(water, o.x - nx * 1.3 + dx / l * 0.7, p.y, o.z - nz * 1.3 + dz / l * 0.7); quad(left, right, d, c, false); quad(right, left, c, d, false); sheets.push({x:o.x,z:o.z,top:o.y,bottom:p.y,dx:dx/l*.7,dz:dz/l*.7,nx,nz}); left = c; right = d; }
           quad(left, a, b, right, true);
         }
         left = a; right = b;
-        if (i % 3 === 0 && !p.level) for (const side of [-1, 1]) if (rand() < 0.8) { const bx = p.x + nx * side * (wide + 0.35), bz = p.z + nz * side * (wide + 0.35); const n = add(rock, bx, h(bx, bz) - 0.12, bz, rand() * TAU, 0.3 + rand() * 0.36); n.tier = 1; thin.push(n); stats.stones++; }
+        if (i % 3 === 0 && !p.level) for (const side of [-1, 1]) if (rand() < 0.8) { const bx = p.x + nx * side * (wide + 0.35), bz = p.z + nz * side * (wide + 0.35); const n = add(rock, bx, h(bx, bz) - 0.12, bz, rand() * TAU, 0.3 + rand() * 0.36); n.scorch = .16; n.tier = 1; thin.push(n); stats.stones++; }
       }
-      for (const f of water.faces) f.water = true;
+      for (const f of water.faces) f.water = "aegean";
       S.addChild(group, S.createNode({ geometry: noShadow(water), sightHidden: true }));
       for (const [lip, reach] of FALLS) {
         // Flat-topped ledges carry the level reach, taller toward the lip; crags close its sides.
@@ -269,12 +270,13 @@
           for (const side of [-1, 1]) { const cx = p.x + az * side * 3.3, cz = p.z - ax * side * 3.3; rockAt((k + (side > 0 ? 1 : 0)) % 2 ? 1 : 3, cx, h(cx, cz) - 0.3, cz, yaw + side * 0.6, 0.75 + rise * 0.16); }
         }
         const drop = end.y - next.y;
-        add(foam(), next.x - ax * 0.4, next.y - 0.08, next.z - az * 0.4, yaw, clamp(drop / 3.2, 0.6, 1.7));
+        const foamNode=add(foam(), next.x - ax * 0.4, next.y - 0.08, next.z - az * 0.4, yaw, clamp(drop / 3.2, 0.6, 1.7));
+        impacts.push({x:next.x,z:next.z,y:next.y,dx:ax,dz:az,drop,foamNode});
       }
       // The spring: a kerbed basin against a slab of rock the water runs out of.
       const s0 = stream[0];
       rockAt(3, s0.x + 0.6, s0.ground - 0.2, s0.z - 2.1, 0.4, 0.9);
-      const basin = M.lathe({ profile: [[1.5, 0.1], [0, 0.1]], segments: 14, color: WATER, emissive: 0.04 }); for (const f of basin.faces) f.water = true;
+      const basin = M.lathe({ profile: [[1.5, 0.1], [0, 0.1]], segments: 14, color: WATER, emissive: 0 }); for (const f of basin.faces) f.water = "aegean";
       add(noShadow(basin), s0.x, s0.ground, s0.z);
       for (let i = 0; i < 9; i++) { const a = i / 9 * TAU + 0.5; if (Math.sin(a) < 0.75) add(rock, s0.x + Math.cos(a) * 1.75, s0.ground - 0.1, s0.z + Math.sin(a) * 1.75, a, 0.42 + (i % 3) * 0.08); }
     }
@@ -361,6 +363,17 @@
       return ground;
     };
 
+    // Allocation-free local surface query over the unchanged course; bridges are tested by the actor's feet.
+    const waterAt = (x,z,out) => {
+      let best=Infinity,found=false;
+      for(let i=1;i<stream.length;i++){
+        const a=stream[i-1],b=stream[i],dx=b.x-a.x,dz=b.z-a.z,l2=dx*dx+dz*dz;
+        if(l2<1e-8||a.level&&!b.level)continue;
+        const t=clamp(((x-a.x)*dx+(z-a.z)*dz)/l2,0,1),d=Math.hypot(x-a.x-dx*t,z-a.z-dz*t),width=a.width+(b.width-a.width)*t;
+        if(d<width&&d<best){best=d;found=true;out.y=a.y+(b.y-a.y)*t;out.gx=(b.y-a.y)*dx/l2;out.gz=(b.y-a.y)*dz/l2;out.width=width;}
+      }
+      return found;
+    };
     let glow = -1, quality = "";
     // The sails turn, the lanterns and shrines light with the island's lamps, and the lower tiers shed loose rock.
     const update = (dt, lamp) => {
@@ -374,7 +387,7 @@
     const room = (x, z, r) => open(x, z, r) && !inside(x, z, r);
     stats.moved = nature.rehome(reserved, room) + enrichment.rehome(reserved, room);
     update(0, 0);
-    return { group, stats, bridges, update, clearSegment, supportAt, inside, dispose };
+    return { group, stats, bridges, stream, impacts, sheets, waterAt, update, clearSegment, supportAt, inside, dispose };
   };
   BL.dsbOlympus = { create, reserved };
 })();

@@ -2328,7 +2328,7 @@ const orbitFlow = async (b) => {
 const SCENES = ["hub", "lab", "race", "drop", "orbit", "mine", "pool", "dsb", "factory", "bifrost", "poker", "arcade", "skee", "hoops", "shy", "claw", "hockey", "billiards", "darts", "pinball", "ride", "invaders", "snake", "pong", "stampede", "flap", "breaker", "dash", "stacker"];
 const LANES = Number(process.env.LANES) || 8;
 const ARGS = process.argv.slice(2);
-for (const a of ARGS) if (!SCENES.includes(a) && !["unit", "stackchain-review", "stackchain-unit", "dsb-menus-unit", "maxis-unit", "exterior-unit", "rulers-unit", "ink-unit", "big-unit", "perf", "full", "poker-protocol"].includes(a)) throw new Error(`Unknown argument "${a}" (unit | perf | full | poker-protocol | ${SCENES.join(" | ")})`);
+for (const a of ARGS) if (!SCENES.includes(a) && !["unit", "water-baseline", "water-review", "water-unit", "stackchain-review", "stackchain-unit", "dsb-menus-unit", "maxis-unit", "exterior-unit", "rulers-unit", "ink-unit", "big-unit", "perf", "full", "poker-protocol"].includes(a)) throw new Error(`Unknown argument "${a}" (unit | perf | full | poker-protocol | ${SCENES.join(" | ")})`);
 const ONLY = process.env.ONLY || ""; // Optional substring within the requested scenes; defaults are unchanged.
 const FULL = ARGS.includes("full");
 const PICKED = FULL ? SCENES : SCENES.filter((s) => ARGS.includes(s));
@@ -8086,6 +8086,92 @@ const pokerProtocolChecks = async () => {
   } catch (e) { record("poker protocol: timeouts refund chips, repeated requests cannot stall, and signers cannot be impersonated", false, e.stack); }
 };
 
+// Rule: one support mesh, bounded water effects and the real crew must agree about immersion.
+const waterWorld = BL => {
+  const S=BL.scene,root=S.createNode(),land=BL.dsbGeography.build(),renderer={kind:"webgl2",quality:"high"},camera=S.createCamera();
+  S.addChild(root,land.root);S.removeChild(land.root,land.sea);camera.position.x=20;camera.position.y=8;camera.position.z=83;
+  const water=BL.dsbWater.create(land);S.addChild(root,water.node);
+  const nature=BL.dsbNature.create({root,land,renderer,camera,weather:{state:{wind:{strength:.2}}}}),detail=BL.dsbExterior.create({root,land,nature});
+  const enrichment=BL.dsbEnrichment.create({root,land,nature,detail,renderer,camera}),town=BL.dsbTown.create({root,land,nature,detail,enrichment});
+  const olympus=BL.dsbOlympus.create({root,land,nature,detail,enrichment,renderer});
+  const noop=()=>{},fx={say:noop,zzzAt:noop,burst:noop,puff:noop,spawnParticle:noop,damageNumber:noop};
+  const walkable=(...a)=>land.walkable(...a)&&town.clearSegment(...a)&&olympus.clearSegment(...a);
+  const ground=(x,z)=>olympus.supportAt(x,z,land.heightAt(x,z));
+  const crew=BL.crew.create({root,world:{level:0},playerName:"YellowBrokeIt",input:{add:noop,remove:noop},hud:{setRosterRow:noop},game:{state:{assignments:{},inventory:[]}},viewYaw:0,groundAt:ground,walkable,fx});
+  const avatar=crew.cavemen.get("YellowBrokeIt");crew.control(avatar);
+  const dispose=()=>{crew.dispose();olympus.dispose();town.dispose();enrichment.dispose();detail.dispose();nature.dispose();};
+  return {root,land,water,nature,detail,enrichment,town,olympus,renderer,camera,fx,crew,avatar,walkable,ground,dispose};
+};
+const waterGolden = W => {
+  const hash=values=>{let h=2166136261;const text=JSON.stringify(values);for(let i=0;i<text.length;i++)h=Math.imul(h^text.charCodeAt(i),16777619);return (h>>>0).toString(16);};
+  const ground=[];for(let x=-96;x<=96;x+=1.5)for(let z=-96;z<=96;z+=1.5)if(!(x>-5&&x<55&&z>58))ground.push(W.land.heightAt(x,z));
+  const nodes=[];const visit=n=>{if(n.geometry)nodes.push(n.geometry.verts,n.geometry.faces.map(f=>f.i),n.position,n.rotation,n.scale);for(const c of n.children)visit(c);};visit(W.olympus.group);
+  W.water.update(0);
+  return {ground:hash(ground),olympus:hash(nodes),bridges:hash(W.olympus.bridges),buildings:hash(W.land.buildings),fft:hash(Array.from(W.water.pixels))};
+};
+const waterChecks = BL => {
+  const W=waterWorld(BL),{land:L,water,olympus:O,crew,avatar:A,renderer,camera}=W,C=BL.dsbCoast;
+  const I=BL.dsbWaterInteraction.create(W),input=I.steering(crew,()=>true),point=(ratio,x=20)=>{
+    let lo=66,hi=96;for(let i=0;i<30;i++){const z=(lo+hi)/2;if(C.LEVEL-L.heightAt(x,z)<ratio*A.bodyHeight)lo=z;else hi=z;}const z=(lo+hi)/2;return {x,y:L.heightAt(x,z),z};
+  };
+  let time=0;
+  const step=(seconds,x=0,z=0,speed=1)=>{for(let i=0;i<Math.ceil(seconds*60);i++){input.steer(x,z,0,z,x,speed);crew.update(1/60,time);I.update(1/60,time,A);time+=1/60;}};
+  const locate=ratio=>{const p=point(ratio);crew.relocatePlayer(p,0);I.clear();step(.02);return p;};
+  const golden=waterGolden(W);
+  record("DSB water: protected terrain, Olympus geometry, bridges, lots and Clearwater FFT match starting checkpoint",JSON.stringify(golden)===JSON.stringify(WATER_GOLDEN),JSON.stringify(golden));
+  const sails=O.group.children.flatMap(n=>n.children),angles=sails.map(n=>n.rotation.z);O.update(.5,0);
+  record("DSB Olympus: both windmills still turn and their original towers remain solid",sails.length===2&&sails.every((n,i)=>n.rotation.z>angles[i])&&O.inside(-14,-58,.4)&&O.inside(-24,-66,.4));
+  record("DSB water: approved mean surface stays at -0.3 with no new texture or framebuffer",water.geometry.verts.every((v,i)=>i%3!==1||v===-.3)&&water.size===64&&water.depthSize===256&&water.depths.length===256*256*4);
+  const depths=[-.35,0,.12,.3,.5,.7,.87],positions=depths.map(r=>point(r)),routes=[];
+  for(const x of [9,20,39,45]){
+    let previous=point(-.35,x),maxStep=0,blocked=0;
+    const end=point(.86,x);
+    for(let z=previous.z+.05;z<=end.z;z+=.05){const y=L.heightAt(x,z);maxStep=Math.max(maxStep,Math.abs(y-previous.y));if(!W.walkable(x,previous.z,x,z,previous.y,A.bodyHeight,A)||!W.walkable(x,z,x,previous.z,y,A.bodyHeight,A))blocked++;previous={x,y,z};}
+    routes.push({x,maxStep,blocked});
+  }
+  record("DSB wading: dry sand through ankle knee waist chest head and back has continuous body-wide support",routes.every(r=>!r.blocked&&r.maxStep<.08)&&positions.every((p,i)=>!i||p.z>positions[i-1].z),JSON.stringify({height:A.bodyHeight,radius:A.bodyRadius,routes,positions}));
+  locate(-.35);const start=A.root.position.z;step(24,0,1);const deepest=C.LEVEL-W.ground(A.root.position.x,A.root.position.z),deepZ=A.root.position.z;step(4,0,1);const stopped=Math.abs(A.root.position.z-deepZ)<.02;step(30,0,-1);
+  record("DSB wading: real Yellow reaches around head depth, cannot cross ocean floor and walks back ashore",deepest>A.bodyHeight*.83&&deepest<=C.maxDepth(A)&&stopped&&A.root.position.z<start&&I.stats.depth===0,JSON.stringify({deepest,height:A.bodyHeight,deepZ,stopped,returned:A.root.position.z,start}));
+  const rates=[];
+  for(const ratio of [0,.12,.3,.5,.7,.85]){locate(ratio);const x=A.root.position.x;step(.25,1,0);rates.push((A.root.position.x-x)/.25);}
+  record("DSB wading: real movement slows smoothly with depth while ankle movement remains responsive",rates.every((r,i)=>r>0&&(!i||r<=rates[i-1]+.015))&&rates[1]>rates[0]*.97&&rates.at(-1)<rates[0]*.5,JSON.stringify(rates));
+  let smooth=true,last=1;for(let k=0;k<=1000;k++){const v=C.speed(k/1000);smooth&&=Number.isFinite(v)&&v<=last&&last-v<.002;last=v;}
+  record("DSB wading: depth curve has no speed steps and stays above one-third walking speed",smooth&&last>=.33);
+  const deep=point(1.05);crew.relocatePlayer(deep,0);I.clear();step(10,0,-1);
+  record("DSB wading: a relocated over-depth actor can always retreat to shallower ground",A.root.position.z<deep.z-3&&I.stats.depth<A.bodyHeight,JSON.stringify({from:deep,to:A.root.position,depth:I.stats.depth}));
+  record("DSB coast types: only Chora sand has a shelf; rear Olympus, rocky east and harbor retain deep water",L.heightAt(-55,-91)===-5&&L.heightAt(92,14)===-5&&L.heightAt(-39,54)===-5&&C.beach(-55,-80)===0&&C.beach(-39,54)===0&&C.beach(85,14)===0&&!W.walkable(-39,54,-39,54,-5,A.bodyHeight,A));
+  const first=I.stats.emitted;locate(.5);const entries=I.stats.splashes;step(6);const idle=I.stats.emitted-first;step(2,1,0);const moving=I.stats.emitted-first-idle,wakes=I.stats.wakes;
+  record("DSB ripples: idle disturbances are sparse; moving creates stronger trailing wakes",idle<10&&moving>idle&&wakes>0&&I.stats.player>0,JSON.stringify({idle,moving,wakes,stats:I.stats}));
+  const splashes=I.stats.splashes;crew.jumpPlayer();step(2);
+  record("DSB splashes: shallow entry and an actual jump landing produce small bounded events",entries>0&&I.stats.splashes>splashes,JSON.stringify({entries,splashes,after:I.stats.splashes}));
+  camera.position.x=-40;camera.position.z=-8;I.clear();locate(.5);step(2,1,0);
+  record("DSB waterfall: all five impacts coexist with player disturbances in reserved slots",O.impacts.length===5&&I.stats.impacts===5&&I.stats.player>0,JSON.stringify(I.stats));
+  let reachable=null;const query={};
+  for(const p of O.stream)if(O.waterAt(p.x,p.z,query)&&query.y-W.ground(p.x,p.z)>.025&&query.y-W.ground(p.x,p.z)<A.bodyHeight&&W.walkable(p.x,p.z,p.x,p.z,W.ground(p.x,p.z),A.bodyHeight,A)){reachable=p;break;}
+  if(reachable){crew.relocatePlayer({x:reachable.x,y:W.ground(reachable.x,reachable.z),z:reachable.z},0);I.clear();step(.1);}
+  record("DSB waterfall: Yellow produces local stream ripples where the approved course is reachable",!!reachable&&I.stats.player>0&&I.stats.depth>0&&I.stats.impacts===5,JSON.stringify({reachable,stats:I.stats}));
+  const nodes=I.group.children.length,geometries=new Set(I.group.children.map(n=>n.geometry)),slots=I.impulses.map(p=>p.node),tiers=[];
+  for(const quality of ["high","medium","low"]){renderer.quality=quality;for(let k=0;k<600;k++){I.emit(20,-.3,83,.3,.3,1);I.update(1/60,k/60,null);}tiers.push({quality,active:I.stats.active,swash:I.stats.swash,contacts:I.stats.contacts,streaks:I.stats.streaks,budget:I.budget.ripples,speed:I.speedAt(A)});}
+  record("DSB effects: thousands of impulses reuse fixed slots and at most two shared effect geometries",I.group.children.length===nodes&&geometries.size===2&&I.impulses.every((p,i)=>p.node===slots[i])&&tiers.every(t=>t.active<=t.budget),JSON.stringify({nodes,geometries:geometries.size,tiers}));
+  record("DSB effects: quality scales only visuals and keeps essential low-tier ripples and swash",tiers[0].swash>tiers[2].swash&&tiers[0].streaks>tiers[2].streaks&&tiers[2].swash>0&&tiers[2].active>0&&tiers.every(t=>t.speed===tiers[0].speed));
+  renderer.quality="high";I.clear();camera.position.x=250;camera.position.z=250;I.emit(20,-.3,83,.3,.4,1);I.update(2,2,null);
+  record("DSB ripples: rings expire instead of becoming permanent ocean geometry",I.stats.active===0);
+  const wash=[];for(const t of [0,1.5,3,4.5,6]){I.update(.02,t,null);const n=I.swash[Math.floor(I.swash.length/2)].node;wash.push([n.position.x,n.position.y,n.position.z,n.smokeOpacity]);}
+  record("DSB swash: front advances, retreats, fades and follows terrain above the mean sea",new Set(wash.map(p=>p[2].toFixed(3))).size>3&&wash.every(p=>p[1]>=C.LEVEL&&p[1]>=L.heightAt(p[0],p[2]))&&Math.max(...wash.map(p=>p[3]))-Math.min(...wash.map(p=>p[3]))>.1,JSON.stringify(wash));
+  water.setEnvironment({waveEnergy:3,roughness:1,glint:.2,foam:3});I.update(.02,3,null);const storm=I.contacts[0].node.scale.z;water.setEnvironment({waveEnergy:1,roughness:0,glint:1,foam:1});I.update(.02,3,null);
+  record("DSB contact: storm foam is stronger; harbor uses restrained post-sized footprints",storm>I.contacts[0].node.scale.z&&I.contacts.filter(p=>p.harbor).length===16&&I.contacts.filter(p=>p.harbor).every(p=>p.node.scale.x<.5));
+  record("DSB waterfall: retained sheets span every fall and all water/spray surfaces use scene lighting",O.sheets.length===5&&O.sheets.every(f=>f.top>f.bottom&&f.top-f.bottom<15)&&[...geometries].every(g=>g.faces.every(f=>!f.emissive))&&BL.dsbWater.shader.includes("vWorld.y*.8+uWindTime*3.2")&&!BL.dsbWater.shader.includes("lace*.15"));
+  I.update(.02,1,null);const streakY=I.streaks[0].node.position.y;I.update(.02,1.05,null);
+  record("DSB waterfall: highlights move downward on the unchanged fall sheets",I.streaks[0].node.position.y<streakY);
+  const children=W.root.children.length;let lifecycle=true;
+  I.update(.02,5,A,false);lifecycle&&=I.stats.active===0&&I.stats.depth===0&&!I.group.visible;I.dispose();I.dispose();lifecycle&&=I.group.children.length===0&&W.root.children.length===children-1;
+  for(let i=0;i<3;i++){const next=BL.dsbWaterInteraction.create(W);next.update(.02,i,A);lifecycle&&=next.group.children.length===nodes&&next.stats.active<=24;next.dispose();lifecycle&&=next.group.children.length===0&&W.root.children.length===children-1;}
+  record("DSB water lifecycle: indoor gating and repeat disposal/re-entry clear impulses without growing nodes",lifecycle);
+  W.dispose();
+};
+// Recorded from f578f9cda6e77468049b5e000e3002ce9711809b before applying the water extension.
+const WATER_GOLDEN = {ground:"69d81f3b",olympus:"402cb4ff",bridges:"9164c056",buildings:"634c3799",fft:"aa331f6b"};
+
 // Rule: exterior dressing must preserve the exact support surface and usable routes at every tier.
 const exteriorEnrichmentChecks = BL => {
   const S=BL.scene,root=S.createNode(),land=BL.dsbGeography.build(),renderer={kind:"webgl2",quality:"high"},camera=S.createCamera();camera.position.y=110;
@@ -8592,6 +8678,40 @@ const unitChecks = async () => {
     }
   }
   const BL = globalThis.BL;
+  if(ARGS.includes("water-baseline")){
+    if(!process.env.DSB_BASELINE)throw Error("Provide the unmodified checkpoint source directory");
+    for(const name of ["dsb-geography.js","dsb-olympus.js","dsb-water.js"])new Function(readFileSync(join(process.env.DSB_BASELINE,name),"utf8"))();
+    const W=waterWorld(BL);console.log(JSON.stringify(waterGolden(W)));W.dispose();return;
+  }
+  if(ARGS.includes("water-review")){
+    if(!process.env.WATER_CANVAS)throw Error("Provide WATER_CANVAS for offline render export");
+    const {createCanvas}=await import(process.env.WATER_CANVAS),oldCreate=document.createElement;
+    document.createElement=tag=>tag==="canvas"?createCanvas(1,1):oldCreate(tag);
+    const W=waterWorld(BL),I=BL.dsbWaterInteraction.create(W),A=W.avatar,canvas=createCanvas(1280,800),renderer=BL.canvasRenderer.createRenderer(canvas,{width:1280,height:800});
+    W.renderer.kind="canvas2d";
+    const out=join(root,"untracked/water-review");mkdirSync(out,{recursive:true});
+    const opts=BL.scenes.dsb.renderOpts,rows=[];
+    for(const [name,ratio] of [["dry",-.35],["ankle",.12],["knee",.3],["waist",.5],["chest",.7],["head",.85],["swash",0]]){
+      let lo=69,hi=96;for(let i=0;i<30;i++){const z=(lo+hi)/2;if(-.3-W.land.heightAt(20,z)<ratio*A.bodyHeight)lo=z;else hi=z;}rows.push({name,x:20,z:(lo+hi)/2,yaw:Math.PI,dist:7});
+    }
+    rows.push({name:"rocks",x:73,z:43,yaw:-1.1,dist:11},{name:"harbor",x:-39,z:42,yaw:Math.PI,dist:17});
+    for(const [name,i,hour] of [["falls",0,12],["pool",1,12],["falls-night",0,23],["falls-golden",0,18],["falls-storm",0,12]]){const f=W.olympus.impacts[i];rows.push({name,x:f.x+4,z:f.z+4,yaw:1,dist:12,hour});}
+    for(const row of rows){
+      const y=W.ground(row.x,row.z);W.crew.relocatePlayer({x:row.x,y,z:row.z},0);
+      Object.assign(W.camera.position,{x:row.x+Math.sin(row.yaw)*row.dist,y:Math.max(2,y+5),z:row.z+Math.cos(row.yaw)*row.dist});
+      Object.assign(W.camera.target,{x:row.x,y:y+.5,z:row.z});W.camera.far=180;
+      if(row.name.startsWith("falls")||row.name==="pool"){
+        const f=W.olympus.impacts[row.name==="pool"?1:0];Object.assign(W.camera.target,{x:f.x,y:f.y+2,z:f.z});Object.assign(W.camera.position,{x:f.x-13,y:f.y+14,z:f.z+18});
+      }
+      BL.daylight.sample(row.hour||12,opts,180,37);BL.dsbAtmosphere.light(opts);
+      if(row.name.includes("storm")){opts.directStrength*=.18;for(let k=0;k<3;k++){opts.sky[k]*=.4;opts.horizon[k]*=.4;opts.zenith[k]*=.4;}}
+      W.nature.update(0,3);W.enrichment.update(3,opts.lampFactor);W.detail.update(opts.lampFactor);W.olympus.update(.02,opts.lampFactor);
+      I.clear();I.update(.02,3,A);I.emit(row.x,-.3,row.z,.4,.7,2);I.update(.35,3.35,A);W.water.update(3);
+      renderer.render(W.root,W.camera,opts);writeFileSync(join(out,row.name+".png"),canvas.toBuffer("image/png"));
+    }
+    renderer.dispose();I.dispose();W.dispose();document.createElement=oldCreate;console.log("Exported "+rows.length+" actual Canvas water review views to "+out);return;
+  }
+  if(ARGS.includes("water-unit")){waterChecks(BL);return;}
   // Offline visual export through the actual Canvas renderer when this workspace cannot start Chrome.
   // Adapter is supplied by the review environment; it is never a production/package dependency.
   if(ARGS.includes("stackchain-review")){
@@ -9252,6 +9372,30 @@ const unitChecks = async () => {
   }
 };
 
+
+const dsbShorelineCheckpoint={name:"dsb shoreline checkpoint",why:"playthrough: actual input wades to the head-depth boundary, returns, visits falls, changes weather and releases scene effects",run:async b=>{
+  const info=await b.evaluate(`(()=>{const B=__ooga,D=B.dsb;return {kind:B.renderer.kind,impulses:D.waterInteraction.stats.capacity,height:D.avatar.bodyHeight,mean:D.water.geometry.verts[1]};})()`);
+  record("DSB shoreline browser: shader compiles and approved water surface is retained",info.kind==="webgl2"&&info.impulses===24&&info.mean===-.3,JSON.stringify(info));
+  await b.send("Input.dispatchKeyEvent",{type:"keyDown",key:"w",code:"KeyW"});await b.evaluate('__ooga.advance(24)');await b.send("Input.dispatchKeyEvent",{type:"keyUp",key:"w",code:"KeyW"});
+  const deep=await b.evaluate('({stats:{...__ooga.dsb.waterInteraction.stats},z:__ooga.dsb.avatar.root.position.z,camera:__ooga.camera.position.y})');
+  record("DSB shoreline browser: keyboard reaches safe head depth with ripples and responsive surface camera",deep.stats.depth>info.height*.83&&deep.stats.depth<=info.height*.98&&deep.stats.player>0&&deep.camera>-.3,JSON.stringify(deep));
+  await b.send("Input.dispatchKeyEvent",{type:"keyDown",key:"s",code:"KeyS"});await b.evaluate('__ooga.advance(30)');await b.send("Input.dispatchKeyEvent",{type:"keyUp",key:"s",code:"KeyS"});
+  record("DSB shoreline browser: reverse input returns to dry land",await b.evaluate('__ooga.dsb.waterInteraction.stats.depth===0&&__ooga.dsb.avatar.root.position.z<76'));
+  const paths=join(root,"untracked/water-review");mkdirSync(paths,{recursive:true});
+  for(const [name,hour,weather] of [["noon",12,"clear"],["golden",18,"clear"],["night",23,"clear"],["rain",12,"rain"],["storm",12,"storm"]]){
+    const r=await b.evaluate(`(()=>{const B=__ooga,D=B.dsb,f=D.olympus.impacts[0];B.pilot.navigate({position:{x:f.x+5,y:D.land.heightAt(f.x+5,f.z+3),z:f.z+3},yaw:1.05,pitch:.4,dist:18});B.daylight.read=()=>${hour};B.daylight.continuousDay=B.daylight.dayOfYear-1+${hour}/24;D.weather.setMode(${JSON.stringify(weather)});B.advance(2);return {stats:{...D.waterInteraction.stats},finite:D.water.environment.every(Number.isFinite),light:D.weather.state.mode,nodes:D.waterInteraction.group.children.length};})()`);
+    record("DSB shoreline browser: "+name+" has finite water and bounded waterfall impacts",r.finite&&r.stats.impacts===5&&r.stats.streaks>0&&r.stats.active<=24,JSON.stringify(r));await b.screenshot(join(paths,"waterfall-"+name+".png"));
+  }
+  const preserved=await b.evaluate(`(()=>{const D=__ooga.dsb,O=D.olympus,L=D.land,A=D.avatar;let blocked=0;for(let i=1;i<L.trail.length;i++){const a=L.trail[i-1],b=L.trail[i];if(!L.walkable(...a.slice(0,2),...b.slice(0,2),L.heightAt(...a),A.bodyHeight,A)||!O.clearSegment(...a.slice(0,2),...b.slice(0,2),L.heightAt(...a),A.bodyHeight,A))blocked++;}return {blocked,bridges:O.bridges.length,rear:L.heightAt(-55,-91),milestones:D.interiors.registry.size};})()`);
+  record("DSB shoreline browser: Sacred Way, both bridges, seven venues and deep rear Olympus remain intact",preserved.blocked===0&&preserved.bridges===2&&preserved.rear===-5&&preserved.milestones===7,JSON.stringify(preserved));
+  const before=await b.evaluate('({nodes:__ooga.dsb.waterInteraction.group.children.length,records:__ooga.renderer.stats.records})');
+  for(let i=0;i<2;i++){
+    await b.evaluate('window.__oldWater=__ooga.dsb.waterInteraction;__ooga.go("bifrost",null,true);__ooga.advance(.05);__ooga.go("dsb",null,true);__ooga.advance(.05)');
+    const r=await b.evaluate('({cleared:__oldWater.group.children.length===0&&__oldWater.stats.active===0,nodes:__ooga.dsb.waterInteraction.group.children.length,depth:__ooga.dsb.waterInteraction.stats.depth,textures:__ooga.renderer.stats.waterTextures})');
+    record("DSB shoreline browser: Portara scene trip "+i+" releases effects and creates a clean bounded visit",r.cleared&&r.nodes===before.nodes&&r.depth===0&&r.textures===2,JSON.stringify(r));
+  }
+}};
+scene("dsb",{label:"shoreline checkpoint",query:"&view=water-dry&weather=clear&time=1200",steps:[dsbShorelineCheckpoint]});
 
 const dsbWaterCheckpoint = { name: "dsb water checkpoint", why: "contract: Aegean water preserves movement and releases its GPU textures across Portara trips", run: async b => {
   const r=await b.evaluate(`(() => {

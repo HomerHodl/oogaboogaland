@@ -2,7 +2,7 @@
 (() => {
   "use strict";
   const BL = window.BL = window.BL || {}, S = BL.scene, M = BL.models;
-  const STEP = 1.5, MIN = -99, N = 133;
+  const STEP = 1.5, MIN = -99, N = 133, C = BL.dsbCoast;
   const coast = [[-89,-70],[-72,-80],[-54,-88],[-31,-83],[-15,-73],[1,-69],[14,-55],[32,-53],[39,-40],[55,-45],[69,-30],[65,-12],[82,-5],[87,14],[77,25],[78,39],[69,49],[57,70],[42,74],[31,70],[20,76],[3,70],[-2,63],[-20,60],[-30,43],[-47,43],[-56,61],[-68,59],[-77,46],[-73,31],[-86,18],[-82,1],[-94,-19],[-88,-39]];
   // Start five metres in front of Portara; descend the inhabited face, then
   // round only its eastern shoulder. The trail stops at the side clearing.
@@ -47,7 +47,7 @@
   let cached;
   const build = () => {
     if(!cached) {
-      const heights=new Float32Array(N*N), geo={verts:[],faces:[],lines:[]};
+      const heights=new Float32Array(N*N), geo={verts:[],faces:[],lines:[]}, shore={};
       for(let j=0;j<N;j++)for(let i=0;i<N;i++) {
         const x=MIN+i*STEP,z=MIN+j*STEP, distance=closest(edge,x,z).d;
         let h=-5;
@@ -66,6 +66,12 @@
           // Let the mountain rise inland: the beach ramp must not clip a graded
           // switchback when it crosses the front/rear coastal treatment boundary.
           if(!(x<0&&z<-28)) h=Math.min(h,0.4+distance*.46+Math.max(0,distance-12)**2*.12);
+        }
+        // Extend only offshore vertices of the existing furnished beach. Dry land is byte-identical.
+        if(h===-5&&!inside(x,z)){
+          C.nearest(coast,x,z,shore);
+          const sand=Math.min(shore.beach,C.beach(x,z));
+          if(sand>0&&shore.distance<26)h=Math.max(-5,h+(Math.max(-5,C.shelfHeight(shore.distance))-h)*sand);
         }
         heights[j*N+i]=h;geo.verts.push(x,h,z);
       }
@@ -226,7 +232,7 @@
       const W=PROFILE.length;
       for(let i=0;i<M4;i++){
         const j=(i+1)%M4,x=pts[i][0],z=pts[i][1];
-        if(x<3&&z<-26||heightAt(apron.verts[i*W*3],apron.verts[i*W*3+2])>3.2)continue;
+        if(x<3&&z<-26||C.beach(x,z)>0||heightAt(apron.verts[i*W*3],apron.verts[i*W*3+2])>3.2)continue;
         for(let k=0;k<W-1;k++){
           const q=[i*W+k,j*W+k,j*W+k+1,i*W+k+1],v=apron.verts,a=q[0]*3,b=q[1]*3,c=q[2]*3;
           if((v[b+2]-v[a+2])*(v[c]-v[a])-(v[b]-v[a])*(v[c+2]-v[a+2])<0)q.reverse();
@@ -250,7 +256,21 @@
     const clearAt=(x,z,r=.4)=>heightAt(x,z)>.2&&!buildings.some(b=>{const dx=x-b.x,dz=z-b.z,c=Math.cos(b.yaw),s=Math.sin(b.yaw);return Math.abs(c*dx-s*dz)<b.w/2+r&&Math.abs(s*dx+c*dz)<b.d/2+r;});
     const walkable=(ax,az,bx,bz,y,height,actor)=>{
       const n=Math.max(1,Math.ceil(Math.hypot(bx-ax,bz-az)/.3)),r=actor?.bodyRadius||.4;let last=heightAt(ax,az);
-      for(let i=1;i<=n;i++){const x=ax+(bx-ax)*i/n,z=az+(bz-az)*i/n,h=heightAt(x,z);if(!clearAt(x,z,r)||Math.abs(h-last)>.55)return false;last=h;}return true;
+      for(let i=1;i<=n;i++){
+        const x=ax+(bx-ax)*i/n,z=az+(bz-az)*i/n,h=heightAt(x,z);
+        if(h>.2){if(!clearAt(x,z,r))return false;}
+        else {
+          // A body-wide depth gate follows the steepening shelf, not a wall at the waterline.
+          // If an external relocation left a walker too deep, shallower ground is always an escape.
+          const escape=h>last+.00001;
+          for(let k=0;k<5;k++){
+            const px=x+(k===1?r:k===2?-r:0),pz=z+(k===3?r:k===4?-r:0);
+            const limit=C.beach(px,pz)>.98?C.maxDepth(actor):px<-23&&pz>29&&pz<62?0:.22;
+            if(C.LEVEL-heightAt(px,pz)>limit&&!escape)return false;
+          }
+        }
+        if(Math.abs(h-last)>.55)return false;last=h;
+      }return true;
     };
     return {root,sea,heightAt,supportAt:heightAt,groundAt:heightAt,clearAt,walkable,buildings,marks,trail,waterfront,lanes,coast};
   };

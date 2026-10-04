@@ -59,7 +59,7 @@
     }
     const scale=.075/Math.sqrt(s2);
     for(let i=0;i<N*N;i++){h0r[i]*=scale;h0i[i]*=scale;}
-    // Only optical depth extends offshore. No terrain, collision or coast edits.
+    // Optical depth reads the same continuous terrain that supports wading.
     const depthAt=(x,z)=>{
       let distance=Infinity;
       for(let i=0,j=land.coast.length-1;i<land.coast.length;j=i++){
@@ -71,16 +71,39 @@
     };
     for(let z=0;z<B;z++)for(let x=0;x<B;x++){
       const i=(z*B+x)*4,d=depthAt(((x+.5)/B-.5)*SIZE,((z+.5)/B-.5)*SIZE);
-      depths[i]=Math.round(d/30*255);depths[i+3]=255;
+      depths[i]=Math.round(d/30*255);
+      depths[i+1]=Math.round(BL.dsbCoast.beach(((x+.5)/B-.5)*SIZE,((z+.5)/B-.5)*SIZE)*255);depths[i+3]=255;
     }
     // A static mean surface retains the exact approved waterline. FFT height
     // drives optical normals/caustics, without flooding paths or moving piers.
     const geometry={verts:[],faces:[],lines:[],castShadow:false}, G=64;
-    for(let z=0;z<=G;z++)for(let x=0;x<=G;x++)geometry.verts.push((x/G-.5)*SIZE,LEVEL,(z/G-.5)*SIZE);
+    const patchTriangle=(points,color)=>{
+      // Clip only the fine beach patch against its sampled bed. Canvas has no depth buffer; hidden dry-land
+      // water triangles would otherwise paint over the shore. WebGL sees the same surface and waterline.
+      const clipped=[];
+      for(let i=0;i<points.length;i++){
+        const a=points[i],b=points[(i+1)%points.length],ha=land.heightAt(a[0],a[1])-LEVEL,hb=land.heightAt(b[0],b[1])-LEVEL;
+        if(ha<=0)clipped.push(a);
+        if((ha<=0)!==(hb<=0)){const t=ha/(ha-hb);clipped.push([a[0]+(b[0]-a[0])*t,a[1]+(b[1]-a[1])*t]);}
+      }
+      if(clipped.length<3)return;
+      const at=geometry.verts.length/3;for(const p of clipped)geometry.verts.push(p[0],LEVEL,p[1]);
+      for(let i=1;i<clipped.length-1;i++)geometry.faces.push({i:[at,at+i,at+i+1],color,water:"aegean"});
+    };
     for(let z=0;z<G;z++)for(let x=0;x<G;x++){
-      const a=z*(G+1)+x,b=a+1,c=a+G+1,d=c+1,depth=depthAt(((x+.5)/G-.5)*SIZE,((z+.5)/G-.5)*SIZE),k=Math.min(1,depth/12);
-      const color=[Math.round(45-31*k),Math.round(165-91*k),Math.round(175-58*k)];
-      geometry.faces.push({i:[a,c,b],color,water:"aegean"},{i:[b,c,d],color,water:"aegean"});
+      const x0=(x/G-.5)*SIZE,z0=(z/G-.5)*SIZE,cell=SIZE/G;
+      // Small faces at the playable sand belt let Canvas painter sorting resolve a wading body and the wet edge.
+      // This is static tessellation of the SAME mean surface; FFT, spectrum and displacement policy do not change.
+      const cuts=x0<56&&x0+cell>-6&&z0<99&&z0+cell>60?12:1,step=cell/cuts;
+      for(let j=0;j<cuts;j++)for(let i=0;i<cuts;i++){
+        const px=x0+i*step,pz=z0+j*step,at=geometry.verts.length/3,depth=depthAt(px+step/2,pz+step/2),k=Math.min(1,depth/12);
+        const color=[Math.round(45-31*k),Math.round(165-91*k),Math.round(175-58*k)];
+        if(cuts>1){patchTriangle([[px,pz],[px,pz+step],[px+step,pz]],color);patchTriangle([[px+step,pz],[px,pz+step],[px+step,pz+step]],color);}
+        else {
+          geometry.verts.push(px,LEVEL,pz,px+step,LEVEL,pz,px,LEVEL,pz+step,px+step,LEVEL,pz+step);
+          geometry.faces.push({i:[at,at+2,at+1],color,water:"aegean"},{i:[at+1,at+2,at+3],color,water:"aegean"});
+        }
+      }
     }
     const node=BL.scene.createNode({geometry});
     const update=time=>{
@@ -138,11 +161,28 @@ float dsbFresnel(float ci) {
   float rs=(ci-n*ct)/(ci+n*ct),rp=(n*ci-ct)/(n*ci+ct);
   return .5*(rs*rs+rp*rp);
 }
+// Olympus shares absorption, Fresnel and scene light with the sea, but has directional flow, never FFT displacement.
+vec3 dsbCascadeShade(out vec3 bright) {
+  vec3 n=normalize(vNormal),v=normalize(uEye-vWorld);
+  bool fall=abs(n.y)<.6;
+  vec2 axis=normalize(vec2(-n.z,n.x)+vec2(.0001));
+  vec2 q=fall?vec2(dot(vWorld.xz,axis)*3.5,vWorld.y*.8+uWindTime*3.2):vWorld.xz*.9+vec2(uWindTime*.2,-uWindTime*.35);
+  float streak=vnoise(q)*.65+vnoise(q*vec2(2.7,.35))*.35;
+  float lightLevel=clamp(dot(uSky,vec3(.25,.5,.25))+.65*uDirectStrength,.018,1.0);
+  vec3 thin=mix(vec3(.065,.32,.39),vec3(.42,.7,.7),streak);
+  vec3 r=reflect(-v,n),sky=mix(uFog,uSky,max(0.0,r.y));
+  float glint=pow(max(dot(r,uLightDir),0.0),90.0)*uDirectStrength*uDSBEnvironment.z;
+  float lace=smoothstep(.61,.83,streak)*(fall?.45:.12);
+  bright=uSun*glint*.3;
+  return mix(thin*lightLevel,sky,dsbFresnel(abs(dot(v,n)))*.65)+vec3(lace*lightLevel)+uSun*glint*.7;
+}
 vec3 dsbWaterShade(out vec3 bright) {
+  if(vWorld.y>-.25||abs(normalize(vNormal).y)<.6)return dsbCascadeShade(bright);
   vec2 p=vWorld.xz;
   vec4 a=texture(uDSBSurface,p/32.0),b=texture(uDSBSurface,mat2(.8,-.6,.6,.8)*p/13.12+.37);
   vec2 slope=(a.rg-.5)+.22*mat2(.8,.6,-.6,.8)*(b.rg-.5);
-  float depth=texture(uDSBDepth,p/650.0+.5).r*30.0;
+  vec2 bed=texture(uDSBDepth,p/650.0+.5).rg;
+  float depth=bed.r*30.0;
   slope*=uDSBEnvironment.x*smoothstep(0.0,1.0,depth);
   vec3 n=normalize(vec3(-slope.x,1.0,-slope.y)),v=normalize(uEye-vWorld);
   vec3 r=reflect(-v,n),tr=refract(-v,n,1.0/1.333);
@@ -155,12 +195,16 @@ vec3 dsbWaterShade(out vec3 bright) {
   float curvature=texture(uDSBSurface,floorP/32.0).b-.5;
   float caustic=clamp(1.0-curvature*7.0,.55,1.7);
   vec3 bottom=vec3(.68,.63,.43)*sand*(1.0+(caustic-1.0)*daylight*exp(-depth*.22));
+  bottom*=1.0+.07*bed.g*exp(-depth*.7);
   vec3 body=mix(vec3(.012,.22,.32),bottom,transmission)*lightLevel;
   // PROTOTYPE: grazing rays reflect the horizon, so far water brightens into the sky pass's sea instead of ending navy.
   vec3 reflection=mix(uFog,uSky*(.8+.45*max(r.y,0.0)),smoothstep(0.03,0.42,r.y));
   float fres=dsbFresnel(max(dot(v,n),0.0));
   float glint=pow(max(dot(r,uLightDir),0.0),mix(180.0,65.0,uDSBEnvironment.y))*daylight*uDSBEnvironment.z;
   float foam=(1.0-smoothstep(.1,.85,depth))*smoothstep(.51,.63,a.a)*.22*uDSBEnvironment.w;
+  // Thin shoaling crests move toward the depth contour, separate from the land-side swash ribbons.
+  float shoreWave=.5+.5*sin(depth*7.0-uWindTime*1.7+vnoise(p*.6)*1.5);
+  foam+=bed.g*(1.0-smoothstep(.15,1.15,depth))*smoothstep(.88,.99,shoreWave)*.16*uDSBEnvironment.w;
   vec3 col=mix(body,reflection,fres)+uSun*glint*1.5+vec3(foam*lightLevel);
   bright=uSun*glint*.65;
   return col;
