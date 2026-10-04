@@ -2323,7 +2323,7 @@ const orbitFlow = async (b) => {
 const SCENES = ["hub", "lab", "race", "drop", "orbit", "mine", "pool", "dsb", "factory", "bifrost", "poker", "arcade", "skee", "hoops", "shy", "claw", "hockey", "billiards", "darts", "pinball", "ride", "invaders", "snake", "pong", "stampede", "flap", "breaker", "dash", "stacker"];
 const LANES = Number(process.env.LANES) || 8;
 const ARGS = process.argv.slice(2);
-for (const a of ARGS) if (!SCENES.includes(a) && !["unit", "maxis-unit", "perf", "full", "poker-protocol"].includes(a)) throw new Error(`Unknown argument "${a}" (unit | perf | full | poker-protocol | ${SCENES.join(" | ")})`);
+for (const a of ARGS) if (!SCENES.includes(a) && !["unit", "maxis-unit", "exterior-unit", "perf", "full", "poker-protocol"].includes(a)) throw new Error(`Unknown argument "${a}" (unit | perf | full | poker-protocol | ${SCENES.join(" | ")})`);
 const ONLY = process.env.ONLY || ""; // Optional substring within the requested scenes; defaults are unchanged.
 const FULL = ARGS.includes("full");
 const PICKED = FULL ? SCENES : SCENES.filter((s) => ARGS.includes(s));
@@ -8081,6 +8081,59 @@ const pokerProtocolChecks = async () => {
   } catch (e) { record("poker protocol: timeouts refund chips, repeated requests cannot stall, and signers cannot be impersonated", false, e.stack); }
 };
 
+// Rule: exterior dressing must preserve the exact support surface and usable routes at every tier.
+const exteriorEnrichmentChecks = BL => {
+  const S=BL.scene,root=S.createNode(),land=BL.dsbGeography.build(),renderer={kind:"webgl2",quality:"high"},camera=S.createCamera();camera.position.y=110;
+  const nature=BL.dsbNature.create({root,land,renderer,camera,weather:{state:{wind:{strength:.2}}}}),detail=BL.dsbExterior.create({root,land,nature});
+  const original=JSON.stringify(land.root.children[0].geometry),heightSamples=[];
+  for(let x=-90;x<90;x+=3)for(let z=-90;z<80;z+=3)heightSamples.push(land.heightAt(x,z));
+  const E=BL.dsbEnrichment.create({root,land,nature,detail,renderer,camera});E.update(0,0);
+  const counts=Object.fromEntries(E.fields.map(f=>[f.kind,f.list.length]));
+  record("Exterior enrichment: furnished sand, harbor, flowering town and planted ruins are built",E.stats.sandFaces>200&&counts.parasol>=3&&counts.lounger>=4&&counts.pergolaroof===2&&counts.boat===3&&counts.column>=2&&counts.broken>=2&&counts.flowerbox>100&&counts.vine>40,JSON.stringify(counts));
+  let floating=0,buried=0,invalid=0,contacts=0;
+  for(const f of E.fields){
+    for(let n=0;n<f.list.length;n++){
+      const p=f.list[n],a=f.source,o=n*20,v=f.geometry.verts;let top=-Infinity;
+      for(let j=0;j<v.length;j+=3){const x=a[o]*v[j]+a[o+8]*v[j+2]+a[o+12],y=a[o+1]*v[j]+a[o+5]*v[j+1]+a[o+9]*v[j+2]+a[o+13],z=a[o+2]*v[j]+a[o+10]*v[j+2]+a[o+14];
+        if(![x,y,z].every(Number.isFinite))invalid++;
+        if(p.bottom!==undefined&&Math.abs(v[j+1]-p.bottom)<.001){contacts++;if(y>land.heightAt(x,z)+.002)floating++;}top=Math.max(top,y);
+      }
+      if(p.bottom!==undefined&&top<land.heightAt(p.x,p.z)+.06)buried++;
+    }
+  }
+  record("Exterior enrichment: real transformed contact vertices are grounded and geometry finite",contacts>500&&!floating&&!buried&&!invalid,JSON.stringify({contacts,floating,buried,invalid}));
+  const noop=()=>{},C=BL.crew.create({root:S.createNode(),world:{level:0},playerName:"YellowBrokeIt",input:{add:noop,remove:noop},hud:{setRosterRow:noop},game:{state:{assignments:{},inventory:[]}},viewYaw:0,groundAt:land.heightAt,walkable:land.walkable,fx:{say:noop,zzzAt:noop,burst:noop,puff:noop,spawnParticle:noop,damageNumber:noop}}),A=C.cavemen.get("YellowBrokeIt");
+  const blocked=[],intrusions=[];
+  for(const [name,line] of [["beach",E.beachRoute],["ruins",E.ruinRoute],["trail",land.trail]])for(let i=1;i<line.length;i++){
+    const a=line[i-1],b=line[i];if(!land.walkable(a[0],a[1],b[0],b[1],land.heightAt(...a),A.bodyHeight,A))blocked.push([name,i]);
+  }
+  // Independent corridor sampling compares complete ground-prop bounds against the actor radius.
+  for(const line of [land.trail,land.waterfront,...land.lanes,E.beachRoute,E.ruinRoute])for(let i=1;i<line.length;i++){
+    const a=line[i-1],b=line[i],n=Math.ceil(Math.hypot(b[0]-a[0],b[1]-a[1])*3);
+    for(let j=0;j<=n;j++){const x=a[0]+(b[0]-a[0])*j/n,z=a[1]+(b[1]-a[1])*j/n;
+      for(const p of E.placements)if(p.r&&Math.hypot(x-p.x,z-p.z)<p.r+A.bodyRadius)intrusions.push([p.kind,p.x,p.z]);
+    }
+  }
+  C.dispose();
+  record("Exterior enrichment: measured Yellow reaches beach, ruins and trail with all authored corridors clear",!blocked.length&&!intrusions.length,JSON.stringify({radius:A.bodyRadius,blocked,intrusions:intrusions.slice(0,5)}));
+  const after=[];for(let x=-90;x<90;x+=3)for(let z=-90;z<80;z+=3)after.push(land.heightAt(x,z));
+  const sand=E.surfaces[0],coastal=E.placements.filter(p=>["beach","outcrop","coast"].includes(p.region));
+  record("Exterior enrichment: approved terrain is byte-identical and no new beach reaches rear Olympus",original===JSON.stringify(land.root.children[0].geometry)&&JSON.stringify(after)===JSON.stringify(heightSamples)&&coastal.every(p=>p.z>=-23)&&sand.verts.every((v,i)=>i%3!==2||v>=60),JSON.stringify({coastal:coastal.length,sandFaces:sand.faces.length}));
+  const signature=JSON.stringify(E.placements),buffers=E.fields.map(f=>f.node.instanceData),high=E.stats.visible,foam=E.fields.find(f=>f.kind==="foam");
+  renderer.quality="medium";E.update(1,1);const medium=E.stats.visible;renderer.quality="low";E.update(2,1);const low=E.stats.visible,lowFoam=Array.from(foam.node.instanceData);E.update(10,1);
+  const stable=JSON.stringify(lowFoam)===JSON.stringify(Array.from(foam.node.instanceData));
+  renderer.kind="canvas2d";renderer.quality="high";E.update(11,0);const canvas=E.stats.visible;
+  record("Exterior enrichment: bounded tiers retain landmarks, stop low-tier wash and reuse every buffer",high>medium&&medium>low&&canvas===low&&stable&&E.stats.batches<=42&&E.stats.lights===0&&E.fields.every((f,i)=>f.node.instanceData===buffers[i])&&E.fields.filter(f=>["column","boat","parasol","pergolaroof"].includes(f.kind)).every(f=>f.node.instanceCount===f.list.length),JSON.stringify({high,medium,low,canvas,batches:E.stats.batches,foam:E.stats.foam}));
+  renderer.kind="webgl2";renderer.quality="high";E.update(12,1);const lit=E.fields.filter(f=>["glass","windowglow"].includes(f.kind)).every(f=>f.geometry.faces.some(face=>face.emissive>0)&&f.node.glow>.7&&f.node.instanceData.every((v,i)=>i%20!==16||i>=f.node.instanceCount*20||v>.7));E.update(13,0);
+  record("Exterior enrichment: practical lights follow the existing lamp factor without adding real lights",lit&&E.fields.filter(f=>["glass","windowglow"].includes(f.kind)).every(f=>f.node.glow===0&&f.node.instanceData.every((v,i)=>i%20!==16||i>=f.node.instanceCount*20||v===0))&&E.stats.lights===0);
+  const children=root.children.length;let lifecycle=true;
+  E.dispose();E.dispose();
+  lifecycle&&=E.group.children.length===0&&root.children.length===children-1&&E.fields.length===0;
+  for(let i=0;i<2;i++){const next=BL.dsbEnrichment.create({root,land,nature,detail,renderer,camera});next.update(i,0);lifecycle&&=JSON.stringify(next.placements)===signature&&root.children.length===children;next.dispose();lifecycle&&=next.group.children.length===0&&root.children.length===children-1;}
+  detail.dispose();nature.dispose();
+  record("Exterior enrichment: repeat visits release every node and rebuild the same bounded layout",lifecycle&&root.children.length===0);
+};
+
 // Rule: the authored Maxis routes and stand points must fit the real Yellow actor, not a guessed radius.
 const maxisChecks = BL => {
   const noop=()=>{},S=BL.scene,root=S.createNode(),targets=new Set();
@@ -8215,6 +8268,8 @@ const unitChecks = async () => {
     }
   }
   const BL = globalThis.BL;
+  exteriorEnrichmentChecks(BL);
+  if(ARGS.includes("exterior-unit"))return;
   maxisChecks(BL);
   if(ARGS.includes("maxis-unit"))return;
   pokerChecks(BL);

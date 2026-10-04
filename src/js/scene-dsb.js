@@ -13,7 +13,7 @@
   renderOpts.fog=renderOpts.horizon;
   // Four structural validation lamps, not street dressing. Keep within even the lowest light tier.
   const LAMP_SPOTS=[[-49,-45],[-57,37],[20,63],[64,49]], lamps=[];
-  let clock,water,weather,nature,detail,interiors,exterior,noderunner,tv,spaces,studioTools,maxisMedia,maxisButton,maxisReview=false,maxisPick=null,studioReview=false;
+  let clock,water,weather,nature,detail,enrichment,interiors,exterior,noderunner,tv,spaces,studioTools,maxisMedia,maxisButton,maxisReview=false,maxisPick=null,studioReview=false;
   const sampleDaylight=()=>{
     daylight.sample(clock.read(),renderOpts,clock.dayOfYear,LATITUDE,clock.continuousDay);
     const k=renderOpts.lampFactor, lights=renderOpts.lights;
@@ -92,7 +92,7 @@
     hud=BL.hud.create({roster:BL.contributors.roster,catalog:BL.models.SWAG,tierColors:BL.models.TIER_COLORS,renderIcon:BL.hud.renderIcon,lootEnabled:false});
     hud.setAreaLabel("DSB LAND · MASTER LAYOUT");oldSheet=hud.el.sheet.hidden;hud.el.sheet.hidden=true;
     const hooks={};input=BL.interact.create({canvas:ctx.canvas,renderer:ctx.renderer,camera,hooks});
-    pilot=BL.pilot.create({renderer:ctx.renderer,canvas:ctx.canvas,camera,hud,presets:{overview:OVERVIEW,chora:{yaw:.62,pitch:.12,dist:18,target:{x:31,y:7,z:33}}},landing:"overview",pitch:[.1,1.45],dist:[3,270],follow:{y:1,min:3,max:9,pitch:[.1,.8]},fly:{speed:8,perDist:.1,climb:5,yMax:180},clampCamera:p=>interiors?interiors.clampCamera(p,avatar?.root.position):p.y=Math.max(p.y,land.heightAt(p.x,p.z)+1),coarse:matchMedia("(pointer: coarse)").matches,onFreeAction:act,onPlayerAction:act,close:{eyeHeight:1.7,eyeRatio:.8,eyeForward:0,maxStep:.6,pitch:[-1.2,1.2],orbitDist:12,trailingDist:6,groundAt:(x,z)=>interiors?interiors.groundAt(x,z):land.heightAt(x,z)}});
+    pilot=BL.pilot.create({renderer:ctx.renderer,canvas:ctx.canvas,camera,hud,presets:{...BL.dsbEnrichment.REVIEWS,overview:OVERVIEW,chora:{yaw:.62,pitch:.12,dist:18,target:{x:31,y:7,z:33}}},landing:"overview",pitch:[.1,1.45],dist:[3,270],follow:{y:1,min:3,max:9,pitch:[.1,.8]},fly:{speed:8,perDist:.1,climb:5,yMax:180},clampCamera:p=>interiors?interiors.clampCamera(p,avatar?.root.position):p.y=Math.max(p.y,land.heightAt(p.x,p.z)+1),coarse:matchMedia("(pointer: coarse)").matches,onFreeAction:act,onPlayerAction:act,close:{eyeHeight:1.7,eyeRatio:.8,eyeForward:0,maxStep:.6,pitch:[-1.2,1.2],orbitDist:12,trailingDist:6,groundAt:(x,z)=>interiors?interiors.groundAt(x,z):land.heightAt(x,z)}});
     fx=BL.fx.create({root,renderer:ctx.renderer,camera,overlay:ctx.overlay,hud,tickerAt:{x:-45,y:42,z:-44}});
     const splatGeometry=BL.models.particleGeometry("#e34d32",.12,0);
     const shared={
@@ -119,6 +119,7 @@
     tv=BL.dsbTv.create(noderunner.screen,ctx.renderer,{play:()=>noderunner.audio?.play(),radioStatus:()=>noderunner.audio?.status||"Press Play radio to enable sound",onOpen:open=>{pilot.setActive(!open);pilot.controls.reset();input.reset();}});
     nature=BL.dsbNature.create({root:exterior,land,renderer:ctx.renderer,camera,weather});
     detail=BL.dsbExterior.create({root:exterior,land,nature});
+    enrichment=BL.dsbEnrichment.create({root:exterior,land,nature,detail,renderer:ctx.renderer,camera});
     interiors=BL.dsbInteriors.create({root,exterior,land,weather,
       relocate:(position,yaw,dist)=>{overview=false;pilot.setActive(true);if(pilot.player!==avatar)pilot.possess(avatar);pilot.navigate({position,yaw,pitch:.22,dist});pilot.setActive(!interiors?.transitioning);},
       lock:on=>{pilot.setActive(!on);pilot.controls.reset();input.reset();},
@@ -139,7 +140,7 @@
     document.body.appendChild(studioTools);
     studioReview=false;maxisReview=false;
     scene.renderOpts=renderOpts;
-    Object.assign(scene,{root,camera,input,setInterior:weather.setInterior,debug:{weather:weather.shared,renderOpts,daylight:clock,camera,pilot,crew,controls:pilot.controls,hud,dsb:{land,water,weather,nature,detail,noderunner,tv,spaces,maxisMedia,interiors,exterior,setInterior:weather.setInterior,gate,avatar,get phase(){return interiors?.active?"interior":"land";},overview:OVERVIEW}}});
+    Object.assign(scene,{root,camera,input,setInterior:weather.setInterior,debug:{weather:weather.shared,renderOpts,daylight:clock,camera,pilot,crew,controls:pilot.controls,hud,dsb:{land,water,weather,nature,detail,enrichment,noderunner,tv,spaces,maxisMedia,interiors,exterior,setInterior:weather.setInterior,gate,avatar,get phase(){return interiors?.active?"interior":"land";},overview:OVERVIEW}}});
     walk();
     if(DEBUG&&params.get("view")==="clearing") {
       const p=land.marks.clearing;
@@ -147,6 +148,7 @@
     }
     if(DEBUG&&params.get("view")==="noderunner")pilot.navigate({position:noderunner.review,yaw:noderunner.building.yaw,pitch:-.18,dist:9});
     if(DEBUG&&params.get("view")==="chora"){overview=true;pilot.goPreset("chora");}
+    if(DEBUG&&BL.dsbEnrichment.REVIEWS[params.get("view")]){overview=true;pilot.goPreset(params.get("view"));}
     if(params.get("overview")==="1")overviewView();
     if(DEBUG&&(params.get("view")==="meme-factory"||params.get("interior")==="meme-factory"))interiors.review("meme-factory",params.get("interior")==="meme-factory");
     if(DEBUG&&(params.get("view")==="maxis-door"||params.get("interior")==="maxis-club"))interiors.review("maxis-club",params.get("interior")==="maxis-club");
@@ -183,7 +185,7 @@
     }
     Object.assign(after,avatar.root.position);after.y+=avatar.bodyHeight/2-avatar.baseY;
     if(!interiors.active&&!interiors.transitioning&&!overview&&gate.traverse(before,after,avatar.bodyRadius,1))return;
-    detail.update(renderOpts.lampFactor);weather.update(dt,renderOpts);noderunner.update(dt,avatar.root.position,weather.state,renderOpts.lampFactor);tv.update();if(!interiors.active)nature.update(dt,time);
+    detail.update(renderOpts.lampFactor);weather.update(dt,renderOpts);noderunner.update(dt,avatar.root.position,weather.state,renderOpts.lampFactor);tv.update();if(!interiors.active){nature.update(dt,time);enrichment.update(time,renderOpts.lampFactor);}
     const door=interiors.target(avatar.root.position);
     const studioLabel=seatRoom()?(avatar.camp.seat?"Stand up":nearSpaces()?"Open DSB Spaces":nearMaxis()?"Open MAXIS MEDIA":seatNear()?(maxisRoom()?"Sit · view screen":"Sit · view stage"):null):null;
     const label=studioLabel|| (nearTv()?"Open DSB TV":door?`${interiors.active?"Exit":"Enter"} ${door.building.name}`:"Dial Portara → Bifrost");
@@ -196,7 +198,7 @@
     spaces.dispose();spaces=null;studioTools.remove();studioTools=maxisButton=null;
     input.remove(noderunner.screenFace);tv.dispose();tv=null;interiors.dispose();interiors=null;exterior=null;scene.renderOpts=renderOpts;
     noderunner.dispose();noderunner=null;
-    detail.dispose();detail=null;nature.dispose();nature=null;weather.dispose();weather=null;gate.dispose();pilot.dispose();crew.dispose();fx.dispose();const targets=input.targetCount;input.dispose();hud.el.sheet.hidden=oldSheet;hud.dispose();context.hidden=true;
+    enrichment.dispose();enrichment=null;detail.dispose();detail=null;nature.dispose();nature=null;weather.dispose();weather=null;gate.dispose();pilot.dispose();crew.dispose();fx.dispose();const targets=input.targetCount;input.dispose();hud.el.sheet.hidden=oldSheet;hud.dispose();context.hidden=true;
     document.body.classList.remove("dsb-active","dsb-studio-active","maxis-club-active");while(root.children.length)S.removeChild(root,root.children[root.children.length-1]);
     lamps.length=0;renderOpts.lightCount=0;clock=null;water=renderOpts.dsbWater=null;
     scene.setInterior=scene.debug=scene.input=null;land=avatar=crew=pilot=gate=fx=hud=input=null;return {targets};
