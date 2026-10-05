@@ -24,6 +24,6 @@
     "FAIL soak: factory cycles: GPU records, listeners and retained heap remain bounded \u00b7 objects 357.33 -> 362.93 MB (used 256.88 -> 262.87 MB, code 16.30 -> 19.10 MB)"
   ],
   "scope": "Combined #125, #126, #127, #157 and #158. New precision helper relocation was subsequently verified with the same 132 unit checks; production code and assertions are unchanged.",
-  "factoryLifecycle": "Not established on earlier baseline; targeted diagnostics pending.",
+  "factoryLifecycle": "Targeted baseline passed. Combined failed exact DOM node equality: 9256 -> 9257; listeners 367 -> 367, GPU records 986 -> 985, object heap 361756338 -> 368231920 (within 10% limit). Cause unresolved. See factory-lifecycle-integration-evidence.json.",
   "performance": "Covered movement: 30.4 FPS, p95 50 ms, low tier. No production Lighthouse score."
 }
