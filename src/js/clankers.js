@@ -4282,7 +4282,9 @@
           : e.phase === "work" && !sites[e.site].mirrorRoom ? sites[e.site].mouth.ry : NaN;
         const facingTurn = Number.isFinite(roomFacing)
           ? Math.atan2(Math.sin(roomFacing - e.heading), Math.cos(roomFacing - e.heading)) : turn;
-        const facing = onProp && Math.cos(heading - e.heading) < -0.25 ? e.heading
+        // Bed trips cross the bridge in both directions. They must turn along the route, not keep
+        // the reverse-facing pose used to back off a raised prop; the same swept checks still apply.
+        const facing = onProp && !e.sleep.stage && Math.cos(heading - e.heading) < -0.25 ? e.heading
           : e.heading + clamp(facingTurn, -dt * 5, dt * 5);
         // The larger chain also covers reverse strides and the recovery
         // from a hop or chest beat. Reserve it before every working step.

@@ -6,7 +6,7 @@
 // point to another under a chosen pose: climbing a trunk, walking a branch, hopping onto the log, flying).
 // The jaguar walks, naps and lies along the fallen log; the monkey knuckle-walks, sits and climbs a canopy
 // trunk to sit out on a branch; the toucan hops and pecks, and every so often flies to a crown top or another
-// patch of ground. By night they sleep: the monkey up its tree, the toucan on a perch.
+// patch of ground. Monkeys can also climb a blocking terrain wall before continuing their walk. By night they sleep: the monkey up its tree, the toucan on a perch.
 //
 // Everything stays on the islet top in the island group's own frame (+z toward the home island, y = 0 on the
 // ground). Poses are channels damped toward the state's targets, so every change of state eases. Nothing is
@@ -23,7 +23,7 @@
     monkey: { walk: 0.6, run: 1.5, stride: 0.62, turn: 3.4, radius: 0.35, swing: 0.5 },
     toucan: { walk: 0.32, run: 0.6, stride: 0.2, turn: 5, radius: 0.22, swing: 0, fly: 3.4 }
   };
-  const POSE_RATE = 7, CLIMB_SPEED = 0.75, SETTLE = 3;
+  const POSE_RATE = 7, CLIMB_SPEED = 0.75, SETTLE = 3, SWIM_DEPTH = 0.58;
   const angleTo = (from, to) => Math.atan2(Math.sin(to - from), Math.cos(to - from));
   const headingOf = (dx, dz) => Math.atan2(-dz, dx);
   const ease = (a, key, target, k) => (a[key] += (target - a[key]) * k);
@@ -31,6 +31,7 @@
 
   const create = (ctx) => {
     // `groundAt` is the ground under a point of the island's frame and `spotOk` whether an animal may stand there.
+    // `waterAt` supplies the current surface for a monkey swimming with its neck 0.58 m above its root.
     // An animal's own `y` is its height above `base`, the ground it is over or the foot of what it has climbed.
     const { parent, obstacles, sleepy, toWorld, groundAt, spotOk } = ctx;
     const rand = mulberry32(7717), SPOT = { x: 0, z: 0 }, WORLD = { x: 0, z: 0 };
@@ -55,6 +56,22 @@
     });
 
     const list = [];
+    // Sweep the body before moving it, including tree approaches that do not use the roaming spot filter.
+    const terrainClear = (a, x0, y0, z0, x1, y1, z1) => {
+      if (!ctx.terrainClear) return true;
+      const r = a.cfg.radius, height = a.kind === "toucan" ? 0.65 : 0.9;
+      // The knuckle-walking monkey's head projects beyond its torso; it tucks in as the body stands up.
+      const nose = a.kind === "monkey" ? 0.3 * Math.max(0, Math.cos(a.pitch)) : 0;
+      const hx = Math.cos(a.heading) * nose, hz = -Math.sin(a.heading) * nose;
+      return ctx.terrainClear(Math.min(x0, x1) - r + Math.min(0, hx), Math.min(y0, y1) + 0.03, Math.min(z0, z1) - r + Math.min(0, hz),
+        Math.max(x0, x1) + r + Math.max(0, hx), Math.max(y0, y1) + height, Math.max(z0, z1) + r + Math.max(0, hz));
+    };
+    const supportTop = (a, x, z) => {
+      const r = a.cfg.radius + (a.kind === "monkey" ? 0.3 : 0);
+      let top = groundAt(x, z);
+      for (let i = -1; i <= 1; i++) for (let j = -1; j <= 1; j++) top = Math.max(top, groundAt(x + i * r, z + j * r));
+      return top;
+    };
     const segmentClear = (a, x0, z0, x1, z1) => {
       const dx = x1 - x0, dz = z1 - z0, len2 = dx * dx + dz * dz || 1;
       for (let i = 0; i < obstacles.length; i++) {
@@ -98,7 +115,7 @@
     };
     const walkTo = (a, x, z, speed, after) => {
       a.gx = x; a.gz = z; a.speed = speed; a.after = after;
-      setState(a, "walk", 30);
+      setState(a, "walk", Math.max(30, Math.hypot(x - a.x, z - a.z) / speed + 10));
     };
     // A timed move along a straight line (plus an arc) under a pose, then `after`.
     // `base` is the ground the move ends over; it defaults to the ground under its end.
@@ -140,7 +157,7 @@
         if (dot > bestDot) { bestDot = dot; best = b; }
       }
       const bl = Math.hypot(best[3] - best[0], best[5] - best[2]) || 1;
-      a.tree = tree; a.branch = best; a.dx = (best[3] - best[0]) / bl; a.dz = (best[5] - best[2]) / bl;
+      a.tree = tree; a.branch = best; a.dx = (best[3] - best[0]) / bl; a.dz = (best[5] - best[2]) / bl; a.stalls = 0;
       // Where the limb leaves the trunk on this side: the climb ends exactly there, on the limb's top.
       a.u0 = clamp((trunkRadius(tree, best[1]) + CHEST) / bl, 0.05, 0.3);
       tree.taken = a;
@@ -151,6 +168,12 @@
       if (a.tree) a.tree.taken = null;
       a.tree = a.branch = null;
       a.onBranch = false;
+    };
+    const abandonWalk = (a) => {
+      leaveTree(a);
+      if (a.log) { a.log.taken = null; a.log = null; }
+      a.after = "";
+      idle(a, 0.5);
     };
     const perchFree = () => {
       let count = 0;
@@ -203,6 +226,11 @@
       if (a.kind === "monkey") {
         if (a.tree) {
           if (night) return rest(a, 30 + rand() * 30, true);
+          if (!a.onBranch) {
+            // On the ground the climb starts at the trunk's foot: an interrupted approach walks on.
+            a.after = "climb";
+            return arrive(a);
+          }
           a.onBranch = false;
           onBranch(a, a.u0, CLING);
           return glide(a, CLING[0], CLING[1], CLING[2], 0.5, "walk", "down", 0, headingOf(-a.dx, -a.dz), a.tree.base);
@@ -235,6 +263,15 @@
         }
         case "logRest": return rest(a, 12 + rand() * 20, rand() < 0.6 || sleepy());
         case "climb": {
+          // Reserving a tree is not arriving at it: first reach its foot and settle onto its ground.
+          const water = ctx.waterAt ? ctx.waterAt(a.x, a.z) : -Infinity;
+          const base = Math.max(groundAt(a.x, a.z), water - SWIM_DEPTH), height = base - a.tree.base;
+          clingAt(a.tree, height, a.dx, a.dz, CLING);
+          if (Math.hypot(a.x - CLING[0], a.z - CLING[2]) > 0.06 || Math.abs(a.base - base) > 0.06) {
+            return walkTo(a, CLING[0], CLING[2], a.speed, "climb");
+          }
+          a.x = CLING[0]; a.z = CLING[2]; a.y = height; a.base = a.tree.base;
+          a.stalls = 0;
           // Up the bark, chest to the trunk, to where the limb leaves it on this side.
           onBranch(a, a.u0, CLING);
           const top = CLING[1];
@@ -251,10 +288,12 @@
           // From the limb's root back onto the bark, then down it.
           clingAt(a.tree, a.y, a.dx, a.dz, CLING);
           a.x = CLING[0]; a.z = CLING[2];
-          clingAt(a.tree, 0, a.dx, a.dz, CLING);
-          return glide(a, CLING[0], 0, CLING[2], CLIMB_SPEED, "climb", "ground", 0, headingOf(-a.dx, -a.dz), a.tree.base);
+          const water = ctx.waterAt ? ctx.waterAt(a.tree.x, a.tree.z) : -Infinity;
+          const height = Math.max(0, water - SWIM_DEPTH - a.tree.base);
+          clingAt(a.tree, height, a.dx, a.dz, CLING);
+          return glide(a, CLING[0], height, CLING[2], CLIMB_SPEED, "climb", "ground", 0, headingOf(-a.dx, -a.dz), a.tree.base);
         }
-        case "ground": leaveTree(a); return idle(a, 1 + rand() * 2);
+        case "ground": a.base += a.y; a.y = 0; leaveTree(a); return idle(a, 1 + rand() * 2);
         case "land": return idle(a, 2 + rand() * 4);
         default: return idle(a, 2 + rand() * 4);
       }
@@ -263,8 +302,9 @@
     // A poke: the sleeper wakes, the jaguar bolts, the monkey makes for a tree (or bolts), the toucan takes off.
     const startle = (a) => {
       a.asleep = false;
-      if (a.state === "glide") return;
+      if (a.state === "glide" || a.state === "wallUp" || a.state === "wallOver") return;
       if (a.kind === "toucan") return flyAnywhere(a);
+      if (a.state === "walk" && a.log) { abandonWalk(a); return rest(a, 1.5, false); }
       if (a.log || a.tree) return rest(a, 1.5, false);
       if (a.kind === "monkey") {
         const tree = freeTree(a, 5);
@@ -274,18 +314,51 @@
       a.snarl = 1;
     };
 
+    const climbWall = (a, dx, dz) => {
+      if (a.kind !== "monkey") return false;
+      // The approach has already stopped at the face. Lift here first, then pull over the lip.
+      const reach = a.cfg.radius * 2 + 0.72, x = a.x + dx * reach, z = a.z + dz * reach;
+      const top = supportTop(a, x, z);
+      if (!Number.isFinite(top) || top <= a.base + 0.12 || top > a.base + 8 ||
+        !terrainClear(a, a.x, a.base, a.z, a.x, top, a.z) ||
+        !terrainClear(a, a.x, top, a.z, x, top, z)) return false;
+      a.wallX = x; a.wallZ = z; a.wallTop = top; a.wallGrip = 0.25;
+      setState(a, "wallUp", (top - a.base + reach) / CLIMB_SPEED + 3);
+      return true;
+    };
+
     const step = (a, dt) => {
       const cfg = a.cfg;
       a.timer -= dt;
       a.moving = 0;
-      // On the ground an animal settles onto whatever terrace it has walked onto.
-      if (a.state !== "glide" && !a.tree && !a.log && !a.perch) {
-        const ground = groundAt(a.x, a.z);
-        if (ground > -Infinity) a.base += clamp(ground - a.base, -SETTLE * dt, SETTLE * dt);
+      if (a.state === "wallUp" || a.state === "wallOver") {
+        if (a.timer <= 0) return abandonWalk(a);
+        let x = a.x, z = a.z, y = a.base;
+        if (a.state === "wallUp") {
+          y = Math.min(a.wallTop, y + CLIMB_SPEED * dt);
+          const dx = a.wallX - x, dz = a.wallZ - z, distance = Math.hypot(dx, dz);
+          const grip = Math.min(a.wallGrip, CLIMB_SPEED * dt), nx = x + dx / distance * grip, nz = z + dz / distance * grip;
+          if (terrainClear(a, x, a.base, z, nx, y, nz)) { x = nx; z = nz; a.wallGrip -= grip; }
+        } else {
+          const dx = a.wallX - x, dz = a.wallZ - z, distance = Math.hypot(dx, dz);
+          const move = Math.min(distance, CLIMB_SPEED * dt);
+          if (distance > 1e-6) { x += dx / distance * move; z += dz / distance * move; }
+        }
+        if (!terrainClear(a, a.x, a.base, a.z, x, y, z)) return abandonWalk(a);
+        a.x = x; a.z = z; a.base = y;
+        a.moving = CLIMB_SPEED; a.phase = (a.phase + CLIMB_SPEED * dt / 0.5) % 1;
+        if (a.state === "wallUp" && y >= a.wallTop) a.state = "wallOver";
+        else if (a.state === "wallOver" && Math.hypot(a.wallX - x, a.wallZ - z) < 0.01) walkTo(a, a.gx, a.gz, a.speed, a.after);
+        return;
       }
       if (a.state === "walk") {
         const dx = a.gx - a.x, dz = a.gz - a.z, dist = Math.hypot(dx, dz);
-        if (dist < 0.06 || a.timer < 0) return arrive(a);
+        if (dist < 0.06) return arrive(a);
+        if (a.timer < 0) {
+          // An expired approach resumes on the ground, but a repeatedly unreachable tree is released.
+          if (a.tree && a.after === "climb" && ++a.stalls <= 2) return arrive(a);
+          return abandonWalk(a);
+        }
         const want = headingOf(dx, dz), turn = angleTo(a.heading, want);
         a.heading += clamp(turn, -cfg.turn * dt, cfg.turn * dt);
         if (Math.abs(turn) > 0.5) return;
@@ -295,22 +368,39 @@
           if (b === a || b.y > 0.5) continue;
           const ox = b.x - a.x, oz = b.z - a.z, d = Math.hypot(ox, oz);
           if (d < cfg.radius + b.cfg.radius + 0.25 && ox * dx + oz * dz > 0) {
-            if ((a.waits += dt) > 2) { a.after = ""; idle(a, 0.5); }
+            if ((a.waits += dt) > 2) abandonWalk(a);
             return;
           }
         }
-        const move = Math.min(dist, a.speed * dt);
-        a.x += dx / dist * move; a.z += dz / dist * move;
+        const move = Math.min(dist, a.speed * dt), pieces = Math.max(1, Math.ceil(move / 0.08));
+        const ux = dx / dist, uz = dz / dist;
+        for (let i = 0; i < pieces; i++) {
+          const x = a.x + ux * move / pieces, z = a.z + uz * move / pieces;
+          if (!terrainClear(a, a.x, a.base, a.z, x, a.base, z)) {
+            if (!climbWall(a, ux, uz)) abandonWalk(a);
+            return;
+          }
+          a.x = x; a.z = z;
+          a.phase = (a.phase + move / pieces / cfg.stride) % 1;
+        }
         a.moving = a.speed;
-        a.phase = (a.phase + move / cfg.stride) % 1;
         return;
       }
       if (a.state === "glide") {
+        const oldX = a.x, oldZ = a.z, oldY = a.y, oldBase = a.base;
         a.gt = Math.min(a.gdur, a.gt + dt);
         const t = a.gt / a.gdur;
         a.x = lerp(a.sx, a.ex, t); a.z = lerp(a.sz, a.ez, t);
         a.y = lerp(a.sy, a.ey, t) + Math.sin(t * Math.PI) * a.arc;
         a.base = lerp(a.sb, a.eb, t);
+        if (a.tree && a.pose === "climb") {
+          clingAt(a.tree, a.y, a.dx, a.dz, CLING);
+          a.x = CLING[0]; a.z = CLING[2];
+        }
+        if (a.kind === "monkey" && !terrainClear(a, oldX, oldBase + oldY, oldZ, a.x, a.base + a.y, a.z)) {
+          a.x = oldX; a.z = oldZ; a.base = oldBase + oldY; a.y = 0;
+          return abandonWalk(a);
+        }
         a.heading += clamp(angleTo(a.heading, a.face), -cfg.turn * 2 * dt, cfg.turn * 2 * dt);
         a.moving = Math.hypot(a.ex - a.sx, a.ey - a.sy, a.ez - a.sz) / a.gdur;
         a.phase = (a.phase + a.moving * dt / (a.pose === "climb" ? 0.5 : cfg.stride)) % 1;
@@ -349,14 +439,14 @@
         P.tail.rotation.y = lie ? 1.1 : Math.sin(time * 1.2 + a.seed) * 0.35;
         P.tail.rotation.z = lie ? -0.3 : 0.1 + Math.sin(time * 0.8 + a.seed) * 0.12;
       } else if (kind === "monkey") {
-        const climbing = gliding && a.pose === "climb", sit = resting ? 1 : 0;
+        const climbing = gliding && a.pose === "climb" || a.state === "wallUp" || a.state === "wallOver", sit = resting && !a.swimming ? 1 : 0;
         ease(a, "pitch", climbing ? 1.4 : sit * 0.95, k);
         ease(a, "bodyY", climbing ? 0.2 : lerp(0.4, 0.13, sit), k);
         // Climbing, the body stands up the trunk: arms reach up the bark and legs grip below. Sitting on a limb the
         // legs dangle; on the ground they fold forward.
         ease(a, "front", climbing ? 1.35 : sit * -0.95, k);
         ease(a, "back", climbing ? -1 : sit * (a.onBranch ? 0.35 : 1.35), k);
-        ease(a, "headPitch", asleep ? -1.35 : climbing ? -0.9 : sit * -0.6, k);
+        ease(a, "headPitch", a.swimming ? 0 : asleep ? -1.35 : climbing ? -0.9 : sit * -0.6, k);
         ease(a, "headYaw", asleep ? 0 : lookYaw, k);
         const swing = moving ? (climbing ? 0.35 : a.cfg.swing) : 0;
         P.body.rotation.z = a.pitch;
@@ -399,10 +489,11 @@
       addChild(parent, root);
       const a = {
         kind: def.kind, cfg: SPECIES[def.kind], root, parts, node: parts.body, seed: list.length * 1.7,
-        x: def.x, y: 0, z: def.z, base: groundAt(def.x, def.z), sb: 0, eb: 0, heading: def.heading, gx: def.x, gz: def.z, state: "idle", timer: 1 + list.length, waits: 0,
+        x: def.x, y: 0, z: def.z, base: groundAt(def.x, def.z), sb: 0, eb: 0, heading: def.heading, gx: def.x, gz: def.z, state: "idle", timer: 1 + list.length, waits: 0, stalls: 0,
+        wallX: 0, wallZ: 0, wallTop: 0, wallGrip: 0,
         speed: 0, moving: 0, phase: 0, after: "", pose: "stand", arc: 0, face: 0, gt: 0, gdur: 1,
         sx: 0, sy: 0, sz: 0, ex: 0, ey: 0, ez: 0, dx: 1, dz: 0, u0: 0.2, onBranch: false,
-        tree: null, branch: null, log: null, perch: null, asleep: false,
+        tree: null, branch: null, log: null, perch: null, asleep: false, swimming: false,
         look: 0, lookYaw: 0, peck: 0, snarl: 0,
         bodyY: rig.body.at[1], pitch: 0, front: 0, back: 0, headPitch: 0, headYaw: 0, wing: 0,
         wx: 0, wy: 0, wz: 0, owner: null
@@ -414,6 +505,15 @@
       for (let i = 0; i < list.length; i++) {
         const a = list[i];
         step(a, dt);
+        a.swimming = false;
+        // A reserved tree/log is still a ground trip until the animal actually mounts it.
+        if (a.state !== "glide" && a.state !== "wallUp" && a.state !== "wallOver" && (a.state === "walk" || a.tree && !a.onBranch || !a.tree && !a.log && !a.perch)) {
+          const ground = groundAt(a.x, a.z);
+          const water = a.kind === "monkey" && ctx.waterAt ? ctx.waterAt(a.x, a.z) : -Infinity;
+          a.swimming = water > ground + SWIM_DEPTH;
+          const next = a.swimming ? water - SWIM_DEPTH : ground > -Infinity ? a.base + clamp(ground - a.base, -SETTLE * dt, SETTLE * dt) : a.base;
+          if (terrainClear(a, a.x, a.base, a.z, a.x, next, a.z)) a.base = next;
+        }
         pose(a, dt, time);
         toWorld(a.x, a.z, WORLD);
         a.wx = WORLD.x; a.wy = ctx.baseY + a.base + a.y; a.wz = WORLD.z;

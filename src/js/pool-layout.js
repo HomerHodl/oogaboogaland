@@ -34,14 +34,16 @@
   const RAMP = { r: 16, half: 2.5, bay: 3, bayReach: 3, head: 3.5, drop: 10, length: 100, start: 22 * DEG, roof: 1, flat: 3.25 };
   RAMP.sweep = RAMP.length / RAMP.r;
   RAMP.grade = RAMP.drop / RAMP.length;
+  const RILL = { half: 0.18, bedHalf: 0.1, waterHalf: 0.075, depth: 0.14, inset: 0.7 };
   // Fractions of the sweep: two doors out to the ledge, each in a passing bay, a third bay, and the window.
   const DOORS = [{ at: 0.3, y: -3 }, { at: 0.5, y: -5 }];
   const BAYS = [0.3, 0.5, 0.75];
   const WINDOW = { at: 0.75, half: 1.5, sill: 1, top: 2.5 };
   const DOOR = { half: 1.7, height: 3 };
   const JUNCTION = { before: 0.15, after: 0.25, height: 3.5 };
+  RILL.end = RAMP.sweep - JUNCTION.before + 0.055;
   // The ledge down the outside of the cliff, beside the descent and at its height, to the lower door.
-  const LEDGE = { width: 3.2, lead: 0.12, tail: 0.2, to: 0.5, thick: 2.5, lip: 1 };
+  const LEDGE = { width: 3.2, lead: 0.26, tail: 0.2, to: 0.5, thick: 2.5, lip: 1 };
   // The plan's links A and B: two loops off the descent on its cliff side, as fractions of the sweep. Each leaves by
   // a mouth through the outer wall, runs behind a pier of rock along a gallery cut into the cliff's face and open to
   // the sea, and comes back in by a second mouth. There is no room in the shell for a walled tunnel beside the
@@ -54,13 +56,24 @@
   // bearing, and its half width along the wall.
   const STOPS = [0, 90, 180, 270].map((deg) => deg * DEG), STOP = { half: 3.01 };
   const COURT = { from: -0.36, step: 0.06, inner: 13.5 };
+  // The bridge's island gateway and deck overlap, shared with its model. Recess its seat by one voxel
+  // so the scalloped cliff stays below the sagging planks; the court meets the flat inner end.
+  const BRIDGE = { z: R - 1, width: 5.2, deckStart: -2.5 };
   // Nests stand on the far side from the ridge, a channel between each pair.
   const NEST = { r: 16.5, halfR: 3.1, halfT: 2.6 };
   const NESTS = [170, 205, 240, 275, 310].map((deg) => ({ bearing: deg * DEG }));
-  const CHANNEL = { bed: 0.75, bank: 1.25, low: 2, lip: 1 };
-  // `lip` is the sill at the cliff a channel pours over; `to` stops a backwater short of the cliff, over the ledge.
-  const CHANNELS = [{ deg: 187.5, lip: 0, to: 17.5 }, { deg: 222.5, lip: 0, to: Infinity }, { deg: 257.5, lip: 0.5, to: Infinity }, { deg: 292.5, lip: 0, to: Infinity }]
-    .map((c) => ({ bearing: c.deg * DEG, lip: c.lip, to: c.to, falls: c.to === Infinity }));
+  const CHANNEL = { bed: 0.3, bank: 0.45, low: 0.65, lip: 1 };
+  // Ten evenly spaced bearings, omitting the bridge-facing slot at 7.5 degrees.
+  // The first four enter the raised forest wall and spill down the descent's inner wall.
+  const CHANNELS = Array.from({ length: 9 }, (_, i) => {
+    const bearing = (43.5 + i * 36) * DEG, inner = i < 4, a = bearing - RAMP.start;
+    const half = BAYS.some((bay) => Math.abs(a - bay * RAMP.sweep) * RAMP.r < RAMP.bayReach) ? RAMP.bay : RAMP.half;
+    const floor = -RAMP.drop * a / RAMP.sweep;
+    return { bearing, inner, lip: 0, to: inner ? RAMP.r - half + UNIT : Infinity, falls: !inner,
+      floor, length: inner ? WATER.flood - floor - 0.12 : [12, 16, 13, 15, 11][i - 4] };
+  });
+  // The collector begins beneath the first inner waterfall, not at the ramp entrance.
+  RILL.start = CHANNELS.find((channel) => channel.inner).bearing - RAMP.start - 0.5 / (RAMP.r - RAMP.half);
   const HILLS = [{ bearing: 329 * DEG, r: 17.2, top: 3.5, radius: 4 }, { bearing: 158 * DEG, r: 19.4, top: 2.5, radius: 2.4 }];
   // Two beds abreast and two deep on every nest. A gorilla lies 3 m long and 1.7 wide.
   const SLOT = { dr: 1.5, dt: 1.1, lead: 0.7 };
@@ -85,10 +98,19 @@
   const hash = (a, b, c) => (Math.imul(a, 73856093) ^ Math.imul(b, 19349663) ^ Math.imul(c, 83492791)) >>> 0;
   // The island's outline: widest at the bridge and never inside the descent's outer wall.
   const edgeAt = (bearing) => 21.6 + 0.9 * Math.cos(3 * bearing) + 0.3 * Math.sin(7 * bearing + 1.3);
-  // The lake's transparent underside: level with the spill crest at its rim, MEMBRANE_DEPTH lower at the middle.
-  const membraneY = (r) => r >= LAKE_R ? 0 : -MEMBRANE_DEPTH / 2 * (1 + Math.cos(Math.PI * r / LAKE_R));
+  // Inner water turns down at the ramp wall, before the culvert clearance extends into the walkway.
+  // Exterior mouths are recessed into the voxel cliff; their meshes use the same plane.
+  const channelOutlet = (channel) => channel.inner ? channel.to - UNIT : edgeAt(channel.bearing) - 2 * UNIT;
+  // A transparent retaining bowl, not a free water surface: a spherical cap keeps one curvature
+  // from the bottom to the rim, without the cosine profile's inflection and flattened lip.
+  const MEMBRANE_RADIUS = (LAKE_R * LAKE_R + MEMBRANE_DEPTH * MEMBRANE_DEPTH) / (2 * MEMBRANE_DEPTH);
+  const MEMBRANE_CENTRE = MEMBRANE_RADIUS - MEMBRANE_DEPTH;
+  const membraneY = (r) => r >= LAKE_R ? 0 : MEMBRANE_CENTRE - Math.sqrt(MEMBRANE_RADIUS * MEMBRANE_RADIUS - r * r);
   // How far out the water reaches when it stands at `level`: inside the membrane below the crest, then the shore.
-  const waterRadius = (level) => level >= WATER.spill ? LAKE_R : LAKE_R / Math.PI * Math.acos(clamp(-1 - level * 2 / MEMBRANE_DEPTH, -1, 1));
+  const waterRadius = (level) => {
+    const height = MEMBRANE_CENTRE - clamp(level, -MEMBRANE_DEPTH, WATER.spill);
+    return Math.sqrt(Math.max(0, MEMBRANE_RADIUS * MEMBRANE_RADIUS - height * height));
+  };
   // The descent's angle at a bearing, 0 at the mouth, and its floor there.
   const rampAngle = (bearing) => wrap(bearing - RAMP.start);
   const rampY = (a) => -RAMP.drop * clamp(a / RAMP.sweep, 0, 1);
@@ -96,11 +118,91 @@
     for (const bay of BAYS) if (Math.abs(a - bay * RAMP.sweep) * RAMP.r < RAMP.bayReach) return RAMP.bay;
     return RAMP.half;
   };
+  // Ease into the wider bays from inside their footprint, keeping the gutter beside the inner wall.
+  const rillRadius = (a) => {
+    let widen = 0;
+    for (const bay of BAYS) {
+      const t = clamp(RAMP.bayReach - Math.abs(a - bay * RAMP.sweep) * RAMP.r, 0, 1);
+      widen = Math.max(widen, t * t * (3 - 2 * t));
+    }
+    return RAMP.r - RAMP.half + RILL.inset - (RAMP.bay - RAMP.half) * widen;
+  };
+  // Recess the collector back to each fall's wall: one continuous wet strip, with a wider receiving pocket.
+  const rillInner = (a) => {
+    let inner = rillRadius(a) - RILL.waterHalf;
+    for (const channel of CHANNELS) if (channel.inner) {
+      const distance = Math.abs(turn(RAMP.start + a, channel.bearing)) * (RAMP.r - rampHalf(a));
+      const t = clamp((0.75 - distance) / 0.25, 0, 1), weight = t * t * (3 - 2 * t);
+      inner = Math.min(inner, inner + (channelOutlet(channel) + 0.02 - inner) * weight);
+    }
+    return inner;
+  };
+  // Add the pocket corners to the ordinary metre stations so floor and water share every edge.
+  const RILL_STATIONS = [];
+  for (let a = 0; a < RAMP.sweep; a += 1 / RAMP.r) RILL_STATIONS.push(a);
+  RILL_STATIONS.push(RAMP.sweep, RILL.start, RILL.end);
+  for (const channel of CHANNELS) if (channel.inner) {
+    const a = channel.bearing - RAMP.start, r = RAMP.r - rampHalf(a);
+    for (const side of [-0.75, -0.625, -0.5, 0, 0.5, 0.625, 0.75]) RILL_STATIONS.push(a + side / r);
+  }
+  RILL_STATIONS.sort((a, b) => a - b);
+  for (let i = RILL_STATIONS.length - 1; i > 0; i--) if (RILL_STATIONS[i] - RILL_STATIONS[i - 1] < 1e-6) RILL_STATIONS.splice(i, 1);
+  // Turn back around the dividing wall's tip through the lower junction, then follow the room perimeter.
+  // These two arcs also cut the floor and place its groove, so the water cannot disappear under a voxel.
+  const rillEnd = RAMP.start + RILL.end, roomRillR = CHAMBER_R - 0.85;
+  const rillTurnR = (rillRadius(RILL.end) - roomRillR) / 2, rillTurnAt = roomRillR + rillTurnR;
+  const RILL_TAIL = [
+    { x: Math.sin(rillEnd) * rillTurnAt, z: Math.cos(rillEnd) * rillTurnAt, r: rillTurnR, start: rillEnd, sweep: Math.PI, squeeze: 0.32 },
+    { x: 0, z: 0, r: roomRillR, start: rillEnd, sweep: -TAU }
+  ];
+  // Blend the remaining few centimetres of descent into the chamber while making the turn earlier.
+  const rillJunctionY = (x, z) => {
+    const r = Math.hypot(x, z), a = rampAngle(Math.atan2(x, z));
+    const outer = clamp((r - roomRillR) / (rillRadius(RILL.end) - roomRillR), 0, 1);
+    return FLOOR + (rampY(a) - FLOOR) * outer;
+  };
+  // Compress only the bend's forward reach; both ends still meet the existing streams exactly.
+  const rillTailPoint = (arc, angle, offset, out) => {
+    const t = angle - arc.start, c = Math.cos(t), s = Math.sin(t), squeeze = arc.squeeze || 1;
+    const length = Math.hypot(squeeze * c, s), radial = arc.r * c + offset * squeeze * c / length;
+    const forward = arc.r * squeeze * s + offset * s / length, ux = Math.sin(arc.start), uz = Math.cos(arc.start);
+    out.x = arc.x + ux * radial + uz * forward;
+    out.z = arc.z + uz * radial - ux * forward;
+    return out;
+  };
+  const bend = RILL_TAIL[0], bendPoint = {};
+  bend.edge = new Float64Array(130);
+  for (let i = 0; i <= 64; i++) {
+    rillTailPoint(bend, bend.start + bend.sweep * i / 64, 0, bendPoint);
+    bend.edge[i * 2] = bendPoint.x; bend.edge[i * 2 + 1] = bendPoint.z;
+  }
+  const rillTailDistance = (x, z) => {
+    let distance2 = Math.pow(Math.hypot(x, z) - roomRillR, 2);
+    if (Math.hypot(x - bend.x, z - bend.z) > bend.r + 1) return Math.sqrt(distance2);
+    const edge = bend.edge;
+    for (let i = 0; i < edge.length - 2; i += 2) {
+      const dx = edge[i + 2] - edge[i], dz = edge[i + 3] - edge[i + 1];
+      const t = clamp(((x - edge[i]) * dx + (z - edge[i + 1]) * dz) / (dx * dx + dz * dz), 0, 1);
+      const px = x - edge[i] - t * dx, pz = z - edge[i + 1] - t * dz;
+      distance2 = Math.min(distance2, px * px + pz * pz);
+    }
+    return Math.sqrt(distance2);
+  };
   // The voxel floor under the smooth one: the step at or just below it, never above.
   const stepUnder = (y) => y >= 0 ? 0 : Math.max(FLOOR, down(y - 0.08));
   const roofUnder = (r) => r < LAKE_R ? Infinity : r < RING.shore ? -1.5 : r < RING.lowland ? -2.5 : r < 11.25 ? -3.5 : -4.5;
-  const ledgeAngle = (a) => a > TAU - LEDGE.lead ? 0 : a;
-  const onLedge = (a) => a > TAU - LEDGE.lead || a <= LEDGE.to * RAMP.sweep + LEDGE.tail;
+  const ledgeAngle = (a) => a >= TAU - LEDGE.lead ? a - TAU : a;
+  const onLedge = (a) => {
+    a = ledgeAngle(a);
+    return a >= -LEDGE.lead && a <= LEDGE.to * RAMP.sweep + LEDGE.tail;
+  };
+  // A rounded flare grows out of the bridge court instead of a full-width panel jutting off its edge.
+  // The voxel backing and smooth walking surface share the same taper.
+  const ledgeWidth = (a) => {
+    if (!onLedge(a)) return 0;
+    const t = clamp((ledgeAngle(a) + LEDGE.lead) / LEDGE.lead, 0, 1);
+    return LEDGE.width * t * t * (3 - 2 * t);
+  };
   const ledgeY = (a) => rampY(Math.min(ledgeAngle(a), LEDGE.to * RAMP.sweep));
   // The rock over the descent while it is shallow: a ridge that keeps `roof` on it, falling as it falls.
   const ridgeTop = (a) => Math.min(LEVEL.peak, up(rampY(a) + RAMP.head + RAMP.roof + 0.25));
@@ -110,16 +212,26 @@
     for (const link of LINKS) if (a > link.from * RAMP.sweep - DOOR.half / 18 && a < link.to * RAMP.sweep + DOOR.half / 18) return link;
     return null;
   };
+  // Keep both the voxel shelf and its smooth floor out of the falling water's path.
+  const fallGap = (bearing, r = edgeAt(bearing), margin = 0) => {
+    for (const channel of CHANNELS) if (channel.falls && Math.abs(turn(bearing, channel.bearing)) * r < CHANNEL.low + UNIT + margin) return true;
+    return false;
+  };
   const lipAt = (bearing, r = edgeAt(bearing)) => {
     const a = rampAngle(bearing), link = linkAt(a);
-    if (!link || a <= link.from * RAMP.sweep || a >= link.to * RAMP.sweep) return 0;
-    for (const channel of CHANNELS) if (channel.falls && Math.abs(turn(bearing, channel.bearing)) * r < LINK.shy) return 0;
-    return link.lip;
+    let lip = 0;
+    if (link && a > link.from * RAMP.sweep && a < link.to * RAMP.sweep) lip = link.lip;
+    else {
+      // Continue the exterior shelf between the galleries without cutting another passage into the cliff.
+      const from = LINKS[0].to * RAMP.sweep, to = LINKS[1].from * RAMP.sweep;
+      if (a >= from && a <= to) lip = LINKS[0].lip + (LINKS[1].lip - LINKS[0].lip) * (a - from) / (to - from);
+    }
+    return lip && !fallGap(bearing, r) ? lip : 0;
   };
 
   // One column of ground: its top (a cell top, or -Infinity where there is none), its underside, the material it
   // wears, and the gaps cut through it as [from, to) pairs in `gaps`.
-  const COLUMN = { top: 0, bottom: 0, material: 0, gaps: new Float64Array(10), count: 0, r: 0, bearing: 0, a: 0, ledge: false };
+  const COLUMN = { top: 0, bottom: 0, material: 0, gaps: new Float64Array(12), count: 0, r: 0, bearing: 0, a: 0, ledge: false };
   const gap = (from, to) => {
     COLUMN.gaps[COLUMN.count * 2] = from;
     COLUMN.gaps[COLUMN.count * 2 + 1] = to;
@@ -131,8 +243,9 @@
     if (r < SHAFT_R) return c;
     if (r >= edge) {
       // Outside the cliff only the ledge stands: a shelf hanging on the rock, thinner toward its lip.
-      const lip = lipAt(bearing, r), width = lip || LEDGE.width;
-      if (r > edge + width || !lip && !onLedge(a)) return c;
+      if (fallGap(bearing, r, UNIT * Math.SQRT1_2)) return c;
+      const lip = lipAt(bearing, r), width = lip || ledgeWidth(a);
+      if (width <= 0 || r > edge + width || !lip && !onLedge(a)) return c;
       c.ledge = true;
       c.top = stepUnder(lip ? rampY(a) : ledgeY(a));
       c.bottom = c.top - (LEDGE.thick - (r - edge) / width * (LEDGE.thick - LEDGE.lip));
@@ -165,7 +278,12 @@
     }
     if (r >= RING.shore) for (const channel of CHANNELS) {
       const across = Math.abs(turn(bearing, channel.bearing) * r);
-      if (across >= CHANNEL.low || r > channel.to) continue;
+      if (across >= CHANNEL.low || r > channel.to + (channel.inner ? UNIT : 0)) continue;
+      if (channel.inner && r >= RING.ridge) {
+        // A culvert under the raised forest, opening over the inner ramp wall; keep its roof intact.
+        gap(LEVEL.bed, WATER.flood + UNIT);
+        continue;
+      }
       const level = across < CHANNEL.bed ? (r > edge - CHANNEL.lip ? Math.max(LEVEL.bed, channel.lip) : LEVEL.bed) : across < CHANNEL.bank ? LEVEL.shore : LEVEL.lowland;
       if (level < top) { top = level; material = across < CHANNEL.bed ? M.bed : M.mud; }
     }
@@ -175,6 +293,7 @@
       top = inside ? LEVEL.court : LEVEL.lowland;
       material = M.path;
     }
+    if (z >= BRIDGE.z + BRIDGE.deckStart && Math.abs(x) < BRIDGE.width / 2 + UNIT / 2) top = Math.min(top, LEVEL.court - UNIT);
     c.top = top; c.material = material;
     // The chamber is round, except at a reading stop, where its wall is one flat face.
     let chamber = r < CHAMBER_R;
@@ -183,7 +302,13 @@
       if (Math.abs(across) < STOP.half && along > 0) chamber = along < CHAMBER_R;
     }
     if (chamber) gap(FLOOR, roofUnder(r));
-    if (a <= RAMP.sweep && Math.abs(r - RAMP.r) < rampHalf(a)) gap(stepUnder(rampY(a)), up(rampY(a) + RAMP.head));
+    if (r < RAMP.r && r > CHAMBER_R - 2 && rillTailDistance(x, z) < RILL.half + UNIT * Math.SQRT1_2) {
+      gap(down(FLOOR - RILL.depth - 0.08), FLOOR + UNIT);
+    }
+    if (a <= RAMP.sweep && Math.abs(r - RAMP.r) < rampHalf(a)) {
+      const floor = rampY(a), gutter = a <= RILL.end + UNIT * Math.SQRT1_2 / (RAMP.r - RAMP.half) && a >= RILL.start - UNIT * Math.SQRT1_2 / (RAMP.r - RAMP.half) && r > rillInner(a) - (RILL.half - RILL.waterHalf) - UNIT * Math.SQRT1_2 && r < rillRadius(a) + RILL.half + UNIT * Math.SQRT1_2;
+      gap(gutter ? down(floor - RILL.depth - 0.08) : stepUnder(floor), up(floor + RAMP.head));
+    }
     // The level bay where the descent meets the chamber, through the wall between them.
     if (wrap(bearing - RAMP.start - RAMP.sweep + JUNCTION.before) <= JUNCTION.before + JUNCTION.after && r >= CHAMBER_R - 0.5 && r < RAMP.r + RAMP.bay) gap(FLOOR, FLOOR + JUNCTION.height);
     for (const door of DOORS) if (Math.abs(a - door.at * RAMP.sweep) * 18 < DOOR.half && r >= RAMP.r) gap(stepUnder(rampY(a)), stepUnder(rampY(a)) + DOOR.height);
@@ -325,7 +450,7 @@
     if (!margin) return body().heights[i * SZ + k] > -Infinity;
     const bearing = wrap(Math.atan2(x, z)), edge = edgeAt(bearing);
     const lip = lipAt(bearing, r);
-    return r + margin < edge || r + margin < edge + (lip || LEDGE.width) && (lip > 0 || onLedge(rampAngle(bearing))) && body().heights[i * SZ + k] > -Infinity;
+    return r + margin < edge || r + margin < edge + (lip || ledgeWidth(rampAngle(bearing))) && (lip > 0 || onLedge(rampAngle(bearing))) && body().heights[i * SZ + k] > -Infinity;
   };
   // Whether a point of the forest floor is a path, a court, a nest, a channel or the shore: kept clear of plants.
   const keptClear = (x, z, margin = 0) => {
@@ -355,9 +480,9 @@
   for (const nest of NESTS) { nest.x = Math.sin(nest.bearing) * NEST.r; nest.z = Math.cos(nest.bearing) * NEST.r; nest.y = LEVEL.nest; }
 
   BL.poolLayout = {
-    UNIT, R, LAKE_R, CHAMBER_R, SHAFT_R, FLOOR, MEMBRANE_DEPTH, LEVEL, WATER, RING, RAMP, DOORS, DOOR, BAYS, WINDOW, JUNCTION, LEDGE, LINK, LINKS, linkAt, lipAt, STOPS, STOP, COURT, NEST, NESTS,
-    CHANNEL, CHANNELS, HILLS, SLOT_GRID: SLOT, SLOTS, ORIGIN, SX, SY, SZ, M, PALETTE,
-    wrap, turn, edgeAt, membraneY, waterRadius, rampAngle, rampY, rampHalf, stepUnder, roofUnder, onLedge, ledgeY, ridgeTop, column, body,
+    UNIT, R, LAKE_R, CHAMBER_R, SHAFT_R, FLOOR, MEMBRANE_DEPTH, LEVEL, WATER, RING, RAMP, DOORS, DOOR, BAYS, WINDOW, JUNCTION, LEDGE, LINK, LINKS, linkAt, lipAt, STOPS, STOP, COURT, BRIDGE, NEST, NESTS,
+    CHANNEL, CHANNELS, channelOutlet, fallGap, RILL, rillRadius, rillInner, RILL_STATIONS, RILL_TAIL, rillTailPoint, rillTailDistance, rillJunctionY, HILLS, SLOT_GRID: SLOT, SLOTS, ORIGIN, SX, SY, SZ, M, PALETTE,
+    wrap, turn, edgeAt, membraneY, waterRadius, rampAngle, rampY, rampHalf, stepUnder, roofUnder, onLedge, ledgeWidth, ledgeY, ridgeTop, column, body,
     groundAt, solidAt, covered, sightClear, boxSolid, boxClear, onIsland, keptClear, rampPoint
   };
 })();

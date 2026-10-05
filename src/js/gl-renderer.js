@@ -8,7 +8,8 @@
 // geometry with a `sway` strength by the square of local height, and rocks lanterns with `swing` (rock as a
 // piece, phase running along the ground). Water and lava are face materials (`face.water = true` or
 // `"lava"`, flagged to the shader through the normal's length): level water ripples, falls stream, both
-// reflect the sky and glint; lava flows with glowing cracks. Everything animates on the renderer's own clock.
+// reflect the sky and glint; lava flows with glowing cracks. `face.lake` is transparent, with small wave
+// normals and Fresnel reflection, paired with geometry.glass. Everything animates on the renderer's own clock.
 //
 // Block detail (seam, tone, grain) applies to every face on its geometry's `voxel` grid (`[unit, ox, oy,
 // oz]`, set by `voxelGeometry`, `gridGeometry` and the dressing baker, checked per face at upload and
@@ -95,6 +96,11 @@ ${VIEW_DIRECTION_GLSL}
 uniform float uWindTime;
 uniform float uSway;
 uniform float uSwing;
+// pool-water.js sends at most 32 world-space wave packets: centre x/z, radius and height.
+uniform int uLakeWaveCount;
+uniform vec4 uLakeWaves[32];
+uniform vec4 uLakeSurface;
+uniform vec4 uLakeWaveEnd;
 out vec3 vNormal;
 out vec4 vColor;
 out vec4 vParams;
@@ -137,6 +143,35 @@ void main() {
     w.y += abs(swing) * uSwing * 0.15;
   }
   vNormal = normalize(mat3(m) * aNormal);
+  if ((uLakeWaveCount > 0 || uLakeSurface.z > 0.0) && dot(aNormal, aNormal) > 30.0 && dot(aNormal, aNormal) < 42.0) {
+    vec2 radial = w.xz - uLakeSurface.xy;
+    float radialLength = length(radial), edge = clamp((uLakeSurface.z - radialLength) / 0.8, 0.0, 1.0);
+    float envelope = edge * edge * (3.0 - 2.0 * edge);
+    float a = w.x * 0.9 + w.z * 0.5 - uLakeSurface.w * 1.15;
+    float b = -w.x * 0.6 + w.z * 1.3 - uLakeSurface.w * 1.7;
+    float swell = 0.028 * sin(a) + 0.014 * sin(b);
+    float height = swell * envelope;
+    vec2 slope = vec2(0.0252 * cos(a) - 0.0084 * cos(b), 0.014 * cos(a) + 0.0182 * cos(b)) * envelope;
+    slope -= swell * radial * (6.0 * edge * (1.0 - edge) / 0.8 / max(radialLength, 0.0001));
+    for (int i = 0; i < 32; i++) {
+      if (i >= uLakeWaveCount) break;
+      vec4 wave = uLakeWaves[i];
+      vec2 delta = w.xz - wave.xy;
+      float r = length(delta), q = (r - wave.z) / 0.32;
+      if (abs(q) >= 1.0) continue;
+      float e = 1.0 - q * q, c = cos(3.14159265359 * q);
+      height += wave.w * c * e * e;
+      slope += delta * (wave.w * (-3.14159265359 * sin(3.14159265359 * q) * e * e - 4.0 * q * c * e) / 0.32 / max(r, 0.0001));
+    }
+    // Smoothly limit overlapping impacts, including their derivative, to an 18 cm displacement.
+    float limit = 1.0 + abs(height) / 0.18;
+    height /= limit;
+    slope /= limit * limit;
+    float endT = clamp(dot(uLakeWaveEnd, w), 0.0, 1.0), fade = endT * endT * (3.0 - 2.0 * endT);
+    slope = slope * fade + uLakeWaveEnd.xz * (6.0 * endT * (1.0 - endT) * height);
+    w.y += height * fade;
+    vNormal = normalize(vec3(-slope.x, 1.0, -slope.y)) * sign(aNormal.y);
+  }
   vColor = aColor;
   vColor.rgb *= 1.0 - clamp(-aParams.y, 0.0, 1.0) * 0.88;
   float encoded = max(0.0, -aColor.a - 1.0);
@@ -241,6 +276,9 @@ uniform vec3 uMatrixOrigin;
 uniform float uMatrixGlyph;
 // Glass: below 1, a geometry drawn in the glass pass is that see-through, and thicker toward its silhouette.
 uniform float uGlass;
+uniform float uLakeFlowEnabled;
+uniform vec4 uLakeFlowU;
+uniform vec4 uLakeFlowV;
 uniform float uLightBeam;
 uniform float uMatrixCave;
 uniform vec4 uMatrixCaves[8];
@@ -531,6 +569,34 @@ vec3 waterShade(vec3 lit, vec3 n, out vec3 bright) {
   bright = uSun * glint * 1.2 + vec3(foam * (fall ? 0.15 : 0.05));
   return col;
 }
+// The pool uses the waterfall's luminous blue blocks and small square foam flecks.
+// World-space cells continue across the lake/stream join; wave geometry still changes their lighting.
+vec3 lakeShade(vec3 lit, out vec3 bright, out float alpha) {
+  vec2 coord = uLakeFlowEnabled > 0.5 ? vec2(dot(uLakeFlowU, vec4(vWorld, 1.0)), dot(uLakeFlowV, vec4(vWorld, 1.0))) : vWorld.xz;
+  if (uLakeFlowEnabled > 1.5) {
+    vec2 delta = vWorld.xz - uLakeFlowU.xy;
+    coord = vec2(length(delta), mod(atan(delta.x, delta.y) - uLakeFlowU.z + 6.28318530718, 6.28318530718) * uLakeFlowU.w);
+  }
+  vec2 flow = coord + vec2(0.12 * sin(coord.y * 0.35 + uWindTime * 0.4) - uWindTime * 0.08, -uWindTime * 0.3);
+  ivec2 cell = ivec2(floor(flow / vec2(0.25, 0.75)));
+  uint h = uint(cell.x) * 73856093u ^ uint(cell.y) * 19349663u;
+  h = (h ^ (h >> 13)) * 1274126177u;
+  uint band = h % 3u;
+  vec3 color = band == 0u ? vec3(45.0, 125.0, 255.0) : band == 1u ? vec3(74.0, 166.0, 255.0) : vec3(124.0, 200.0, 255.0);
+  bool foam = h % 13u == 0u && fract(flow.y / 0.75) < 0.33333333;
+  if (foam) color = vec3(226.0, 245.0, 255.0);
+  vec3 n = normalize(vNormal);
+  if (n.y < 0.0) n = -n;
+  float shade = 0.88 + 0.22 * max(dot(n, normalize(vec3(-0.4, 1.0, 0.3))), 0.0);
+  float pulse = 0.96 + 0.08 * sin(coord.y * 1.04719755 - uWindTime * 3.14159265);
+  float grain = 0.94 + 0.06 * sin(flow.x * 43.0) * sin(flow.y * 31.0);
+  float sheen = pow(max(0.0, 0.5 + 0.5 * sin(flow.x * 6.0 + sin(flow.y * 4.0))), 12.0);
+  vec3 col = color / 255.0 * shade * pulse * grain * max(0.35, vParams.x) * 1.08 + vec3(0.1, 0.16, 0.18) * sheen;
+  float grazing = 1.0 - abs(dot(n, normalize(viewTowardEye(vWorld))));
+  alpha = min(0.95, uGlass + (foam ? 0.12 : 0.0) + grazing * grazing * 0.06);
+  bright = col * (foam ? 0.25 : 0.12);
+  return col;
+}
 // Lava: a dark crust drifting over a hot flow, its cracks glowing into the bloom.
 // Roads (flagged five times over): painted dirt, soft sun-bleached patches at two scales and a scatter of
 // darker and lighter cartoon pebble specks on a 9 cm lattice, all in world space so tiles never show a seam.
@@ -724,7 +790,7 @@ void main() {
   base = mix(base, heat, ember * 0.9);
   float emissive = max(clamp(vColor.a * max(0.0, vParams.x), 0.0, 1.0), ember * 0.9);
   base *= mix(voxelDetail(), 1.0, max(emissive, cloud));
-  if (dot(vLocalNormal, vLocalNormal) > 20.0) {
+  if (dot(vLocalNormal, vLocalNormal) > 20.0 && dot(vLocalNormal, vLocalNormal) < 30.0) {
     // Marching squares on the road grid: each tile corner takes the share of road among the four tiles meeting
     // there (from the eight-neighbour mask in the first instance parameter, stored as 1 + mask); the tile keeps
     // what lies inside the bilinear half line, so staircases read as straight diagonals and curves.
@@ -749,11 +815,15 @@ void main() {
   col = mix(col, vec3(0.84, 1.0, 0.89), tip * 0.88);
   vec3 surfaceBright = vec3(0.0);
   float nl = dot(vLocalNormal, vLocalNormal);
-  if (nl > 12.0 && nl < 20.0) col = lavaShade(surfaceBright);
+  float lakeAlpha = 1.0;
+  bool lake = nl > 30.0 && nl < 42.0;
+  if (lake) col = lakeShade(col, surfaceBright, lakeAlpha);
+  else if (nl > 12.0 && nl < 20.0) col = lavaShade(surfaceBright);
   else if (nl > 6.0 && nl < 12.0) col = waterShade(col, n, surfaceBright);
   vec3 normalColor = clamp(mix(col, uFog, fog), 0.0, 1.0);
   vec3 normalBright = clamp((col * (emissive * 0.9 + vParams.y * 0.5 + tip * 0.85) + surfaceBright) * (1.0 - fog), 0.0, 1.0);
   float glassAlpha = uGlass < 1.0 ? clamp(uGlass + pow(1.0 - abs(dot(n, normalize(uEye - vWorld))), 2.0) * 0.55, 0.0, 1.0) : 1.0;
+  if (lake) glassAlpha = lakeAlpha;
   // Dust scatters faint light without a glass rim; its intensity fades toward the far end.
   if (uLightBeam > 0.0) {
     float fade = clamp(1.0 - vLocal.x / uLightBeam, 0.0, 1.0);
@@ -1439,7 +1509,7 @@ void main() {
       const meshFragment = matrixSampling ? MESH_FS.replace("#version 300 es", "#version 300 es\n#extension GL_OES_shader_multisample_interpolation : require\n#define MATRIX_SAMPLE_INTERPOLATION") : MESH_FS;
       res.programs = {
         image: compile(IMAGE_VS, IMAGE_FS, ["uViewProj", "uRect", "uImage", "uReady", "uClipMaxY"]),
-        mesh: compile(MESH_VS, meshFragment, ["uViewProj", "uLightViewProj", "uEye", "uViewDirection", "uLightDir", "uSky", "uGround", "uSun", "uDirectStrength", "uAmbientFloor", "uDiffuseFloor", "uShadowStrength", "uShadowFloor", "uShadowBias", "uShadow", "uShadowTexel", "uLights", "uLightCount", "uSpotLight", "uFog", "uFogRange", "uMatrixParams", "uMatrixOrigin", "uMatrixGlyph", "uMatrixCave", "uMatrixCaves", "uMatrixCaveBounds", "uMatrixCaveNear", "uMatrixPermanentCave", "uMatrixPermanentPlane", "uMatrixPermanentAperture", "uMatrixLivingGlobal", "uMatrixGlyphTex", "uMatrixSamples", "uClipMinY", "uClipMaxY", "uObjectClip", "uObjectSlab", "uProjective", "uMatrixGlyphOpacity", "uGlassOpacity", "uVoxel", "uWindTime", "uSway", "uSwing", "uGlass", "uLightBeam"]),
+        mesh: compile(MESH_VS, meshFragment, ["uViewProj", "uLightViewProj", "uEye", "uViewDirection", "uLightDir", "uSky", "uGround", "uSun", "uDirectStrength", "uAmbientFloor", "uDiffuseFloor", "uShadowStrength", "uShadowFloor", "uShadowBias", "uShadow", "uShadowTexel", "uLights", "uLightCount", "uSpotLight", "uFog", "uFogRange", "uMatrixParams", "uMatrixOrigin", "uMatrixGlyph", "uMatrixCave", "uMatrixCaves", "uMatrixCaveBounds", "uMatrixCaveNear", "uMatrixPermanentCave", "uMatrixPermanentPlane", "uMatrixPermanentAperture", "uMatrixLivingGlobal", "uMatrixGlyphTex", "uMatrixSamples", "uClipMinY", "uClipMaxY", "uObjectClip", "uObjectSlab", "uProjective", "uMatrixGlyphOpacity", "uGlassOpacity", "uVoxel", "uWindTime", "uSway", "uSwing", "uGlass", "uLightBeam", "uLakeWaveCount", "uLakeWaves", "uLakeSurface", "uLakeFlowEnabled", "uLakeFlowU", "uLakeFlowV", "uLakeWaveEnd"]),
         shadow: compile(SHADOW_VS, SHADOW_FS, ["uLightViewProj", "uClipMinY", "uClipMaxY", "uObjectClip"]),
         line: compile(LINE_VS, LINE_FS, ["uViewProj", "uViewport", "uWidth", "uClipMaxY", "uObjectClip"]),
         sky: compile(QUAD_VS, SKY_FS, ["uInvViewProj", "uHorizon", "uZenith", "uSun", "uSunDir", "uMoonDir", "uMoonSunDir", "uStarMatrix", "uStars", "uTime", "uHazeDrop", "uClouds", "uSea", "uSeaEye"]),
@@ -1898,8 +1968,8 @@ void main() {
         nx /= len;
         ny /= len;
         nz /= len;
-        // Water, lava and roads are flagged the same way, three, four and five times over.
-        const surface = f.water === "lava" ? 4 : f.water ? 3 : f.road ? 5 : 0;
+        // Water, lava, roads and transparent lake water: three, four, five and six times over.
+        const surface = f.lake ? 6 : f.water === "lava" ? 4 : f.water ? 3 : f.road ? 5 : 0;
         if (surface) {
           nx *= surface;
           ny *= surface;
@@ -1986,7 +2056,7 @@ void main() {
       out[o] = CENTER[0];
       out[o + 1] = CENTER[1] + (node.matrixCloud ? Math.min(0, cutawayCloudY - w[13]) * cutawayCloudMix : 0);
       out[o + 2] = CENTER[2];
-      out[o + 3] = b.radius * Math.sqrt(scale) + CULL_MARGIN;
+      out[o + 3] = b.radius * Math.sqrt(scale) + CULL_MARGIN + (node.geometry.lakeWaves ? 0.18 : 0);
     };
     const slotInFrustum = (s, o, planes) => {
       const x = s[o], y = s[o + 1], z = s[o + 2], r = s[o + 3];
@@ -2487,6 +2557,33 @@ void main() {
           }
         }
         if (kind === "mesh") {
+          if (useProgram === "mesh") {
+            const waveEnd = rec.geometry.lakeWaveEnd;
+            if (waveEnd) gl.uniform4fv(program.u.uLakeWaveEnd, waveEnd);
+            else gl.uniform4f(program.u.uLakeWaveEnd, 0, 0, 0, 1);
+            const curve = rec.geometry.lakeFlowCurve, flow = rec.geometry.lakeFlow;
+            gl.uniform1f(program.u.uLakeFlowEnabled, curve ? 2 : flow ? 1 : 0);
+            if (curve) {
+              gl.uniform4fv(program.u.uLakeFlowU, curve);
+              gl.uniform4f(program.u.uLakeFlowV, 0, 0, 0, 0);
+            } else if (flow) {
+              gl.uniform4f(program.u.uLakeFlowU, flow[0], flow[1], flow[2], flow[3]);
+              gl.uniform4f(program.u.uLakeFlowV, flow[4], flow[5], flow[6], flow[7]);
+            }
+            const waves = rec.geometry.lakeWaves, count = waves ? waves.count : 0;
+            if (count !== program.lakeWaveCount) {
+              gl.uniform1i(program.u.uLakeWaveCount, count);
+              program.lakeWaveCount = count;
+            }
+            if (count) gl.uniform4fv(program.u.uLakeWaves, waves.data);
+            if (waves) {
+              gl.uniform4fv(program.u.uLakeSurface, waves.surface);
+              program.lakeSurface = waves;
+            } else if (program.lakeSurface !== null) {
+              gl.uniform4f(program.u.uLakeSurface, 0, 0, 0, 0);
+              program.lakeSurface = null;
+            }
+          }
           const minimumY = rec.geometry.clipMinY ?? -1e6, maximumY = Math.min(rec.geometry.cutawayPreserve ? 1e6 : cutawayMaxY, rec.geometry.clipMaxY ?? 1e6);
           if (minimumY !== program.clipMinY) {
             gl.uniform1f(program.u.uClipMinY, minimumY);
@@ -2516,7 +2613,7 @@ void main() {
             gl.uniform1f(program.u.uProjective, projective);
             program.projective = projective;
           }
-          if (useProgram === "mesh" && slab !== program.objectSlab) {
+          if (useProgram === "mesh" && (slab !== program.objectSlab || rec.geometry.lakeFlow)) {
             gl.uniform4fv(program.u.uObjectSlab, slab);
             program.objectSlab = slab;
           }

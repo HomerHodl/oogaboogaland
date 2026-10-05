@@ -265,6 +265,8 @@
     let eye = { x: 0, y: 0, z: 0 }, near = 0.2, cutawayMaxY = Infinity;
     const lightDir = new Float32Array([0, 1, 0]);
     let directStrength = 1, ambientFloor = 0.3, diffuseFloor = 0, skyLuma = 0.5, groundLuma = 0.2;
+    let waterTime = 0;
+    const waterWave = new Float64Array(3);
     let pointLights = null, pointLightCount = 0;
     let spotLight = null;
     const spotEnergy = (x, y, z, nx, ny, nz) => {
@@ -397,6 +399,10 @@
             }
             const displacement = liquid ? BL.oogaPortalModels.liquidHeight(x, z, node.portalTime, node.portalSurge) : 0;
             mat4.transformPoint(V[k], w, x, verts[b + 1] + displacement, z);
+            if (face.lake && node.geometry.lakeWaves) {
+              BL.poolWater.sampleWaves(waterWave, V[k][0], V[k][2], node.geometry.lakeWaves, node.geometry.lakeWaveEnd);
+              V[k][1] += waterWave[0];
+            }
             if (projective) divideW(V[k], w, x, verts[b + 1] + displacement, z);
             centerX += V[k][0];
             centerY += V[k][1];
@@ -421,7 +427,10 @@
           nx /= nlen;
           ny /= nlen;
           nz /= nlen;
-          if (!portalFace && perspectiveWeight * (nx * (V[0][0] - eye.x) + ny * (V[0][1] - eye.y) + nz * (V[0][2] - eye.z)) - orthographicDepth * (nx * view[2] + ny * view[6] + nz * view[10]) >= 0) continue;
+          if (!portalFace && perspectiveWeight * (nx * (V[0][0] - eye.x) + ny * (V[0][1] - eye.y) + nz * (V[0][2] - eye.z)) - orthographicDepth * (nx * view[2] + ny * view[6] + nz * view[10]) >= 0) {
+            if (!node.geometry.twoSided) continue;
+            nx = -nx; ny = -ny; nz = -nz;
+          }
           centerX /= count;
           centerY /= count;
           centerZ /= count;
@@ -666,6 +675,40 @@
               let red = lerp(lerp(cr * (k + pointR + (beam ? beam * spotLight[8] : 0)), 214, tip * 0.88), fogRgb[0], fog);
               let green = lerp(lerp(cg * (k + pointG + (beam ? beam * spotLight[9] : 0)), 255, tip * 0.88), fogRgb[1], fog);
               let blue = lerp(lerp(cb * (k + pointB + (beam ? beam * spotLight[10] : 0)), 227, tip * 0.88), fogRgb[2], fog);
+              if (face.lake) {
+                // Match the WebGL waterfall palette and rectangular cells, including displaced wave lighting.
+                const flow = node.geometry.lakeFlow, curve = node.geometry.lakeFlowCurve;
+                let coordX = flow ? centerX * flow[0] + centerY * flow[1] + centerZ * flow[2] + flow[3] : centerX;
+                let coordZ = flow ? centerX * flow[4] + centerY * flow[5] + centerZ * flow[6] + flow[7] : centerZ;
+                if (curve) {
+                  const dx = centerX - curve[0], dz = centerZ - curve[1], tau = Math.PI * 2;
+                  coordX = Math.hypot(dx, dz);
+                  coordZ = ((Math.atan2(dx, dz) - curve[2]) % tau + tau) % tau * curve[3];
+                }
+                const flowX = coordX + 0.12 * Math.sin(coordZ * 0.35 + waterTime * 0.4) - waterTime * 0.08, flowZ = coordZ - waterTime * 0.3;
+                let h = (Math.imul(Math.floor(flowX / 0.25), 73856093) ^ Math.imul(Math.floor(flowZ / 0.75), 19349663)) >>> 0;
+                h = Math.imul(h ^ (h >>> 13), 1274126177) >>> 0;
+                const band = h % 3, foam = h % 13 === 0 && flowZ / 0.75 - Math.floor(flowZ / 0.75) < 1 / 3;
+                waterWave.fill(0);
+                if (node.geometry.lakeWaves) BL.poolWater.sampleWaves(waterWave, centerX, centerZ, node.geometry.lakeWaves, node.geometry.lakeWaveEnd);
+                // The hanging water uses its curved face normal; the free surface uses the wave gradient.
+                const side = ny < 0 ? -1 : 1, waving = !!node.geometry.lakeWaves;
+                const waterNx = waving ? -waterWave[1] : nx * side, waterNy = waving ? 1 : ny * side, waterNz = waving ? -waterWave[2] : nz * side;
+                const length = Math.hypot(waterNx, waterNy, waterNz);
+                const shade = 0.88 + 0.22 * Math.max(0, (-waterNx * 0.4 + waterNy + waterNz * 0.3) / length / Math.sqrt(1.25));
+                const pulse = 0.96 + 0.08 * Math.sin(coordZ * 1.04719755 - waterTime * Math.PI);
+                const grain = 0.94 + 0.06 * Math.sin(flowX * 43) * Math.sin(flowZ * 31);
+                const sheen = (0.5 + 0.5 * Math.sin(flowX * 6 + Math.sin(flowZ * 4))) ** 12;
+                const glow = shade * pulse * grain * Math.max(0.35, materialGlow) * 1.08;
+                const dx = perspectiveWeight * (eye.x - centerX) + orthographicDepth * view[2];
+                const dy = perspectiveWeight * (eye.y - centerY) + orthographicDepth * view[6];
+                const dz = perspectiveWeight * (eye.z - centerZ) + orthographicDepth * view[10];
+                const grazing = 1 - Math.min(1, Math.abs((waterNx * dx + waterNy * dy + waterNz * dz) / length / (Math.hypot(dx, dy, dz) || 1)));
+                rec.smokeOpacity = Math.min(0.95, opacity + (foam ? 0.12 : 0) + grazing * grazing * 0.06);
+                red = lerp((foam ? 226 : band === 0 ? 45 : band === 1 ? 74 : 124) * glow + 25.5 * sheen, fogRgb[0], fog);
+                green = lerp((foam ? 245 : band === 0 ? 125 : band === 1 ? 166 : 200) * glow + 40.8 * sheen, fogRgb[1], fog);
+                blue = lerp(255 * glow + 45.9 * sheen, fogRgb[2], fog);
+              }
               if (liquid) {
                 const time = node.portalTime, radius = Math.hypot(liquidX, liquidZ);
                 const interference = Math.sin(Math.hypot(liquidX - 0.22, liquidZ + 0.17) * 32 - time * 4)
@@ -1489,6 +1532,7 @@
       pointLightCount = pointLights ? Math.min(6, opts.lightCount || 0) : 0;
       skyLuma = sky[0] * 0.2126 + sky[1] * 0.7152 + sky[2] * 0.0722;
       groundLuma = ground[0] * 0.2126 + ground[1] * 0.7152 + ground[2] * 0.0722;
+      waterTime = performance.now() * 0.001 % 3600;
       poolUsed = 0;
       suppressed = rippleSurfaces = rippleWaves = 0;
       mirrorDebug.active = false;

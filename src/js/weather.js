@@ -25,8 +25,8 @@
 // How much falls, the drop size and the sky's grey follow the continuous `wetAt(storm)` through the
 // steps' own points, so a step names the weather while the rain only eases.
 // Lightning is for new blocks only: every block strikes whatever the weather is doing, nothing else does; a bolt
-// takes a random turn, scale and mirror. The rain batch is tier-scaled, and a streak lies along its drop's
-// velocity, so its head is upwind and the rain leans the way the wind travels. The sky goes through `cloudFor` on
+// takes a random turn, scale and mirror. The rain batch is tier-scaled, and drops fall straight down inside
+// the cell; wind only carries the clouds and their sound. The sky goes through `cloudFor` on
 // `wetAt`, the same clear band, after `daylight.sample`. Audio is background: MASTER sits under the rally and drop
 // engines and a strike is a few times the rain, never the page's loudest thing.
 //
@@ -194,7 +194,7 @@
   // The flash strobes twice, then decays: full, dip, second bright, tail.
   const flashAt = (t) => t < 0.08 ? 1 : t < 0.14 ? 0.25 : t < 0.22 ? 0.85 : 0.85 * Math.exp(-(t - 0.22) / FLASH_TAU);
 
-  const create = ({ root, renderer, camera, heightAt, fx = null, centre }) => {
+  const create = ({ root, renderer, camera, heightAt, fx = null, onRain = null, centre }) => {
     const canvas2d = renderer.kind === "canvas2d";
     const cap = canvas2d ? CAP_CANVAS : (CAP[renderer.quality] || CAP.medium);
     const node = createNode({ geometry: rainDrop(), instanceData: new Float32Array(cap * 20), instanceCount: 0, drawInstanceCount: 0, instanceVersion: 0, fixedInstanceCapacity: true });
@@ -431,10 +431,9 @@
       const floorY = t.y - RECYCLE_BELOW;
       for (let i = 0; i < count; i++) {
         y[i] -= vy[i] * dt;
-        x[i] += windX * dt;
-        z[i] += windZ * dt;
         const ground = heightAt(x[i], z[i]);
         if (y[i] <= ground || y[i] < floorY) {
+          if (onRain && dt > 0 && y[i] <= ground) onRain(x[i], ground, z[i], w[i], wet);
           if (fx && w[i] >= SPLASH_SIZE && y[i] <= ground) fx.burst(x[i], y[i] + 0.05, z[i], 2, SPLASH, 0.9);
           // Over target the population shrinks by retiring on landing; otherwise it recycles to the top.
           if (count > target) {
@@ -446,20 +445,10 @@
           }
           seed(i, true);
         }
-        // Drops outside the field have drifted past the camera; bring them round rather than lose them.
-        const ox = x[i] - t.x, oz = z[i] - t.z;
-        if (ox * ox + oz * oz > FIELD_R * FIELD_R * 2.25) seed(i, true);
-
         const o = i * 20, s = w[i] * 0.5 + 0.5, hy = h[i];
-        // A streak lies along the drop's own velocity: down at vy, carried sideways at the wind's speed.
-        // Bottom to top is the reverse of that travel, so the head of the streak is upwind of its tail
-        // and the rain leans the way the wind is going. The ratio is wind over fall speed, so a heavy
-        // drop falls straighter through the same gale than a light one, and the lean is capped so a
-        // squall never lays the rain flat.
-        const tiltX = clamp(-windX / (vy[i] || 1), -0.8, 0.8);
-        const tiltZ = clamp(-windZ / (vy[i] || 1), -0.8, 0.8);
+        // A vertical streak follows the drop's downward travel without shifting rain out of the cell.
         data[o] = s; data[o + 1] = 0; data[o + 2] = 0; data[o + 3] = 0;
-        data[o + 4] = tiltX * hy; data[o + 5] = hy; data[o + 6] = tiltZ * hy; data[o + 7] = 0;
+        data[o + 4] = 0; data[o + 5] = hy; data[o + 6] = 0; data[o + 7] = 0;
         data[o + 8] = 0; data[o + 9] = 0; data[o + 10] = s; data[o + 11] = 0;
         data[o + 12] = x[i]; data[o + 13] = y[i]; data[o + 14] = z[i]; data[o + 15] = 1;
         data[o + 16] = 1; data[o + 17] = 0; data[o + 18] = 0; data[o + 19] = 0;
@@ -567,8 +556,7 @@
       get audible() { return !!ctx; },
       get centre() { return centre; },
       get wind() { return Math.hypot(windX, windZ); },
-      // The wind's own travel, and the streak basis a drop is drawn along, so the lean can be checked
-      // against the direction rather than eyeballed.
+      // Cloud wind and the vertical streak basis are exposed separately for inspection.
       get windX() { return windX; },
       get windZ() { return windZ; },
       lean: (i) => {

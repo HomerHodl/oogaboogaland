@@ -1,5 +1,5 @@
 // The Mempool island's water: the lake that stands as deep as the backlog, the flood it spreads over the shore
-// and down the channels, the falls those pour over the cliff, the veins of it let into the tunnel walls, and the
+// and down the channels, the exterior and inner-ramp falls, their residual wall streaks, and the
 // cube that leaves the lake through the chamber every time a block is found.
 //
 // The lake is the transaction backlog: `levelFor(vsize)` maps the waiting virtual bytes onto a level through
@@ -10,24 +10,22 @@
 // said to be stale; with no reading at all the lake stands low and dim and says so. The cube subtracts nothing:
 // what the block cleared arrives as the next backlog reading.
 //
-// All of it is one language, the Bifrost islet's: blue in three tones with pale foam, lit from within, its
-// movement a brightness that travels (`node.glow` per piece), never a vertex. The lake's surface and the flood
-// are flat sheets of glass moved by their node, so the ground they stand over shows through and whoever floats
-// in them is seen from the chamber below through the membrane. On Canvas 2D, which draws one side of a face,
-// the sheets are built with both.
+// The lake, streams and falls share luminous blue blocks and pale foam. Rain and wakes still displace
+// the lake and streams, with matching lighting normals. The hanging bowl carries the same translucent water
+// material below the current waterline. On Canvas 2D, the sheets are built with both windings.
 //
-// Everything is built once in `create` and pooled: falls are fixed stacks of metre pieces, a block's cube, neck,
-// droplets and rings come from SEQUENCES fixed sets, and blocks found faster than they can fall wait in a queue
+// Everything is built once in `create` and pooled: streams and falls are fixed water meshes, a block's cube, neck,
+// droplets and rings come from SEQUENCES fixed sets; rain and wakes share a bounded wave field. Blocks found faster than they can fall wait in a queue
 // of QUEUE at most, the rest dropped. `update` allocates nothing.
 (() => {
   "use strict";
   const BL = window.BL = window.BL || {};
   const { math, models, poolLayout: L, poolModels: P } = BL;
   const { createNode, addChild, removeChild } = BL.scene;
-  const { clamp, lerp, mulberry32, hexToRgb } = math;
+  const { clamp, lerp, hexToRgb } = math;
   const { box, merge, noShadow, cached, pushVert, face } = models;
   const TAU = Math.PI * 2;
-  const WATER = P.WATER, FOAM = P.FOAM, WATER_RGB = WATER.map(hexToRgb), FOAM_RGB = hexToRgb(FOAM), CALM = ["#3a8cff", "#4a9cff", "#6fbcff"].map(hexToRgb);
+  const WATER = P.WATER, FOAM = P.FOAM, WATER_RGB = WATER.map(hexToRgb), FOAM_RGB = hexToRgb(FOAM), CALM = WATER_RGB[1];
 
   // Tuning. POINTS is [waiting vB, level]: an empty mempool stands at the low water, NORMAL_VB at the normal
   // water, OVERFLOW_VB reaches the spill crest and FULL_VB the highest flood. Between them it is linear.
@@ -53,12 +51,49 @@
     for (let i = 1; i < points.length; i++) if (v <= points[i][0]) return lerp(points[i - 1][1], points[i][1], (v - points[i - 1][0]) / (points[i][0] - points[i - 1][0]));
     return points[points.length - 1][1];
   };
-  const FALL = { band: 6, rate: 0.5, pieces: 15 };
+  // Cover the cell corners at the stepped banks, as well as their centre-sampled width.
+  const BANK_COVER = L.UNIT * Math.SQRT1_2;
+  // Bifrost's four quarter-metre streaks establish the shared maximum waterfall width.
+  const FALL_WIDTH = 1;
+  const channelHalf = (level) => (level > L.LEVEL.lowland ? L.CHANNEL.low : level > L.LEVEL.shore ? L.CHANNEL.bank : L.CHANNEL.bed) + BANK_COVER;
+  const outletAt = (channel) => L.channelOutlet(channel) + 0.02;
   const SEQUENCES = 2, QUEUE = 3, DROPLETS = 4;
   // A block's cube: it gathers on the membrane, bulges through on a neck, hangs turning, falls slowly through
   // the chamber and its shaft for `drop` seconds, then on down the open air to the sea, where it dissolves.
   // Seconds per phase: the chamber watches about eight of them.
   const CUBE = { size: 1.5, gather: 1.6, bulge: 1.7, hang: 1.5, drop: 3.2, splash: 1.4, hangY: -L.MEMBRANE_DEPTH - 1.5, spin: 0.9 };
+  const RIPPLES = { high: 20, medium: 16, low: 8, canvas2d: 6 };
+  const WAKES = { high: 12, medium: 8, low: 4, canvas2d: 4 }, WAKE_ACTORS = 160;
+  const WAVE_CAP = 32, WAVE_WIDTH = 0.32, WAVE_HEIGHT = 0.18;
+  // Shared with the vertex shader: compact crest/trough packet and its analytic slopes, in world space.
+  const sampleWaves = (out, x, z, waves, end = null) => {
+    const surface = waves.surface, dx = x - surface[0], dz = z - surface[1], r = Math.hypot(dx, dz), time = surface[3];
+    const edge = clamp((surface[2] - r) / 0.8, 0, 1), envelope = edge * edge * (3 - 2 * edge);
+    const a = x * 0.9 + z * 0.5 - time * 1.15, b = -x * 0.6 + z * 1.3 - time * 1.7;
+    const swell = 0.028 * Math.sin(a) + 0.014 * Math.sin(b);
+    const rim = -6 * edge * (1 - edge) / 0.8 / Math.max(r, 0.0001);
+    let height = swell * envelope;
+    let sx = (0.0252 * Math.cos(a) - 0.0084 * Math.cos(b)) * envelope + swell * rim * dx;
+    let sz = (0.014 * Math.cos(a) + 0.0182 * Math.cos(b)) * envelope + swell * rim * dz;
+    for (let i = 0; i < waves.count; i++) {
+      const o = i * 4, dx = x - waves.data[o], dz = z - waves.data[o + 1], r = Math.hypot(dx, dz);
+      const q = (r - waves.data[o + 2]) / WAVE_WIDTH;
+      if (Math.abs(q) >= 1) continue;
+      const e = 1 - q * q, c = Math.cos(Math.PI * q), a = waves.data[o + 3];
+      height += a * c * e * e;
+      const slope = a * (-Math.PI * Math.sin(Math.PI * q) * e * e - 4 * q * c * e) / WAVE_WIDTH / Math.max(r, 0.0001);
+      sx += slope * dx; sz += slope * dz;
+    }
+    const limit = 1 + Math.abs(height) / WAVE_HEIGHT;
+    out[0] = height / limit; out[1] = sx / (limit * limit); out[2] = sz / (limit * limit);
+    if (end) {
+      const t = clamp(x * end[0] + z * end[2] + end[3], 0, 1), fade = t * t * (3 - 2 * t), slope = 6 * t * (1 - t) * out[0];
+      out[1] = out[1] * fade + slope * end[0]; out[2] = out[2] * fade + slope * end[2]; out[0] *= fade;
+    }
+    return out;
+  };
+  const RIPPLE_DIRECTIONS = [1, 0, Math.SQRT1_2, Math.SQRT1_2, 0, 1, -Math.SQRT1_2, Math.SQRT1_2,
+    -1, 0, -Math.SQRT1_2, -Math.SQRT1_2, 0, -1, Math.SQRT1_2, -Math.SQRT1_2];
 
   // Both windings of every face, for the renderer that draws only the side facing it.
   const twoSided = (geo) => {
@@ -72,71 +107,142 @@
     geo.glass = alpha;
     return geo;
   };
-  // The lake's surface at unit radius: rings of quads in three close blues (`CALM`), so the chamber looks up
-  // through water and not at a checkerboard; the node's scale its reach.
+  // Fine shared meshes let wave packets displace the actual surface rather than drawing over it.
+  // Canvas keeps a coarser mesh and evaluates the same packets on the CPU.
   const surface = [false, true].map((both) => cached(() => {
-    const geo = { verts: [], faces: [], lines: [] }, RINGS = [1, 0.82, 0.62, 0.42, 0.22], SECTORS = 24;
-    const at = (r, s) => pushVert(geo, Math.sin(s / SECTORS * TAU) * r, 0, Math.cos(s / SECTORS * TAU) * r);
-    for (let ring = 0; ring < RINGS.length; ring++) for (let s = 0; s < SECTORS; s++) {
-      const tone = CALM[(ring * 5 + s * 3) % 7 === 0 ? 2 : (ring + s) % 2];
-      const inner = ring + 1 < RINGS.length ? RINGS[ring + 1] : 0;
-      face(geo, inner ? [at(RINGS[ring], s), at(RINGS[ring], s + 1), at(inner, s + 1), at(inner, s)] : [at(RINGS[ring], s), at(RINGS[ring], s + 1), at(0, 0)], tone, { emissive: 0.55 });
+    const geo = { verts: [], faces: [], lines: [] }, rings = both ? 24 : 64, sectors = both ? 96 : 192;
+    const rows = [];
+    for (let r = 0; r <= rings; r++) {
+      const row = [];
+      for (let s = 0; s < sectors; s++) row.push(pushVert(geo, Math.sin(s / sectors * TAU) * r / rings, 0, Math.cos(s / sectors * TAU) * r / rings));
+      rows.push(row);
     }
-    return glass(geo, 0.5, both);
-  }));
-  // Glints riding on it: a few pale slivers that turn the other way, so the surface shimmers without a wave.
-  const glints = [false, true].map((both) => cached(() => {
-    const geo = { verts: [], faces: [], lines: [] }, rand = mulberry32(8807);
-    for (let i = 0; i < 16; i++) {
-      const a = rand() * TAU, r = 0.12 + Math.sqrt(rand()) * 0.8, w = 0.035 + rand() * 0.05, h = 0.008 + rand() * 0.008;
-      const cx = Math.sin(a) * r, cz = Math.cos(a) * r, tx = Math.cos(a), tz = -Math.sin(a), ox = Math.sin(a), oz = Math.cos(a);
-      face(geo, [pushVert(geo, cx - tx * w - ox * h, 0, cz - tz * w - oz * h), pushVert(geo, cx - tx * w + ox * h, 0, cz - tz * w + oz * h),
-        pushVert(geo, cx + tx * w + ox * h, 0, cz + tz * w + oz * h), pushVert(geo, cx + tx * w - ox * h, 0, cz + tz * w - oz * h)], FOAM_RGB, { emissive: 1 });
+    for (let r = 1; r <= rings; r++) for (let s = 0; s < sectors; s++) {
+      const next = (s + 1) % sectors;
+      face(geo, r === 1 ? [rows[r][s], rows[r][next], rows[0][0]] : [rows[r][s], rows[r][next], rows[r - 1][next], rows[r - 1][s]], CALM, { emissive: 0.9 });
     }
-    return glass(geo, 0.7, both);
+    for (const f of geo.faces) f.lake = true;
+    return glass(geo, 0.78, both);
   }));
-  // The flood: one flat sheet over the shore, the lowland ring and every channel, at y = 0 in its own frame. The
-  // ground hides it wherever it stands higher than the water, so the sheet floods exactly the terraces below it.
   const flood = [false, true].map((both) => cached(() => {
-    const geo = { verts: [], faces: [], lines: [] }, SECTORS = 48, outer = L.RING.lowland + 0.25;
+    const geo = { verts: [], faces: [], lines: [] }, sectors = both ? 96 : 192, outer = L.RING.lowland + 0.25, step = both ? 0.5 : 0.2;
     const at = (bearing, r) => pushVert(geo, Math.sin(bearing) * r, 0, Math.cos(bearing) * r);
-    for (let s = 0; s < SECTORS; s++) {
-      const a = s / SECTORS * TAU, b = (s + 1) / SECTORS * TAU;
-      face(geo, [at(a, L.LAKE_R), at(b, L.LAKE_R), at(b, outer), at(a, outer)], CALM[s % 2], { emissive: 0.55 });
+    const bands = Math.ceil((outer - L.LAKE_R) / step);
+    for (let ring = 0; ring < bands; ring++) for (let s = 0; s < sectors; s++) {
+      const a = s / sectors * TAU, b = (s + 1) / sectors * TAU;
+      const inner = lerp(L.LAKE_R, outer, ring / bands), radius = lerp(L.LAKE_R, outer, (ring + 1) / bands);
+      face(geo, [at(a, radius), at(b, radius), at(b, inner), at(a, inner)], CALM, { emissive: 0.9 });
     }
-    for (const channel of L.CHANNELS) {
-      const end = Math.min(channel.to, L.edgeAt(channel.bearing) + 0.3), half = L.CHANNEL.low, ux = Math.sin(channel.bearing), uz = Math.cos(channel.bearing), vx = uz, vz = -ux;
-      for (let r = outer, n = 0; r < end - 1e-6; r += 1.5, n++) {
-        const to = Math.min(end, r + 1.5);
-        face(geo, [pushVert(geo, ux * r - vx * half, 0, uz * r - vz * half), pushVert(geo, ux * to - vx * half, 0, uz * to - vz * half),
-          pushVert(geo, ux * to + vx * half, 0, uz * to + vz * half), pushVert(geo, ux * r + vx * half, 0, uz * r + vz * half)], CALM[n % 2], { emissive: 0.55 });
+    for (const f of geo.faces) f.lake = true;
+    return glass(geo, 0.78, both);
+  }));
+  const stream = (channel, both) => {
+    const geo = { verts: [], faces: [], lines: [] }, sectors = both ? 96 : 192, outer = L.RING.lowland + 0.25, step = both ? 0.5 : 0.2;
+    const end = outletAt(channel), half = L.CHANNEL.low + BANK_COVER, ux = Math.sin(channel.bearing), uz = Math.cos(channel.bearing), vx = uz, vz = -ux;
+    // Meet the annulus polygon itself: broad overlapping sheets would darken translucent joins.
+    const inlet = (w) => {
+      let from = Infinity;
+      for (let s = 0; s < sectors; s++) {
+        const a = (s + 0.5) / sectors * TAU, nx = Math.sin(a), nz = Math.cos(a), along = nx * ux + nz * uz;
+        if (along > 0.0001) from = Math.min(from, (outer * Math.cos(Math.PI / sectors) - (nx * vx + nz * vz) * w) / along);
+      }
+      return from;
+    };
+    const along = Math.ceil((end - outer) / step), across = Math.ceil(half * 2 / step);
+    const starts = new Float64Array(across + 1);
+    for (let j = 0; j <= across; j++) starts[j] = inlet(lerp(-half, half, j / across));
+    const point = (r, w) => pushVert(geo, ux * r + vx * w, 0, uz * r + vz * w);
+    for (let i = 0; i < along; i++) for (let j = 0; j < across; j++) {
+      const left = lerp(-half, half, j / across), right = lerp(-half, half, (j + 1) / across);
+      const startL = starts[j], startR = starts[j + 1];
+      face(geo, [point(lerp(startL, end, i / along), left), point(lerp(startL, end, (i + 1) / along), left),
+        point(lerp(startR, end, (i + 1) / along), right), point(lerp(startR, end, i / along), right)], CALM, { emissive: 0.9 });
+    }
+
+    for (const f of geo.faces) f.lake = true;
+    return glass(geo, 0.78, both);
+  };
+  // A narrow collector follows the same stations and grade as the recessed ramp floor.
+  const rampRill = [false, true].map((both) => cached(() => {
+    const geo = { verts: [], faces: [], lines: [] }, G = L.RILL;
+    const at = (a, side) => {
+      const r = side < 0 ? L.rillInner(a) : L.rillRadius(a) + G.waterHalf, bearing = L.RAMP.start + a;
+      return pushVert(geo, Math.sin(bearing) * r, L.rampY(a) - G.depth + 0.03, Math.cos(bearing) * r);
+    };
+    for (let i = 0; i < L.RILL_STATIONS.length - 1; i++) {
+      const a = L.RILL_STATIONS[i], to = L.RILL_STATIONS[i + 1];
+      if (to <= G.start || a >= G.end) continue;
+      const from = Math.max(a, G.start);
+      face(geo, [at(from, -1), at(from, 1), at(to, 1), at(to, -1)], CALM, { emissive: 0.75 });
+    }
+    for (const f of geo.faces) f.lake = true;
+    return glass(geo, 0.72, both);
+  }));
+  const tailRills = [false, true].map((both) => L.RILL_TAIL.map((arc) => cached(() => {
+    const geo = { verts: [], faces: [], lines: [] }, count = Math.ceil(Math.abs(arc.sweep) * arc.r / 0.2), scratch = {};
+    const at = (i, side) => {
+      L.rillTailPoint(arc, arc.start + arc.sweep * i / count, side * L.RILL.waterHalf, scratch);
+      return pushVert(geo, scratch.x, (arc.squeeze ? L.rillJunctionY(scratch.x, scratch.z) : L.FLOOR) - L.RILL.depth + 0.03, scratch.z);
+    };
+    for (let i = 0; i < count; i++) {
+      const ids = [at(i, -1), at(i, 1), at(i + 1, 1), at(i + 1, -1)];
+      if (arc.sweep < 0) ids.reverse();
+      face(geo, ids, CALM, { emissive: 0.75 });
+    }
+    for (const f of geo.faces) f.lake = true;
+    return glass(geo, 0.72, both);
+  })));
+  // Thick ribbons meet across the lip, then separate into stepped tips at different heights.
+  // Depth grows just below the lip so the upper edge still meets the horizontal stream exactly.
+  const STRAND_LENGTHS = [0.71, 0.91, 0.82, 1, 0.88, 0.63, 0.77];
+  const fallSheet = (length, both, seed, inner) => {
+    const geo = { verts: [], faces: [], lines: [], strandTips: [] }, strands = STRAND_LENGTHS.length;
+    const quad = (ids) => face(geo, ids, CALM, { emissive: 0.9 });
+    const split = inner ? length * 0.72 : 0;
+    // The inner fall has a single closed pane above the split, with no internal strand walls or seams.
+    if (inner) {
+      const rows = Math.ceil(split / (both ? 0.5 : 0.25));
+      let previous = null;
+      for (let i = 0; i <= rows; i++) {
+        const down = split * i / rows, front = 0.1 * Math.min(1, down / 0.12);
+        const row = [pushVert(geo, -0.5, -down, front), pushVert(geo, 0.5, -down, front),
+          pushVert(geo, -0.5, -down, 0), pushVert(geo, 0.5, -down, 0)];
+        if (previous) {
+          quad([previous[0], row[0], row[1], previous[1]]);
+          quad([previous[3], row[3], row[2], previous[2]]);
+          quad([previous[2], row[2], row[0], previous[0]]);
+          quad([previous[1], row[1], row[3], previous[3]]);
+        }
+        previous = row;
       }
     }
-    return glass(geo, 0.5, both);
-  }));
-  // A metre of falling water in the Bifrost islet's make: its rock face at z = 0 with +z out and x along the
-  // face, pouring from y = 0 down, as streaks of blue at their own depths with two bright pixels.
-  const hash = (a, b, c) => (Math.imul(a, 73856093) ^ Math.imul(b, 19349663) ^ Math.imul(c, 83492791)) >>> 0;
-  const fallPiece = (i) => cached(() => {
-    const parts = [];
-    for (let c = 0; c < 6; c++) {
-      const h = hash(c, i, 5), deep = 0.12 + h % 3 * 0.04;
-      parts.push(box({ w: 0.25, h: 1.01, d: deep, color: WATER[(c + i * 2 + (h >> 3)) % 3], emissive: 0.9, offset: { x: -0.625 + c * 0.25, y: -0.5, z: 0.03 + deep / 2 } }));
+    for (let j = 0; j < strands; j++) {
+      const ratio = STRAND_LENGTHS[(j + seed * 2) % strands];
+      const drop = length * (inner ? 0.82 + 0.18 * ratio : ratio), depth = inner ? 0.1 : 0.18 + ((j * 3 + seed) % 5) * 0.04;
+      const centre = (j + 0.5) / strands - 0.5, rows = Math.ceil((drop - split) / (both ? 0.5 : 0.25));
+      let previous = null;
+      for (let i = 0; i <= rows; i++) {
+        const down = lerp(split, drop, i / rows);
+        const inset = inner ? (down > length * 0.9 ? 0.035 : down > length * 0.78 ? 0.018 : 0)
+          : down > drop - 0.8 ? 0.035 : down > drop * 0.65 ? 0.018 : 0;
+        const left = j / strands - 0.5 + inset, right = (j + 1) / strands - 0.5 - inset;
+        const front = depth * Math.min(1, down / (inner ? 0.12 : 0.5));
+        const row = [pushVert(geo, left, -down, front), pushVert(geo, right, -down, front),
+          pushVert(geo, left, -down, 0), pushVert(geo, right, -down, 0)];
+        if (previous) {
+          quad([previous[0], row[0], row[1], previous[1]]);
+          quad([previous[3], row[3], row[2], previous[2]]);
+          quad([previous[2], row[2], row[0], previous[0]]);
+          quad([previous[1], row[1], row[3], previous[3]]);
+        }
+        previous = row;
+      }
+      quad([previous[0], previous[2], previous[3], previous[1]]);
+      geo.strandTips.push({ x: centre, y: -drop, z: depth / 2 });
     }
-    for (let p = 0; p < 3; p++) {
-      const h = hash(p, i, 9);
-      parts.push(box({ w: 0.25, h: 0.25, d: 0.05, color: FOAM, emissive: 1, offset: { x: -0.625 + h % 6 * 0.25, y: -0.125 - (h >> 3) % 4 * 0.25, z: 0.255 } }));
-    }
-    return noShadow(merge(...parts));
-  });
-  const FALL_PIECES = [fallPiece(0), fallPiece(1)];
-  const fallTail = cached(() => noShadow(merge(
-    box({ w: 0.25, h: 0.7, d: 0.14, color: WATER[1], emissive: 0.9, offset: { x: -0.5, y: -0.35, z: 0.1 } }),
-    box({ w: 0.25, h: 1, d: 0.18, color: WATER[2], emissive: 1, offset: { y: -0.5, z: 0.12 } }),
-    box({ w: 0.25, h: 0.45, d: 0.12, color: WATER[0], emissive: 0.9, offset: { x: 0.5, y: -0.225, z: 0.09 } }),
-    box({ w: 0.12, h: 0.2, d: 0.12, color: FOAM, emissive: 1, offset: { x: -0.25, y: -0.95, z: 0.1 } }),
-    box({ w: 0.12, h: 0.16, d: 0.12, color: FOAM, emissive: 1, offset: { x: 0.25, y: -0.72, z: 0.09 } })
-  )));
+    for (const f of geo.faces) f.lake = true;
+    return glass(geo, 0.64, both);
+  };
   const drip = cached(() => noShadow(box({ w: 0.12, h: 0.18, d: 0.12, color: "#bfe8ff", emissive: 1 })));
   // The cube and what goes with it: a shell of glass round a brighter heart, the neck it hangs by, a droplet,
   // and a flat ring that spreads on the membrane as it gathers and on the sea where it lands.
@@ -157,44 +263,130 @@
     const group = createNode({ sightHidden: true });
     addChild(site.node, group);
     const hidden = (options) => createNode({ sightHidden: true, ...options });
-    const surfaceNode = hidden({ geometry: surface[both]() }), glintNode = low ? null : hidden({ geometry: glints[both]() });
-    const floodNode = hidden({ geometry: flood[both](), visible: false });
-    addChild(group, surfaceNode, floodNode);
-    if (glintNode) addChild(group, glintNode);
-
-    // Falls: a stack of metre pieces down the cliff under each channel's mouth, turned to face out from it.
-    const falls = [], pieces = [], drips = [];
-    for (const channel of L.CHANNELS) {
-      if (!channel.falls) continue;
-      const r = L.edgeAt(channel.bearing) + 0.3;
-      const node = hidden({ position: { x: Math.sin(channel.bearing) * r, y: 0, z: Math.cos(channel.bearing) * r }, rotation: { x: 0, y: channel.bearing, z: 0 }, visible: false });
-      const fall = { node, lip: Math.max(L.LEVEL.bed, channel.lip), strength: 0, from: pieces.length, count: low ? 9 : FALL.pieces };
-      for (let k = 0; k < fall.count; k++) {
-        const piece = hidden({ position: { x: 0, y: -k, z: 0 }, geometry: k === fall.count - 1 ? fallTail() : FALL_PIECES[k % 2]() });
-        pieces.push({ node: piece, phase: k / FALL.band + falls.length * 0.37 });
-        addChild(node, piece);
+    const waves = { data: new Float32Array(WAVE_CAP * 4), surface: new Float32Array(4), count: 0 };
+    const surfaceNode = hidden({ geometry: { ...surface[both](), lakeWaves: waves } });
+    const floodNode = hidden({ geometry: { ...flood[both](), lakeWaves: waves }, visible: false });
+    const cs = Math.cos(site.node.rotation.y), sn = Math.sin(site.node.rotation.y), origin = site.node.position;
+    const rillNode = hidden({ geometry: { ...rampRill[both](),
+      lakeFlowCurve: new Float32Array([origin.x, origin.z, L.RAMP.start + site.node.rotation.y, L.RAMP.r]) } });
+    const tailNodes = L.RILL_TAIL.map((arc, i) => hidden({ geometry: { ...tailRills[both][i](),
+      lakeFlowCurve: new Float32Array([origin.x + arc.x * cs + arc.z * sn, origin.z - arc.x * sn + arc.z * cs,
+        arc.start + site.node.rotation.y, arc.r * Math.sign(arc.sweep)]) } }));
+    addChild(group, surfaceNode, floodNode, rillNode, ...tailNodes);
+    // Separate budgets keep heavy rain from evicting the visitor's wake. All wave records and tracking slots live
+    // for this visit; no allocation is needed when a drop lands or a body takes a step.
+    const rippleTier = both ? "canvas2d" : renderer.quality;
+    const rainCount = RIPPLES[rippleTier] || RIPPLES.medium, wakeCount = WAKES[rippleTier] || WAKES.medium;
+    const ripples = Array.from({ length: rainCount + wakeCount }, () => ({ x: 0, z: 0, age: 0, life: 0, from: 0, to: 0, strength: 0, amplitude: 0 }));
+    const actorKeys = new Array(WAKE_ACTORS).fill(null), actorX = new Float64Array(WAKE_ACTORS), actorZ = new Float64Array(WAKE_ACTORS);
+    const actorSeen = new Float64Array(WAKE_ACTORS), actorTravel = new Float32Array(WAKE_ACTORS), actorWait = new Float32Array(WAKE_ACTORS);
+    let rainCursor = 0, wakeCursor = 0, actorCursor = 0, rippleFrame = 0, rippleDt = 0, rippleCount = 0;
+    const rippleFits = (x, z, y, radius) => {
+      for (let i = 0; i < RIPPLE_DIRECTIONS.length; i += 2) {
+        if (Math.abs(levelAt(x + RIPPLE_DIRECTIONS[i] * radius, z + RIPPLE_DIRECTIONS[i + 1] * radius) - y) > 0.06) return false;
       }
-      for (let d = 0; d < 3; d++) {
-        const drop = hidden({ position: { x: (d - 1) * 0.45, y: 0, z: 0.3 }, geometry: drip() });
-        drips.push({ node: drop, top: -fall.count - 0.12, speed: 0.55 + d * 0.17, seed: (falls.length * 3 + d) * 0.29 });
+      return true;
+    };
+    const disturb = (x, z, radius, strength, wake = false) => {
+      const y = levelAt(x, z);
+      if (!Number.isFinite(y) || !rippleFits(x, z, y, 0.08)) return;
+      // Fit the whole effect in the wet footprint, so crests stop at banks and never float over dry paths.
+      let reach = radius;
+      for (let i = 0; i < 5 && !rippleFits(x, z, y, reach); i++) reach *= 0.7;
+      if (reach < WAVE_WIDTH + 0.08 || !rippleFits(x, z, y, reach)) return;
+      const ripple = ripples[wake ? rainCount + wakeCursor : rainCursor];
+      if (wake) wakeCursor = (wakeCursor + 1) % wakeCount;
+      else rainCursor = (rainCursor + 1) % rainCount;
+      if (!ripple.life) rippleCount++;
+      ripple.age = 0; ripple.life = wake ? 1.6 : 1.3;
+      ripple.from = 0.04; ripple.to = reach - WAVE_WIDTH;
+      ripple.strength = strength; ripple.amplitude = wake ? 0.095 : 0.055;
+      ripple.x = x; ripple.z = z;
+    };
+    // Called only for a visible raindrop's actual landing, in island-local coordinates.
+    const rain = (x, y, z, size, wet) => {
+      if (Math.abs(levelAt(x, z) - y) > 0.06) return;
+      const strength = clamp(0.65 + wet * 0.25 + size * 0.04, 0, 1);
+      disturb(x, z, 0.65 + wet * 0.4 + size * 0.025, strength);
+    };
+    const wake = (key, x, feet, z, height, radius) => {
+      if (rippleDt <= 0) return;
+      const y = levelAt(x, z);
+      if (!Number.isFinite(y) || feet > y - 0.025 || feet + height < y) return;
+      const r = Math.hypot(x, z), bed = r < L.LAKE_R ? L.membraneY(r) : L.groundAt(x, z);
+      // No wakes from the underground chamber, a bridge above the lake, or an animal on a branch.
+      if (feet < bed - 0.2) return;
+      let slot = actorKeys.indexOf(key);
+      if (slot < 0) {
+        slot = actorCursor; actorCursor = (actorCursor + 1) % WAKE_ACTORS;
+        actorKeys[slot] = key; actorSeen[slot] = -1;
+      }
+      const dx = x - actorX[slot], dz = z - actorZ[slot], distance = Math.hypot(dx, dz), previous = actorSeen[slot];
+      actorX[slot] = x; actorZ[slot] = z; actorSeen[slot] = rippleFrame;
+      // A spawn, return to the water or network snap starts a new track, never a streak across the pool.
+      if (previous !== rippleFrame - 1 || distance > Math.max(0.6, rippleDt * 12)) {
+        actorTravel[slot] = actorWait[slot] = 0; return;
+      }
+      const speed = distance / rippleDt;
+      if (speed < 0.08) { actorTravel[slot] = actorWait[slot] = 0; return; }
+      actorTravel[slot] += distance; actorWait[slot] += rippleDt;
+      if (actorTravel[slot] < Math.max(0.18, radius * 0.45) || actorWait[slot] < 0.09) return;
+      actorTravel[slot] = actorWait[slot] = 0;
+      const size = clamp(radius + 0.5 + speed * 0.12, 0.65, 1.5);
+      disturb(x - dx / distance * radius * 0.3, z - dz / distance * radius * 0.3, size, clamp(0.4 + speed * 0.15, 0, 1), true);
+    };
+
+    // One unfolded flow coordinate system across each stream and its vertical fall.
+    const falls = [], drips = [];
+    for (const channel of L.CHANNELS) {
+      const r = outletAt(channel), ux = Math.sin(channel.bearing), uz = Math.cos(channel.bearing);
+      const wx = ux * cs + uz * sn, wz = -ux * sn + uz * cs, vx = wz, vz = -wx;
+      const acrossOffset = -vx * origin.x - vz * origin.z, alongOffset = -wx * origin.x - wz * origin.z;
+      const flow = new Float32Array([vx, 0, vz, acrossOffset, wx, 0, wz, alongOffset]);
+      const fallingFlow = new Float32Array([vx, 0, vz, acrossOffset, 0, -1, 0, r + origin.y]);
+      const widthClip = new Float32Array(4), waveEnd = new Float32Array([-wx, 0, -wz, r - alongOffset]);
+      const streamNode = hidden({ geometry: { ...stream(channel, both), lakeWaves: waves, lakeWaveEnd: waveEnd, lakeFlow: flow, clipSlab: widthClip }, visible: false });
+      const length = channel.length;
+      const node = hidden({ position: { x: ux * r, y: 0, z: uz * r }, rotation: { x: 0, y: channel.bearing, z: 0 },
+        geometry: { ...fallSheet(length, both, falls.length, channel.inner), lakeFlow: fallingFlow }, visible: false });
+      // The cliff mesh folds the last voxel columns onto the mouth plane. Any high ground in
+      // that strip still covers the mouth, so only its contiguous wet opening may feed the fall.
+      const mouthHalf = L.CHANNEL.low + BANK_COVER, mouthCount = Math.ceil(mouthHalf / (L.UNIT / 16)) * 2;
+      const mouthStep = mouthHalf * 2 / mouthCount, mouth = new Float32Array(mouthCount);
+      const back = L.channelOutlet(channel) - L.UNIT / 2, front = channel.inner ? channel.to + L.UNIT * 0.75 : L.edgeAt(channel.bearing) + L.UNIT * 2;
+      const samples = Math.ceil((front - back) / (L.UNIT / 8));
+      for (let j = 0; j < mouthCount; j++) {
+        let high = -Infinity;
+        // Sample both edges as well as the centre so a bank corner cannot leak into the sheet.
+        for (let side = 0; side <= 2; side++) {
+          const across = -mouthHalf + (j + side / 2) * mouthStep;
+          for (let k = 0; k <= samples; k++) {
+            const along = lerp(back, front, k / samples);
+            const x = ux * along + uz * across, z = uz * along - ux * across;
+            // A roof over an interior culvert is not a bank covering its opening.
+            high = Math.max(high, channel.inner ? (L.solidAt(x, L.WATER.flood, z) ? L.LEVEL.ground : L.LEVEL.bed) : L.groundAt(x, z));
+          }
+        }
+        mouth[j] = high;
+      }
+      const fall = { node, inner: channel.inner, floor: channel.floor, length, residuals: [], wetWidth: 0, wetCentre: 0, outlet: r, ux, uz, mouth, mouthHalf, mouthStep, stream: streamNode,
+        lip: Math.max(L.LEVEL.bed, channel.lip), flow: fallingFlow, widthClip, vx, vz, acrossOffset };
+      for (let d = 0; d < node.geometry.strandTips.length; d++) {
+        const tip = node.geometry.strandTips[d];
+        const drop = hidden({ position: { x: tip.x, y: tip.y, z: tip.z }, geometry: drip() });
+        drips.push({ node: drop, top: tip.y - 0.12, speed: 0.55 + (d % 3) * 0.17, seed: (falls.length * 7 + d) * 0.29 });
         addChild(node, drop);
       }
-      falls.push(fall);
-      addChild(group, node);
-    }
-
-    // Veins down the descent's walls, alternating sides, and one in the roof under each channel that crosses it.
-    const veins = [];
-    {
-      const point = {}, RAMP = L.RAMP;
-      for (let s = 9, n = 0; s < RAMP.length - 4; s += 11, n++) {
-        // Inner wall where a link has opened the outer one.
-        const side = n % 2 && !L.linkAt(s / RAMP.r) ? 1 : -1, half = L.rampHalf(s / RAMP.r);
-        L.rampPoint(s, side * (half - 0.02), point);
-        const node = hidden({ position: { x: point.x, y: point.y - 0.1, z: point.z }, rotation: { x: 0, y: point.bearing + (side > 0 ? Math.PI : 0), z: 0 }, geometry: P.VEINS[n % 2]() });
-        veins.push({ node, phase: n * 0.41 });
-        addChild(group, node);
+      if (channel.inner) for (let j = 0; j < 3; j++) {
+        const side = (j - 1) * 0.2;
+        const residual = hidden({ geometry: node.geometry, smokeOpacity: 0.4,
+          position: { x: ux * r + uz * side, y: 0.02, z: uz * r - ux * side }, rotation: { x: 0, y: channel.bearing, z: 0 },
+          scale: { x: 0.055 + j * 0.015, y: Math.max(0.1, -channel.floor - 0.1) / length * (0.6 + j * 0.15), z: 0.08 } });
+        fall.residuals.push(residual);
+        addChild(group, residual);
       }
+      falls.push(fall);
+      addChild(group, streamNode, node);
     }
 
     // Block sequences: fixed sets of nodes, parked hidden.
@@ -214,8 +406,9 @@
 
     // The reading and the level. `reading` is false until any backlog figure has been seen at all.
     let target = L.WATER.low, level = L.WATER.low, shown = L.WATER.low, floodY = HYDRO.PARK, stage = 0, reading = false, observedAt = 0, vsize = 0, status = "unavailable", preview = null, settle = false;
+    let fill = null;
     const apply = (snapshot) => {
-      if (!snapshot || preview !== null) return;
+      if (!snapshot || preview !== null || fill !== null) return;
       const observed = snapshot.backlogAt > 0;
       // A reading restored from the last visit counts as a held one: its stamp is zero until the feed confirms it.
       if (!observed && !(snapshot.vsize > 0)) return;
@@ -315,7 +508,9 @@
 
     const walk = (value, to, step) => value > to ? Math.max(to, value - step) : Math.min(to, value + step);
     const update = (dt, elapsed, now = Date.now()) => {
-      status = !reading ? "unavailable" : preview !== null || observedAt > 0 && now - observedAt < HYDRO.FRESH_MS ? "live" : "stale";
+      rippleDt = dt;
+      if (dt > 0) rippleFrame++;
+      status = fill !== null || preview !== null ? "live" : !reading ? "unavailable" : observedAt > 0 && now - observedAt < HYDRO.FRESH_MS ? "live" : "stale";
       // The standing level: toward its reading, bounded.
       level = walk(level, target, Math.min(HYDRO.RATE * dt, Math.abs(target - level) * Math.min(1, dt / HYDRO.EASE) + 1e-4));
       const S = HYDRO.STAGE, D = HYDRO.SHOWN;
@@ -323,7 +518,7 @@
       else if (stage === 1 && level < S.off) stage = 0;
       else if (stage === 1 && level > S.highOn) stage = 2;
       else if (stage === 2 && level < S.highOff) stage = 1;
-      const want = stage === 0 ? Math.min(level, D.under) : stage === 1 ? clamp(level, D.over, D.belowLowland) : Math.max(level, D.aboveLowland);
+      const want = fill !== null ? level : stage === 0 ? Math.min(level, D.under) : stage === 1 ? clamp(level, D.over, D.belowLowland) : Math.max(level, D.aboveLowland);
       shown = settle ? want : walk(shown, want, HYDRO.FILL * dt);
       floodY = settle ? (stage ? shown : HYDRO.PARK) : walk(floodY, stage ? shown : HYDRO.PARK, HYDRO.FILL * dt * (stage ? 2.5 : 1.5));
       settle = false;
@@ -332,40 +527,70 @@
       const lake = Math.min(shown, stage ? Math.max(floodY, L.WATER.spill - 0.01) : shown), reach = L.waterRadius(lake);
       surfaceNode.position.y = lake;
       surfaceNode.scale.x = surfaceNode.scale.z = reach;
-      surfaceNode.rotation.y = elapsed * 0.03;
-      surfaceNode.glow = bright * (0.92 + 0.08 * Math.sin(elapsed * 0.9));
-      if (glintNode) {
-        glintNode.position.y = lake + 0.015;
-        glintNode.scale.x = glintNode.scale.z = reach;
-        glintNode.rotation.y = -elapsed * 0.07;
-        glintNode.glow = bright * (0.55 + 0.45 * Math.sin(elapsed * 1.7));
-      }
-      site.membrane.glow = bright * (0.85 + 0.15 * Math.sin(elapsed * 0.6 + 1));
+      surfaceNode.visible = reach > 0.01;
+      surfaceNode.glow = bright;
+      waves.surface[0] = origin.x; waves.surface[1] = origin.z; waves.surface[2] = reach; waves.surface[3] = elapsed;
+      site.membrane.glow = bright;
+      site.membrane.smokeOpacity = surfaceNode.visible ? 1 : 0;
+      site.membrane.geometry.clipMaxY = origin.y + lake;
       floodNode.visible = floodY > HYDRO.PARK + 0.01;
       floodNode.position.y = floodY;
-      floodNode.glow = bright * (0.9 + 0.1 * Math.sin(elapsed * 1.1 + 2));
-      // Falls pour once the flood stands over their sill, harder the higher it stands.
-      for (let i = 0; i < falls.length; i++) {
-        const fall = falls[i];
-        fall.strength = floodNode.visible ? clamp((floodY - fall.lip) / (L.WATER.flood - fall.lip), 0, 1) : 0;
-        fall.node.visible = fall.strength > 0.02;
-        if (!fall.node.visible) continue;
-        fall.node.position.y = fall.lip;
-        fall.node.scale.x = 0.55 + 0.6 * fall.strength;
-        fall.node.scale.z = 0.7 + 0.5 * fall.strength;
+      floodNode.glow = bright;
+      waves.count = 0;
+      for (let i = 0; i < ripples.length; i++) {
+        const ripple = ripples[i];
+        if (!ripple.life) continue;
+        ripple.age += dt;
+        const u = Math.min(1, ripple.age / ripple.life), radius = lerp(ripple.from, ripple.to, u);
+        const y = levelAt(ripple.x, ripple.z);
+        if (u >= 1 || !Number.isFinite(y) || !rippleFits(ripple.x, ripple.z, y, radius + WAVE_WIDTH)) {
+          ripple.life = 0; rippleCount--; continue;
+        }
+        const o = waves.count++ * 4;
+        waves.data[o] = origin.x + ripple.x * cs + ripple.z * sn;
+        waves.data[o + 1] = origin.z - ripple.x * sn + ripple.z * cs;
+        waves.data[o + 2] = radius;
+        waves.data[o + 3] = ripple.amplitude * ripple.strength * Math.min(1, u / 0.08) * (1 - u) * (1 - u);
       }
-      for (let i = 0; i < pieces.length; i++) {
-        const piece = pieces[i], u = 0.5 + 0.5 * Math.sin(TAU * (piece.phase - elapsed * FALL.rate));
-        piece.node.glow = bright * (0.72 + 0.55 * u * u * u);
+      rillNode.glow = bright * (floodNode.visible ? 0.8 : 0.5);
+      for (const node of tailNodes) node.glow = rillNode.glow;
+      // Fill the trench's steps, but let the actual banks covering its mouth narrow the falling sheet.
+      for (const fall of falls) {
+        const half = channelHalf(floodY);
+        fall.stream.visible = floodNode.visible;
+        fall.stream.position.y = floodY;
+        fall.stream.glow = bright;
+        fall.widthClip[0] = fall.vx / half; fall.widthClip[1] = 0;
+        fall.widthClip[2] = fall.vz / half; fall.widthClip[3] = fall.acrossOffset / half;
+        let left = fall.mouth.length / 2, right = left;
+        while (left > 0 && fall.mouth[left - 1] < floodY - 0.02) left--;
+        while (right < fall.mouth.length && fall.mouth[right] < floodY - 0.02) right++;
+        const width = Math.min(FALL_WIDTH, (right - left) * fall.mouthStep);
+        const centre = -fall.mouthHalf + (left + right) * fall.mouthStep / 2;
+        fall.wetWidth = width; fall.wetCentre = centre;
+        if (fall.inner) {
+          const wetHalf = Math.max(0.025, width / 2);
+          fall.widthClip[0] = fall.vx / wetHalf; fall.widthClip[2] = fall.vz / wetHalf;
+          fall.widthClip[3] = (fall.acrossOffset - centre) / wetHalf;
+          fall.stream.visible = floodNode.visible && width > 0.05;
+        }
+        fall.node.visible = floodNode.visible && floodY > fall.lip + 0.02 && width > 0.05;
+        fall.node.position.x = fall.ux * fall.outlet + fall.uz * centre;
+        fall.node.position.z = fall.uz * fall.outlet - fall.ux * centre;
+        fall.node.position.y = floodY;
+        fall.node.scale.x = Math.max(0.001, width);
+        if (fall.inner) fall.node.scale.y = Math.max(0.1, floodY - fall.floor + L.RILL.depth - 0.03) / fall.length;
+        fall.node.glow = bright;
+        for (const residual of fall.residuals) {
+          residual.visible = !fall.node.visible;
+          residual.glow = bright * 0.5;
+        }
+        fall.flow[7] = fall.outlet + origin.y + floodY;
       }
       for (let i = 0; i < drips.length; i++) {
         const d = drips[i], t = (elapsed * d.speed + d.seed) % 1;
         d.node.position.y = d.top - t * t * 2.6;
         d.node.glow = bright * (1 - t * 0.75);
-      }
-      for (let i = 0; i < veins.length; i++) {
-        const vein = veins[i], u = 0.5 + 0.5 * Math.sin(TAU * (vein.phase - elapsed * 0.22));
-        vein.node.glow = bright * (0.55 + 0.45 * u * u);
       }
       for (const seq of sequences) {
         if (seq.active) stepSequence(seq, dt, 1);
@@ -379,9 +604,16 @@
       if (r < surfaceNode.scale.x) return lake;
       if (!floodNode.visible || r < L.LAKE_R) return -Infinity;
       if (r > L.RING.lowland + 0.25) {
-        const bearing = Math.atan2(x, z);
         let inChannel = false;
-        for (const channel of L.CHANNELS) if (r <= channel.to && Math.abs(L.turn(bearing, channel.bearing) * r) < L.CHANNEL.low) { inChannel = true; break; }
+        for (let i = 0; i < L.CHANNELS.length; i++) {
+          const channel = L.CHANNELS[i], fall = falls[i];
+          const ux = Math.sin(channel.bearing), uz = Math.cos(channel.bearing), along = x * ux + z * uz;
+          if (channel.inner && Math.abs(x * uz - z * ux - fall.wetCentre) >= fall.wetWidth / 2) continue;
+          if (along >= L.RING.lowland && along <= outletAt(channel) && Math.abs(x * uz - z * ux) < channelHalf(floodY)) {
+            if (channel.inner && r >= L.RING.ridge) return L.solidAt(x, floodY - 0.02, z) ? -Infinity : floodY;
+            inChannel = true; break;
+          }
+        }
         // Past the cliff the channel has no bed: the water falls there, and holds up no one, on a ledge or in the air.
         if (!inChannel || L.groundAt(x, z) < L.LEVEL.bed) return -Infinity;
       }
@@ -390,7 +622,9 @@
     const dispose = () => {
       removeChild(site.node, group);
       site.membrane.glow = 1;
-      falls.length = pieces.length = drips.length = veins.length = sequences.length = 0;
+      falls.length = drips.length = sequences.length = ripples.length = 0;
+      actorKeys.fill(null);
+      rippleCount = waves.count = 0;
     };
     const state = {
       get level() { return level; }, get target() { return target; }, get shown() { return shown; }, get flood() { return floodY; }, get stage() { return stage; },
@@ -400,16 +634,33 @@
       get queued() { return queued; }, get dropped() { return dropped; }, get started() { return started; }, get preview() { return preview; }
     };
     return {
-      apply, block, update, levelAt, dispose, state,
+      apply, block, update, levelAt, rain, wake, dispose, state,
+      liveGeometry(set) {
+        set.add(surfaceNode.geometry).add(floodNode.geometry).add(site.membrane.geometry).add(rillNode.geometry);
+        for (const fall of falls) {
+          set.add(fall.stream.geometry).add(fall.node.geometry);
+        }
+        for (const node of tailNodes) set.add(node.geometry);
+      },
       // Debug only: stand the lake at a waiting size without the feed, or hand it back with null.
       preview(vB) {
+        fill = null;
         preview = vB === null || vB === undefined ? null : Math.max(0, vB);
         if (preview !== null) { reading = true; vsize = preview; target = levelFor(preview); }
+        else target = reading ? levelFor(vsize) : L.WATER.low;
       },
-      get active() { for (const seq of sequences) if (seq.active) return true; return Math.abs(level - target) > 1e-3 || Math.abs(shown - level) > 0.11; },
-      stats: () => ({ waterCubes: state.cubes, waterQueued: queued })
+      // Debug depth runs from 0 to 200: empty bowl through full overflow, including partial trench filling.
+      previewFill(value) {
+        if (value !== null && !Number.isFinite(value)) return;
+        fill = value === null ? null : clamp(value, 0, 200);
+        preview = null;
+        target = fill === null ? (reading ? levelFor(vsize) : L.WATER.low) : lerp(-L.MEMBRANE_DEPTH, L.WATER.flood, fill / 200);
+        level = target; stage = target > HYDRO.STAGE.highOn ? 2 : target > HYDRO.STAGE.on ? 1 : 0; settle = true;
+      },
+      get active() { if (rippleCount) return true; for (const seq of sequences) if (seq.active) return true; return Math.abs(level - target) > 1e-3 || Math.abs(shown - level) > 0.11; },
+      stats: () => ({ waterCubes: state.cubes, waterQueued: queued, waterRipples: rippleCount })
     };
   };
 
-  BL.poolWater = { HYDRO, CUBE, SEQUENCES, QUEUE, levelFor, create };
+  BL.poolWater = { HYDRO, CUBE, SEQUENCES, QUEUE, WAVE_CAP, WAVE_WIDTH, WAVE_HEIGHT, sampleWaves, levelFor, create };
 })();

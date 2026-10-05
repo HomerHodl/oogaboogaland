@@ -184,7 +184,7 @@
   const WANDER_COUNT = 36, WANDER_INNER = 5.5;
   const ALTAR_HEIGHT = 0.34, ALTAR_BLOCK_WIDTH = 0.2, ALTAR_BLOCK_ARC = 0.3, ALTAR_RING_GAP = 0.02, ALTAR_MAX_BLOCKS = 512;
   const RIPEN = 25, TREE_CHANCE = 0.5, BUSH_CHANCE = 0.25;
-  const PROP_TIPS = { tree: "Tree · shake it", bush: "Bush · rustle it", rock: "Rock · hit to break", crate: "Box · hit to break", barrel: "Barrel · hit to break", flower: "Flowers", torch: "Torch · warm", firepit: "Fire pit", bedroll: "Somebody's bed", ladder: "Ladder · wobbly", dock: "Dock · creaky", magazine: "Spare magazine · walk into it to collect", poolbridge: "Vine bridge · to the Mempool island", poolsign: "The Mempool · the way down is through the hill", poolpainting: "Wall painting · tap to read it closely", chainsign: "The chain, at a glance · tap to read it", weathersign: "Reading the weather · tap for the key", poolrock: "Mossy rock", poolfern: "Fern · rustle it", poollog: "Fallen log · something lives in it", jaguar: "Jaguar · do not poke", monkey: "Monkey · it watches you", toucan: "Toucan · big beak", canopy: "Rainforest tree · shake it", jumbotron: "Oogatron · OogaBoogaX on the big screen · tap the screen for a close-up", palm: "Palm · shake it", bifrostbridge: "Bifröst · the bridge to ₿IFRÖST", bifrostgate: "₿IFRÖST · walk an Ooga through the field", heimdall: "Heimdall · keeper of the bridge", gate: null };
+  const PROP_TIPS = { tree: "Tree · shake it", bush: "Bush · rustle it", rock: "Rock · hit to break", crate: "Box · hit to break", barrel: "Barrel · hit to break", flower: "Flowers", torch: "Torch · warm", firepit: "Fire pit", bedroll: "Somebody's bed", ladder: "Ladder · wobbly", dock: "Dock · creaky", magazine: "Spare magazine · walk into it to collect", poolbridge: "Vine bridge · to the Mempool island", poolsign: "Mempool Rainforest · the way down is through the hill", poolpainting: "Wall painting · tap to read it closely", chainsign: "The chain, at a glance · tap to read it", weathersign: "Reading the weather · tap for the key", poolrock: "Mossy rock", poolfern: "Fern · rustle it", poollog: "Fallen log · something lives in it", jaguar: "Jaguar · do not poke", monkey: "Monkey · it watches you", toucan: "Toucan · big beak", canopy: "Rainforest tree · shake it", jumbotron: "Oogatron · OogaBoogaX on the big screen · tap the screen for a close-up", palm: "Palm · shake it", bifrostbridge: "Bifröst · the bridge to ₿IFRÖST", bifrostgate: "₿IFRÖST · walk an Ooga through the field", heimdall: "Heimdall · keeper of the bridge", gate: null };
   const RETICLE_PROPS = new Set(["tree", "bush", "rock", "crate", "barrel", "flower", "torch", "firepit", "ladder", "poolsign", "poolpainting", "chainsign", "weathersign", "poolfern", "poollog", "jaguar", "monkey", "toucan", "canopy", "jumbotron", "palm", "timechainentrance", "timechainboard", "timechainchair", "timechainbeer", "bifrostgate", "heimdall"]);
   const workCave = (slot) => slot.repo && (slot.status === "open" || slot.status === "mirror");
   const MATRIX_LIVING_PROPS = new Set(["tree"]);
@@ -2356,20 +2356,18 @@
     for (const node of site.crossings) node.sightHidden = true;
     addProp("poolbridge", site.bridge, worldX(0, place.bridgeLocalZ + S.span / 2), worldZ(0, place.bridgeLocalZ + S.span / 2), S.width);
     addLamp(site.bridge, LAMP.lantern, worldX(0, place.bridgeLocalZ), place.y + 3.4, worldZ(0, place.bridgeLocalZ), false, 0, "poolbridge:lanterns").nightOnly = true;
-    atNode("poolsign", site.sign, 1.4);
-    // The chain board stands along the court's far edge, turned to the bridge, with the weather key at the lake end
-    // of the court: both are read on the way in, before the forest closes round the path.
-    const B = P.CHAIN_BOARD, boardBearing = L.COURT.from + 0.05;
-    const boardNode = createNode({ position: { x: Math.sin(boardBearing) * 17.7, y: L.LEVEL.court, z: Math.cos(boardBearing) * 17.7 }, rotation: { x: 0, y: Math.PI / 2 + boardBearing, z: 0 }, geometry: P.chainBoard() });
-    // The panel is centred on the face from the board's own numbers, so resizing the board moves it.
-    const panelNode = createNode({
-      position: { x: -CHAIN_PANEL_W * B.px / 2, y: B.y + (B.h - CHAIN_PANEL_H * B.px) / 2, z: B.d / 2 + 0.02 }
-    });
+    atNode("poolsign", site.sign, site.sign.geometry.signWidth * 0.55);
+    // World east is the far shore from the bridge. Face inward across the water, in front of the shoreline
+    // trees, with the board and its lettering curved around the pool's centre at this same radius.
+    const B = P.CHAIN_BOARD, boardBearing = Math.PI / 2 - place.ry;
+    const boardNode = createNode({ position: { x: Math.sin(boardBearing) * B.r, y: L.LEVEL.shore, z: Math.cos(boardBearing) * B.r }, rotation: { x: 0, y: boardBearing + Math.PI, z: 0 }, geometry: P.chainBoard() });
+    const panelNode = createNode();
     addChild(boardNode, panelNode);
     addChild(site.node, boardNode);
     atNode("chainsign", boardNode, B.w * 0.55);
-    // A small post beside the way to the lake: the weather is the other half of what the chain is saying here.
-    const infoNode = createNode({ position: { x: Math.sin(-0.17) * 14.4, y: L.LEVEL.court, z: Math.cos(-0.17) * 14.4 }, rotation: { x: 0, y: 0.25, z: 0 }, geometry: P.infoSign() });
+    // Keep the question-mark weather key beside the board, just past its curved frame.
+    const infoBearing = boardBearing + (B.w / 2 + P.INFO_SIGN.w / 2 + 0.8) / B.r;
+    const infoNode = createNode({ position: { x: Math.sin(infoBearing) * B.r, y: L.LEVEL.shore, z: Math.cos(infoBearing) * B.r }, rotation: { x: 0, y: infoBearing + Math.PI, z: 0 }, geometry: P.infoSign() });
     addChild(site.node, infoNode);
     atNode("weathersign", infoNode, 1);
     {
@@ -2380,7 +2378,7 @@
       chainSign = { node: panelNode, ctx2d: canvas.getContext("2d", { alpha: false, willReadFrequently: true }), printed: "" };
     }
     // Fire: the two torches of the court either side of the mouth, then one down each stretch of the descent on the
-    // wall its veins leave free, and four round the chamber between the paintings. The ones under the ground burn
+    // wall clear of its waterfalls, and four round the chamber between the paintings. The ones under the ground burn
     // always; all of them join the lamps, so whichever are nearest the view cast the light a tier allows.
     for (const torch of site.torches) {
       atNode("torch", torch, 0.5);
@@ -2416,7 +2414,14 @@
       for (let s = 14.5, n = 0; s < L.RAMP.length - 3; s += 11, n++) {
         // Inner wall where a link has opened the outer one.
         const side = n % 2 || L.linkAt(s / L.RAMP.r) ? -1 : 1;
-        L.rampPoint(s, side * (L.rampHalf(s / L.RAMP.r) - 0.02), point);
+        let at = s;
+        // Leave room for the full culvert opening, the falling strands and the torch's bracket.
+        if (side < 0) for (const channel of L.CHANNELS) if (channel.inner) {
+          const wallR = L.RAMP.r - L.rampHalf(at / L.RAMP.r), clearance = L.CHANNEL.low + 0.75;
+          const delta = L.turn(L.RAMP.start + at / L.RAMP.r, channel.bearing);
+          if (Math.abs(delta) * wallR < clearance) at = (channel.bearing - L.RAMP.start + (delta < 0 ? -1 : 1) * clearance / wallR) * L.RAMP.r;
+        }
+        L.rampPoint(at, side * (L.rampHalf(at / L.RAMP.r) - 0.02), point);
         wallTorch(point.x, point.y + 1.55, point.z, point.bearing + (side > 0 ? Math.PI : 0), `pool:ramp:${n}`, TUNNEL_TORCH);
       }
       for (let k = 0; k < 4; k++) {
@@ -2433,7 +2438,10 @@
     }
     // Where an animal may stand and walk: the forest floor and the ring path, never a nest, a channel, the court,
     // the shore or the ledge.
-    const beastGround = (x, z) => L.groundAt(x, z);
+    const beastGround = (x, z) => {
+      const r = Math.hypot(x, z);
+      return r < L.LAKE_R ? L.membraneY(r) : L.groundAt(x, z);
+    };
     const beastSpot = (x, z) => {
       if (L.groundAt(x, z) !== L.LEVEL.ground || Math.hypot(x, z) < L.RING.lowland + 0.4) return false;
       const d = L.turn(Math.atan2(x, z), 0);
@@ -2451,11 +2459,10 @@
       }
     }
     const claimed = ANIMALS.map(([, x, z]) => ({ x, z, r: BEAST_CLEAR }));
-    // What the animals keep off, in the island group's frame: the boards and the sign, then every trunk, rock and
-    // log the scatter places.
+    // What the animals keep off, in the island group's frame: the boards, then every trunk, rock and log the
+    // scatter places. The entrance name is overhead, so it does not block the gateway.
     const obstacles = [
-      { x: boardNode.position.x, z: boardNode.position.z, r: B.w / 2 }, { x: infoNode.position.x, z: infoNode.position.z, r: 0.7 },
-      { x: site.sign.position.x, z: site.sign.position.z, r: 1.3 }
+      { x: boardNode.position.x, z: boardNode.position.z, r: B.w / 2 }, { x: infoNode.position.x, z: infoNode.position.z, r: 0.7 }
     ];
     const trees = [], logs = [];
     // Rainforest: three canopy heights, ferns and shrubs under them, each species one shared geometry
@@ -2486,14 +2493,22 @@
       const ux = Math.sin(nest.bearing), uz = Math.cos(nest.bearing), x = ux * (L.NEST.r + out) + uz * across, z = uz * (L.NEST.r + out) - ux * across;
       const ground = L.groundAt(x, z), r = Math.hypot(x, z);
       if (!(ground >= L.LEVEL.lowland) || r + 0.5 > L.edgeAt(Math.atan2(x, z)) - 0.4 || !level(x, z, 0.3, ground)) continue;
+      if (L.CHANNELS.some((channel) => r <= channel.to + 0.6 && Math.abs(L.turn(Math.atan2(x, z), channel.bearing)) * r < L.CHANNEL.low + 0.6)) continue;
       planted.push({ x, z, ground });
+      trunks.push({ x, z, r: 0.6 });
+    }
+    // Trees rooted in the bowl's shallows, between outlets, with smaller crowns over the water.
+    for (const deg of [61.5, 97.5, 133.5, 169.5, 205.5, 241.5, 277.5, 313.5]) {
+      const bearing = deg * Math.PI / 180, r = L.LAKE_R;
+      const x = Math.sin(bearing) * r, z = Math.cos(bearing) * r;
+      planted.push({ x, z, ground: L.membraneY(r), pool: true });
       trunks.push({ x, z, r: 0.6 });
     }
     for (let i = 0; i < 3600 + planted.length; i++) {
       const fixed = i < planted.length ? planted[i] : null;
       const a = rand() * Math.PI * 2, r = Math.sqrt(inner + rand() * (outer - inner)), roll = rand();
       const x = fixed ? fixed.x : Math.sin(a) * r, z = fixed ? fixed.z : Math.cos(a) * r;
-      const pick = fixed ? SCATTER[0] : SCATTER.find((e) => roll < e.upTo), ground = L.groundAt(x, z);
+      const pick = fixed ? SCATTER[0] : SCATTER.find((e) => roll < e.upTo), ground = fixed ? fixed.ground : L.groundAt(x, z);
       if (grown[pick.kind] >= pick.most) continue;
       if (!fixed) {
         // Undergrowth takes the lowland's damp ground too; everything else wants the dry forest floor or the ridge.
@@ -2513,8 +2528,8 @@
       grown[pick.kind]++;
       const geometry = geometryFor(pick.kind);
       // A little scale and turn per copy: free variety, since every copy shares one cached build.
-      const k = 0.82 + rand() * 0.45;
-      const node = createNode({ position: { x, y: ground, z }, rotation: { x: 0, y: rand() * Math.PI * 2, z: 0 }, scale: { x: k, y: 0.9 + rand() * 0.3, z: k }, geometry });
+      const k = (0.82 + rand() * 0.45) * (fixed && fixed.pool ? 0.72 : 1);
+      const node = createNode({ position: { x, y: ground, z }, rotation: { x: 0, y: rand() * Math.PI * 2, z: 0 }, scale: { x: k, y: (0.9 + rand() * 0.3) * (fixed && fixed.pool ? 0.85 : 1), z: k }, geometry });
       // Undergrowth stays out of the outline registry, as the home scatter's bushes and flowers do.
       if (pick.kind === "bush" || pick.kind === "poolfern" || pick.kind === "flower") node.sightHidden = true;
       addChild(site.node, node);
@@ -2527,6 +2542,64 @@
         const ax = Math.cos(feature.ry), az = -Math.sin(feature.ry);
         for (const t of [-1.2, 0, 1.2]) obstacles.push({ x: x + ax * t * k, z: z + az * t * k, r: 0.4 * k });
       }
+    }
+    // Broad leaves, fern fans and flowering thickets form a middle storey beneath the trees. A separate
+    // seed leaves the established trunks, animal perches and small forest scatter where they were.
+    const foliageRand = mulberry32(6417), undergrowth = P.UNDERGROWTH.map((build) => build()), thickets = [];
+    const plantThicket = (geometry, x, ground, z, width, height, turn) => {
+      const node = createNode({ position: { x, y: ground, z }, rotation: { x: 0, y: turn, z: 0 },
+        scale: { x: width, y: height, z: width }, geometry, sightHidden: true });
+      addChild(site.node, node);
+      atNode("bush", node, geometry.plantRadius * width);
+      thickets.push({ x, y: ground, z, r: geometry.plantRadius * width, h: geometry.plantHeight * height });
+    };
+    // Five larger pockets behind the shoreline trees, on their path side in the flooded shallows.
+    // Leaves can reach back over the water; their outer edge and sway stop before the walking path.
+    let foliageIndex = 0;
+    for (const [degrees, count] of [[61.5, 2], [133.5, 3], [205.5, 2], [241.5, 3], [313.5, 2]]) {
+      for (let j = 0; j < count; j++) {
+        const geometry = undergrowth[foliageIndex++ % undergrowth.length];
+        const width = Math.min((j ? 1.04 : 1.32) + foliageRand() * 0.28, 1.78 / geometry.plantRadius);
+        const radius = geometry.plantRadius * width + 0.14;
+        const r = Math.min(L.LAKE_R + 0.6 + foliageRand() * 0.25, L.RING.lowland - 0.12 - radius);
+        const spread = Math.max(0, 18 * DEG - Math.asin((radius + L.CHANNEL.low + 0.03) / r));
+        const bearing = degrees * DEG + (j ? (j & 1 ? 1 : -1) : foliageRand() - 0.5) * spread * 0.9;
+        const x = Math.sin(bearing) * r, z = Math.cos(bearing) * r;
+        plantThicket(geometry, x, Math.max(L.LEVEL.shore, L.groundAt(x, z)), z,
+          width, (j ? 1.35 : 1.6) + foliageRand() * 0.3, bearing + (foliageRand() - 0.5) * 1.8);
+      }
+    }
+    // Start on the raised jungle's outer shoulders, then gather patches around trees and in forest gaps.
+    // Full leaf footprints keep paths, nests and channels open; only the roots need level footing.
+    const poolThickets = thickets.length, shoulders = [55, 75, 95, 115, 135, 145];
+    for (let attempt = 0; attempt < 1200 && thickets.length < poolThickets + 24; attempt++) {
+      const shoulder = attempt < shoulders.length * 12;
+      const geometry = undergrowth[(thickets.length - poolThickets) % undergrowth.length];
+      const width = Math.min(1.02 + foliageRand() * 0.3, (shoulder ? 1.42 : 1.7) / geometry.plantRadius);
+      const radius = geometry.plantRadius * width + 0.12;
+      const angle = shoulder ? (shoulders[(attempt / 12) | 0] + (foliageRand() - 0.5) * 9) * DEG : foliageRand() * Math.PI * 2;
+      const radial = shoulder ? 18.91 + foliageRand() * 0.09
+        : L.RING.path + radius + foliageRand() * (L.edgeAt(angle) - L.RING.path - 2 * radius - 0.3);
+      let x = Math.sin(angle) * radial, z = Math.cos(angle) * radial;
+      if (!shoulder && attempt % 3) {
+        const tree = trees[(foliageRand() * trees.length) | 0];
+        if (Math.hypot(tree.x, tree.z) <= L.LAKE_R + 0.1) continue;
+        const offset = 1.3 + foliageRand() * 1.8;
+        x = tree.x + Math.sin(angle) * offset; z = tree.z + Math.cos(angle) * offset;
+      }
+      const ground = L.groundAt(x, z), r = Math.hypot(x, z), bearing = Math.atan2(x, z);
+      if (ground < L.LEVEL.ground || L.keptClear(x, z, radius) || r + radius > L.edgeAt(bearing) - 0.3
+        || !level(x, z, 0.24 * width, ground)) continue;
+      let supported = true;
+      for (let j = 0; j < 8; j++) {
+        const a = j * Math.PI / 4, px = x + Math.sin(a) * radius, pz = z + Math.cos(a) * radius;
+        if (L.groundAt(px, pz) > ground + L.UNIT || !L.onIsland(px, pz, 0.25)) { supported = false; break; }
+      }
+      if (!supported) continue;
+      if (claimed.some((c) => Math.hypot(x - c.x, z - c.z) < c.r + radius)
+        || obstacles.some((c) => Math.hypot(x - c.x, z - c.z) < c.r + radius * 0.55)
+        || thickets.some((c) => Math.hypot(x - c.x, z - c.z) < (c.r + radius) * 0.62)) continue;
+      plantThicket(geometry, x, ground, z, width, 1.15 + foliageRand() * 0.4, angle);
     }
     // What the rain lands on above the ground: the dense middle of every crown, a dome over its cells of the
     // layout's grid. A crown's ragged edge lets the drops through, so the forest floor still sees rain between
@@ -2543,9 +2616,19 @@
         }
       }
     }
+    // Dense undergrowth catches rain too; use its central mass, letting drops through the ragged leaves.
+    for (const plant of thickets) {
+      const r = plant.r * 0.55;
+      const i1 = Math.min(L.SX - 1, Math.floor((plant.x + r - L.ORIGIN.x) / L.UNIT)), k1 = Math.min(L.SZ - 1, Math.floor((plant.z + r - L.ORIGIN.z) / L.UNIT));
+      for (let i = Math.max(0, Math.floor((plant.x - r - L.ORIGIN.x) / L.UNIT)); i <= i1; i++) for (let k = Math.max(0, Math.floor((plant.z - r - L.ORIGIN.z) / L.UNIT)); k <= k1; k++) {
+        const dx = L.ORIGIN.x + (i + 0.5) * L.UNIT - plant.x, dz = L.ORIGIN.z + (k + 0.5) * L.UNIT - plant.z, d = (dx * dx + dz * dz) / (r * r);
+        if (d < 1) crownTop[i * L.SZ + k] = Math.max(crownTop[i * L.SZ + k], plant.y + plant.h * (0.68 + 0.2 * Math.sqrt(1 - d)));
+      }
+    }
     const WORLD_AT = (lx, lz, out) => { out.x = worldX(lx, lz); out.z = worldZ(lx, lz); return out; };
     const wildlife = BL.poolWildlife.create({
       parent: site.node, obstacles, trees, logs, baseY: place.y, toWorld: WORLD_AT, groundAt: beastGround, spotOk: beastSpot,
+      waterAt: (x, z) => water.levelAt(x, z), terrainClear: L.boxClear,
       animals: ANIMALS.map(([kind, x, z, heading]) => ({ kind, x, z, heading })),
       sleepy: () => phase === "night" || phase === "midnight"
     });
@@ -2557,6 +2640,10 @@
     }
     // The water, and the paintings on the chamber's wall, each a pick target that opens the board behind it.
     const water = BL.poolWater.create({ site, renderer, seaY: SEA_Y - place.y });
+    const fillParam = DEBUG ? params.get("poolfill") : null;
+    if (fillParam !== null && fillParam.trim() !== "" && Number.isFinite(Number(fillParam))) water.previewFill(Number(fillParam));
+    const rainHit = (x, y, z, size, wet) => water.rain(localX(x, z), y - place.y, localZ(x, z), size, wet);
+    const wake = (key, x, feet, z, height, radius) => water.wake(key, localX(x, z), feet - place.y, localZ(x, z), height, radius);
     const paintings = BL.poolPaintings.create({ site, renderer });
     for (const stop of paintings.stops) {
       stop.owner = addProp("poolpainting", stop.node, worldX(stop.x, stop.z), worldZ(stop.x, stop.z), 2.6);
@@ -2605,7 +2692,11 @@
       if (dx * dx + dz * dz > S.reach * S.reach) return -Infinity;
       const lx = localX(wx, wz), lz = localZ(wx, wz), level = water.levelAt(lx, lz);
       if (level === -Infinity) return -Infinity;
-      const r = Math.hypot(lx, lz), bed = r < L.LAKE_R ? L.membraneY(r) : L.groundAt(lx, lz), feet = y - place.y;
+      const r = Math.hypot(lx, lz), feet = y - place.y;
+      // A shore cell whose centre lies inside the lake reports the chamber floor. That lower room is
+      // not part of the water volume: use the shore/channel bed as its minimum outside the curved bowl.
+      const bed = r < L.LAKE_R ? L.membraneY(r)
+        : Math.max(r < L.RING.shore ? L.LEVEL.shore : L.LEVEL.bed, L.groundAt(lx, lz));
       if (feet < bed - STEP_MAX || level - draught <= bed) return -Infinity;
       // A body standing deeper than a step under where it would float is lifted a step at a time; one falling
       // in lands at its float.
@@ -2623,6 +2714,7 @@
     // MvB (null hands it back to the feed), a block's bolt and cube, and an Ooga put to sleep or woken by name.
     const preview = {
       lake: (mvb) => water.preview(mvb === null || mvb === undefined ? null : mvb * 1e6),
+      fill: (value) => { water.previewFill(value); if (value === null) water.apply(chain.snapshot); },
       block: () => { weather.strike(); water.block(); },
       sleep: (name, asleep = true) => {
         const cave = crew.list.find((c) => c.traits.name === name);
@@ -2646,7 +2738,7 @@
     const boxSolid = boxIn(L.boxSolid), boxClear = boxIn(L.boxClear);
     // What is walked on here rather than walked round: the bridge and the island's own ground in all its pieces.
     const walked = new Set([site.bridge, site.ground, site.floor, site.membrane, ...site.crossings]);
-    return { site, place, centre, groundAt, rainAt, worldX, worldZ, localX, localZ, cos, sin, claimGround, wildlife, water, paintings, overAt, coveredAt, sightClear, solidAt, boxSolid, boxClear, floatAt, afloat, walked, layout: L, preview };
+    return { site, place, centre, groundAt, rainAt, rainHit, wake, worldX, worldZ, localX, localZ, cos, sin, claimGround, wildlife, water, paintings, overAt, coveredAt, sightClear, solidAt, boxSolid, boxClear, floatAt, afloat, walked, layout: L, preview };
   };
   // Where the gorillas sleep while their Oogas do: the banana-leaf beds of the Mempool island's nests, and the dry
   // way to each from the home island, as x, z pairs: up the approach stair, over the bridge, across the court,
@@ -3666,6 +3758,8 @@
   const cloudFloorAt = (x, z, y, maxStep = 0, height = 0, actor = pilot?.player) => {
     let floor = -Infinity;
     cloudHit = null;
+    // A placement asking for the floor "from above" (y = Infinity) must not land on a drifting cloud.
+    if (!Number.isFinite(y)) return floor;
     for (let i = 0; i < clouds.length; i++) {
       const cloud = clouds[i], node = cloud.node, p = node.position;
       if (!node.visible || node.parent !== root || cloud.size < 0.2) continue;
@@ -4761,7 +4855,7 @@
     }
     const node = chainSign.node;
     if (node.geometry) renderer.releaseGeometry(node.geometry);
-    node.geometry = poolModels.panelFrom(c2, CHAIN_PANEL_W, CHAIN_PANEL_H, poolModels.CHAIN_BOARD.px, poolModels.CHAIN_BOARD.px, CHAIN_PANEL_BG);
+    node.geometry = poolModels.chainPanel(c2, CHAIN_PANEL_W, CHAIN_PANEL_H, CHAIN_PANEL_BG);
   };
   // The Mempool island's two boards in the shared board dialog. Each is a list of pages, every page a caption, a
   // note and a drawing in the jumbotron's 5x7 font on the board's own small canvas; `refresh` redraws the shown
@@ -6756,6 +6850,18 @@
     shareDrivenOoga();
     remotes.update(dt);
     mempoolIsland.wildlife.update(dt, elapsed);
+    for (const cave of crew.list) if (cave.root.visible) {
+      const p = cave.root.position;
+      mempoolIsland.wake(cave.root, p.x, p.y - cave.baseY, p.z, cave.bodyHeight, 0.35);
+    }
+    for (const entry of clankers.list) if (entry.active && entry.root.visible) {
+      const p = entry.root.position;
+      mempoolIsland.wake(entry.root, p.x, p.y, p.z, entry.height, 0.65);
+    }
+    for (const animal of mempoolIsland.wildlife.list) if (animal.root.visible) {
+      const p = animal.root.position, radius = animal.cfg.radius;
+      mempoolIsland.water.wake(animal.root, p.x, p.y, p.z, radius * 2, radius);
+    }
     dockStairs.update(dt, pilot.player);
     updateRoomSigns(dt);
     pile.update(dt);
@@ -7585,12 +7691,14 @@
   const CLANKER_RECTANGLE = { halfForward: 0, halfSide: 0, centerForward: 0 };
   const CLANKER_TERRAIN_RAMP = { groundX: 0, groundZ: 0, uneven: 0 };
   const clankerSupportAt = (entry, x, z, y, step, heading = entry.heading, props = true) => {
+    // Tree tops are landing surfaces for the driven gorilla, not floors for a roaming one (as for Oogas).
+    const accept = entry.controlled ? null : npcTreeSupportAllowed;
     if (!entry.motion.lab && !entry.planningLab) {
       const terrainStep = step >= STEP_MAX && BL.wallPanels.rampAt(island.surfaceAt, x, y, z, heading, CLANKER_TERRAIN_RAMP)
         ? Math.min(step, BL.wallPanels.RAMP_STEP) : Math.min(step, STEP_MAX);
       let floor = island.supportAt(x, z, y, terrainStep, ABYSS_FLOOR, 0);
       if (props) {
-        floor = Math.max(floor, solids.supportAt(x, z, y, step, 0, null, null, true));
+        floor = Math.max(floor, solids.supportAt(x, z, y, step, 0, null, null, true, accept));
         if (mempoolIsland) floor = Math.max(floor, mempoolIsland.floatAt(x, z, y, step, GORILLA_DRAUGHT));
         if (ALTAR_HEIGHT <= y + step + 1e-7
           && x * x + z * z < altar.platformRadius * altar.platformRadius) floor = Math.max(floor, ALTAR_HEIGHT);
@@ -7623,7 +7731,7 @@
     // not a foot landing on that desk, even though it belongs to the body sweep.
     if (entry.motion.lab && !entry.drive.airborne && !entry.gorilla.motionActive) {
       const floor = island.supportAt(x, z, y, Math.min(step, STEP_MAX), ABYSS_FLOOR, 0.45);
-      return props ? Math.max(floor, solids.supportAt(x, z, y, step, 0.45, null, null, true), solids.gorillaStepAt(x, z, y, step)) : floor;
+      return props ? Math.max(floor, solids.supportAt(x, z, y, step, 0.45, null, null, true, accept), solids.gorillaStepAt(x, z, y, step)) : floor;
     }
     // Pitching a walking rig on the tunnel ramp can leave the flat-ground
     // compact envelope. Its broad bounding circle then reaches the tunnel's
@@ -7644,7 +7752,7 @@
     for (let part = 0; part < shape.count(entry); part++) {
       const offset = shape.offset(entry, part), px = x + sine * offset, pz = z + cosine * offset;
       floor = Math.max(floor, island.supportAt(px, pz, y, Math.min(step, STEP_MAX), ABYSS_FLOOR, radius));
-      if (props) floor = Math.max(floor, solids.supportAt(px, pz, y, step, radius, null, null, true));
+      if (props) floor = Math.max(floor, solids.supportAt(px, pz, y, step, radius, null, null, true, accept));
       // Keep the dais under a released gorilla until it has walked back off.
       if (props && ALTAR_HEIGHT <= y + step + 1e-7
         && px * px + pz * pz < platformReach * platformReach) floor = Math.max(floor, ALTAR_HEIGHT);
@@ -8655,7 +8763,7 @@
     shared.characterOccluded = characterUiOccluded;
     shared.renderOpts = RENDER_OPTS;
     fx = shared.fx = fxMod.create(shared);
-    weather = weatherMod.create({ root, renderer, camera, heightAt: mempoolIsland.rainAt, fx, centre: mempoolIsland.centre });
+    weather = weatherMod.create({ root, renderer, camera, heightAt: mempoolIsland.rainAt, fx, onRain: mempoolIsland.rainHit, centre: mempoolIsland.centre });
     // The snapshot outlives the visit, so a re-entered hub opens in the weather it left.
     weather.apply(chain.snapshot);
     mempoolIsland.water.apply(chain.snapshot);
@@ -8894,7 +9002,11 @@
     shared.outsideActorHeight = REMOTE_BODY_HEIGHT;
     shared.localOnline = localOnline;
     crew = shared.crew = crewMod.create(shared);
-    remotes = BL.remotePlayers.create({ root, crew, posed: (cave, feet) => floatPose(cave, feet, cave.bodyHeight || 1.4, 0, now) });
+    remotes = BL.remotePlayers.create({ root, crew, posed: (cave, feet) => {
+      const p = cave.root.position, height = cave.bodyHeight || 1.4;
+      floatPose(cave, feet, height, 0, now);
+      mempoolIsland.wake(cave.root, p.x, feet, p.z, height, 0.35);
+    } });
     // Signed-in pages keep the crew in step: one runs it for everyone, the others follow its frames. The
     // crew's effects, shots and work hooks pass through the sync, which notes them while this page hosts;
     // a following page replays them into the same effects and gorillas.
@@ -9192,7 +9304,7 @@
         get shown() {
           return pile.shown;
         },
-        terrainSections, caveSections, cutawayPaths: CUTAWAY_PATH_STATE, terrainRampRoof, get cutawayTravelRamp() { return cutawayTravelRamp; }, get cutawayTravelChannel() { return cutawayTravelChannel; }, get cutawayTravelStation() { return cutawayTravelStation; }, island, mouths: island.mouths, labels, camera, weather, chain, beasts, pokeBeast, useProp, refreshChainSign, get chainSign() { return chainSign; }, get poolIsland() { return mempoolIsland; }, cameraPose: POSITION_POSE, crew, fx, controls: pilot.controls, props, altar, path: island.path.debug, headquarters, jumbotron, fireworks: launchFireworks, get fireworksPending() { return fireworksShells.length; }, get npcSync() { return npcSync; }, clankers, clankerPlay,
+        terrainSections, caveSections, cutawayPaths: CUTAWAY_PATH_STATE, terrainRampRoof, get cutawayTravelRamp() { return cutawayTravelRamp; }, get cutawayTravelChannel() { return cutawayTravelChannel; }, get cutawayTravelStation() { return cutawayTravelStation; }, island, mouths: island.mouths, labels, camera, weather, chain, beasts, pokeBeast, useProp, refreshChainSign, get chainSign() { return chainSign; }, get poolIsland() { return mempoolIsland; }, cameraPose: POSITION_POSE, crew, fx, controls: pilot.controls, props, altar, path: island.path.debug, headquarters, jumbotron, fireworks: launchFireworks, get fireworksPending() { return fireworksShells.length; }, get npcSync() { return npcSync; }, clankers, clankerPlay, cloudFloorAt,
         scenery: {
           get candidateCount() { return scenery.length; },
           get visibleCount() { return sceneryVisible; },
@@ -9588,6 +9700,7 @@
     return { targets: count };
   };
   const liveGeometry = (set) => {
+    mempoolIsland.water.liveGeometry(set);
     pile.liveGeometry(set);
     breakables.liveGeometry(set);
     mirrorCave.damage.liveGeometry(set);

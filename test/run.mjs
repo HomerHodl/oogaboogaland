@@ -2974,6 +2974,58 @@ const poolLayoutChecks = async () => {
   record("pool water: the backlog fills the lake by a rising scale to its crest and its highest flood, the shore and channels flood before the lowland while the path and the nests never do and a channel past the cliff holds no one up, a stale reading is held and said to be stale, and blocks found faster than they fall wait in a bounded queue",
     rising && anchors && stages && cubes.falling === W.SEQUENCES && cubes.queued === W.QUEUE && cubes.dropped === 2, JSON.stringify({ rising, anchors, none, normal, spilling, flooded, stale, kept, cubes }));
 };
+// The pool wildlife's seeded state machine in Node: a stubbed rig keeps the probe to the walking rules.
+const poolWildlifeChecks = async () => {
+  const context = { window: {}, URLSearchParams, location: { search: "" } };
+  for (const name of ["math", "scene"]) runInNewContext(await readFile(new URL(`../src/js/${name}.js`, import.meta.url), "utf8"), context);
+  const BL = context.window.BL;
+  BL.poolModels = { beastRig: () => ({
+    body: { at: [0, 0.4, 0], parent: null, geometry: {} },
+    armL: { at: [0.12, 0.3, 0.14], parent: "body", geometry: {} },
+    armR: { at: [0.12, 0.3, -0.14], parent: "body", geometry: {} },
+    legL: { at: [-0.1, 0.2, 0.12], parent: "body", geometry: {} },
+    legR: { at: [-0.1, 0.2, -0.12], parent: "body", geometry: {} },
+    tail: { at: [-0.2, 0.42, 0], parent: "body", geometry: {} },
+    head: { at: [0.16, 0.55, 0], parent: "body", geometry: {} }
+  }) };
+  runInNewContext(await readFile(new URL("../src/js/pool-wildlife.js", import.meta.url), "utf8"), context);
+  const boot = (waterAt) => BL.poolWildlife.create({
+    parent: BL.scene.createNode(), obstacles: [], sleepy: () => false, baseY: 0, groundAt: () => 0, spotOk: () => true, waterAt,
+    toWorld: (x, z, out) => { out.x = x; out.z = z; }, logs: [],
+    trees: [{ x: 0, y: 0, z: 0, k: 1, sy: 1, ry: 0, geometry: { climb: { height: 6, lean: 0, branches: [[0, 3, 0, 2, 3.4, 0]], perches: [] } } }],
+    animals: [{ kind: "monkey", x: 8, z: 0, heading: 0 }]
+  });
+  // The trunk's foot on the monkey's side: where every climb begins and ends.
+  const footDistance = (a) => { const cling = a.tree.k * 0.34 + 0.17; return Math.hypot(a.x - a.tree.x - a.dx * cling, a.z - a.tree.z - a.dz * cling); };
+  // Interrupt one approach, then let free play run: away from the foot the monkey stays on the
+  // ground, and the visit still completes — up the trunk, out the limb, back down, tree given up.
+  const play = (wildlife, interrupt) => {
+    const a = wildlife.list[0], dt = 1 / 30;
+    let t = 0, interrupted = false, poked = null, climbed = false, returned = false, worst = 0;
+    for (let i = 0; i < 300 * 30 && !returned; i++) {
+      if (!interrupted && a.tree && a.state === "walk" && a.after === "climb" && footDistance(a) > 2) { interrupt(a); interrupted = true; }
+      wildlife.update(dt, t += dt);
+      if (interrupted && !poked) poked = { state: a.state, after: a.after, y: a.y };
+      const d = a.tree ? footDistance(a) : Infinity;
+      if (d > 0.5) worst = Math.max(worst, a.y);
+      else if (a.y > 1) climbed = true;
+      if (climbed && !a.tree && a.y === 0) returned = true;
+    }
+    return { poked, climbed, returned, worst: +worst.toFixed(3) };
+  };
+  const timer = play(boot(), (a) => { a.timer = -1; });
+  const walksOn = timer.poked && timer.poked.state === "walk" && timer.poked.after === "climb" && timer.poked.y === 0;
+  const startled = boot(), poke = play(startled, (a) => startled.startle(a));
+  // A poke during a swimming approach must not turn the pause into a submerged sitting pose.
+  const wading = boot(() => 1), swimmer = wading.list[0];
+  let time = 0;
+  for (let i = 0; i < 300 * 30 && !(swimmer.tree && swimmer.state === "walk"); i++) wading.update(1 / 30, time += 1 / 30);
+  const approaching = !!swimmer.tree && swimmer.state === "walk", feet = swimmer.root.position.y;
+  wading.startle(swimmer); wading.update(1 / 30, time += 1 / 30);
+  const afloat = approaching && swimmer.state === "rest" && swimmer.swimming && Math.abs(swimmer.root.position.y - feet) < 0.01 && Number.isFinite(swimmer.wy);
+  record("pool wildlife: a monkey interrupted on its way to a tree walks the rest of the way on the ground and climbs only from the trunk's foot, and a startled swimming approach stays afloat during its pause",
+    walksOn && timer.worst < 0.05 && timer.climbed && timer.returned && poke.worst < 0.05 && poke.climbed && poke.returned && afloat, JSON.stringify({ timer, poke, afloat }));
+};
 const debugActivityStatusChecks = async () => {
   const sources = await Promise.all(CONTRIBUTOR_SOURCES.map((name) => readFile(new URL(`../src/js/${name}.js`, import.meta.url), "utf8")));
   const rows = [], at = Date.now();
@@ -3745,6 +3797,28 @@ const hubFall = { name: "hub fall", why: "rule: walking off the island drops the
   const r = await b.evaluate(`(() => { const B = window.__ooga, a = B.cavemen.get("portlandhodl"), p = a.root.position; let minFeet = Infinity, back = null; for (let i = 0; i < 20 * 30; i++) { B.advance(1 / 30, 1 / 30); minFeet = Math.min(minFeet, p.y - a.baseY); if (minFeet < -50 && Math.hypot(p.x, p.z) < 12) { back = i / 30; break; } } return { minFeet: +minFeet.toFixed(1), back, onLand: B.island.onLand(p.x, p.z), yours: B.crew.player === a }; })()`);
   await b.send("Input.dispatchKeyEvent", { type: "keyUp", key: "w", code: "KeyW" });
   record("hub fall: an Ooga walked off the edge falls into the abyss and is back at the pile within six seconds, still yours", r.minFeet < -50 && r.back !== null && r.back < 6 && r.onLand && r.yours, JSON.stringify(r));
+} };
+const hubGrounding = { name: "hub grounding", why: "regression: a placement from above landed on a drifting cloud, and a roaming gorilla read a tree crown as a floor", run: async (b) => {
+  const r = await b.evaluate(`(() => { const B = window.__ooga, clouds = [];
+    for (let tries = 0; tries < 3 && !clouds.length; tries++) {
+      if (tries) B.advance(5);
+      for (let x = -45; x <= 45 && clouds.length < 8; x += 3) for (let z = -45; z <= 45; z += 3)
+        if (B.cloudFloorAt(x, z, 1e6) > -Infinity && clouds.push({ x, z, fromAbove: B.cloudFloorAt(x, z, Infinity) === -Infinity }) >= 8) break;
+    }
+    const trees = B.props.filter((p) => p.prop === "tree" && p.node.npcTreeSupport && p.active), entry = B.clankers.list[0];
+    let crown = null;
+    for (const tree of trees) {
+      const rises = [];
+      for (let i = 0; i < 9; i++) {
+        const px = tree.x + (i ? Math.cos(i * Math.PI / 4) * 0.7 : 0), pz = tree.z + (i ? Math.sin(i * Math.PI / 4) * 0.7 : 0), gy = B.island.surfaceAt(px, pz);
+        rises.push(+(B.clankers.supportAt(entry, px, pz, gy, 30) - gy).toFixed(2));
+      }
+      const max = Math.max(...rises);
+      if (!crown || max < crown.max) crown = { x: +tree.x.toFixed(1), z: +tree.z.toFixed(1), max, rises };
+    }
+    return { clouds, guard: !!entry && !entry.controlled, treeCount: trees.length, crown }; })()`);
+  record("hub grounding: a cloud is never a floor for a placement from above, and no tree crown is walking support for a roaming gorilla",
+    r.clouds.length > 0 && r.clouds.every((c) => c.fromAbove) && r.guard && r.treeCount > 0 && r.crown.max < 1.0, JSON.stringify(r));
 } };
 
 const labWalking = { name: "lab walking", why: "regression: Shift+A left A held in the Ooga's controls, walking the Agent and the next Ooga left on their own", run: async (b) => {
@@ -5925,7 +5999,7 @@ const factoryCanvas = { name: "factory canvas2d", why: "contract: the Canvas 2D 
   record("factory canvas2d: with WebGL2 unavailable the factory still boots and paints", r.kind === "canvas2d" && r.scene === "factory" && r.colours >= 4, JSON.stringify(r));
 } };
 
-scene("hub", { steps: [{ name: `work movement lab lanes ${1 / RATES[0]}Hz`, why: "regression: work walkers left their facing-right side of the lab lane", open: "on about 4 boots in 30 the lane targets sit on the centre or far side; unfixed", run: labLanes }, donation("hub"), hubWalking, hubMapNavigation, hubRainforestSteps, hubRoutes, hubFall, trip("hub"), factoryActivityRouting] });
+scene("hub", { steps: [{ name: `work movement lab lanes ${1 / RATES[0]}Hz`, why: "regression: work walkers left their facing-right side of the lab lane", open: "on about 4 boots in 30 the lane targets sit on the centre or far side; unfixed", run: labLanes }, donation("hub"), hubWalking, hubMapNavigation, hubRainforestSteps, hubRoutes, hubFall, hubGrounding, trip("hub"), factoryActivityRouting] });
 scene("hub", { query: "ooga=portlandhodl:clank:lab,obl,lf&ooga=w-s-bitcoin:clank:lab,obl,lf&ooga=bc1gui:clank:lab,obl,lf&ooga=DrNeski:clank:lab,obl,lf&ooga=2140data:clank:lab,obl,lf", steps: [{ name: "work movement cave trips", why: "regression: off-lane cave traffic aimed through obstacles and started backwards detours", run: workCaveTrips }] });
 scene("hub", { label: "room sign", query: "pos=0", steps: [{ name: "room sign copies hash", why: "rule: tapping a room sign swings it and copies its displayed eight-character code with visible confirmation", run: async (b) => {
   const point = await b.evaluate(`(() => { const B = __ooga, sign = B.headquarters.roomSigns[0], n = sign.node; Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText: (value) => { window.__roomHash = value; return Promise.resolve(); } } }); window.__roomSignBefore = sign.hits; B.pilot.release(true); B.pilot.navigate({ position: { x: n.position.x, y: n.position.y, z: n.position.z }, target: { x: n.position.x, y: n.position.y - 0.2, z: n.position.z }, yaw: n.rotation.y, pitch: 0, dist: 4 }); B.advance(0.6, 1 / 60); return B.project(n.position.x, n.position.y - 0.2, n.position.z, {}); })()`);
@@ -8843,7 +8917,7 @@ const unitChecks = async () => {
     record("QR invoices: matrices match independent reference at short and long capacities", rows.every(r => r.pass) && rejected, JSON.stringify(rows));
   }
   factoryChecks(BL);
-  await characterChecks(); await contributorActivityChecks(); await mempoolFeedChecks(); await debugActivityStatusChecks(); await soloDebugChecks(); await adaptiveQualityChecks(); await chainSnapshotChecks(); await dsbSharedDataChecks(); await timechainDataChecks(); await weatherStepChecks(); await poolLayoutChecks(); await gameRulesChecks();
+  await characterChecks(); await contributorActivityChecks(); await mempoolFeedChecks(); await debugActivityStatusChecks(); await soloDebugChecks(); await adaptiveQualityChecks(); await chainSnapshotChecks(); await dsbSharedDataChecks(); await timechainDataChecks(); await weatherStepChecks(); await poolLayoutChecks(); await gameRulesChecks(); await poolWildlifeChecks();
 
   // Scene state built directly instead of booted; seed 1 matches scene-hub.js.
   // Sealed cave guides need the hub's seal nodes, so probes reading them stay in the browser tier.
