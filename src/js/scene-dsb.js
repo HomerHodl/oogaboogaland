@@ -51,7 +51,7 @@
     atmosphere?.lights(renderOpts);
   };
   const scene={id:"dsb",renderOpts};
-  let atmosphere=null,town=null,entrance=null,olympus=null;
+  let atmosphere=null,town=null,entrance=null,olympus=null,vacancies=null;
   let root,camera,land,pilot,crew,avatar,hud,input,fx,gate,world,go,overlayCanvas,panel,context,oldSheet,leaving=false,overview=false;
   const drawExtra=()=>{
     const overlay=overlayCanvas.getContext("2d");entrance?.overlay(overlay,overlayCanvas.clientWidth,overlayCanvas.clientHeight);
@@ -130,7 +130,7 @@
     hud=BL.hud.create({roster:BL.contributors.roster,catalog:BL.models.SWAG,tierColors:BL.models.TIER_COLORS,renderIcon:BL.hud.renderIcon,lootEnabled:false});
     hud.setAreaLabel("DSB LAND · MASTER LAYOUT");oldSheet=hud.el.sheet.hidden;hud.el.sheet.hidden=true;
     const hooks={};input=BL.interact.create({canvas:ctx.canvas,renderer:ctx.renderer,camera,hooks});
-    pilot=BL.pilot.create({renderer:ctx.renderer,canvas:ctx.canvas,camera,hud,presets:{...BL.dsbEnrichment.REVIEWS,portara:{yaw:0,pitch:.08,dist:17,target:{x:-45,y:land.heightAt(-45,-48)+BL.dsbAtmosphere.portaraAperture.height/2,z:-48}},"water-falls":{yaw:-.65,pitch:.48,dist:37,target:{x:-37,y:25,z:-16}},"water-pool":{yaw:-.9,pitch:.75,dist:22,target:{x:-45,y:14,z:0}},overview:OVERVIEW,chora:{yaw:.62,pitch:.12,dist:18,target:{x:31,y:7,z:33}}},landing:"overview",pitch:[.1,1.45],dist:[3,270],follow:{y:1,min:3,max:9,pitch:[.1,.8]},fly:{speed:8,perDist:.1,climb:5,yMax:180},clampCamera:p=>{if(interiors)interiors.clampCamera(p,avatar?.root.position);else p.y=Math.max(p.y,land.heightAt(p.x,p.z)+1);if(!interiors?.active&&land.heightAt(p.x,p.z)<BL.dsbCoast.LEVEL)p.y=Math.max(p.y,BL.dsbCoast.LEVEL+.12);},coarse:matchMedia("(pointer: coarse)").matches,onFreeAction:act,onPlayerAction:act,close:{eyeHeight:1.7,eyeRatio:.8,eyeForward:0,maxStep:.6,pitch:[-1.2,1.2],orbitDist:12,trailingDist:6,groundAt:(x,z)=>interiors?interiors.groundAt(x,z):land.heightAt(x,z)}});
+    pilot=BL.pilot.create({renderer:ctx.renderer,canvas:ctx.canvas,camera,hud,presets:{...BL.dsbEnrichment.REVIEWS,...BL.dsbVacancies.REVIEWS,portara:{yaw:0,pitch:.08,dist:17,target:{x:-45,y:land.heightAt(-45,-48)+BL.dsbAtmosphere.portaraAperture.height/2,z:-48}},"water-falls":{yaw:-.65,pitch:.48,dist:37,target:{x:-37,y:25,z:-16}},"water-pool":{yaw:-.9,pitch:.75,dist:22,target:{x:-45,y:14,z:0}},overview:OVERVIEW,chora:{yaw:.62,pitch:.12,dist:18,target:{x:31,y:7,z:33}}},landing:"overview",pitch:[.1,1.45],dist:[3,270],follow:{y:1,min:3,max:9,pitch:[.1,.8]},fly:{speed:8,perDist:.1,climb:5,yMax:180},clampCamera:p=>{if(interiors)interiors.clampCamera(p,avatar?.root.position);else p.y=Math.max(p.y,land.heightAt(p.x,p.z)+1);if(!interiors?.active&&land.heightAt(p.x,p.z)<BL.dsbCoast.LEVEL)p.y=Math.max(p.y,BL.dsbCoast.LEVEL+.12);},coarse:matchMedia("(pointer: coarse)").matches,onFreeAction:act,onPlayerAction:act,close:{eyeHeight:1.7,eyeRatio:.8,eyeForward:0,maxStep:.6,pitch:[-1.2,1.2],orbitDist:12,trailingDist:6,groundAt:(x,z)=>interiors?interiors.groundAt(x,z):land.heightAt(x,z)}});
     fx=BL.fx.create({root,renderer:ctx.renderer,camera,overlay:ctx.overlay,hud,tickerAt:{x:-45,y:42,z:-44}});
     const splatGeometry=BL.models.particleGeometry("#e34d32",.12,0);
     const shared={
@@ -159,6 +159,7 @@
     enrichment=BL.dsbEnrichment.create({root:exterior,land,nature,detail,renderer:ctx.renderer,camera});
     town=BL.dsbTown.create({root:exterior,land,nature,detail,enrichment});
     olympus=BL.dsbOlympus.create({root:exterior,land,nature,detail,enrichment,renderer:ctx.renderer});
+    vacancies=BL.dsbVacancies.create({root:exterior,land,olympus});
     waterInteraction=BL.dsbWaterInteraction.create({root:exterior,land,water,olympus,enrichment,renderer:ctx.renderer,camera,fx});
     pilot.bind({...shared,crew:waterInteraction.steering(crew,()=>!interiors?.active&&!interiors?.transitioning)});
     interiors=BL.dsbInteriors.create({root,exterior,land,weather,
@@ -204,7 +205,7 @@
     studioReview=false;maxisReview=false;shopReview=false;shopMenuReview=0;inkReview=false;inkMenuReview=0;
     bigReview=false;bigMenuReview=0;memeReview=false;contextReview=false;stackchainReview=false;
     scene.renderOpts=renderOpts;
-    Object.assign(scene,{root,camera,input,setInterior:weather.setInterior,debug:{get audio(){return entrance?.audio;},weather:weather.shared,renderOpts,daylight:clock,camera,pilot,crew,controls:pilot.controls,hud,dsb:{land,water,waterInteraction,weather,nature,detail,enrichment,get town(){return town;},get atmosphere(){return atmosphere;},get entrance(){return entrance;},get olympus(){return olympus;},noderunner,tv,spaces,maxisMedia,shopMenu,inkMenu,bigMenu,memeMenu,stackchainMenu,menuZone,openVenue,interiors,exterior,setInterior:weather.setInterior,gate,avatar,get phase(){return interiors?.active?"interior":"land";},overview:OVERVIEW}}});
+    Object.assign(scene,{root,camera,input,setInterior:weather.setInterior,debug:{get audio(){return entrance?.audio;},weather:weather.shared,renderOpts,daylight:clock,camera,pilot,crew,controls:pilot.controls,hud,dsb:{land,vacancies,water,waterInteraction,weather,nature,detail,enrichment,get town(){return town;},get atmosphere(){return atmosphere;},get entrance(){return entrance;},get olympus(){return olympus;},noderunner,tv,spaces,maxisMedia,shopMenu,inkMenu,bigMenu,memeMenu,stackchainMenu,menuZone,openVenue,interiors,exterior,setInterior:weather.setInterior,gate,avatar,get phase(){return interiors?.active?"interior":"land";},overview:OVERVIEW}}});
     walk();
     if(ctx.from==="bifrost"||DEBUG&&params.has("entrance"))entrance=BL.dsbEntrance.create({root,camera,avatar,pilot,fx,exterior,scene,renderOpts,land,gate,hold:on=>{overview=on;},muted:()=>weather.shared.state.muted,onArrive:walk,onLeave:()=>{if(leaving)return;world.pilot=avatar.traits.name;leaving=go("bifrost");}});
     if(DEBUG&&params.get("view")==="clearing") {
@@ -217,7 +218,7 @@
       overview=true;pilot.goPreset("portara");
       if(params.get("portal")==="active")gate.activate();
     }
-    if(DEBUG&&BL.dsbEnrichment.REVIEWS[params.get("view")]){overview=true;pilot.goPreset(params.get("view"));}
+    if(DEBUG&&(BL.dsbEnrichment.REVIEWS[params.get("view")]||BL.dsbVacancies.REVIEWS[params.get("view")])){overview=true;pilot.goPreset(params.get("view"));}
     if(DEBUG&&params.get("view")?.startsWith("water-")){
       const view=params.get("view"),depths={"water-dry":-.65,"water-ankle":avatar.bodyHeight*.12,"water-knee":avatar.bodyHeight*.3,"water-waist":avatar.bodyHeight*.5,"water-chest":avatar.bodyHeight*.7,"water-head":BL.dsbCoast.maxDepth(avatar)-.15,"water-swash":0};
       if(Object.hasOwn(depths,view)){
@@ -342,7 +343,7 @@
     spaces.dispose();spaces=null;studioTools.remove();studioTools=maxisButton=null;
     input.remove(noderunner.screenFace);tv.dispose();tv=null;interiors.dispose();interiors=null;exterior=null;scene.renderOpts=renderOpts;
     noderunner.dispose();noderunner=null;
-    entrance?.dispose();entrance=null;waterInteraction.dispose();waterInteraction=null;olympus.dispose();olympus=null;town.dispose();town=null;atmosphere.dispose();atmosphere=null;enrichment.dispose();enrichment=null;detail.dispose();detail=null;nature.dispose();nature=null;weather.dispose();weather=null;gate.dispose();pilot.dispose();crew.dispose();fx.dispose();const targets=input.targetCount;input.dispose();hud.el.sheet.hidden=oldSheet;hud.dispose();context.hidden=true;
+    entrance?.dispose();entrance=null;waterInteraction.dispose();waterInteraction=null;vacancies.dispose();vacancies=null;olympus.dispose();olympus=null;town.dispose();town=null;atmosphere.dispose();atmosphere=null;enrichment.dispose();enrichment=null;detail.dispose();detail=null;nature.dispose();nature=null;weather.dispose();weather=null;gate.dispose();pilot.dispose();crew.dispose();fx.dispose();const targets=input.targetCount;input.dispose();hud.el.sheet.hidden=oldSheet;hud.dispose();context.hidden=true;
     document.body.classList.remove("dsb-active","dsb-studio-active","maxis-club-active");while(root.children.length)S.removeChild(root,root.children[root.children.length-1]);
     lamps.length=0;renderOpts.lightCount=0;clock=null;water=renderOpts.dsbWater=null;
     scene.setInterior=scene.debug=scene.input=null;land=avatar=crew=pilot=gate=fx=hud=input=null;return {targets};

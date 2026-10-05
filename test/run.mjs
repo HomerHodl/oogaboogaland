@@ -2392,7 +2392,7 @@ const orbitFlow = async (b) => {
 const SCENES = ["hub", "lab", "race", "drop", "orbit", "mine", "pool", "dsb", "factory", "bifrost", "poker", "arcade", "skee", "hoops", "shy", "claw", "hockey", "billiards", "darts", "pinball", "ride", "invaders", "snake", "pong", "stampede", "flap", "breaker", "dash", "stacker"];
 const LANES = Number(process.env.LANES) || 8;
 const ARGS = process.argv.slice(2);
-for (const a of ARGS) if (!SCENES.includes(a) && !["unit", "portal-unit", "water-baseline", "water-review", "water-unit", "stackchain-review", "stackchain-unit", "dsb-menus-unit", "maxis-unit", "exterior-unit", "rulers-unit", "ink-unit", "big-unit", "perf", "full", "poker-protocol"].includes(a)) throw new Error(`Unknown argument "${a}" (unit | perf | full | poker-protocol | ${SCENES.join(" | ")})`);
+for (const a of ARGS) if (!SCENES.includes(a) && !["unit", "vacancy-unit", "portal-unit", "water-baseline", "water-review", "water-unit", "stackchain-review", "stackchain-unit", "dsb-menus-unit", "maxis-unit", "exterior-unit", "rulers-unit", "ink-unit", "big-unit", "perf", "full", "poker-protocol"].includes(a)) throw new Error(`Unknown argument "${a}" (unit | perf | full | poker-protocol | ${SCENES.join(" | ")})`);
 const ONLY = process.env.ONLY || ""; // Optional substring within the requested scenes; defaults are unchanged.
 const FULL = ARGS.includes("full");
 const PICKED = FULL ? SCENES : SCENES.filter((s) => ARGS.includes(s));
@@ -8362,6 +8362,47 @@ const waterChecks = BL => {
 // Recorded from f578f9cda6e77468049b5e000e3002ce9711809b before applying the water extension.
 const WATER_GOLDEN = {ground:"69d81f3b",olympus:"402cb4ff",bridges:"9164c056",buildings:"634c3799",fft:"aa331f6b"};
 
+// Rule: exterior addresses must survive registry reordering and preserve every established route/venue.
+const vacancyChecks = async BL => {
+  const W=waterWorld(BL),S=BL.scene,before=waterGolden(W),labels=JSON.stringify(W.detail.facades),children=W.root.children.length;
+  const V=BL.dsbVacancies.create(W),P=V.properties,R=BL.dsbVacancies.REGISTRY;
+  const houses=W.land.buildings.filter(b=>b.name.startsWith("VACANT ")),mills=W.olympus.group.children.filter(n=>n.children.length===1&&n.children[0].geometry.verts.length>100);
+  record("Vacancies: every authored vacant white house resolves exactly once",houses.length===33&&houses.every(b=>P.filter(p=>p.building===b).length===1)&&P.filter(p=>p.address.type==="house").length===houses.length);
+  record("Vacancies: both original animated white windmills resolve exactly once",mills.length===2&&mills.every(b=>P.filter(p=>p.building===b&&p.address.type==="windmill").length===1));
+  record("Vacancies: occupied venues, Noderunner and harbor utilities are excluded",W.land.buildings.filter(b=>!b.name.startsWith("VACANT ")).every(b=>!P.some(p=>p.building===b))&&W.detail.facades.length===7);
+  record("Vacancies: frozen initial IDs are unique and contiguous 1 through 35",R.length===35&&new Set(R.map(p=>p.number)).size===35&&Array.from({length:35},(_,i)=>i+1).every(n=>V.resolve(n))&&Object.isFrozen(R)&&R.every(Object.isFrozen));
+  record("Vacancies: published identities cannot silently renumber",JSON.stringify(R.map(p=>p.buildingId))===JSON.stringify([21,20,19,4,1,5,2,3,11,10,9,8,7,6,25,24,23,22,15,12,13,14,17,18,16,32,26,33,27,28,31,30,29].map(n=>"VACANT "+n).concat(["olympus-mill-east","olympus-mill-west"])));
+  record("Vacancies: one two-part world sign belongs to each registered address",V.group.children.length===35&&P.every(p=>p.node.parent===V.group&&p.node.children.length===2&&p.plaque.parent===p.node&&p.lettering.parent===p.node)&&new Set(P.map(p=>p.building)).size===35);
+  record("Vacancies: actual lettering uses the venue glyphs and exact VAC number",P.every(p=>p.text==="VAC "+p.address.number&&p.lettering.geometry===BL.dsbModels.text(p.text,"#fff4df")));
+  S.updateWorld(W.root);
+  const bounds=node=>{const lo=[Infinity,Infinity,Infinity],hi=[-Infinity,-Infinity,-Infinity],q=[];for(let i=0;i<node.geometry.verts.length;i+=3){BL.math.mat4.transformPoint(q,node.local,...node.geometry.verts.slice(i,i+3));for(let j=0;j<3;j++){lo[j]=Math.min(lo[j],q[j]);hi[j]=Math.max(hi[j],q[j]);}}return {lo,hi};};
+  const placement=P.map(p=>{const b=p.building,a=bounds(p.plaque),t=bounds(p.lettering),house=p.address.type==="house",front=house?b.d/2:2.1;
+    const millPoints=[];if(!house){const inv=new Float32Array(16),q=[];BL.math.mat4.invert(inv,b.world);for(let i=0;i<p.plaque.geometry.verts.length;i+=3){BL.math.mat4.transformPoint(q,p.plaque.world,...p.plaque.geometry.verts.slice(i,i+3));BL.math.mat4.transformPoint(q,inv,...q);millPoints.push(q.slice());}}
+    return {id:p.address.number,front:house?p.node.rotation.y===b.yaw:p.node.rotation.y===b.rotation.y+.85,attached:Math.abs(a.lo[2]-front-(p.mount==="balcony rail"?.98:house?.08:0))<1e-5,
+      insideWidth:a.lo[0]>=-(house?b.w/2:2)&&a.hi[0]<=(house?b.w/2:2),headroom:house?a.lo[1]>2.44:millPoints.every(q=>q[0]>.55&&Math.abs(q[0])<3.1&&Math.abs(q[2])<3.1),lettering:t.lo[0]>a.lo[0]&&t.hi[0]<a.hi[0]&&t.lo[1]>a.lo[1]&&t.hi[1]<a.hi[1]&&t.lo[2]>=a.hi[2]-.001};});
+  record("Vacancies: plaques face and attach to their own facade or existing balcony rail",placement.every(p=>p.front&&p.attached&&p.insideWidth),JSON.stringify(placement));
+  record("Vacancies: real sign bounds clear doors/headroom and contain readable front lettering",placement.every(p=>p.headroom&&p.lettering),JSON.stringify(placement));
+  // Compare the town's production movement queries before/after sign removal across every entrance approach.
+  const approaches=()=>P.map(p=>{const a=p.approach,c=Math.cos(p.yaw),s=Math.sin(p.yaw);return [-.6,0,.6].map(dx=>W.walkable(a.x+c*dx+s,a.z-s*dx+c,a.x+c*dx,a.z-s*dx,W.ground(a.x,a.z),W.avatar.bodyHeight,W.avatar));});
+  const withSigns=JSON.stringify(approaches());S.removeChild(W.root,V.group);const withoutSigns=JSON.stringify(approaches());S.addChild(W.root,V.group);
+  record("Vacancies: signs do not change town/door approaches or existing movement collision",withSigns===withoutSigns&&placement.every(p=>p.headroom));
+  record("Vacancies: established venue labels and protected terrain/buildings/Olympus stay byte-identical",JSON.stringify(W.detail.facades)===labels&&JSON.stringify(waterGolden(W))===JSON.stringify(before)&&Object.keys(WATER_GOLDEN).every(k=>before[k]===WATER_GOLDEN[k]));
+  const snapshot=v=>JSON.stringify(v.properties.map(p=>({number:p.address.number,id:p.address.buildingId,x:p.x,z:p.z,yaw:p.yaw,door:p.door,approach:p.approach,text:p.text,sign:p.plaque.position})));
+  const W2=waterWorld(BL);W2.land.buildings.reverse();const V2=BL.dsbVacancies.create(W2);
+  record("Vacancies: repeated scene creation and reversed building order retain exact mapping",snapshot(V)===snapshot(V2));V2.dispose();W2.dispose();
+  const out=join(root,"untracked/vacancy-review");mkdirSync(out,{recursive:true});writeFileSync(join(out,"mapping.json"),snapshot(V));
+  if(process.env.VACANCY_CANVAS){
+    const {createCanvas}=await import(process.env.VACANCY_CANVAS),oldCreate=document.createElement;document.createElement=tag=>tag==="canvas"?createCanvas(1,1):oldCreate(tag);
+    const canvas=createCanvas(1280,800),renderer=BL.canvasRenderer.createRenderer(canvas,{width:1280,height:800}),camera=S.createCamera({far:450}),opts=BL.scenes.dsb.renderOpts;
+    BL.daylight.sample(12,opts,180,37);BL.dsbAtmosphere.light(opts);W.water.update(0);
+    const views={...BL.dsbVacancies.REVIEWS};
+    for(const n of [4,8,17,34,35]){const p=V.resolve(n);views["vac-"+n]={yaw:p.node.rotation.y,pitch:.08,dist:9,target:{x:p.door.x,y:p.floor+(n>=34?1.2:2.7),z:p.door.z}};}
+    for(const [name,v] of Object.entries(views)){Object.assign(camera.target,v.target);Object.assign(camera.position,{x:v.target.x+Math.sin(v.yaw)*Math.cos(v.pitch)*v.dist,y:v.target.y+Math.sin(v.pitch)*v.dist,z:v.target.z+Math.cos(v.yaw)*Math.cos(v.pitch)*v.dist});renderer.render(W.root,camera,opts);writeFileSync(join(out,name+".png"),canvas.toBuffer("image/png"));}
+    renderer.dispose();document.createElement=oldCreate;
+  }
+  V.dispose();V.dispose();record("Vacancies: repeat disposal removes every sign and visit-owned reference",V.group.children.length===0&&V.properties.length===0&&W.root.children.length===children);W.dispose();
+};
+
 // Rule: exterior dressing must preserve the exact support surface and usable routes at every tier.
 const exteriorEnrichmentChecks = BL => {
   const S=BL.scene,root=S.createNode(),land=BL.dsbGeography.build(),renderer={kind:"webgl2",quality:"high"},camera=S.createCamera();camera.position.y=110;
@@ -8902,6 +8943,7 @@ const unitChecks = async () => {
     }
     renderer.dispose();I.dispose();W.dispose();document.createElement=oldCreate;console.log("Exported "+rows.length+" actual Canvas water review views to "+out);return;
   }
+  if(ARGS.includes("vacancy-unit")){await vacancyChecks(BL);return;}
   if(ARGS.includes("portal-unit")){portalChecks(BL,el);return;}
   if(ARGS.includes("water-unit")){await shorelineHarnessChecks();waterChecks(BL);return;}
   // Offline visual export through the actual Canvas renderer when this workspace cannot start Chrome.
@@ -9541,6 +9583,18 @@ const unitChecks = async () => {
   }
 };
 
+
+scene("dsb",{label:"vacancy checkpoint",query:"&view=vac-overview&weather=clear&time=1200",opts:{w:1280,h:800,motion:true},steps:[{name:"dsb shoreline vacancy review",why:"contract: the integrated scene draws every vacancy sign and preserves review evidence",run:async b=>{
+  const out=join(root,"untracked/vacancy-review");mkdirSync(out,{recursive:true});
+  const state=await b.evaluate('(()=>{const V=__ooga.dsb.vacancies;return {count:V.properties.length,signs:V.group.children.length,ids:V.properties.map(p=>p.address.number),texts:V.properties.every(p=>p.text==="VAC "+p.address.number),visible:V.group.visible&&__ooga.dsb.exterior.visible};})()');
+  record("Vacancy browser: 35 registered signs are attached to the visible exterior",state.count===35&&state.signs===35&&state.texts&&state.visible&&new Set(state.ids).size===35,JSON.stringify(state));
+  for(const name of ["vac-overview","vac-lower","vac-central","vac-upper","vac-windmills"]){
+    await b.evaluate(`__ooga.pilot.goPreset(${JSON.stringify(name)});__shoreline.advance(.3)`);
+    const health=await b.evaluate(`(${shorelineState.toString()})()`);record("Vacancy browser: "+name+" draws with healthy WebGL",shorelineHealthy(health),JSON.stringify(health));
+    b.shorelineHealthy=shorelineHealthy(health);b.shorelineSoftware=/SwiftShader|llvmpipe|software/i.test(health.gpu);
+    const shot=await b.send("Page.captureScreenshot",{format:"png"},5000);if(!shot.result?.data)throw Error("Vacancy screenshot returned no image");writeFileSync(join(out,name+".png"),Buffer.from(shot.result.data,"base64"));
+  }
+}}]});
 
 const dsbShorelineCheckpoint={name:"dsb shoreline checkpoint",why:"playthrough: actual input wades to the head-depth boundary, returns, visits falls, changes weather and releases scene effects",run:async b=>{
   const boot=await b.evaluate(`(${shorelineState.toString()})()`);

@@ -53,8 +53,14 @@ jobs:
         working-directory: preview-src
         run: |
           export CHROME="$(command -v google-chrome)"
+          node test/run.mjs vacancy-unit
           node test/run.mjs exterior-unit
           LANES=1 VERBOSE=1 ONLY="shoreline checkpoint" node test/run.mjs water-unit dsb
+      - name: Validate and capture Chora vacancy addresses
+        working-directory: preview-src
+        run: |
+          export CHROME="$(command -v google-chrome)"
+          LANES=1 VERBOSE=1 ONLY="vacancy checkpoint" node test/run.mjs vacancy-unit dsb
       - name: Validate preview menus and preserved media contracts
         working-directory: preview-src
         run: |
@@ -88,6 +94,7 @@ jobs:
         with:
           name: dsb-menu-review
           path: |
+            preview-src/untracked/vacancy-review
             preview-src/untracked/water-review
             preview-src/untracked/dsb-menu-review
             preview-src/untracked/test-ledger.json
