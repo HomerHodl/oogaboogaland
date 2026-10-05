@@ -343,8 +343,8 @@
   };
   const cubeShell = [false, true].map((low) => cached(() => {
     const geo = { verts: [], faces: [], lines: [], normals: [] }, steps = low ? 6 : 12;
-    const half = CUBE.size / 2, radius = 0.28, inner = half - radius;
-    // Six subdivided faces project onto a rounded box. Normals meet continuously across their seams.
+    const half = CUBE.size / 2, radius = 0.11, inner = half - radius;
+    // A small bevel keeps the water cube's corners readable without softening its silhouette into a blob.
     for (let axis = 0; axis < 3; axis++) for (const sign of [-1, 1]) {
       const u = (axis + 1) % 3, w = (axis + 2) % 3, base = geo.verts.length / 3;
       for (let j = 0; j <= steps; j++) for (let i = 0; i <= steps; i++) {
@@ -629,7 +629,11 @@
       const bulgeAt = CUBE.gather, hangAt = bulgeAt + CUBE.bulge, releaseAt = hangAt + CUBE.hang, fallAt = releaseAt + CUBE.float, half = CUBE.size / 2;
       const freeAge = Math.max(0, t - releaseAt), age = Math.max(0, t - fallAt);
       let size = 1, y = seq.y, falling = false;
-      body[0] = t; body[1] = 0.045; body[4] = 0.035 * Math.sin(t * 1.7); body[5] = 0.025 * Math.cos(t * 1.3);
+      // Only the emerging water flexes. It settles to an undeformed cube before detaching and spinning.
+      const forming = t < bulgeAt ? 1 : t < releaseAt ? 1 - ease((t - bulgeAt) / (releaseAt - bulgeAt)) : 0;
+      body[0] = t; body[1] = 0.024 * forming;
+      body[4] = 0.018 * forming * Math.sin(t * 1.7);
+      body[5] = 0.014 * forming * Math.cos(t * 1.3);
       if (t < bulgeAt) {
         // The initial shallow dome grows out of the curved underside, with no ring overlay.
         const u = ease(t / bulgeAt);
@@ -640,19 +644,19 @@
         size = lerp(0.72, 1, u); body[2] = lerp(0.5, 1.08, u);
         y = lerp(top - half * 0.72 * 0.5 + 0.025, CUBE.hangY, u);
       } else if (t < releaseAt) {
-        const u = (t - hangAt) / CUBE.hang;
-        body[2] = 1.08 + 0.12 * Math.sin(u * Math.PI) + 0.12 * u;
-        y = CUBE.hangY - 0.18 * u * u;
+        const u = ease((t - hangAt) / CUBE.hang);
+        body[2] = lerp(1.08, 1, u);
+        y = CUBE.hangY - 0.18 * u;
       } else if (t < fallAt) {
-        // Hold the detached block in the chamber long enough to inspect its height and flowing surface.
-        body[2] = 1 + 0.2 * Math.exp(-freeAge * 0.7) * Math.cos(freeAge * 5);
+        // The formed block holds its shape while hovering and turning in the chamber.
+        body[2] = 1;
         y = CUBE.hangY - 0.18 - 0.07 * Math.sin(freeAge * 1.4);
       } else if (seq.splashT < 0) {
         falling = true;
         const slow = age < CUBE.drop, step = Math.min(dt, age);
         seq.v = Math.min(seq.v + (slow ? 2.6 : 16) * step, slow ? 7 : 26);
         y = Math.max(seaY, seq.y - seq.v * step);
-        body[2] = 1 + 0.2 * Math.exp(-freeAge * 0.7) * Math.cos(freeAge * 5) + 0.1 * Math.min(seq.v / 7, 1);
+        body[2] = 1;
         if (y <= seaY) {
           seq.splashT = 0;
           quat.copy(seq.impactQuat, cube.quaternion);
