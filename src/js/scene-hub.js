@@ -4911,7 +4911,7 @@
       ["BLOCK", s.height ? String(s.height) : "-", ink("#e8c14a")],
       ["ARR DATA", arrivalsLive(s) ? rateText(s.inflow) : "-", arrivalsLive(s) ? "#8fc3ff" : STALE_INK],
       ["MEMPOOL", s.backlogAt ? backlogText(s.vsize) : "-", s.backlogAt && Date.now() - s.backlogAt < BL.poolWater.HYDRO.FRESH_MS ? "#7cc8ff" : STALE_INK],
-      ["FAST", s.fastestFee ? `${gameMod.formatThree(s.fastestFee)} SAT/VB` : "-", ink("#ff9a2a")]
+      ["FAST FEE", s.fastestFee ? `${gameMod.formatThree(s.fastestFee)} SAT/VB` : "-", ink("#ff9a2a")]
     ];
   };
   const refreshChainSign = () => {
