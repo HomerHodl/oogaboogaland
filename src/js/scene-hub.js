@@ -4864,7 +4864,7 @@
   // The chain board's four readings, set in the jumbotron's 5x7 font and run-length merged into quads,
   // exactly as the cave sets its wall panels. The rows are rebuilt only when one of them changed, so a
   // board left standing all day replaces no geometry and holds its size.
-  const CHAIN_PANEL_W = 104, CHAIN_PANEL_H = 36, CHAIN_PANEL_BG = [42, 39, 36];
+  const CHAIN_PANEL_W = 96, CHAIN_PANEL_H = 36, CHAIN_PANEL_BG = [42, 39, 36];
   // A board that has stopped being fed says so by going grey. Holding the last reading out in its
   // usual colours would be the one genuinely misleading thing this island could do.
   const STALE_INK = "#7d766a";
@@ -4875,6 +4875,55 @@
     return `${mvb < 100 ? mvb.toFixed(1) : Math.round(mvb)} MVB`;
   };
   const backlogDetails = (count, countKnown = true) => countKnown ? `${count.toLocaleString("en-US")} TX WAITING` : "TX COUNT UNKNOWN";
+  // Compact unit glyphs keep the billboard's 1-pixel values crisp; popup values use the shared font at half scale.
+  const UNIT_FONT = {
+    A: [0b010, 0b101, 0b111, 0b101], B: [0b110, 0b101, 0b110, 0b111],
+    M: [0b101, 0b111, 0b111, 0b101], S: [0b111, 0b100, 0b011, 0b110],
+    T: [0b111, 0b010, 0b010, 0b010], V: [0b101, 0b101, 0b101, 0b010],
+    X: [0b101, 0b010, 0b010, 0b101], "/": [0b001, 0b001, 0b010, 0b100]
+  };
+  const UNIT_WORDS = new Set(["VB/S", "MVB", "SAT/VB", "TX"]);
+  const metricUnit = (word, previous) => UNIT_WORDS.has(word) && /[0-9KMB]$/.test(previous);
+  const unitWidth = (word, scale) => scale === 2 ? BL.jumbotron.text.measureText(word, 1) : word.length * 4 - 1;
+  const metricWidth = (value, scale) => {
+    const text = BL.jumbotron.text, words = value.split(" ");
+    let width = 0, previous = "";
+    for (const word of words) {
+      const unit = metricUnit(word, previous);
+      if (previous) width += (unit ? 4 : 7) * scale;
+      width += unit ? unitWidth(word, scale) : text.measureText(word, scale);
+      previous = word;
+    }
+    return width;
+  };
+  const drawMetric = (c2, value, anchor, y, color, scale, right = false) => {
+    const text = BL.jumbotron.text, words = value.split(" ");
+    const width = metricWidth(value, scale);
+    let x = anchor - (right ? width : Math.round(width / 2));
+    let previous = "";
+    for (const word of words) {
+      const unit = metricUnit(word, previous);
+      if (previous) x += (unit ? 4 : 7) * scale;
+      if (!unit) {
+        text.drawText(c2, word, x, y, color, scale);
+        x += text.measureText(word, scale);
+      } else if (scale === 2) {
+        text.drawText(c2, word, x, y + 7, color, 1);
+        x += unitWidth(word, scale);
+      } else {
+        c2.fillStyle = color;
+        for (const ch of word) {
+          const glyph = UNIT_FONT[ch];
+          for (let row = 0; row < 4; row++) for (let col = 0; col < 3; col++) {
+            if (glyph[row] & (1 << (2 - col))) c2.fillRect(x + col, y + row + 3, 1, 1);
+          }
+          x += 4;
+        }
+        x--;
+      }
+      previous = word;
+    }
+  };
   const chainRows = (s) => {
     const ink = (live) => s.live ? live : STALE_INK;
     return [
@@ -4896,7 +4945,7 @@
     let y = 2;
     for (const [label, value, color] of rows) {
       text.drawText(c2, label, 1, y, "#9b8f7a", 1);
-      text.drawText(c2, value, CHAIN_PANEL_W - 1 - text.measureText(value, 1), y, color, 1);
+      drawMetric(c2, value, CHAIN_PANEL_W - 1, y, color, 1, true);
       y += 8;
     }
     const node = chainSign.node;
@@ -4954,11 +5003,11 @@
   const reading = (c2, label, value, color, under, gauge = -1, gaugeColor = color) => {
     const text = BL.jumbotron.text, centre = (t, y, ink, scale) => text.drawText(c2, t, Math.round((POOL_BOARD_W - text.measureText(t, scale)) / 2), y, ink, scale);
     centre(label, 4, POOL_DIM, 1);
-    const scale = text.measureText(value, 2) <= POOL_BOARD_W - 8 ? 2 : 1;
-    centre(value, scale === 2 ? 15 : 19, color, scale);
+    const scale = metricWidth(value, 2) <= POOL_BOARD_W - 8 ? 2 : 1;
+    drawMetric(c2, value, POOL_BOARD_W / 2, scale === 2 ? 15 : 19, color, scale);
     if (Array.isArray(under)) {
-      for (let i = 0; i < under.length; i++) centre(under[i], 32 + i * 8, POOL_DIM, 1);
-    } else if (under) centre(under, 34, POOL_DIM, 1);
+      for (let i = 0; i < under.length; i++) drawMetric(c2, under[i], POOL_BOARD_W / 2, 32 + i * 8, POOL_DIM, 1);
+    } else if (under) drawMetric(c2, under, POOL_BOARD_W / 2, 34, POOL_DIM, 1);
     if (gauge < 0) return;
     c2.fillStyle = "#2a2724";
     c2.fillRect(14, 43, POOL_BOARD_W - 28, 3);
@@ -4987,7 +5036,7 @@
         let y = 5;
         for (const [label, value, color] of chainRows(s)) {
           text.drawText(c2, label, 8, y, POOL_DIM, 1);
-          text.drawText(c2, value, POOL_BOARD_W - 8 - text.measureText(value, 1), y, color, 1);
+          drawMetric(c2, value, POOL_BOARD_W - 8, y, color, 1, true);
           y += 10;
         }
       },
