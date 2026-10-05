@@ -66,5 +66,39 @@
       "bytes": 7571135,
       "gzip": 2192699
     }
-  }
+  },
+  "resilience": [
+    {
+      "scenario": "fail",
+      "failure": "An entrance audio track could not be decoded.",
+      "retry": {
+        "failure": "",
+        "durations": [
+          7.62775,
+          3.709375,
+          11.311,
+          5.955916666666667
+        ],
+        "music": 121.97441666666667
+      },
+      "requests": 6
+    },
+    {
+      "scenario": "abort",
+      "firstAborted": 0,
+      "bothAborted": 5,
+      "sharedRequests": 5,
+      "requests": 10,
+      "retry": {
+        "failure": "",
+        "durations": [
+          7.62775,
+          3.709375,
+          11.311,
+          5.955916666666667
+        ],
+        "music": 121.97441666666667
+      }
+    }
+  ]
 }
