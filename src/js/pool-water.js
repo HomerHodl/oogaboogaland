@@ -14,7 +14,7 @@
 // the lake and streams, with matching lighting normals. The hanging bowl carries the same translucent water
 // material below the current waterline. On Canvas 2D, the sheets are built with both windings.
 //
-// Everything is built once in `create` and pooled: streams and falls are fixed water meshes, a block's cube, neck,
+// Everything is built once in `create` and pooled: streams and falls are fixed water meshes, a block's cube,
 // and droplets come from SEQUENCES fixed sets; rain and wakes share a bounded wave field. Blocks found faster than they can fall wait in a queue
 // of QUEUE at most, the rest dropped. `update` allocates nothing.
 (() => {
@@ -58,10 +58,13 @@
   const channelHalf = (level) => (level > L.LEVEL.lowland ? L.CHANNEL.low : level > L.LEVEL.shore ? L.CHANNEL.bank : L.CHANNEL.bed) + BANK_COVER;
   const outletAt = (channel) => L.channelOutlet(channel) + 0.02;
   const SEQUENCES = 4, QUEUE = 3, DROPLETS = 20, BLOCK_GAP = 0.35;
-  // A block's cube: water gathers under the membrane, stretches a neck until it pinches free, then falls through
-  // the chamber and its shaft for `drop` seconds, then on down the open air to the sea, where it dissolves.
+  // A block's cube: one point emerges from the membrane, the body clears it and sheds a few drops, then falls
+  // through the chamber and its shaft for `drop` seconds, then on down the open air to the sea, where it dissolves.
   // The detached `float` phase gives the visitor time to hover and read the captured block height.
   const CUBE = { size: 1.5, gather: 1.6, bulge: 1.7, hang: 1.5, float: 4.5, drop: 3.2, splash: 1.4, hangY: -L.MEMBRANE_DEPTH - 1.5, spin: 0.38 };
+  // Rotate a cube's body diagonal onto world down: a corner, rather than a face, breaks the lake first.
+  const POINT_AXIS = Math.SQRT1_2, POINT_ANGLE = Math.acos(-1 / Math.sqrt(3));
+  const pointReach = (stretch, size) => CUBE.size * size / (2 * Math.sqrt(3)) * (2 / Math.sqrt(stretch) + stretch);
   const RIPPLES = { high: 20, medium: 16, low: 8, canvas2d: 6 };
   const WAKES = { high: 12, medium: 8, low: 4, canvas2d: 4 }, WAKE_ACTORS = 160;
   const WAVE_CAP = 32, WAVE_WIDTH = 0.32, WAVE_HEIGHT = 0.18;
@@ -362,24 +365,6 @@
     }
     return glass(bodyBounds(geo, 2.5, 1.2, 2.5), 0.64, false);
   }));
-  const neck = [false, true].map((low) => cached(() => {
-    const geo = { verts: [], faces: [], lines: [] }, rings = low ? 8 : 16, sectors = low ? 10 : 20;
-    for (let j = 0; j <= rings; j++) {
-      const t = j / rings, radius = 0.18 + 0.32 * (1 - t) ** 3 + 0.2 * t ** 3;
-      for (let i = 0; i < sectors; i++) {
-        const a = i / sectors * TAU;
-        pushVert(geo, Math.sin(a) * radius, -t, Math.cos(a) * radius);
-      }
-    }
-    for (let j = 0; j < rings; j++) for (let i = 0; i < sectors; i++) {
-      const a = j * sectors + i, b = j * sectors + (i + 1) % sectors;
-      waterFace(geo, [a, a + sectors, b + sectors, b]);
-    }
-    waterFace(geo, Array.from({ length: sectors }, (_, i) => i));
-    waterFace(geo, Array.from({ length: sectors }, (_, i) => rings * sectors + sectors - 1 - i));
-    waterNormals(geo);
-    return glass(bodyBounds(geo, 0.85, 0, 0.85, -1), 0.64, false);
-  }));
   const splashCrown = [false, true].map((low) => cached(() => {
     const geo = { verts: [], faces: [], lines: [] }, sectors = low ? 24 : 64, rows = 6;
     // A closed, thick crown: the lip curls outwards and breaks into eight uneven fingers.
@@ -535,19 +520,19 @@
     }
 
     // Each sequence owns its deformation/flow buffers; all droplets instance the waterfalls' geometry.
-    const sequences = [], bodyPoint = new Float32Array(3), flowAxis = new Float32Array(3), restQuat = quat.create();
-    const fluid = (shape, kind) => hidden({ geometry: { ...shape,
-      lakeBody: new Float32Array([0, 0, 1, 0, 0, 0, kind, 0]), lakeFlow: new Float32Array(8) }, visible: false });
+    const sequences = [], flowAxis = new Float32Array(3), restQuat = quat.create();
+    const fluid = (shape) => hidden({ geometry: { ...shape,
+      lakeBody: new Float32Array([0, 0, 1, 0, 0, 0, 0, 0]), lakeFlow: new Float32Array(8) }, visible: false });
     for (let i = 0; i < SEQUENCES; i++) {
-      const cube = fluid(cubeShell[+low](), 0), neckNode = fluid(neck[+low](), 1), splash = fluid(splashCrown[+low](), 0);
+      const cube = fluid(cubeShell[+low]()), splash = fluid(splashCrown[+low]());
       cube.quaternion = quat.create();
       const droplets = Array.from({ length: low ? 8 : DROPLETS }, () => ({
         node: hidden({ geometry: drip(), visible: false }), age: 0, life: 0, vx: 0, vy: 0, vz: 0, size: 1
       }));
-      addChild(group, cube, neckNode, splash);
+      addChild(group, cube, splash);
       for (const drop of droplets) addChild(group, drop.node);
-      sequences.push({ active: false, t: 0, y: 0, v: 0, splashT: -1, neckLength: 0,
-        dropClock: 0, dropCursor: 0, emitted: 0, height: 0, label: "", order: 0, push: 0, shift: 0, pushedAt: -1, extent: 0, impactQuat: quat.create(), cube, neck: neckNode, splash, droplets });
+      sequences.push({ active: false, t: 0, y: 0, v: 0, splashT: -1,
+        dropClock: 0, dropCursor: 0, emitted: 0, height: 0, label: "", order: 0, push: 0, shift: 0, extent: 0, impactQuat: quat.create(), cube, splash, droplets });
     }
     const ordered = sequences.slice();
     const picks = sequences.map((sequence) => ({ kind: "poolblock", node: sequence.cube, sequence }));
@@ -571,13 +556,13 @@
     const begin = (seq, height, label) => {
       lastStart = sequenceClock;
       seq.active = true; seq.t = 0; seq.y = L.membraneY(0); seq.v = 0; seq.splashT = -1;
-      seq.neckLength = seq.dropClock = seq.dropCursor = seq.emitted = 0;
+      seq.dropClock = seq.dropCursor = seq.emitted = 0;
       seq.height = height;
       seq.label = label;
-      seq.order = started + 1; seq.push = seq.shift = 0; seq.pushedAt = -1;
-      quat.identity(seq.cube.quaternion);
+      seq.order = started + 1; seq.push = seq.shift = 0;
+      quat.fromAxisAngle(seq.cube.quaternion, POINT_AXIS, 0, -POINT_AXIS, POINT_ANGLE);
       seq.cube.position.x = seq.cube.position.z = 0;
-      seq.cube.smokeOpacity = seq.neck.smokeOpacity = seq.splash.smokeOpacity = 1;
+      seq.cube.smokeOpacity = seq.splash.smokeOpacity = 1;
       for (const drop of seq.droplets) { drop.life = 0; drop.node.visible = false; }
       started++;
     };
@@ -597,7 +582,7 @@
     };
     const park = (seq) => {
       seq.active = false;
-      seq.cube.visible = seq.neck.visible = seq.splash.visible = false;
+      seq.cube.visible = seq.splash.visible = false;
       for (const drop of seq.droplets) { drop.life = 0; drop.node.visible = false; }
     };
     const ease = (t) => t * t * (3 - 2 * t);
@@ -626,7 +611,8 @@
     const stepSequence = (seq, dt, bright) => {
       seq.t += dt;
       const t = seq.t, top = L.membraneY(0), cube = seq.cube, body = cube.geometry.lakeBody;
-      const bulgeAt = CUBE.gather, hangAt = bulgeAt + CUBE.bulge, releaseAt = hangAt + CUBE.hang, fallAt = releaseAt + CUBE.float, half = CUBE.size / 2;
+      const bulgeAt = CUBE.gather, hangAt = bulgeAt + CUBE.bulge, detachAt = bulgeAt + CUBE.bulge * 0.85;
+      const releaseAt = hangAt + CUBE.hang, fallAt = releaseAt + CUBE.float, half = CUBE.size / 2;
       const freeAge = Math.max(0, t - releaseAt), age = Math.max(0, t - fallAt);
       let size = 1, y = seq.y, falling = false;
       // Only the emerging water flexes. It settles to an undeformed cube before detaching and spinning.
@@ -635,14 +621,14 @@
       body[4] = 0.018 * forming * Math.sin(t * 1.7);
       body[5] = 0.014 * forming * Math.cos(t * 1.3);
       if (t < bulgeAt) {
-        // The initial shallow dome grows out of the curved underside, with no ring overlay.
+        // Keep the leading corner just below the curved underside as the cube takes shape.
         const u = ease(t / bulgeAt);
         size = lerp(0.04, 0.72, u); body[2] = lerp(0.12, 0.5, u);
-        y = top - half * size * body[2] + 0.025;
+        y = top + pointReach(body[2], size) - lerp(0.03, 0.19, u);
       } else if (t < hangAt) {
         const u = ease((t - bulgeAt) / CUBE.bulge);
         size = lerp(0.72, 1, u); body[2] = lerp(0.5, 1.08, u);
-        y = lerp(top - half * 0.72 * 0.5 + 0.025, CUBE.hangY, u);
+        y = lerp(top + pointReach(0.5, 0.72) - 0.19, CUBE.hangY, u);
       } else if (t < releaseAt) {
         const u = ease((t - hangAt) / CUBE.hang);
         body[2] = lerp(1.08, 1, u);
@@ -696,41 +682,20 @@
       cube.visible = size > 0.005;
       cube.position.y = y; cube.glow = bright;
       bodyFlow(cube);
-      const neckNode = seq.neck, neckBody = neckNode.geometry.lakeBody;
-      neckNode.visible = false;
-      if (seq.pushedAt >= 0) {
-        // A newer block owns the opening now. The displaced block's old neck retracts into the pool.
-        const u = ease(clamp((t - seq.pushedAt) / 0.28, 0, 1));
-        neckNode.visible = u < 1 && seq.neckLength > 0.015;
-        neckNode.scale.y = Math.max(0.005, seq.neckLength * (1 - u));
-        neckNode.scale.x = neckNode.scale.z = 1 - u * 0.7;
-        neckNode.smokeOpacity = 1 - u; neckBody[3] = lerp(0.995, 0.15, u);
-      } else if (t < releaseAt) {
-        sampleBody(bodyPoint, 0, half, 0, body);
-        const joinY = y + bodyPoint[1] * size - 0.1 * size;
-        seq.neckLength = Math.max(0, top + 0.02 - joinY);
-        neckNode.visible = seq.neckLength > 0.015;
-        neckNode.position.y = top + 0.02;
-        neckNode.scale.x = neckNode.scale.z = size;
-        neckNode.scale.y = Math.max(0.015, seq.neckLength);
-        neckBody[3] = 0.995 * ease(clamp((t - releaseAt + 0.45) / 0.45, 0, 1));
-        neckBody[4] = bodyPoint[0]; neckBody[5] = bodyPoint[2];
-      } else if (freeAge < 0.28 && seq.neckLength > 0.015) {
-        // The severed upper neck recoils back into the pool rather than simply vanishing.
-        const u = ease(freeAge / 0.28);
-        neckNode.visible = true; neckNode.scale.y = Math.max(0.005, seq.neckLength * (1 - u));
-        neckNode.scale.x = neckNode.scale.z = 1 - u * 0.7;
-        neckNode.smokeOpacity = 1 - u; neckBody[3] = lerp(0.995, 0.15, u);
+      if (t >= detachAt && t - dt < detachAt) {
+        // The cube has cleared the membrane: only a few free droplets follow its tip.
+        for (let i = 0; i < 3; i++) {
+          const a = i * 2.399963;
+          emitDrop(seq, Math.sin(a) * 0.08, top - 0.08 - i * 0.06, Math.cos(a) * 0.08,
+            Math.sin(a) * 0.12, -0.35 - i * 0.18, Math.cos(a) * 0.12, 0.75 + i * 0.12, 0.6 + i * 0.1);
+        }
       }
-      if (neckNode.visible) {
-        neckBody[0] = t; neckBody[1] = 0.018; neckNode.glow = bright; bodyFlow(neckNode);
-      }
-      if (seq.splashT < 0 && (falling || t > releaseAt - 0.3)) {
-        seq.dropClock += dt * (falling ? 12 : t < releaseAt + 0.3 ? 7 : 2);
+      if (seq.splashT < 0 && falling) {
+        seq.dropClock += dt * 12;
         while (seq.dropClock >= 1) {
           seq.dropClock--;
-          const i = seq.emitted++, a = i * 2.399963, radius = falling ? 0.48 : 0.09;
-          emitDrop(seq, cube.position.x + Math.sin(a) * radius, y - seq.shift + half * 0.9, cube.position.z + Math.cos(a) * radius,
+          const i = seq.emitted++, a = i * 2.399963;
+          emitDrop(seq, cube.position.x + Math.sin(a) * 0.48, y - seq.shift + half * 0.9, cube.position.z + Math.cos(a) * 0.48,
             Math.sin(a) * 0.25, -seq.v * 0.55, Math.cos(a) * 0.25, 1 + (i % 3) * 0.15, 0.55 + (i % 4) * 0.18);
         }
       }
@@ -776,7 +741,6 @@
           const needed = seq.y + seq.extent - (above.cube.position.y - above.extent - 0.18);
           if (needed > seq.push * remaining) {
             seq.push = Math.min(distance - 0.05, needed / remaining);
-            if (seq.pushedAt < 0) seq.pushedAt = seq.t;
           }
         }
         // Preserve the original trajectory's time to the sea. A push shortens its remaining distance,
@@ -936,7 +900,7 @@
         }
         for (const node of tailNodes) set.add(node.geometry);
         for (const seq of sequences) {
-          set.add(seq.cube.geometry).add(seq.neck.geometry).add(seq.splash.geometry);
+          set.add(seq.cube.geometry).add(seq.splash.geometry);
           for (const drop of seq.droplets) set.add(drop.node.geometry);
         }
       },
