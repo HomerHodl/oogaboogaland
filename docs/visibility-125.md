@@ -1,0 +1,9 @@
+# Exact indexed visibility triangles: issue #125
+
+The shared visibility bake previously copied every triangle into nine Float64 values: origin plus two edges, 72 bytes per triangle. It now stores three Uint32 offsets into the original immutable vertex array, 12 bytes per triangle. Query arithmetic reconstructs the original double values; CPU picking, collision, renderer geometry and context-restoration inputs retain their original precision. No frame creates triangle arrays. A scratch triangle serves less frequent consumers; the ray hot path reads indices directly.
+
+The hub has 391,953 baked triangles. Their buffers fall from 28,220,616 to 4,703,436 bytes: 23,517,180 bytes saved, 83.3% of this storage. Across three serial native-Chrome boots followed by explicit garbage collection, median backing storage fell from 180,957,030 to 158,102,700 bytes (22.9 MB). Median JS heap did not fall consistently. First-draw times were essentially unchanged (5,551 vs 5,537 ms); this is a memory change, with no startup or FPS gain claimed.
+
+[Evidence](visibility-125-evidence.json) includes 6,000 matching ray outcomes, Object.is comparisons of 3,240 triangle values and 32,112 metadata values, and 11,520 matching owner-boundary outcomes under changing cameras, transforms and clips. Permanent regressions cover signed zero, adjacent representable doubles, unchanged source vertices, degenerate-face rejection, full screen-BVH capacity and the 12-byte storage contract, alongside the existing tiny-gap/canopy cases.
+
+Covered movement remains below #128's unchanged high-tier 55 FPS floor (this sampled run: 29.1 FPS, p95 50 ms, low quality). The baseline also fails. This is not a completion claim for #125's wider geometry audit, and it should remain a draft until combined frame/scene/context-recovery verification establishes safety. #158 repairs the stale baseline unit fixtures needed for full verification.

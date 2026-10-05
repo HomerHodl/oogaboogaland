@@ -1,3 +1,4 @@
+import { visibilityStorageProof } from "./visibility-storage.mjs";
 import { AsyncLocalStorage } from "node:async_hooks";
 import { mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { readFile, writeFile } from "node:fs/promises";
@@ -1366,9 +1367,9 @@ const { canopyCertificateProbe, canopyPileProbe } = (() => {
       S.updateWorld(root); objects.collect(actor, 0, 0, 24, camera, 1.6);
       rays = 0;
       const before = objects.stats.cameraCertificates, hidden = objects.concealed(target, actor, clear);
-      const row = { name, hidden, rays, certificates: objects.stats.cameraCertificates - before };
+      const row = { name, hidden, rays, certificates: objects.stats.cameraCertificates - before, triangleBytes: objects.stats.triangleBytes, triangles: objects.stats.triangles };
       rows.push(row);
-      if (hidden !== expected || efficient && (rays > 2 || row.certificates < 1)) failures.push(row);
+      if (hidden !== expected || row.triangleBytes !== row.triangles * 12 || efficient && (rays > 2 || row.certificates < 1)) failures.push(row);
     };
     try {
       sample("nearby solid canopy covers the full target", true, true);
@@ -8809,6 +8810,8 @@ const pokerProtocolChecks = async () => {
 };
 
 const unitChecks = async () => {
+  const storage = await visibilityStorageProof({ compact: true });
+  record("visibility storage: exact source doubles and signed zero survive queries, demand and bounded screen BVHs", storage.exact && storage.unchanged && storage.bounded && storage.storage && storage.demand && storage.disposed && storage.values > 600, JSON.stringify(storage));
   const canvasStub = () => ({
     width: 0, height: 0,
     getContext: () => ({
