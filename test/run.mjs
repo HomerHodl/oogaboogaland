@@ -2431,7 +2431,7 @@ const contributorActivityChecks = async () => {
   const byLogin = new Map(live.jumbotronData.contributors.map((entry) => [entry.login.toLowerCase(), entry]));
   const matched = live.contributors.roster.map((entry) => ({ entry, source: byLogin.get((aliases[entry.name] || entry.name).toLowerCase()) })).filter((row) => row.source);
   const accepted = live.contributors.applySnapshot(live.jumbotronData, generatedAt);
-  const current = matched.every(({ entry, source }) => entry.lastCommitAt === Date.parse(source.last_seen_at));
+  const current = matched.every(({ entry, source }) => entry.lastContributionAt === Date.parse(source.last_seen_at));
   // Schema 3 fans activity onto each repository key: the island uses these to
   // route a worker to the cave of the repo they actually contributed to.
   const loginOf = (entry) => (aliases[entry.name] || entry.name).toLowerCase();
@@ -2949,10 +2949,15 @@ const poolLayoutChecks = async () => {
   let rising = true, last = -Infinity;
   for (let mvb = 0; mvb <= 400; mvb += 0.5) { const level = W.levelFor(mvb * 1e6); rising &&= level >= last; last = level; }
   const anchors = W.levelFor(0) === L.WATER.low && W.levelFor(H.NORMAL_VB) === L.WATER.normal && W.levelFor(H.OVERFLOW_VB) === L.WATER.spill && W.levelFor(H.FULL_VB) === L.WATER.flood && W.levelFor(H.FULL_VB * 3) === L.WATER.flood;
-  const water = W.create({ site: { node: S.createNode(), membrane: S.createNode() }, renderer: { kind: "webgl2", quality: "high" }, seaY: -76 });
+  // Residual waterfalls read the rendered ground; exercise the real mesh rather than an empty site.
+  const site = { node: S.createNode(), ground: S.createNode({ geometry: context.window.BL.poolModels.islet() }), membrane: S.createNode({ geometry: { ...context.window.BL.poolModels.membrane() } }) };
+  site.boardLegs = S.createNode({ geometry: { ...context.window.BL.poolModels.chainBoardLegs() } });
+  site.infoLeg = S.createNode({ geometry: { ...context.window.BL.poolModels.infoSignLeg() } });
+  S.addChild(site.node, site.ground, site.membrane, site.boardLegs, site.infoLeg);
+  const water = W.create({ site, renderer: { kind: "webgl2", quality: "high" }, seaY: -76 });
   let elapsed = 0;
   const run = (seconds, now) => { for (let t = 0; t < seconds; t += 1 / 20) water.update(1 / 20, elapsed += 1 / 20, now); };
-  const channel = L.CHANNELS[1], at = (r) => water.levelAt(Math.sin(channel.bearing) * r, Math.cos(channel.bearing) * r), nest = L.NESTS[2];
+  const channel = L.CHANNELS.find((channel) => !channel.inner), at = (r) => water.levelAt(Math.sin(channel.bearing) * r, Math.cos(channel.bearing) * r), nest = L.NESTS[2];
   // Past the cliff the channel falls: no level in the air on its line, nor on the link's lip beside the fall.
   const brink = L.edgeAt(channel.bearing) + 1, lip = channel.bearing + 1.5 / brink;
   const wet = () => ({ lake: water.levelAt(3, 0) > -Infinity, shore: water.levelAt(8.7, 0) > -Infinity, lowland: water.levelAt(-10, 0.3) > -Infinity, path: water.levelAt(-11.5, 0.3) > -Infinity, channel: at(15) > -Infinity, past: at(brink) > -Infinity, lip: water.levelAt(Math.sin(lip) * brink, Math.cos(lip) * brink) > -Infinity, nest: water.levelAt(nest.x, nest.z) > -Infinity, falls: water.state.falls, status: water.state.status, stage: water.state.stage });
@@ -2966,10 +2971,12 @@ const poolLayoutChecks = async () => {
   const flooded = wet(), held = water.state.level;
   run(1, 1e6 + H.FRESH_MS + 5000);
   const stale = wet(), kept = water.state.level === held;
-  for (let i = 0; i < W.SEQUENCES + W.QUEUE + 2; i++) water.block();
+  // Birth spacing staggers cubes; fill the live sets before saturating the waiting queue.
+  for (let i = 0; i < W.SEQUENCES; i++) { water.block(); run(0.4, 1e6 + H.FRESH_MS + 5000); }
+  for (let i = 0; i < W.QUEUE + 2; i++) water.block();
   const cubes = { falling: water.state.cubes, queued: water.state.queued, dropped: water.state.dropped };
-  const stages = none.status === "unavailable" && !none.lake && normal.status === "live" && normal.lake && !normal.shore && !normal.channel && !normal.falls
-    && spilling.stage === 1 && spilling.shore && spilling.channel && !spilling.lowland && spilling.falls > 0 && flooded.stage === 2 && flooded.lowland && flooded.falls > spilling.falls
+  const stages = none.status === "unavailable" && none.lake && normal.status === "live" && normal.lake && !normal.shore && !normal.channel && !normal.falls
+    && spilling.stage === 1 && spilling.shore && spilling.channel && !spilling.lowland && spilling.falls > 0 && flooded.stage === 2 && flooded.lowland && flooded.falls === L.CHANNELS.length
     && [normal, spilling, flooded].every((row) => !row.path && !row.nest && !row.past && !row.lip) && stale.status === "stale" && kept;
   record("pool water: the backlog fills the lake by a rising scale to its crest and its highest flood, the shore and channels flood before the lowland while the path and the nests never do and a channel past the cliff holds no one up, a stale reading is held and said to be stale, and blocks found faster than they fall wait in a bounded queue",
     rising && anchors && stages && cubes.falling === W.SEQUENCES && cubes.queued === W.QUEUE && cubes.dropped === 2, JSON.stringify({ rising, anchors, none, normal, spilling, flooded, stale, kept, cubes }));
