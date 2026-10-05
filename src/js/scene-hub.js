@@ -23,7 +23,7 @@
   const dayParam = DEBUG ? parseFloat(params.get("day")) : NaN;
   const latitudeParam = DEBUG ? parseFloat(params.get("latitude")) : NaN;
   const requestedView = DEBUG ? params.get("view") : null;
-  const preloadedView = requestedView === "hq" ? "underground" : requestedView === "bsmt" ? "basement" : requestedView === "pile" || requestedView === "lab" || requestedView === "mirror" || requestedView === "timechain" || requestedView === "bifrost" ? requestedView : null;
+  const preloadedView = requestedView === "hq" ? "underground" : requestedView === "bsmt" ? "basement" : requestedView === "pile" || requestedView === "lab" || requestedView === "mirror" || requestedView === "timechain" || requestedView === "bifrost" || requestedView === "mempool" ? requestedView : null;
   const preloadedPose = DEBUG ? readPositionPose(params.get("pose")) : null;
   const preloadedMode = DEBUG ? params.get("mode") || preloadedPose?.mode : null;
   const preloadedFirstPerson = DEBUG && (params.get("firstperson") === "1" || preloadedMode === "first-person" || preloadedMode === "eye-level");
@@ -184,11 +184,11 @@
   const WANDER_COUNT = 36, WANDER_INNER = 5.5;
   const ALTAR_HEIGHT = 0.34, ALTAR_BLOCK_WIDTH = 0.2, ALTAR_BLOCK_ARC = 0.3, ALTAR_RING_GAP = 0.02, ALTAR_MAX_BLOCKS = 512;
   const RIPEN = 25, TREE_CHANCE = 0.5, BUSH_CHANCE = 0.25;
-  const PROP_TIPS = { tree: "Tree · shake it", bush: "Bush · rustle it", rock: "Rock · hit to break", crate: "Box · hit to break", barrel: "Barrel · hit to break", flower: "Flowers", torch: "Torch · warm", firepit: "Fire pit", bedroll: "Somebody's bed", ladder: "Ladder · wobbly", dock: "Dock · creaky", magazine: "Spare magazine · walk into it to collect", poolbridge: "Vine bridge · to the Mempool island", poolstair: "The Mempool · tap to climb down", poolsign: "The Mempool · the cave reads the chain", chainsign: "The chain, at a glance · tap to read it", weathersign: "Reading the weather · tap for the key", poolrock: "Mossy rock", poolfern: "Fern · rustle it", poollog: "Fallen log · something lives in it", jaguar: "Jaguar · do not poke", monkey: "Monkey · it watches you", toucan: "Toucan · big beak", canopy: "Rainforest tree · shake it", jumbotron: "Oogatron · OogaBoogaX on the big screen · tap the screen for a close-up", palm: "Palm · shake it", bifrostbridge: "Bifröst · the bridge to ₿IFRÖST", bifrostgate: "₿IFRÖST · walk an Ooga through the field", heimdall: "Heimdall · keeper of the bridge", gate: null };
-  const RETICLE_PROPS = new Set(["tree", "bush", "rock", "crate", "barrel", "flower", "torch", "firepit", "ladder", "poolstair", "poolsign", "chainsign", "weathersign", "poolfern", "poollog", "jaguar", "monkey", "toucan", "canopy", "jumbotron", "palm", "timechainentrance", "timechainboard", "timechainchair", "timechainbeer", "bifrostgate", "heimdall"]);
+  const PROP_TIPS = { tree: "Tree · shake it", bush: "Bush · rustle it", rock: "Rock · hit to break", crate: "Box · hit to break", barrel: "Barrel · hit to break", flower: "Flowers", torch: "Torch · warm", firepit: "Fire pit", bedroll: "Somebody's bed", ladder: "Ladder · wobbly", dock: "Dock · creaky", magazine: "Spare magazine · walk into it to collect", poolbridge: "Vine bridge · to the Mempool island", poolsign: "The Mempool · the way down is through the hill", poolpainting: "Wall painting · tap to read it closely", chainsign: "The chain, at a glance · tap to read it", weathersign: "Reading the weather · tap for the key", poolrock: "Mossy rock", poolfern: "Fern · rustle it", poollog: "Fallen log · something lives in it", jaguar: "Jaguar · do not poke", monkey: "Monkey · it watches you", toucan: "Toucan · big beak", canopy: "Rainforest tree · shake it", jumbotron: "Oogatron · OogaBoogaX on the big screen · tap the screen for a close-up", palm: "Palm · shake it", bifrostbridge: "Bifröst · the bridge to ₿IFRÖST", bifrostgate: "₿IFRÖST · walk an Ooga through the field", heimdall: "Heimdall · keeper of the bridge", gate: null };
+  const RETICLE_PROPS = new Set(["tree", "bush", "rock", "crate", "barrel", "flower", "torch", "firepit", "ladder", "poolsign", "poolpainting", "chainsign", "weathersign", "poolfern", "poollog", "jaguar", "monkey", "toucan", "canopy", "jumbotron", "palm", "timechainentrance", "timechainboard", "timechainchair", "timechainbeer", "bifrostgate", "heimdall"]);
   const workCave = (slot) => slot.repo && (slot.status === "open" || slot.status === "mirror");
   const MATRIX_LIVING_PROPS = new Set(["tree"]);
-  const SOLID_PROPS = new Set(["tree", "rock", "crate", "barrel", "firepit", "dock", "jumbotron", "poolbridge", "poolstair", "poolrock", "canopy"]);
+  const SOLID_PROPS = new Set(["tree", "rock", "crate", "barrel", "firepit", "dock", "jumbotron", "poolbridge", "poolrock", "canopy"]);
   const CLANKER_STEP_PROPS = new Set(["rock", "crate", "barrel", "poolrock"]);
   const BUSH_WORDS = ["Something rustles.", "A beetle. Ooga leaves it.", "Just a bush."];
   const PALM_WORDS = ["Coconuts. Ooga wanted bananas.", "A coconut thuds down. Ooga dodges.", "The fronds swish."];
@@ -245,7 +245,7 @@
   const CUTAWAY_RAMP_START = 0.12, CUTAWAY_RAMP_END = 0.88;
   const CUTAWAY_FLOOR_RATE = 56, CUTAWAY_FLOOR_DEADBAND = 0.015;
   let cutawayHeight = NaN, cutawayFeet = 0, cutawayPlayer = null;
-  let cutawayX = 0, cutawayZ = 0, cutawayHeadY = 0, cutawayHill = false;
+  let cutawayX = 0, cutawayZ = 0, cutawayHeadY = 0, cutawayHill = false, cutawayPool = 0;
   let cutawayProgress = NaN, cutawayLevel = 0, cutawayHillMix = 0;
   let cutawayTravelRamp = null, cutawayTravelChannel = -1, cutawayTravelStation = 0;
   const CUTAWAY_PATH_STATE = { lo: new Uint16Array(4), hi: new Uint16Array(4), mix: new Float32Array(4), windowMix: new Float32Array(2), active: 0, version: 1 };
@@ -366,6 +366,8 @@
   const JETPACK_HUD_STATE = { owned: false, equipped: false, fuel: 1, blocked: false };
   let enteringTween = null, factoryDeparting = false, bifrostDeparting = false;
   let stateTimer = 0, hintTimer = 0, meterTimer = 0, now = 0, hour = 12, unsubscribeActivity = null, unsubscribeAccount = null, ownOogaClaimed = false;
+  // How far under the Mempool island's ground the view is, 0 to 1: its sun and its storm stay outside.
+  let poolShade = 0, poolUnder = 0;
   let weather = null, unsubscribeMempool = null, unsubscribeChain = null, mempoolIsland = null, timechainIsland = null, bifrostIsle = null;
   // The two boards across the hole from the vine bridge, one reading the chain and one reading the
   // weather. Each holds its canvas, its panel node and the reading it last drew, so a snapshot saying
@@ -1284,14 +1286,17 @@
     return false;
   };
   const sleepMarksVisible = (cave, x, y, z) => {
-    if (!cave) return sleepSightAt(x, y, z);
+    // Nobody's sleep is seen through the Mempool island's rock: not from the tunnels and the chamber inside it,
+    // and not a gorilla's in its nest from under the island or beyond its cliffs.
+    if (poolShade > 0.5) return false;
+    if (!cave) return sleepSightAt(x, y, z) && mempoolIsland.sightClear(camera.position.x, camera.position.y, camera.position.z, x, y, z);
     const bed = cave.bedroll;
     if (cave.state !== "sleeping" || cave.bedTravel.mode !== "rest" || !bed || bed.sleeper !== cave) return false;
     if (bed.sightFrame === sleepSightFrame) return bed.sightVisible;
     bed.sightFrame = sleepSightFrame;
     const head = cave.sleepHead, body = cave.root.position, room = bed.room, window = bed.window;
     bed.sightVisible = sleepSightAt(head.x, head.y, head.z) || sleepSightAt(body.x, body.y, body.z)
-      || sleepOpeningVisible(room.entrance.x, room.floor + 1.8, room.entrance.z, bed.cr, -bed.sr, (room.corridorWidth ?? room.width - 1.3) * 0.35, 1.1)
+      || !bed.outdoor && sleepOpeningVisible(room.entrance.x, room.floor + 1.8, room.entrance.z, bed.cr, -bed.sr, (room.corridorWidth ?? room.width - 1.3) * 0.35, 1.1)
       || !!window && sleepOpeningVisible(window.x, window.y, window.z, Math.cos(window.angle), Math.sin(window.angle), window.width * 0.35, window.height * 0.35);
     return bed.sightVisible;
   };
@@ -1397,7 +1402,7 @@
   const addLamp = (node, kind, x, y, z, light = true, order = lamps.length, id = `lamp:${lamps.length}`) => {
     node.glow = LAMP_OFF;
     node.flare = 0;
-    const lamp = { node, kind, x, y, z, light, order, id, k: 0, lit: false, selected: false, approximated: false, debug: null };
+    const lamp = { node, kind, x, y, z, light, order, id, k: 0, lit: false, selected: false, approximated: false, debug: null, reach: 0, fade: 1, fromX: x, fromY: y, fromZ: z, gain: 1, far: false };
     lamps.push(lamp);
     return lamp;
   };
@@ -1424,6 +1429,15 @@
       if (l.kind.hide) node.visible = lit;
       l.selected = false;
       l.approximated = false;
+      // A lamp with a reach lights a place shut in under the Mempool island's rock, and every light costs every
+      // pixel. It counts while the view is under that ground (`poolShade`) or follows a walker who is, the roof
+      // cut open over them (`poolUnder`), and fades out over `fade` metres as the view leaves its reach, measured
+      // from the lamp or from the middle of the room it lights. The lamps of the open air fade out under the ground.
+      if (l.reach > 0) {
+        const away = Math.hypot(l.fromX - camera.target.x, l.fromY - camera.target.y, l.fromZ - camera.target.z);
+        l.gain = Math.max(poolShade, poolUnder) * Math.min(1, Math.max(0, (l.reach - away) / l.fade));
+      } else l.gain = 1 - poolShade;
+      l.far = l.gain < 0.02;
       if (l.debug) {
         l.debug.factor = k;
         l.debug.lit = lit;
@@ -1437,7 +1451,7 @@
       let nearest = null, distance = Infinity;
       for (let i = 0; i < lamps.length; i++) {
         const l = lamps[i];
-        if (!l.lit || !l.light || l.selected) continue;
+        if (!l.lit || !l.light || l.selected || l.far) continue;
         const dx = l.x - camera.target.x, dy = l.y - camera.target.y, dz = l.z - camera.target.z;
         const score = dx * dx + dy * dy + dz * dz - (l.centerLight ? 16 : 0);
         if (score < distance) { nearest = l; distance = score; }
@@ -1452,14 +1466,14 @@
       lights[o + 1] = l.y;
       lights[o + 2] = l.z;
       lights[o + 3] = kind.radius + (l.pileProfile ? RENDER_OPTS.lampFactor * PILE_POST_NIGHT_REACH : 0);
-      lights[o + 4] = kind.r * l.k * boost;
-      lights[o + 5] = kind.g * l.k * boost;
-      lights[o + 6] = kind.b * l.k * boost;
+      lights[o + 4] = kind.r * l.k * boost * l.gain;
+      lights[o + 5] = kind.g * l.k * boost * l.gain;
+      lights[o + 6] = kind.b * l.k * boost * l.gain;
       lights[o + 7] = l.pileProfile ? 1 : 0;
     }
     for (let i = 0; i < lamps.length; i++) {
       const l = lamps[i];
-      if (!l.lit || !l.light || l.selected) continue;
+      if (!l.lit || !l.light || l.selected || l.far) continue;
       l.approximated = true;
       if (l.debug) l.debug.approximated = true;
       if (approximated < LIGHT_CAPACITY) LIGHTING_DEBUG.approximatedIds[approximated] = l.id;
@@ -2315,10 +2329,11 @@
     fx.sayAt(beast.wx, beast.wy + (kind === "toucan" ? 0.9 : 1.1), beast.wz, cries[fnv1a(`${kind}/${Math.floor(now * 3)}`) % cries.length], 1.8);
     mempoolIsland.wildlife.startle(beast);
   };
-  // The Mempool island off the west rim: jungle floor, a vine bridge and the cave that reads the
-  // chain. Everything solid, so an Ooga walks across and in. The scatter is claimed off the crossing.
+  // The Mempool island off the east rim: a rainforest round a lake, a vine bridge, and the tunnels and chamber
+  // under the lake. Everything solid, so an Ooga walks across, in and all the way down without a scene change.
+  // `pool-layout.js` says where everything is; the scatter is claimed off the crossing.
   const buildMempoolIsland = () => {
-    const P = poolModels, S = P.SITE, DIR = P.DIR, SITE_SHAFT_REACH = S.shaftR + 1.2;
+    const P = poolModels, S = P.SITE, DIR = P.DIR, L = BL.poolLayout;
     // How much ground an animal keeps to itself, measured against each plant's own footprint.
     const BEAST_CLEAR = 1.3;
     const place = P.spot(island, {});
@@ -2328,20 +2343,24 @@
     const cos = Math.cos(place.ry), sin = Math.sin(place.ry);
     const worldX = (lx, lz) => place.x + lx * cos + lz * sin;
     const worldZ = (lx, lz) => place.z - lx * sin + lz * cos;
+    const localX = (wx, wz) => (wx - place.x) * cos - (wz - place.z) * sin;
+    const localZ = (wx, wz) => (wx - place.x) * sin + (wz - place.z) * cos;
     const atNode = (kind, node, radius) => addProp(kind, node, worldX(node.position.x, node.position.z), worldZ(node.position.x, node.position.z), radius);
     addChild(root, site.node);
     placed.push(site.node);
-    addTerrainSection(site.ground.geometry.cutawaySource, site.node, place.y);
-    solids.add(site.ground);
+    // Capped in a cut view only when the walker the view follows is on this island or about to be.
+    addTerrainSection(site.ground.geometry.cutawaySource, site.node, place.y).when = () => Math.hypot(cutawayX - place.x, cutawayZ - place.z) < S.reach + 40;
+    // The body, the smooth floors laid over its steps, the lake's membrane and the plank crossings are all walked on.
+    for (const node of [site.ground, site.floor, site.membrane, ...site.crossings]) solids.add(node);
+    site.floor.sightHidden = true;
+    for (const node of site.crossings) node.sightHidden = true;
     addProp("poolbridge", site.bridge, worldX(0, place.bridgeLocalZ + S.span / 2), worldZ(0, place.bridgeLocalZ + S.span / 2), S.width);
     addLamp(site.bridge, LAMP.lantern, worldX(0, place.bridgeLocalZ), place.y + 3.4, worldZ(0, place.bridgeLocalZ), false, 0, "poolbridge:lanterns").nightOnly = true;
-    atNode("poolstair", site.stair, SITE_SHAFT_REACH);
     atNode("poolsign", site.sign, 1.4);
-    // The bridge arrives along local +z and the cave sign stands between it and the hole, so both boards
-    // go on the far side at -z: with no turn at all their faces already look back up the crossing. They
-    // stand a little apart and toe in, so from the bridge head the pair reads as one post.
-    const B = P.CHAIN_BOARD;
-    const boardNode = createNode({ position: { x: 0, y: 0, z: -(S.shaftR + 2.6) }, geometry: P.chainBoard() });
+    // The chain board stands along the court's far edge, turned to the bridge, with the weather key at the lake end
+    // of the court: both are read on the way in, before the forest closes round the path.
+    const B = P.CHAIN_BOARD, boardBearing = L.COURT.from + 0.05;
+    const boardNode = createNode({ position: { x: Math.sin(boardBearing) * 17.7, y: L.LEVEL.court, z: Math.cos(boardBearing) * 17.7 }, rotation: { x: 0, y: Math.PI / 2 + boardBearing, z: 0 }, geometry: P.chainBoard() });
     // The panel is centred on the face from the board's own numbers, so resizing the board moves it.
     const panelNode = createNode({
       position: { x: -CHAIN_PANEL_W * B.px / 2, y: B.y + (B.h - CHAIN_PANEL_H * B.px) / 2, z: B.d / 2 + 0.02 }
@@ -2349,10 +2368,8 @@
     addChild(boardNode, panelNode);
     addChild(site.node, boardNode);
     atNode("chainsign", boardNode, B.w * 0.55);
-    // A small post beside it: the weather is the other half of what the chain is saying here.
-    const infoNode = createNode({
-      position: { x: B.w / 2 + 1, y: 0, z: -(S.shaftR + 2.6) }, rotation: { x: 0, y: -0.3, z: 0 }, geometry: P.infoSign()
-    });
+    // A small post beside the way to the lake: the weather is the other half of what the chain is saying here.
+    const infoNode = createNode({ position: { x: Math.sin(-0.17) * 14.4, y: L.LEVEL.court, z: Math.cos(-0.17) * 14.4 }, rotation: { x: 0, y: 0.25, z: 0 }, geometry: P.infoSign() });
     addChild(site.node, infoNode);
     atNode("weathersign", infoNode, 1);
     {
@@ -2362,58 +2379,147 @@
       // willReadFrequently: every refresh reads the panel back, and without it Chrome warns.
       chainSign = { node: panelNode, ctx2d: canvas.getContext("2d", { alpha: false, willReadFrequently: true }), printed: "" };
     }
-    for (const torch of site.torches) atNode("torch", torch, 0.5);
+    // Fire: the two torches of the court either side of the mouth, then one down each stretch of the descent on the
+    // wall its veins leave free, and four round the chamber between the paintings. The ones under the ground burn
+    // always; all of them join the lamps, so whichever are nearest the view cast the light a tier allows.
+    for (const torch of site.torches) {
+      atNode("torch", torch, 0.5);
+      addLamp(torch, LAMP.torch, worldX(torch.position.x, torch.position.z), place.y + torch.position.y + 1.75, worldZ(torch.position.x, torch.position.z), true, 0, `pool:court:${lamps.length}`);
+    }
+    const fitting = (geometry, x, y, z, ry) => {
+      const node = createNode({ position: { x, y, z }, rotation: { x: 0, y: ry, z: 0 }, geometry, sightHidden: true });
+      addChild(site.node, node);
+      return node;
+    };
+    // Under the ground a torch has a tunnel or the chamber to light by itself, so it reaches further than one
+    // outdoors; and the lake lights the chamber from above, blue through its membrane.
+    // They burn always, and each counts as a light only for a view under this ground or following someone who
+    // is: from the home island the thirteen of them cost every pixel on screen and lit nothing in sight. A
+    // tunnel torch counts within LAMP_REACH past its own radius. The chamber's four and the lake's light are one
+    // room's: they count together for a view anywhere in the room, fading as it backs out through the junction.
+    const TUNNEL_TORCH = { ...LAMP.torch, radius: 10 }, CHAMBER_TORCH = { ...LAMP.torch, radius: 13 }, LAKE_LIGHT = { r: 0.3, g: 0.55, b: 1, radius: 15, glow: 0, hide: false }, LAMP_REACH = 6;
+    const ROOM = { x: place.x, y: place.y + L.FLOOR + 2, z: place.z, reach: L.CHAMBER_R + 4.5, fade: 4 };
+    const shutIn = (lamp, room = null) => {
+      lamp.always = true;
+      if (room) { lamp.fromX = room.x; lamp.fromY = room.y; lamp.fromZ = room.z; lamp.reach = room.reach; lamp.fade = room.fade; }
+      else { lamp.reach = lamp.kind.radius + LAMP_REACH; lamp.fade = LAMP_REACH; }
+    };
+    const wallTorch = (x, y, z, ry, id, kind) => {
+      const node = fitting(P.wallTorch(), x, y, z, ry);
+      node.matrixEmissiveLiving = true;
+      // The flame stands 0.46 out from the wall and 0.92 up its bracket.
+      shutIn(addLamp(node, kind, worldX(x + Math.sin(ry) * 0.46, z + Math.cos(ry) * 0.46), place.y + y + 0.92, worldZ(x + Math.sin(ry) * 0.46, z + Math.cos(ry) * 0.46), true, 0, id), kind === CHAMBER_TORCH ? ROOM : null);
+    };
+    shutIn(addLamp({ glow: 0, flare: 0, visible: true }, LAKE_LIGHT, place.x, place.y - L.MEMBRANE_DEPTH - 1.6, place.z, true, 0, "pool:lake"), ROOM);
+    {
+      const point = {};
+      for (let s = 14.5, n = 0; s < L.RAMP.length - 3; s += 11, n++) {
+        // Inner wall where a link has opened the outer one.
+        const side = n % 2 || L.linkAt(s / L.RAMP.r) ? -1 : 1;
+        L.rampPoint(s, side * (L.rampHalf(s / L.RAMP.r) - 0.02), point);
+        wallTorch(point.x, point.y + 1.55, point.z, point.bearing + (side > 0 ? Math.PI : 0), `pool:ramp:${n}`, TUNNEL_TORCH);
+      }
+      for (let k = 0; k < 4; k++) {
+        const bearing = Math.PI / 4 + k * Math.PI / 2, r = L.CHAMBER_R - 0.05;
+        wallTorch(Math.sin(bearing) * r, L.FLOOR + 1.9, Math.cos(bearing) * r, bearing + Math.PI, `pool:chamber:${k}`, CHAMBER_TORCH);
+      }
+      // Roots hang through the roof just inside the mouth and inside each door.
+      L.rampPoint(2.4, 0, point);
+      fitting(P.roots(), point.x, point.y + L.RAMP.head - 0.05, point.z, point.bearing);
+      for (const door of L.DOORS) {
+        L.rampPoint(door.at * L.RAMP.length, L.RAMP.bay + 1.2, point);
+        fitting(P.roots(), point.x, point.y + L.DOOR.height - 0.05, point.z, point.bearing);
+      }
+    }
+    // Where an animal may stand and walk: the forest floor and the ring path, never a nest, a channel, the court,
+    // the shore or the ledge.
+    const beastGround = (x, z) => L.groundAt(x, z);
+    const beastSpot = (x, z) => {
+      if (L.groundAt(x, z) !== L.LEVEL.ground || Math.hypot(x, z) < L.RING.lowland + 0.4) return false;
+      const d = L.turn(Math.atan2(x, z), 0);
+      return !(d > L.COURT.from - 0.2 && d < L.RAMP.start + 0.2 && Math.hypot(x, z) > L.RING.path - 0.5);
+    };
     // The animals' starting spots are claimed before the scatter, so no plant is seeded where one stands; they
     // come alive once the forest is placed (`pool-wildlife.js`), since they walk round its trunks and climb them.
-    const ANIMALS = [
-      ["jaguar", -7.4, 5.2, 2.1], ["jaguar", 8.1, 6.6, -0.6],
-      ["monkey", 5.6, -7.8, 1.2], ["monkey", -8.6, -3.4, -2.3],
-      ["toucan", -4.2, -8.6, 0.4], ["toucan", 9.4, 1.8, 2.7]
-    ];
+    const beastRand = mulberry32(4343), ANIMALS = [];
+    for (const kind of ["jaguar", "jaguar", "monkey", "monkey", "toucan", "toucan"]) {
+      for (let n = 0; n < 200; n++) {
+        const a = beastRand() * Math.PI * 2, r = L.RING.lowland + 1 + beastRand() * (S.isletR - L.RING.lowland - 2), x = Math.sin(a) * r, z = Math.cos(a) * r;
+        if (!beastSpot(x, z) || L.keptClear(x, z, -0.2) && r > L.RING.path || ANIMALS.some((b) => Math.hypot(x - b[1], z - b[2]) < 6)) continue;
+        ANIMALS.push([kind, x, z, beastRand() * Math.PI * 2]);
+        break;
+      }
+    }
     const claimed = ANIMALS.map(([, x, z]) => ({ x, z, r: BEAST_CLEAR }));
-    // What the animals keep off, in the island group's frame: the stairwell, the pond, the boards, the cave
-    // sign and its torches, then every trunk, rock and log the scatter places.
+    // What the animals keep off, in the island group's frame: the boards and the sign, then every trunk, rock and
+    // log the scatter places.
     const obstacles = [
-      { x: 0, z: 0, r: S.shaftR + 1.2 }, { x: 6.4, z: -4.6, r: 2.8 },
-      { x: -2.6, z: -(S.shaftR + 2.6), r: 1.1 }, { x: 0, z: -(S.shaftR + 2.6), r: 1.1 }, { x: 2.6, z: -(S.shaftR + 2.6), r: 1.1 }, { x: B.w / 2 + 1, z: -(S.shaftR + 2.6), r: 0.7 },
-      { x: 0, z: S.shaftR + 2.1, r: 1.3 }, { x: -(S.shaftR + 1.5), z: S.shaftR * 0.7, r: 0.4 }, { x: S.shaftR + 1.5, z: S.shaftR * 0.7, r: 0.4 }
+      { x: boardNode.position.x, z: boardNode.position.z, r: B.w / 2 }, { x: infoNode.position.x, z: infoNode.position.z, r: 0.7 },
+      { x: site.sign.position.x, z: site.sign.position.z, r: 1.3 }
     ];
     const trees = [], logs = [];
     // Rainforest: three canopy heights, ferns and shrubs under them, each species one shared geometry
     // and one prop kind, so every plant answers a tap the way the home island's own scatter does.
-    // `r` is both the footprint it claims and the radius a pointer picks it by.
+    // `r` is both the footprint it claims and the radius a pointer picks it by; `clear` is how far it
+    // keeps off the paths, the nests, the channels and the court, so only its crown ever reaches over them.
+    // `most` caps each kind: the crowns make the forest, and every fern and shrub is a thousand faces or two,
+    // so the undergrowth is kept to what frames the paths rather than carpeting the floor.
     const SCATTER = [
-      { upTo: 0.30, kind: "canopy", r: 0.6 },
-      { upTo: 0.50, kind: "bush", r: 0.55 },
-      { upTo: 0.72, kind: "poolfern", r: 0.5 },
-      { upTo: 0.88, kind: "flower", r: 0.6 },
-      { upTo: 0.95, kind: "poolrock", r: 0.7 },
-      { upTo: 2, kind: "poollog", r: 1.7 }
+      { upTo: 0.36, kind: "canopy", r: 0.6, clear: 0.55, most: 44 },
+      { upTo: 0.54, kind: "bush", r: 0.55, clear: 0.35, most: 26 },
+      { upTo: 0.76, kind: "poolfern", r: 0.5, clear: 0.2, most: 38 },
+      { upTo: 0.88, kind: "flower", r: 0.6, clear: 0.3, most: 36 },
+      { upTo: 0.95, kind: "poolrock", r: 0.7, clear: 0.7, most: 14 },
+      { upTo: 2, kind: "poollog", r: 1.7, clear: 1.6, most: 8 }
     ];
+    const grown = { canopy: 0, bush: 0, poolfern: 0, flower: 0, poolrock: 0, poollog: 0 };
     const rand = mulberry32(4242);
     const geometryFor = (kind) => kind === "canopy" ? P.CANOPY[(rand() * P.CANOPY.length) | 0]()
       : kind === "bush" ? P.shrub() : kind === "poolfern" ? P.fern() : kind === "flower" ? P.flowers()
       : kind === "poolrock" ? P.mossRock() : P.log();
-    for (let i = 0; i < 74; i++) {
-      const a = rand() * Math.PI * 2, r = Math.sqrt(rand()) * (S.isletR - 1.6);
-      const x = Math.cos(a) * r, z = Math.sin(a) * r;
-      // Keep the stairwell, its approach from the bridge and the pond clear.
-      if (Math.hypot(x, z) < S.shaftR + 4) continue;
-      if (Math.abs(x) < S.width / 2 + 2.1 && z > 0) continue;
-      if (Math.hypot(x - 6.4, z + 4.6) < 3.2) continue;
-      const roll = rand();
-      const pick = SCATTER.find((e) => roll < e.upTo);
-      // Nothing grows through an animal. Plants still crowd each other, which is what makes it jungle.
-      if (claimed.some((c) => Math.hypot(x - c.x, z - c.z) < c.r + pick.r)) continue;
+    const inner = L.RING.lowland * L.RING.lowland, outer = (S.isletR + 0.8) * (S.isletR + 0.8), trunks = [];
+    const level = (x, z, reach, ground) => L.groundAt(x + reach, z) === ground && L.groundAt(x - reach, z) === ground && L.groundAt(x, z + reach) === ground && L.groundAt(x, z - reach) === ground;
+    // Planted, not scattered: trees at the back corners of every nest and behind it, so each clearing lies under
+    // crowns of its own. A trunk stands clear of the beds; only its crown reaches over them.
+    const planted = [];
+    for (const nest of L.NESTS) for (const [across, out] of [[-L.NEST.halfT - 0.35, L.NEST.halfR - 0.3], [L.NEST.halfT + 0.35, L.NEST.halfR - 0.3], [0.3, L.NEST.halfR + 0.75], [-L.NEST.halfT - 0.5, -0.6], [L.NEST.halfT + 0.5, 0.4]]) {
+      const ux = Math.sin(nest.bearing), uz = Math.cos(nest.bearing), x = ux * (L.NEST.r + out) + uz * across, z = uz * (L.NEST.r + out) - ux * across;
+      const ground = L.groundAt(x, z), r = Math.hypot(x, z);
+      if (!(ground >= L.LEVEL.lowland) || r + 0.5 > L.edgeAt(Math.atan2(x, z)) - 0.4 || !level(x, z, 0.3, ground)) continue;
+      planted.push({ x, z, ground });
+      trunks.push({ x, z, r: 0.6 });
+    }
+    for (let i = 0; i < 3600 + planted.length; i++) {
+      const fixed = i < planted.length ? planted[i] : null;
+      const a = rand() * Math.PI * 2, r = Math.sqrt(inner + rand() * (outer - inner)), roll = rand();
+      const x = fixed ? fixed.x : Math.sin(a) * r, z = fixed ? fixed.z : Math.cos(a) * r;
+      const pick = fixed ? SCATTER[0] : SCATTER.find((e) => roll < e.upTo), ground = L.groundAt(x, z);
+      if (grown[pick.kind] >= pick.most) continue;
+      if (!fixed) {
+        // Undergrowth takes the lowland's damp ground too; everything else wants the dry forest floor or the ridge.
+        const soft = pick.kind === "poolfern" || pick.kind === "bush" || pick.kind === "flower";
+        // Clear of everything that is walked, slept on or flooded, and off the rim.
+        if (!(ground >= (soft ? L.LEVEL.lowland : L.LEVEL.ground)) || Math.hypot(x, z) < L.RING.path + pick.clear || L.keptClear(x, z, soft ? Math.min(pick.clear, 0.15) : pick.clear) && !(soft && ground === L.LEVEL.lowland && Math.hypot(x, z) > L.RING.path + 0.3) || r + pick.r > L.edgeAt(a) - 0.5) continue;
+        // Level ground under the whole footprint: nothing stands half over a terrace's step.
+        if (!level(x, z, pick.r * 0.6, ground)) continue;
+        // Nothing grows through an animal, and trunks keep a body's width apart. Plants still crowd each other,
+        // which is what makes it jungle.
+        if (claimed.some((c) => Math.hypot(x - c.x, z - c.z) < c.r + pick.r)) continue;
+        if (pick.kind === "canopy" || pick.kind === "poolrock" || pick.kind === "poollog") {
+          if (trunks.some((t) => Math.hypot(x - t.x, z - t.z) < t.r + pick.r + 0.7)) continue;
+          trunks.push({ x, z, r: pick.r });
+        }
+      }
+      grown[pick.kind]++;
       const geometry = geometryFor(pick.kind);
       // A little scale and turn per copy: free variety, since every copy shares one cached build.
       const k = 0.82 + rand() * 0.45;
-      const node = createNode({ position: { x, y: 0, z }, rotation: { x: 0, y: rand() * Math.PI * 2, z: 0 }, scale: { x: k, y: 0.9 + rand() * 0.3, z: k }, geometry });
+      const node = createNode({ position: { x, y: ground, z }, rotation: { x: 0, y: rand() * Math.PI * 2, z: 0 }, scale: { x: k, y: 0.9 + rand() * 0.3, z: k }, geometry });
       // Undergrowth stays out of the outline registry, as the home scatter's bushes and flowers do.
       if (pick.kind === "bush" || pick.kind === "poolfern" || pick.kind === "flower") node.sightHidden = true;
       addChild(site.node, node);
       atNode(pick.kind, node, pick.r * k);
-      const feature = { x, z, ry: node.rotation.y, k, sy: node.scale.y, geometry };
+      const feature = { x, y: ground, z, ry: node.rotation.y, k, sy: node.scale.y, geometry };
       if (pick.kind === "canopy") { trees.push(feature); obstacles.push({ x, z, r: 0.45 * k }); }
       else if (pick.kind === "poolrock") obstacles.push({ x, z, r: 0.75 * k });
       else if (pick.kind === "poollog") {
@@ -2422,38 +2528,149 @@
         for (const t of [-1.2, 0, 1.2]) obstacles.push({ x: x + ax * t * k, z: z + az * t * k, r: 0.4 * k });
       }
     }
+    // What the rain lands on above the ground: the dense middle of every crown, a dome over its cells of the
+    // layout's grid. A crown's ragged edge lets the drops through, so the forest floor still sees rain between
+    // the trees.
+    const CROWN_CORE = 0.8, crownTop = new Float32Array(L.SX * L.SZ).fill(-Infinity);
+    for (const tree of trees) {
+      const c = Math.cos(tree.ry), s = Math.sin(tree.ry);
+      for (const [cx, cy, cz, rx, ry] of tree.geometry.climb.crowns) {
+        const x = tree.x + (cx * c + cz * s) * tree.k, z = tree.z + (cz * c - cx * s) * tree.k, r = rx * tree.k;
+        const i1 = Math.min(L.SX - 1, Math.floor((x + r - L.ORIGIN.x) / L.UNIT)), k1 = Math.min(L.SZ - 1, Math.floor((z + r - L.ORIGIN.z) / L.UNIT));
+        for (let i = Math.max(0, Math.floor((x - r - L.ORIGIN.x) / L.UNIT)); i <= i1; i++) for (let k = Math.max(0, Math.floor((z - r - L.ORIGIN.z) / L.UNIT)); k <= k1; k++) {
+          const dx = L.ORIGIN.x + (i + 0.5) * L.UNIT - x, dz = L.ORIGIN.z + (k + 0.5) * L.UNIT - z, d = (dx * dx + dz * dz) / (r * r);
+          if (d < CROWN_CORE * CROWN_CORE) crownTop[i * L.SZ + k] = Math.max(crownTop[i * L.SZ + k], tree.y + (cy + ry * 0.85 * Math.sqrt(1 - d)) * tree.sy);
+        }
+      }
+    }
     const WORLD_AT = (lx, lz, out) => { out.x = worldX(lx, lz); out.z = worldZ(lx, lz); return out; };
     const wildlife = BL.poolWildlife.create({
-      parent: site.node, obstacles, trees, logs, baseY: place.y, toWorld: WORLD_AT,
+      parent: site.node, obstacles, trees, logs, baseY: place.y, toWorld: WORLD_AT, groundAt: beastGround, spotOk: beastSpot,
       animals: ANIMALS.map(([kind, x, z, heading]) => ({ kind, x, z, heading })),
       sleepy: () => phase === "night" || phase === "midnight"
     });
     // Each animal answers a tap through its body part, and its pick owner follows it about the island.
     for (const beast of wildlife.list) {
-      beast.wx = worldX(beast.x, beast.z); beast.wy = place.y; beast.wz = worldZ(beast.x, beast.z);
+      beast.wx = worldX(beast.x, beast.z); beast.wy = place.y + beast.base; beast.wz = worldZ(beast.x, beast.z);
       beast.owner = addProp(beast.kind, beast.node, beast.wx, beast.wz, 0.7);
       beasts.set(beast.node, beast);
+    }
+    // The water, and the paintings on the chamber's wall, each a pick target that opens the board behind it.
+    const water = BL.poolWater.create({ site, renderer, seaY: SEA_Y - place.y });
+    const paintings = BL.poolPaintings.create({ site, renderer });
+    for (const stop of paintings.stops) {
+      stop.owner = addProp("poolpainting", stop.node, worldX(stop.x, stop.z), worldZ(stop.x, stop.z), 2.6);
+      stop.owner.stop = stop;
     }
     // The islet and the rim-to-bridge-head walk are claimed after the home scatter, not before it.
     // Claiming first made the scatter's seeded retries draw different numbers, reshuffling trees all
     // over the island; claiming after leaves the scatter exactly as it is without this island, and
     // reflow then hides only what actually stands on the walk.
     const claimGround = () => {
-      claim(place.x, place.z, S.isletR + 1);
+      claim(place.x, place.z, S.reach);
       for (let r = S.approachFrom; r <= place.rimRadius; r += 1.5) claim(DIR.x * r, DIR.z * r, S.width / 2 + 2.1);
     };
-    // Look down the stairwell from just above the kerb.
-    presets.pool = { yaw: -2.1, pitch: 0.62, dist: 11, target: { x: place.x, y: place.y - 1.2, z: place.z } };
-    // The weather stands over this island: its centre, its top face, and the ground the rain lands on.
+    // The weather stands over this island: its centre, its top datum, and what the rain lands on, which is the
+    // ground's own terraces, the water wherever it stands, and the home island under the near end of the cell.
+    // Past all of those a drop has nothing to land on and falls out of sight.
     const centre = { x: place.x, y: place.y, z: place.z };
     const groundAt = (gx, gz) => {
-      const dx = gx - place.x, dz = gz - place.z, d2 = dx * dx + dz * dz;
-      // Rain that finds the stairwell falls all the way to the landing at the bottom of it.
-      if (d2 <= S.shaftR * S.shaftR) return place.y - S.shaftDepth + 0.1;
-      if (d2 <= S.isletR * S.isletR) return place.y;
-      return island.surfaceAt(gx, gz);
+      const lx = localX(gx, gz), lz = localZ(gx, gz), r = Math.hypot(lx, lz);
+      if (r < S.reach) {
+        const ground = r < L.LAKE_R ? L.membraneY(r) : L.groundAt(lx, lz);
+        if (ground > -Infinity) return place.y + Math.max(ground, water.levelAt(lx, lz));
+      }
+      return island.onLand(gx, gz) ? island.surfaceAt(gx, gz) : -Infinity;
     };
-    return { site, place, centre, groundAt, worldX, worldZ, cos, sin, claimGround, wildlife };
+    // Where a raindrop lands: on a crown where one stands over the ground, else on the ground or the water.
+    const rainAt = (gx, gz) => {
+      const ground = groundAt(gx, gz), i = Math.floor((localX(gx, gz) - L.ORIGIN.x) / L.UNIT), k = Math.floor((localZ(gx, gz) - L.ORIGIN.z) / L.UNIT);
+      return i < 0 || k < 0 || i >= L.SX || k >= L.SZ ? ground : Math.max(ground, place.y + crownTop[i * L.SZ + k]);
+    };
+    // Whether a world point is over the island, and whether rock or the lake stands over it: the tunnels, the
+    // chamber and its shaft. Height decides it, so someone under the forest is not standing in the forest.
+    const overAt = (wx, wz, margin = 0) => {
+      const dx = wx - place.x, dz = wz - place.z;
+      return dx * dx + dz * dz < S.reach * S.reach && L.onIsland(localX(wx, wz), localZ(wx, wz), margin);
+    };
+    const coveredAt = (wx, wy, wz) => {
+      const dx = wx - place.x, dz = wz - place.z;
+      return dx * dx + dz * dz < S.reach * S.reach && L.covered(localX(wx, wz), wy - place.y, localZ(wx, wz));
+    };
+    // Where the water carries a body whose feet are at `y`: `draught` under the surface, wherever that is clear
+    // of the bed. Only for someone in the water itself, so a walker in the chamber under the lake stays on its
+    // floor; and never more than `rise` above standing feet in one step, so rising water lifts a body, never throws it.
+    const floatAt = (wx, wz, y, rise, draught) => {
+      const dx = wx - place.x, dz = wz - place.z;
+      if (dx * dx + dz * dz > S.reach * S.reach) return -Infinity;
+      const lx = localX(wx, wz), lz = localZ(wx, wz), level = water.levelAt(lx, lz);
+      if (level === -Infinity) return -Infinity;
+      const r = Math.hypot(lx, lz), bed = r < L.LAKE_R ? L.membraneY(r) : L.groundAt(lx, lz), feet = y - place.y;
+      if (feet < bed - STEP_MAX || level - draught <= bed) return -Infinity;
+      // A body standing deeper than a step under where it would float is lifted a step at a time; one falling
+      // in lands at its float.
+      const up = level - draught;
+      return place.y + (rise > 0 && up > feet + rise ? feet + rise : up);
+    };
+    // Whether a point of the water's surface is over someone: for the pose, not the footing.
+    const afloat = (wx, wz, y, draught) => {
+      const dx = wx - place.x, dz = wz - place.z;
+      if (dx * dx + dz * dz > S.reach * S.reach) return false;
+      const level = water.levelAt(localX(wx, wz), localZ(wx, wz));
+      return level > -Infinity && Math.abs(y - place.y - (level - draught)) < 0.12;
+    };
+    // Previews for the maintainer, reached under debug as `__ooga.poolIsland.preview`: the lake at a backlog in
+    // MvB (null hands it back to the feed), a block's bolt and cube, and an Ooga put to sleep or woken by name.
+    const preview = {
+      lake: (mvb) => water.preview(mvb === null || mvb === undefined ? null : mvb * 1e6),
+      block: () => { weather.strike(); water.block(); },
+      sleep: (name, asleep = true) => {
+        const cave = crew.list.find((c) => c.traits.name === name);
+        if (!cave) return false;
+        cave.override = asleep ? "sleeping" : "chilling";
+        crew.refreshStates(true);
+        return true;
+      }
+    };
+    // What the outlines ask of this island's rock, in the world: whether nothing of it stands between two points,
+    // whether a point is in it, and whether a box is all rock or all open. The layout's grid answers exactly. A
+    // world box is asked as the island-frame box that holds it, so "all rock" and "all open" both stay proofs.
+    const sightClear = (ax, ay, az, bx, by, bz) => L.sightClear(localX(ax, az), ay - place.y, localZ(ax, az), localX(bx, bz), by - place.y, localZ(bx, bz));
+    const solidAt = (wx, wy, wz) => L.solidAt(localX(wx, wz), wy - place.y, localZ(wx, wz));
+    const turned = Math.abs(cos), across = Math.abs(sin);
+    const boxIn = (test) => (minX, minY, minZ, maxX, maxY, maxZ) => {
+      const cx = (minX + maxX) / 2, cz = (minZ + maxZ) / 2, hx = (maxX - minX) / 2, hz = (maxZ - minZ) / 2;
+      const lx = localX(cx, cz), lz = localZ(cx, cz), rx = turned * hx + across * hz, rz = across * hx + turned * hz;
+      return test(lx - rx, minY - place.y, lz - rz, lx + rx, maxY - place.y, lz + rz);
+    };
+    const boxSolid = boxIn(L.boxSolid), boxClear = boxIn(L.boxClear);
+    // What is walked on here rather than walked round: the bridge and the island's own ground in all its pieces.
+    const walked = new Set([site.bridge, site.ground, site.floor, site.membrane, ...site.crossings]);
+    return { site, place, centre, groundAt, rainAt, worldX, worldZ, localX, localZ, cos, sin, claimGround, wildlife, water, paintings, overAt, coveredAt, sightClear, solidAt, boxSolid, boxClear, floatAt, afloat, walked, layout: L, preview };
+  };
+  // Where the gorillas sleep while their Oogas do: the banana-leaf beds of the Mempool island's nests, and the dry
+  // way to each from the home island, as x, z pairs: up the approach stair, over the bridge, across the court,
+  // west round the lake on the ring path (the way the nests lie, and never past the ridge), and in at its nest.
+  const clankerBeds = () => {
+    const M = mempoolIsland, L = M.layout, D = poolModels.DIR, ring = (L.RING.lowland + L.RING.path) / 2, ARC = 18 * DEG;
+    const slots = L.SLOTS.map((slot) => ({
+      x: M.worldX(slot.x, slot.z), y: M.place.y + slot.y, z: M.worldZ(slot.x, slot.z), heading: slot.heading + M.place.ry, nest: slot.nest, bearing: L.NESTS[slot.nest].bearing
+    }));
+    const path = (index, out) => {
+      const bed = slots[index], to = bed.bearing - Math.PI * 2;
+      let n = 0;
+      const local = (lx, lz) => { out[n * 2] = M.worldX(lx, lz); out[n * 2 + 1] = M.worldZ(lx, lz); n++; };
+      out[0] = D.x * (poolModels.SITE.approachFrom - 0.8); out[1] = D.z * (poolModels.SITE.approachFrom - 0.8);
+      out[2] = D.x * (M.place.rimRadius - 0.3); out[3] = D.z * (M.place.rimRadius - 0.3);
+      n = 2;
+      local(0, L.R - 1.6); local(0, 15.4); local(0, ring);
+      for (let b = -ARC; b > to + 0.05; b -= ARC) local(Math.sin(b) * ring, Math.cos(b) * ring);
+      local(Math.sin(to) * ring, Math.cos(to) * ring);
+      out[n * 2] = bed.x; out[n * 2 + 1] = bed.z;
+      return n + 1;
+    };
+    // A mark of sleep is the Oogas' own, shown wherever it can be seen: it belongs to no Ooga's bed.
+    return { slots, path, mark: (x, y, z) => fx.zzzAt(x, y, z, null) };
   };
   const buildTimechainIsland = () => {
     const T = BL.timechainModels, site = T.build(island), p = site.place;
@@ -3130,15 +3347,29 @@
   };
   // Surface caves and the headquarters can share a column below the same roof.
   const supportAt = (x, z, y = Infinity) => island.supportAt(x, z, y, STEP_MAX);
+  // How far under the surface the Mempool island's water carries each kind of body, so its head stays above:
+  // an Ooga to its neck, by its own height, and a gorilla on all fours to its chest.
+  const OOGA_DRAUGHT = 0.55, GORILLA_DRAUGHT = 0.9;
+  // Afloat in the Mempool island's water a body treads it: arms out and sculling, nothing more. The same pose
+  // for the visitor's Ooga, the crew's and another player's, from where each already stands.
+  const floatPose = (cave, feet, height, phase, time) => {
+    const p = cave.root.position;
+    if (!mempoolIsland || !mempoolIsland.afloat(p.x, p.z, feet, height * OOGA_DRAUGHT)) return;
+    const parts = cave.parts, s = Math.sin(time * 2.4 + phase), c = Math.cos(time * 2.4 + phase);
+    parts.armL.rotation.z = 1.15 + s * 0.16; parts.armR.rotation.z = -1.15 - s * 0.16;
+    parts.armL.rotation.x = parts.armR.rotation.x = -0.25 + c * 0.22;
+    parts.legL.rotation.x = c * 0.3; parts.legR.rotation.x = -c * 0.3;
+  };
+  const waterSupportAt = (x, z, y, rise, player) => mempoolIsland ? mempoolIsland.floatAt(x, z, y, rise, player ? player.bodyHeight * OOGA_DRAUGHT : CLOSE_VIEW.eyeHeight * OOGA_DRAUGHT) : -Infinity;
   const playerSupportAt = (x, z, y = 0, previousY = y, player = pilot?.player, dockEntry = false, ignoreClanker = false) => {
     const step = player ? player.hop === 0 && player.hopV <= 0 : !pilot.freeFalling;
     const height = player ? player.bodyHeight + Math.max(0, player.viewLift) : CLOSE_VIEW.eyeHeight + CAMERA_RADIUS;
     const from = Math.max(y, previousY), rise = step ? STEP_MAX : 0;
-    return Math.max(island.supportAt(x, z, y, STEP_MAX, ABYSS_FLOOR, PLAYER_RADIUS), bedSupportAt(x, z, from, STEP_MAX, PLAYER_RADIUS), cloudFloorAt(x, z, from, rise, height, player), propSupportAt(x, z, from, rise, player, ignoreClanker), dockStairs ? dockStairs.supportAt(x, z, from, rise, player, dockEntry) : -Infinity);
+    return Math.max(island.supportAt(x, z, y, STEP_MAX, ABYSS_FLOOR, PLAYER_RADIUS), bedSupportAt(x, z, from, STEP_MAX, PLAYER_RADIUS), cloudFloorAt(x, z, from, rise, height, player), propSupportAt(x, z, from, rise, player, ignoreClanker), waterSupportAt(x, z, from, rise, player), dockStairs ? dockStairs.supportAt(x, z, from, rise, player, dockEntry) : -Infinity);
   };
   const abyssAt = (x, z, y, actor = pilot?.player) => playerSupportAt(x, z, y, y, actor) === ABYSS_FLOOR;
   const visualSupportAt = (x, z, y) => {
-    const floor = Math.max(cloudFloorAt(x, z, y, STEP_MAX), bedSupportAt(x, z, y, STEP_MAX, PLAYER_RADIUS), propSupportAt(x, z, y, STEP_MAX, pilot.player), dockStairs ? dockStairs.supportAt(x, z, y, STEP_MAX, pilot.player, false) : -Infinity);
+    const floor = Math.max(cloudFloorAt(x, z, y, STEP_MAX), bedSupportAt(x, z, y, STEP_MAX, PLAYER_RADIUS), propSupportAt(x, z, y, STEP_MAX, pilot.player), waterSupportAt(x, z, y, STEP_MAX, pilot.player), dockStairs ? dockStairs.supportAt(x, z, y, STEP_MAX, pilot.player, false) : -Infinity);
     return floor > -Infinity && floor > island.supportAt(x, z, y, STEP_MAX, ABYSS_FLOOR, PLAYER_RADIUS) ? floor : island.smoothSupportAt(x, z, y, STEP_MAX, PLAYER_RADIUS);
   };
   const PLAYER_RADIUS = 0.3;
@@ -3737,7 +3968,8 @@
     const height = gorilla ? cave.gorilla.bodyHeight : cave.bodyHeight, lift = gorilla ? 0 : Math.max(0, cave.viewLift);
     // Clip architectural roofs, not the floor the actor is standing on. Outdoors
     // the taller cut also preserves nearby gorillas and carried equipment.
-    const roof = Math.min(island.ceilingAt(p.x, feet + 0.02, p.z, PLAYER_RADIUS), entranceCeilingAt(p.x, p.z, feet + 0.02, PLAYER_RADIUS));
+    const roof = Math.min(island.ceilingAt(p.x, feet + 0.02, p.z, PLAYER_RADIUS), entranceCeilingAt(p.x, p.z, feet + 0.02, PLAYER_RADIUS),
+      mempoolIsland.overAt(p.x, p.z, -1) ? solids.ceilingAt(p.x, p.z, feet + 0.02, PLAYER_RADIUS) : Infinity);
     return Math.max(feet + height + lift + 0.08,
       Math.min(feet + Math.max(4, height + 0.35), roof - 0.06));
   };
@@ -3846,7 +4078,12 @@
     const cameraMix = player ? gorilla ? clankerPlay.birdsEyeMix : pilot.birdsEyeMix
       : Math.max(0, RENDER_OPTS.cutawayFade - dt / 0.3);
     const overhead = player && (gorilla ? clankerPlay.birdsEye : pilot.birdsEye);
-    const subterranean = player && player.root.position.y - (gorilla ? 0 : player.baseY) < -STEP_MAX;
+    // Under the Mempool island's ground counts by its own rock, not by height: its upper tunnels stand above
+    // the home island's surface and its forest floor is never "under" anything. 0 elsewhere, 1 on it, 2 under it.
+    const actorFeet = player ? player.root.position.y - (gorilla ? 0 : player.baseY) : 0;
+    cutawayPool = !player || !mempoolIsland.overAt(player.root.position.x, player.root.position.z, -1) ? 0
+      : mempoolIsland.coveredAt(player.root.position.x, actorFeet + 0.5, player.root.position.z) ? 2 : 1;
+    const subterranean = player && (cutawayPool ? cutawayPool === 2 : actorFeet < -STEP_MAX);
     const showRampMarkers = !!player && cameraMix > 0.5;
     for (const lintel of headquartersRimLintels) lintel.visible = !showRampMarkers;
     for (const marker of headquarters.rampMarkers) {
@@ -3918,6 +4155,8 @@
       let target = cutawayLevel <= 1 ? lerp(CUTAWAY_TOP, hq.ceiling - 0.06, cutawayLevel)
         : lerp(hq.ceiling - 0.06, hq.basement.ceiling - 0.06, cutawayLevel - 1);
       if (feet < hq.basement.floor - STEP_MAX) target = Math.min(target, birdsEyeCeiling(player, gorilla));
+      // The home island's floors mean nothing over there: cut at the roof over the walker, or not at all.
+      if (cutawayPool) target = cutawayPool === 2 ? birdsEyeCeiling(player, gorilla) : CUTAWAY_TOP;
       if (!Number.isFinite(cutawayHeight)) cutawayHeight = target;
       else cutawayHeight += clamp(target - cutawayHeight, -CUTAWAY_FLOOR_RATE * dt, CUTAWAY_FLOOR_RATE * dt);
       cutawayHeight = Math.max(cutawayHeight, cutawayHeadY);
@@ -3927,7 +4166,9 @@
     RENDER_OPTS.cutawayMaxY = slicing ? sliceY : 1e6;
     updateCutawayPaths(sliceY, slicing, rockMix);
     for (const entry of terrainSections) {
-      if (slicing) entry.cap.update(sliceY - entry.worldY, null, entry.paths ? CUTAWAY_PATH_STATE : null);
+      // A section with a `when` is capped only while it can be on screen: its cross-section is rebuilt at every
+      // half metre the cut moves through, which is wasted on an island the view is nowhere near.
+      if (slicing && (!entry.when || entry.when())) entry.cap.update(sliceY - entry.worldY, null, entry.paths ? CUTAWAY_PATH_STATE : null);
       else entry.cap.node.visible = false;
     }
     const caveRoofMix = 1 - cutawayBlend(cutawayHillMix, 0, 1);
@@ -4230,8 +4471,8 @@
     cloudObstacles.length = 0;
     cloudBox(-RADIUS - 4, -30, -RADIUS - 4, RADIUS + 4, 24, RADIUS + 4);
     const pool = mempoolIsland.place, poolSite = poolModels.SITE, poolDir = poolModels.DIR;
-    cloudBox(pool.x - poolSite.isletR - 4, pool.y - poolSite.isletDepth - 1, pool.z - poolSite.isletR - 4,
-      pool.x + poolSite.isletR + 4, pool.y + 25, pool.z + poolSite.isletR + 4);
+    cloudBox(pool.x - poolSite.reach - 3, pool.y - poolSite.isletDepth - 1, pool.z - poolSite.reach - 3,
+      pool.x + poolSite.reach + 3, pool.y + 25, pool.z + poolSite.reach + 3);
     cloudBridgeBox(pool.bridgeX, pool.bridgeZ, pool.x - poolDir.x * (poolSite.isletR - 1),
       pool.z - poolDir.z * (poolSite.isletR - 1), pool.y, poolSite.width);
     const sphere = timechainIsland.place, sphereSite = BL.timechainModels.SITE, sphereDir = BL.timechainModels.DIR;
@@ -4482,6 +4723,8 @@
     if (event.type === "block") {
       // Every block mined while the page is open strikes, whatever the weather is doing.
       weather.strike();
+      // And a cube of the lake leaves through the chamber. It takes nothing with it: the backlog says what is left.
+      mempoolIsland.water.block();
       hud.toast(`Block ${event.height} mined${event.txCount ? ` · ${event.txCount} transactions` : ""}`);
     }
   };
@@ -4588,26 +4831,43 @@
       },
       note: chainStatus
     },
-    rowPage(0, "Block height", (s) => s.lastTxCount ? `${gameMod.formatLarge(s.lastTxCount)} TX IN IT` : "", "The newest block on the chain. Every block mined while you are here throws a bolt over the rainforest."),
+    rowPage(0, "Block height", (s) => s.lastTxCount ? `${gameMod.formatLarge(s.lastTxCount)} TX IN IT` : "", "The newest block on the chain. Every block mined while you are here throws a bolt over the rainforest and drops a cube of the lake through the chamber under it."),
     rowPage(1, "Price", () => "US DOLLARS", "Bitcoin's price from a live exchange feed."),
     rowPage(2, "Mempool", (s) => s.count ? `${s.deep.toFixed(1)} BLOCKS DEEP` : "", "Transactions waiting for a block, and how many blocks of space they would fill."),
     rowPage(3, "Next-block fee", (s) => s.hourFee ? `HOUR ${String(+s.hourFee.toFixed(s.hourFee >= 10 ? 0 : 2))} SAT/VB` : "", "The fee rate that gets a transaction into the next block, in sats per virtual byte, with the rate for within the hour under it.")
   ]);
+  // The key to the island: what arrives makes the weather, what waits fills the lake, and a block is a bolt and a
+  // cube. A reading that has stopped being fed goes grey and says so; it is never drawn as a calm zero.
   const weatherBoard = poolBoard("Reading the weather", [
     {
       caption: "Rain",
-      draw: (c2, s) => reading(c2, "RAIN", weatherMod.STEPS[weather.state.step].name.toUpperCase(), s.live ? "#8fc3ff" : STALE_INK, "PAYING BACKLOG", s.soak),
-      note: () => "The backlog paying at least 1 sat/vB, averaged over ten minutes. Dry, drizzle, light rain, rain, heavy rain, then a downpour as it grows, and it keeps falling until the fee-paying pool clears. The cheap sub-sat pile underneath doesn't count."
+      draw: (c2) => {
+        const live = weather.state.arrivals === "live";
+        reading(c2, "RAIN", live ? weatherMod.STEPS[weather.state.step].name.toUpperCase() : "UNAVAILABLE", live ? "#8fc3ff" : STALE_INK, live ? `${gameMod.formatLarge(Math.round(weather.state.inflow))} VB/S ARRIVING` : "NO ARRIVALS HEARD", live ? weather.state.storm : -1);
+      },
+      note: () => "Transactions arriving, in virtual bytes a second (vB/s), averaged over half a minute. The more that arrive, the darker the cloud and the harder it rains: dry, drizzle, light rain, rain, heavy rain, then a downpour. With nothing heard from the feed for a minute and a half the storm eases off and this reads unavailable. That is not the same as nothing arriving."
     },
     {
       caption: "Wind",
-      draw: (c2, s) => reading(c2, "WIND", `${gameMod.formatLarge(Math.round(s.inflow))} VB/S`, s.live ? "#e6f2ff" : STALE_INK, "TRANSACTIONS ARRIVING", s.gale),
-      note: () => "Transactions turning up, in vbytes a second. The busier it gets, the further the rain leans over. Rain always slants the way the wind is going, never into it."
+      draw: (c2) => {
+        const live = weather.state.arrivals === "live";
+        reading(c2, "WIND", live ? `${gameMod.formatLarge(Math.round(weather.state.inflow))} VB/S` : "UNAVAILABLE", live ? "#e6f2ff" : STALE_INK, "TRANSACTIONS ARRIVING", live ? weather.state.gale : -1);
+      },
+      note: () => "The same arrivals, as they come. The busier it gets, the further the rain leans over. Rain always slants the way the wind is going, never into it."
+    },
+    {
+      caption: "The lake",
+      draw: (c2, s) => {
+        const water = mempoolIsland.water.state, W = BL.poolLayout.WATER;
+        reading(c2, "LAKE", water.status === "unavailable" ? "NO READING" : `${(water.vsize / 1e6).toFixed(1)} MVB`, water.status === "live" ? "#7cc8ff" : STALE_INK,
+          water.status === "stale" ? "HELD, READING IS STALE" : "WAITING BACKLOG", water.status === "unavailable" ? -1 : (water.level - W.low) / (W.flood - W.low), "#4aa6ff");
+      },
+      note: (s) => `Everything waiting for a block, in millions of virtual bytes (MvB), fills the lake. At about ${BL.poolWater.HYDRO.OVERFLOW_VB / 1e6} MvB it reaches its rim, floods the shore and the channels, and pours over the cliffs. That is this island's own scale, not a limit of Bitcoin. The part of the backlog paying 1 sat/vB or more${s.paying ? ` (${s.paying.toFixed(1)} MvB now)` : ""} is still read, but it no longer makes the rain.`
     },
     {
       caption: "Lightning",
-      draw: (c2, s) => reading(c2, "LAST BLOCK", s.height ? String(s.height) : "-", s.live ? "#ffe066" : STALE_INK, "A BOLT EACH BLOCK"),
-      note: () => "Somebody found a block. Every one of them throws a bolt over the island, whatever the weather is doing, and only a block does."
+      draw: (c2, s) => reading(c2, "LAST BLOCK", s.height ? String(s.height) : "-", s.live ? "#ffe066" : STALE_INK, "A BOLT AND A CUBE"),
+      note: () => "Somebody found a block. Every one throws a bolt over the island and sends a cube of the lake down through the chamber to the sea, and only a block does. The cube takes nothing with it: the next backlog reading says what is left."
     }
   ]);
   const openPoolBoard = (board) => {
@@ -4617,6 +4877,8 @@
   // The standing chain snapshot: how full the pool is, how fast blocks land, how hard they arrive.
   const onChain = (snapshot) => {
     weather.apply(snapshot);
+    mempoolIsland.water.apply(snapshot);
+    mempoolIsland.paintings.refresh(snapshot);
     refreshChainSign();
     // The boards' canvases only feed the dialog, and openPoolBoard repaints on open.
     if (hud.el.board.open) {
@@ -4763,7 +5025,7 @@
         break;
       case "flower":
         if (!wobble(o.node, 0.4)) return;
-        fx.burst(x, 0.35, z, 8, PETALS, 1.1);
+        fx.burst(x, mempoolIsland.overAt(x, z) ? w[13] + 0.35 : 0.35, z, 8, PETALS, 1.1);
         break;
       case "torch":
         o.node.flare = 1;
@@ -4794,9 +5056,12 @@
       case "gate":
         hud.toast(bifrostIsle ? "₿IFRÖST · Bifröst starts here" : `${caves.gate.name} · leads nowhere yet`);
         break;
-      case "poolstair":
       case "poolsign":
-        enterScene(presets.pool, "pool");
+        hud.toast("The Mempool is under the lake. Walk in through the hill.");
+        break;
+      case "poolpainting":
+        o.stop.board.index = 0;
+        hud.openBoard(o.stop.board);
         break;
       case "poolbridge":
         hud.toast("Vines and planks. The Mempool is across.");
@@ -4836,7 +5101,7 @@
         break;
       case "canopy":
         if (!wobble(o.node, 0.08)) return;
-        fx.burst(x, 4.2, z, 10, [LEAF], 1.7);
+        fx.burst(x, w[13] + 4.2, z, 10, [LEAF], 1.7);
         if (RENDER_OPTS.stars > NIGHT) critters.burst(x, z);
         if (!dropBanana(o, TREE_CHANCE)) hud.toast("Leaves and lianas.");
         break;
@@ -5672,6 +5937,14 @@
       setVec(target, (player ? a.x : q.x) + Math.sin(a.yaw) * out, player ? a.y + 1.4 : q.floorY + 2.2, (player ? a.z : q.z) + Math.cos(a.yaw) * out);
       pitch = player ? 0.28 : 0.12;
       dist = player ? 6 : 11;
+    } else if (name === "mempool" && mempoolIsland) {
+      // The chamber under the lake: on its floor before the first painting, the shaft and the membrane behind.
+      const M = mempoolIsland, floor = M.place.y + M.layout.FLOOR;
+      yaw = M.place.ry + Math.PI;
+      x = M.worldX(0, 7.4); z = M.worldZ(0, 7.4);
+      setVec(target, M.worldX(0, M.layout.CHAMBER_R - 0.1), floor + 2.3, M.worldZ(0, M.layout.CHAMBER_R - 0.1));
+      pitch = player ? 0.1 : 0.06;
+      dist = player ? 5 : 7.5;
     } else if (underground) {
       z = 6;
       setVec(target, 0, (basement ? island.headquarters.basement.floor : island.headquarters.floor) + 0.8, 0);
@@ -5686,8 +5959,8 @@
     arrivals: for (const depth of depths) for (const offset of NAVIGATION_SIDES) {
       p.x = x + Math.cos(yaw) * offset + Math.sin(yaw) * depth;
       p.z = z - Math.sin(yaw) * offset + Math.cos(yaw) * depth;
-      p.y = name === "timechain" ? timechainIsland.place.y : name === "bifrost" ? bifrostIsle.site.arrival.y : underground ? (basement ? island.headquarters.basement.floor : island.headquarters.floor) : island.surfaceAt(p.x, p.z);
-      if (name !== "timechain" && name !== "bifrost" && !island.onLand(p.x, p.z) || !navigationClearAt(p.x, p.y + 1e-5, p.z, PLAYER_RADIUS, player ? player.bodyHeight : 1.6)) continue;
+      p.y = name === "timechain" ? timechainIsland.place.y : name === "mempool" ? mempoolIsland.place.y + mempoolIsland.layout.FLOOR : name === "bifrost" ? bifrostIsle.site.arrival.y : underground ? (basement ? island.headquarters.basement.floor : island.headquarters.floor) : island.surfaceAt(p.x, p.z);
+      if (name !== "timechain" && name !== "bifrost" && name !== "mempool" && !island.onLand(p.x, p.z) || !navigationClearAt(p.x, p.y + 1e-5, p.z, PLAYER_RADIUS, player ? player.bodyHeight : 1.6)) continue;
       destination.yaw = Math.atan2(p.x - target.x, p.z - target.z);
       destination.pitch = close ? Math.atan2(p.y + (player ? player.headOffset * CLOSE_VIEW.eyeRatio : CLOSE_VIEW.eyeHeight) - target.y, Math.hypot(p.x - target.x, p.z - target.z)) : pitch;
       const arrivalDist = dist + depth;
@@ -5741,7 +6014,7 @@
     const feet = p.y - (gorilla ? 0 : player ? player.baseY : pilot.closeWanted ? CLOSE_VIEW.eyeHeight : 0);
     let area = "HUB";
     if (timechainIsland && Math.hypot(p.x - timechainIsland.place.x, p.z - timechainIsland.place.z) < BL.timechainModels.SITE.radius) area = "SPHERE";
-    else if (mempoolIsland && Math.hypot(p.x - mempoolIsland.place.x, p.z - mempoolIsland.place.z) < poolModels.SITE.isletR) area = "RAINFOREST";
+    else if (mempoolIsland && mempoolIsland.overAt(p.x, p.z)) area = mempoolIsland.coveredAt(p.x, feet + 0.5, p.z) ? "MEMPOOL" : "RAINFOREST";
     else {
       const hq = island.headquarters, y = feet + 0.08;
       if (island.cavityAt(p.x, p.z, AREA_COLUMN, hq.caveIndex, y) && AREA_COLUMN.caveIndex === hq.caveIndex
@@ -5818,7 +6091,7 @@
     return true;
   };
   const cameraSegmentClear = (x, y, z, toX, toY, toZ) => cameraClearAt(toX, toY, toZ) && island.voxelSegmentClearAt(x, y - CAMERA_RADIUS, z, toX, toY - CAMERA_RADIUS, toZ, CAMERA_RADIUS, CAMERA_RADIUS * 2) && entranceSegmentClear(x, y, z, toX, toY, toZ) && bedSegmentClear(x, y - CAMERA_RADIUS, z, toX, toY - CAMERA_RADIUS, toZ, CAMERA_RADIUS, CAMERA_RADIUS * 2);
-  const sleepEyeFloorAt = (player) => player.bedroll.y + player.bedroll.sleep.pillowTop + CAMERA_RADIUS;
+  const sleepEyeFloorAt = (player) => player.bedroll.y + (player.bedroll.sleep?.pillowTop || 0) + CAMERA_RADIUS;
   const cameraHeadAt = (out, player) => {
     if (crew.sleeping) {
       const head = player.sleepHead;
@@ -6007,6 +6280,12 @@
       return;
     }
   };
+  // Below the home island's surface: flying under it, or down in its rooms. The Mempool island's tunnels and
+  // chamber lie lower than the home island's ground too, and are neither: its own rock encloses the view there.
+  const belowHome = (player) => {
+    const p = player.root.position, feet = p.y - player.baseY;
+    return feet < island.surfaceAt(p.x, p.z) - STEP_MAX && !mempoolIsland.coveredAt(p.x, feet + 0.5, p.z);
+  };
   const clampCamera = (p, closeMix = 0, closeClearance = CLEARANCE, smoothStep = false, dt = 0, resetSmooth = false, directView = false, freeMove = false, preserveExitAngle = false) => {
     const requestedX = p.x, requestedY = p.y, requestedZ = p.z;
     const player = pilot && pilot.player;
@@ -6040,7 +6319,7 @@
     }
     cameraReentering = false;
     if (!player) cameraUnrestricted = false;
-    const exteriorFlight = player && (abyssAt(player.root.position.x, player.root.position.z, player.root.position.y - player.baseY) || !playerCaveIndex && player.root.position.y - player.baseY < island.surfaceAt(player.root.position.x, player.root.position.z) - STEP_MAX);
+    const exteriorFlight = player && (abyssAt(player.root.position.x, player.root.position.z, player.root.position.y - player.baseY) || !playerCaveIndex && belowHome(player));
     if (exteriorFlight) smoothStep = false;
     if (cameraManualContact && player === cameraTrailPlayer && cameraPreviousValid && !directView && closeMix === 0) {
       const body = player.root.position;
@@ -6059,7 +6338,7 @@
       if (rampOpening) setCameraCave(rampOpening.caveIndex);
     }
     const previousCaveIndex = cameraCaveIndex;
-    const undergroundAir = (freeMove || player && player.root.position.y - player.baseY < island.surfaceAt(player.root.position.x, player.root.position.z) - STEP_MAX) && (CAMERA_PREVIOUS.y < -CAMERA_RADIUS || previousCaveIndex && CAMERA_OPENINGS[previousCaveIndex - 1].headquarters);
+    const undergroundAir = (freeMove || player && belowHome(player)) && (CAMERA_PREVIOUS.y < -CAMERA_RADIUS || previousCaveIndex && CAMERA_OPENINGS[previousCaveIndex - 1].headquarters);
     const clearance = lerp(player ? CAMERA_RADIUS : CLEARANCE, Math.max(smoothStep ? CAMERA_STEP_FLOOR : CAMERA_FLOOR, closeClearance), closeMix);
     let opening = cameraCaveIndex ? CAMERA_OPENINGS[cameraCaveIndex - 1] : null, start = 0, exit = false;
     setVec(CAMERA_FROM, CAMERA_PREVIOUS.x, CAMERA_PREVIOUS.y, CAMERA_PREVIOUS.z);
@@ -6364,7 +6643,20 @@
     hour = clock.read();
     daylight.sample(hour, RENDER_OPTS, clock.dayOfYear, islandLatitude, clock.continuousDay, clock.utcMs);
     RENDER_OPTS.time = elapsed;
-    weather.update(dt, RENDER_OPTS);
+    // Under the Mempool island's ground the storm is muffled and the daylight shut out: no shadow reaches that
+    // island, so its tunnels would otherwise stand in full sun. The fires and the water light them instead.
+    // By where the eye is, not what it looks at: a view from outside aimed into the rock is still outdoors.
+    const sheltered = mempoolIsland.coveredAt(camera.position.x, camera.position.y, camera.position.z) ? 1 : 0;
+    poolShade += clamp(sheltered - poolShade, -dt * 1.6, dt * 1.6);
+    poolUnder += clamp((cutawayPool === 2 ? 1 : 0) - poolUnder, -dt * 1.6, dt * 1.6);
+    weather.update(dt, RENDER_OPTS, poolShade);
+    if (poolShade > 0) {
+      const keep = 1 - 0.4 * poolShade;
+      RENDER_OPTS.directStrength *= 1 - 0.92 * poolShade;
+      for (let i = 0; i < 3; i++) { RENDER_OPTS.sky[i] *= keep; RENDER_OPTS.ground[i] *= keep; }
+    }
+    mempoolIsland.water.update(dt, elapsed);
+    mempoolIsland.paintings.update(dt);
     updateLamps(dt, elapsed, phase !== null);
     if (jumbotron) {
       jumbotron.update(elapsed, renderer);
@@ -6422,6 +6714,8 @@
     }
     for (let i = 0; i < clankers.list.length; i++) {
       const entry = clankers.list[i], p = entry.root.position;
+      // Afloat in the Mempool island's water a gorilla paddles: the rig poses it, this only says so.
+      entry.motion.swim = entry.active && mempoolIsland.afloat(p.x, p.z, p.y, GORILLA_DRAUGHT) ? 1 : 0;
       if (!entry.active || p.y >= ABYSS_RESPAWN_Y || island.supportAt(p.x, p.z, p.y, 0, ABYSS_FLOOR) !== ABYSS_FLOOR) continue;
       if (!entry.controlled) { clankers.respawn(entry); continue; }
       // Use the character's pile arrival and abyss threshold. Keep possession
@@ -6454,6 +6748,10 @@
       timechainIsland.show(dt);
     }
     crew.update(dt, elapsed);
+    for (let i = 0; i < crew.list.length; i++) {
+      const cave = crew.list[i];
+      if (cave.root.visible) floatPose(cave, cave.root.position.y - cave.baseY, cave.bodyHeight, cave.phase, elapsed);
+    }
     npcSync.update(dt);
     shareDrivenOoga();
     remotes.update(dt);
@@ -6588,7 +6886,8 @@
   const shareDrivenOoga = () => {
     const driven = crew.player;
     BL.net.setBody(driven ? driven.traits.name : null);
-    if (driven) BL.net.setZone(zoneName(playerCaveIndex));
+    // The chamber and tunnels under the Mempool island are one room of their own, as a cave is.
+    if (driven) BL.net.setZone(!playerCaveIndex && mempoolIsland.coveredAt(driven.root.position.x, driven.root.position.y - driven.baseY + 0.5, driven.root.position.z) ? "cave-mempool" : zoneName(playerCaveIndex));
     if (driven) BL.net.sendPose(driven.root.position.x, driven.root.position.y - driven.baseY, driven.root.position.z, driven.root.rotation.y);
   };
   const drawExtra = (ctx2d, project, drawBubble) => {
@@ -6656,6 +6955,21 @@
   const guideSegmentClear = (x, y, z, toX, toY, toZ) => island.sightClearAt(x, y, z, toX, toY, toZ);
   guideSegmentClear.boxClear = (minX, minY, minZ, maxX, maxY, maxZ) => island.sightBoxClearAt(minX, minY, minZ, maxX, maxY, maxZ);
   guideSegmentClear.boxSolid = (minX, minY, minZ, maxX, maxY, maxZ) => island.sightBoxSolidAt(minX, minY, minZ, maxX, maxY, maxZ);
+  // Sight for someone on or under the Mempool island, asked only for the walker's own rim: both islands' rock
+  // answers, and only the rock a roof cut leaves standing. The outline registry remembers its answer by which
+  // seam asked, so there are two alike and the one in use changes whenever the cut's height does.
+  const poolSeamOf = () => {
+    const seam = (x, y, z, toX, toY, toZ) => island.sightClearAt(x, y, z, toX, toY, toZ) && mempoolIsland.sightClear(x, y, z, toX, toY, toZ);
+    seam.boxSolid = (minX, minY, minZ, maxX, maxY, maxZ) => maxY <= RENDER_OPTS.cutawayMaxY
+      && (island.sightBoxSolidAt(minX, minY, minZ, maxX, maxY, maxZ) || mempoolIsland.boxSolid(minX, minY, minZ, maxX, maxY, maxZ));
+    return seam;
+  };
+  const POOL_SEAMS = [poolSeamOf(), poolSeamOf()];
+  let poolSeamIndex = 0, poolSeamCut = NaN;
+  const poolSeam = () => {
+    if (RENDER_OPTS.cutawayMaxY !== poolSeamCut) { poolSeamCut = RENDER_OPTS.cutawayMaxY; poolSeamIndex ^= 1; }
+    return POOL_SEAMS[poolSeamIndex];
+  };
   const GUIDE_RAMP_COLUMN = { floor: 0, ceiling: 0 };
   const exteriorRampGuides = (player) => {
     const eye = camera.position, p = player.root.position, feet = p.y - player.baseY;
@@ -6729,7 +7043,7 @@
       const reach = radius;
       const bridge = Math.abs(across) + reach < s.width / 2
         && along >= p.bridgeLocalZ + s.deckStart - reach && along <= p.bridgeLocalZ + s.span + reach;
-      admitted = bridge || Math.hypot(dx, dz) + reach < s.isletR * 0.9;
+      admitted = bridge || mempoolIsland.layout.onIsland(across, along, reach);
     }
     // These floors are solid-prop meshes outside the main terrain's domain.
     // Use the queried footprint circle, not the complete body's bounding
@@ -7277,6 +7591,7 @@
       let floor = island.supportAt(x, z, y, terrainStep, ABYSS_FLOOR, 0);
       if (props) {
         floor = Math.max(floor, solids.supportAt(x, z, y, step, 0, null, null, true));
+        if (mempoolIsland) floor = Math.max(floor, mempoolIsland.floatAt(x, z, y, step, GORILLA_DRAUGHT));
         if (ALTAR_HEIGHT <= y + step + 1e-7
           && x * x + z * z < altar.platformRadius * altar.platformRadius) floor = Math.max(floor, ALTAR_HEIGHT);
         if (floor > ABYSS_FLOOR + BL.clankers.PROP_STEP) {
@@ -7352,6 +7667,7 @@
     if (!props) return floor;
     const radius = altar.platformRadius - 1e-7;
     return Math.max(floor, solids.supportAt(x, z, y, step, 0, null, null, true), solids.gorillaStepAt(x, z, y, step),
+      mempoolIsland ? mempoolIsland.floatAt(x, z, y, step, GORILLA_DRAUGHT) : ABYSS_FLOOR,
       ALTAR_HEIGHT <= y + step + 1e-7 && x * x + z * z < radius * radius ? ALTAR_HEIGHT : ABYSS_FLOOR);
   };
   const clankerTerraceAt = (x, y, z, heading) => {
@@ -8012,7 +8328,15 @@
       sightGuides.state.structure = sightGuides.state.structures = null;
       bananaGuides.state.structure = bananaGuides.state.structures = null;
       if (rockGuides) rockGuides.resetSurface();
-      cameraCover.draw(camera, null, false, false, cameraRockAt, cameraRockMaterialAt, null, dt);
+      // Under the Mempool island the cut takes the roof and leaves the tunnel's walls, which from a low view still
+      // hide the walker: then the walker's rim is drawn through them, and nothing else. Not from an eye that is
+      // itself inside that rock, whose back faces are not drawn, so the walker is already in plain sight.
+      const eye = camera.position;
+      const buried = !combatBirdsEye && cutawayPool === 2 && !!player && !pilot.closeWanted && pilot.closeMix < 1
+        && (eye.y > RENDER_OPTS.cutawayMaxY || !mempoolIsland.solidAt(eye.x, eye.y, eye.z))
+        && (collectViewObjects(), !objectGuides.actorVisible(player, poolSeam()));
+      cameraCover.state.opacity = 0.22 * (1 - pilot.closeMix);
+      cameraCover.draw(camera, buried ? player.root : null, false, buried, cameraRockAt, cameraRockMaterialAt, null, dt);
       return;
     }
     const insideMirror = !!player && playerCaveIndex === matrixCave.caveIndex;
@@ -8036,11 +8360,15 @@
       const objects = uiGuideObjects || collectViewObjects();
       exteriorRamp = !pilot.closeWanted && pilot.closeMix < 1 && exteriorRampGuides(player);
       const viewEligible = !pilot.closeWanted && pilot.closeMix < 1;
-      const actorVisible = viewEligible && objectGuides.actorVisible(player, guideSegmentClear);
-      const rockSection = viewEligible && touchesRock && actorVisible && !exteriorRamp;
-      const objectsEnabled = viewEligible && (exteriorRamp || rockSection || !actorVisible);
+      // On the Mempool island only the walker's own rim is drawn through its rock: the whole island is one owner
+      // in the outline registry, crowns and all, and the full pass over it is not paid for there.
+      // Nor is a rim drawn from an eye inside this rock, which sees the walker through its own undrawn back faces.
+      const actorVisible = viewEligible && (cutawayPool ? mempoolIsland.solidAt(camera.position.x, camera.position.y, camera.position.z) || objectGuides.actorVisible(player, poolSeam())
+        : objectGuides.actorVisible(player, guideSegmentClear));
+      const rockSection = viewEligible && !cutawayPool && touchesRock && actorVisible && !exteriorRamp;
+      const objectsEnabled = viewEligible && !cutawayPool && (exteriorRamp || rockSection || !actorVisible);
       const bananaEnabled = bananaCover.state.cameraInPile;
-      occluded = objectsEnabled;
+      occluded = cutawayPool ? viewEligible && !actorVisible : objectsEnabled;
       guides = sightGuides.update(player, null, objects, camera, aspect, dt, objectsEnabled, rockSection, SIGHT_RECOMPUTE_HZ);
       // Keep a separate cap pass so split objects stay legible in fruit.
       // It must not change the visibility rules in the clear part of the view.
@@ -8064,7 +8392,7 @@
       GUIDE_ACTOR_FORWARD[0] = (t.x - p.x) / length; GUIDE_ACTOR_FORWARD[1] = (t.y - p.y) / length; GUIDE_ACTOR_FORWARD[2] = (t.z - p.z) / length;
     }
     cameraCover.state.opacity = 0.22 * (1 - pilot.closeMix);
-    cameraCover.draw(camera, bananaActor ? null : player?.root, touchesRock, occluded, cameraRockAt, cameraRockMaterialAt, guides, dt, MATRIX_WORLD.active ? 1 : 0, CAMERA_GLYPHS, exteriorRamp ? guideActorVisibleAt : null);
+    cameraCover.draw(camera, bananaActor ? null : player?.root, touchesRock, occluded, cameraRockAt, cameraRockMaterialAt, cutawayPool && player ? null : guides, dt, MATRIX_WORLD.active ? 1 : 0, CAMERA_GLYPHS, exteriorRamp ? guideActorVisibleAt : null);
     bananaCover.draw(camera, player, dt, guideActorVisibleAt, bananaGuides.state, CAMERA_GLYPHS);
     drawFirstPersonFire(player);
   };
@@ -8146,7 +8474,7 @@
     clock = daylight.createClock({ hour: hourParam, daylen: daylenParam, day: dayParam, time: timeParam, now: new Date() });
     phase = null;
     island = terrain.island({ seed: SEED });
-    guideSegmentClear.boxGrid = island.sightGrid;
+    guideSegmentClear.boxGrid = POOL_SEAMS[0].boxGrid = POOL_SEAMS[1].boxGrid = island.sightGrid;
     buildCameraRamps();
     cameraCaveIndex = 0;
     cameraEntranceIndex = 0;
@@ -8323,12 +8651,15 @@
     shared.reloadRadius = () => island.path.debug.ringCenterRadius;
     shared.reloadHeight = ALTAR_HEIGHT;
     shared.onAbyssRespawn = loseAbyssAmmo;
+    shared.underHome = (x, z) => x * x + z * z < (RADIUS + 2) * (RADIUS + 2);
     shared.characterOccluded = characterUiOccluded;
     shared.renderOpts = RENDER_OPTS;
     fx = shared.fx = fxMod.create(shared);
-    weather = weatherMod.create({ root, renderer, camera, heightAt: mempoolIsland.groundAt, fx, centre: mempoolIsland.centre });
+    weather = weatherMod.create({ root, renderer, camera, heightAt: mempoolIsland.rainAt, fx, centre: mempoolIsland.centre });
     // The snapshot outlives the visit, so a re-entered hub opens in the weather it left.
     weather.apply(chain.snapshot);
+    mempoolIsland.water.apply(chain.snapshot);
+    mempoolIsland.paintings.refresh(chain.snapshot);
     refreshChainSign();
     unsubscribeChain = chain.subscribe(onChain);
     unsubscribeMempool = mempool.subscribe(onMempool);
@@ -8350,8 +8681,9 @@
     shared.shoulderObstacle = (cave, fx, fz, reach, out) => {
       const p = cave.root.position;
       if (!solids.shoulderAt(p.x, p.y - cave.baseY + STEP_MAX, p.z, fx, fz, PLAYER_RADIUS, Math.max(0, cave.bodyHeight - STEP_MAX), reach, out, p.y - cave.baseY + 1e-7)) return false;
-      if (!out.node.sightSolid && out.node !== mempoolIsland.site.bridge) return true;
-      // A level probe can hit later stair treads or a bridge deck above the current feet.
+      if (!out.node.sightSolid && !mempoolIsland.walked.has(out.node)) return true;
+      // A level probe can hit later stair treads, a bridge deck above the current feet, or the Mempool island's
+      // own ground rising ahead: a terrace, the lake's bowl, a ramp. That ground is walked on, never passed round.
       // Follow ordinary support in short swept steps before treating the
       // whole staircase as a tall prop that must be passed sideways.
       const steps = Math.max(1, Math.ceil(reach / 0.125));
@@ -8370,7 +8702,7 @@
       const p = cave.root.position, feet = p.y - cave.baseY + 1e-5;
       // A bridge pass may have started before its next tread was reachable. Use the same raised-foot
       // clearance as walking to release that pass, rather than sweeping feet straight into the deck edge.
-      if (cave.shoulder.obstacle.node === mempoolIsland.site.bridge) return walkable(p.x, p.z, x, z, p.y - cave.baseY, cave.bodyHeight, cave);
+      if (mempoolIsland.walked.has(cave.shoulder.obstacle.node)) return walkable(p.x, p.z, x, z, p.y - cave.baseY, cave.bodyHeight, cave);
       return (cave === pilot.player ? solids.escapeSegmentClear : solids.segmentClear)(p.x, feet, p.z, x, feet, z, PLAYER_RADIUS, cave.bodyHeight - 1e-5);
     };
     shared.onBodyMove = moveCampBody;
@@ -8455,6 +8787,8 @@
     shared.npcPaths = headquarters.npcPaths = BL.npcPaths.create({ island, walkable: npcWalkable, pointAllowed: (x, z) => !npcClosedCaveAt(x, z) && !npcRampRoofAt(x, island.surfaceAt(x, z), z),
       surfaceAt: (x, z, y) => island.supportAt(x, z, y, 1e-6, null, PLAYER_RADIUS) });
     const sleepNavigation = headquarters.sleepNavigation = BL.headquartersSleep.create({ island, beds: bedrolls, walkable: sleepRouteClear, surfaceRoute: shared.npcPaths.route });
+    shared.outdoorBedrolls = headquarters.outdoorBeds = BL.headquartersSleep.outdoorBeds(island, caves.slots,
+      (x, y, z) => physicalClearAt(x, y, z, 0.15, 1.5, null) && propSegmentClear(x, y, z, x, y, z, 0.15, 1.5, null));
     const sleepRouteFrom = { x: 0, y: 0, z: 0 };
     // An Ooga stood up on its mattress plans from the floor under it: the planner joins a start to its graph along the
     // island's floor both ways, and that floor never climbs back onto a bed, so a start on one would never join.
@@ -8560,7 +8894,7 @@
     shared.outsideActorHeight = REMOTE_BODY_HEIGHT;
     shared.localOnline = localOnline;
     crew = shared.crew = crewMod.create(shared);
-    remotes = BL.remotePlayers.create({ root, crew });
+    remotes = BL.remotePlayers.create({ root, crew, posed: (cave, feet) => floatPose(cave, feet, cave.bodyHeight || 1.4, 0, now) });
     // Signed-in pages keep the crew in step: one runs it for everyone, the others follow its frames. The
     // crew's effects, shots and work hooks pass through the sync, which notes them while this page hosts;
     // a following page replays them into the same effects and gorillas.
@@ -8660,6 +8994,7 @@
     }
     const labSiteIndex = shared.workSites.findIndex(site => site.mouth === entropyLab.mouth);
     clankers = BL.clankers.create({ root, crew, sites: shared.workSites, loungeRoofs, loungeAreas, climbRoofs, chillZones, descentWalls,
+      sleep: clankerBeds(),
       walkingPeersClear: clankerWalkingPeersClear,
       debugMovement: DEBUG_GORILLA_MOVE, debugMinY: ABYSS_RESPAWN_Y,
       labSite: labSiteIndex,
@@ -8833,7 +9168,7 @@
     mirrorGuides = mirrorCave.guides = BL.mirrorGuides.create({ mirror: mirrorCave, stand: matrixControl.button });
     // Scenery may receive outlines, but only island rock activates the hidden character view.
     // Banana interiors keep their separate covered-view pass.
-    objectGuides = headquarters.objectGuides = BL.objectGuides.create({ roots: root.children, crew, actorRoots: clankers.list.map((entry) => entry.root), exclude: [...terrainRampRoof.geometries, pathNode.geometry], providers: [pileGuides, platformGuides, mirrorGuides], propsBlockActor: false, perceptionThrough: (actor) => inBananas(actor) ? pile.core : null });
+    objectGuides = headquarters.objectGuides = BL.objectGuides.create({ roots: root.children, crew, actorRoots: clankers.list.map((entry) => entry.root), exclude: [...terrainRampRoof.geometries, pathNode.geometry, mempoolIsland.site.ground.geometry], providers: [pileGuides, platformGuides, mirrorGuides], propsBlockActor: false, perceptionThrough: (actor) => inBananas(actor) ? pile.core : null });
     const guideOptions = { segmentClear: guideSegmentClear, objectClear: objectGuides.cameraClear, actorClear: objectGuides.perceptionClear, eyeAt: guideEyeAt, ownerBoundary: objectGuides.ownerBoundaryAt, ownerPerceived: objectGuides.perceived, ownerConcealed: objectGuides.concealed, ownerDistance: objectGuides.distance, ownerInView: objectGuides.inView, ownerClear: objectGuides.ownerClear, getProvider: objectGuides.getProvider };
     sightGuides = BL.sightGuides.create(guideOptions);
     bananaGuides = BL.sightGuides.create(guideOptions);
@@ -9124,6 +9459,9 @@
     if (chainSign && chainSign.node.geometry) renderer.releaseGeometry(chainSign.node.geometry);
     chainSign = null;
     weather.dispose();
+    mempoolIsland.water.dispose();
+    mempoolIsland.paintings.dispose();
+    mempoolIsland.wildlife.dispose();
     for (const entry of terrainSections) { entry.cap.dispose(); removeChild(entry.cap.node.parent, entry.cap.node); }
     for (const entry of caveSections) { entry.cap.dispose(); removeChild(entry.cap.node.parent, entry.cap.node); }
     terrainSections.length = caveSections.length = 0;
@@ -9138,6 +9476,7 @@
     cutawayFeet = 0;
     cutawayX = cutawayZ = cutawayHeadY = 0;
     cutawayHill = false;
+    cutawayPool = 0; poolShade = poolUnder = 0;
     cutawayPlayer = null;
     cutawayTravelRamp = null; cutawayTravelChannel = -1; cutawayTravelStation = 0;
     CUTAWAY_PATH_STATE.lo.fill(0); CUTAWAY_PATH_STATE.hi.fill(0); CUTAWAY_PATH_STATE.mix.fill(0); CUTAWAY_PATH_STATE.windowMix.fill(0); CUTAWAY_PATH_STATE.active = 0; CUTAWAY_PATH_STATE.version++;
@@ -9264,7 +9603,7 @@
     let nodes = 0;
     traverseVisible(root, () => nodes++);
     const all = (n) => 1 + n.children.reduce((sum, c) => sum + all(c), 0);
-    return { visibleNodes: nodes, allNodes: all(root), tweens: tweenCount(), targets: input.targetCount, ...fx.stats(), ...crates.stats(), ...crew.stats(), ...pile.stats(), ...critters.stats(), ...breakables.stats(), ...weather.stats(), ...remotes.stats() };
+    return { visibleNodes: nodes, allNodes: all(root), tweens: tweenCount(), targets: input.targetCount, ...fx.stats(), ...crates.stats(), ...crew.stats(), ...pile.stats(), ...critters.stats(), ...mempoolIsland.water.stats(), ...breakables.stats(), ...weather.stats(), ...remotes.stats() };
   };
   const hubScene = {
     id: "hub", enter, update, overlay, onDonation, onKey, onLootCleared, renderOpts: RENDER_OPTS, leave, stats, liveGeometry,
@@ -9272,7 +9611,7 @@
     get inMotion() {
       // Sani sits nearly always; only a spinning chair needs full rate behind another window.
       if (timechainIsland && timechainIsland.seat.speed > 0) return true;
-      if (pile.inMotion || fx.inMotion || breakables.inMotion || weather.active || magazine && magazine.revealed || MATRIX_WORLD.active || mirrorGuides.state.doorway || mirrorCave.damage.active || mirrorCave.ripples.active || mirrorCave.body.active || entropyLab.phase.ripples.active || entropyLab.phase.body.contacts || entropyLab.phase.body.active) return true;
+      if (pile.inMotion || fx.inMotion || breakables.inMotion || weather.active || mempoolIsland.water.active || magazine && magazine.revealed || MATRIX_WORLD.active || mirrorGuides.state.doorway || mirrorCave.damage.active || mirrorCave.ripples.active || mirrorCave.body.active || entropyLab.phase.ripples.active || entropyLab.phase.body.contacts || entropyLab.phase.body.active) return true;
       for (const sign of headquarters.roomSigns) if (sign.velocity || sign.node.rotation.x) return true;
       for (let i = 0; i < matrixGates.length; i++) if (matrixCave && (matrixGates[i].raising || matrixCave.unlocked && matrixGates[i].node.position.y !== MATRIX_GATE_HIDDEN_Y)) return true;
       return false;

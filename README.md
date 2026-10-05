@@ -61,7 +61,7 @@ Sani's hangout: a walk-in sphere whose six inner walls show live [Timechain Inde
 
 ## Weather
 
-The mempool is the weather over the Mempool island: the fee-paying backlog sets how hard it rains (six steps, dry to downpour), incoming transactions set the wind, and every block strikes lightning.
+The mempool is the Mempool island: transactions arriving make its weather (six steps, dry to downpour, and the wind), everything waiting fills its lake, which floods the shore and pours over the cliffs when the backlog is deep, and every block strikes lightning and drops a cube of the lake through the chamber underneath, where wall paintings read the chain out. Walk in through the hill by the bridge.
 
 ## Debug
 

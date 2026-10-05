@@ -23,14 +23,16 @@
     monkey: { walk: 0.6, run: 1.5, stride: 0.62, turn: 3.4, radius: 0.35, swing: 0.5 },
     toucan: { walk: 0.32, run: 0.6, stride: 0.2, turn: 5, radius: 0.22, swing: 0, fly: 3.4 }
   };
-  const INNER = 4.6, OUTER = 9, POSE_RATE = 7, CLIMB_SPEED = 0.75;
+  const POSE_RATE = 7, CLIMB_SPEED = 0.75, SETTLE = 3;
   const angleTo = (from, to) => Math.atan2(Math.sin(to - from), Math.cos(to - from));
   const headingOf = (dx, dz) => Math.atan2(-dz, dx);
   const ease = (a, key, target, k) => (a[key] += (target - a[key]) * k);
   const wave = (a, offset) => Math.sin(TAU * (a.phase + offset));
 
   const create = (ctx) => {
-    const { parent, obstacles, sleepy, toWorld } = ctx;
+    // `groundAt` is the ground under a point of the island's frame and `spotOk` whether an animal may stand there.
+    // An animal's own `y` is its height above `base`, the ground it is over or the foot of what it has climbed.
+    const { parent, obstacles, sleepy, toWorld, groundAt, spotOk } = ctx;
     const rand = mulberry32(7717), SPOT = { x: 0, z: 0 }, WORLD = { x: 0, z: 0 };
     // Trees and logs in the island frame, read once from each placed node's transform.
     const place = (n, x, y, z, out) => {
@@ -41,15 +43,15 @@
     const trees = ctx.trees.map((n) => {
       const c = n.geometry.climb, height = c.height * n.sy;
       return {
-        x: n.x, z: n.z, height, k: n.k, taken: null,
+        x: n.x, z: n.z, base: n.y, height, k: n.k, taken: null,
         leanX: c.lean * n.k * Math.cos(n.ry), leanZ: -c.lean * n.k * Math.sin(n.ry),
         branches: c.branches.map((b) => [...place(n, b[0], b[1], b[2], [0, 0, 0]), ...place(n, b[3], b[4], b[5], [0, 0, 0])]),
-        perches: c.perches.map((p) => ({ at: place(n, p[0], p[1], p[2], [0, 0, 0]), taken: null }))
+        perches: c.perches.map((p) => ({ at: place(n, p[0], p[1], p[2], [0, 0, 0]), base: n.y, taken: null }))
       };
     });
     const logs = ctx.logs.map((n) => {
       const r = n.geometry.rest, c = Math.cos(n.ry), s = Math.sin(n.ry);
-      return { x: n.x, z: n.z, y: r.y * n.sy, ax: c, az: -s, half: r.to * n.k, taken: null };
+      return { x: n.x, z: n.z, base: n.y, y: r.y * n.sy, ax: c, az: -s, half: r.to * n.k, taken: null };
     });
 
     const list = [];
@@ -60,11 +62,13 @@
         const ex = x0 + dx * t - o.x, ez = z0 + dz * t - o.z, r = o.r + a.cfg.radius;
         if (ex * ex + ez * ez < r * r) return false;
       }
+      // The whole way must be ground an animal walks on: no channel, nest, path or ledge between two good spots.
+      const steps = Math.ceil(Math.sqrt(len2) / 0.5);
+      for (let i = 1; i < steps; i++) if (!spotOk(x0 + dx * i / steps, z0 + dz * i / steps)) return false;
       return true;
     };
     const spotFree = (a, x, z) => {
-      const r = Math.hypot(x, z);
-      if (r < INNER || r > OUTER) return false;
+      if (!spotOk(x, z)) return false;
       for (let i = 0; i < obstacles.length; i++) {
         const o = obstacles[i];
         if (Math.hypot(x - o.x, z - o.z) < o.r + a.cfg.radius) return false;
@@ -97,8 +101,10 @@
       setState(a, "walk", 30);
     };
     // A timed move along a straight line (plus an arc) under a pose, then `after`.
-    const glide = (a, x, y, z, speed, pose, after, arc = 0, face = NaN) => {
+    // `base` is the ground the move ends over; it defaults to the ground under its end.
+    const glide = (a, x, y, z, speed, pose, after, arc = 0, face = NaN, base = groundAt(x, z)) => {
       a.sx = a.x; a.sy = a.y; a.sz = a.z; a.ex = x; a.ey = y; a.ez = z; a.arc = arc; a.pose = pose; a.after = after;
+      a.sb = a.base; a.eb = base > -Infinity ? base : a.base;
       a.gt = 0; a.gdur = Math.max(0.25, Math.hypot(x - a.x, y - a.y, z - a.z) / speed);
       a.face = Number.isNaN(face) ? (Math.hypot(x - a.x, z - a.z) > 0.05 ? headingOf(x - a.x, z - a.z) : a.heading) : face;
       setState(a, "glide", a.gdur);
@@ -167,7 +173,7 @@
       a.perch = perch;
       if (perch) perch.taken = a;
       a.asleep = false;
-      glide(a, x, y, z, a.cfg.fly, "fly", "land", 1.5 + Math.hypot(x - a.x, z - a.z) * 0.12);
+      glide(a, x, y, z, a.cfg.fly, "fly", "land", 1.5 + Math.hypot(x - a.x, z - a.z) * 0.12, NaN, perch ? perch.base : groundAt(x, z));
     };
     const flyAnywhere = (a) => {
       const perch = rand() < 0.6 ? perchFree() : null;
@@ -199,7 +205,7 @@
           if (night) return rest(a, 30 + rand() * 30, true);
           a.onBranch = false;
           onBranch(a, a.u0, CLING);
-          return glide(a, CLING[0], CLING[1], CLING[2], 0.5, "walk", "down", 0, headingOf(-a.dx, -a.dz));
+          return glide(a, CLING[0], CLING[1], CLING[2], 0.5, "walk", "down", 0, headingOf(-a.dx, -a.dz), a.tree.base);
         }
         const tree = r < (night ? 0.9 : 0.3) ? freeTree(a, Infinity) : null;
         if (tree) return startClimb(a, tree, a.cfg.walk);
@@ -225,7 +231,7 @@
       switch (step) {
         case "mount": {
           const log = a.log, along = (rand() - 0.5) * log.half;
-          return glide(a, log.x + log.ax * along, log.y, log.z + log.az * along, 1.6, "stand", "logRest", 0.45, headingOf(log.ax, log.az) + (rand() < 0.5 ? Math.PI : 0));
+          return glide(a, log.x + log.ax * along, log.y, log.z + log.az * along, 1.6, "stand", "logRest", 0.45, headingOf(log.ax, log.az) + (rand() < 0.5 ? Math.PI : 0), log.base);
         }
         case "logRest": return rest(a, 12 + rand() * 20, rand() < 0.6 || sleepy());
         case "climb": {
@@ -233,12 +239,12 @@
           onBranch(a, a.u0, CLING);
           const top = CLING[1];
           clingAt(a.tree, top, a.dx, a.dz, CLING);
-          return glide(a, CLING[0], top, CLING[2], CLIMB_SPEED, "climb", "branch", 0, headingOf(-a.dx, -a.dz));
+          return glide(a, CLING[0], top, CLING[2], CLIMB_SPEED, "climb", "branch", 0, headingOf(-a.dx, -a.dz), a.tree.base);
         }
         case "branch": {
           // Along the limb's top, never through the air.
           onBranch(a, 0.45, CLING);
-          return glide(a, CLING[0], CLING[1], CLING[2], 0.5, "walk", "treeRest", 0, headingOf(a.dx, a.dz));
+          return glide(a, CLING[0], CLING[1], CLING[2], 0.5, "walk", "treeRest", 0, headingOf(a.dx, a.dz), a.tree.base);
         }
         case "treeRest": a.onBranch = true; return rest(a, 10 + rand() * 15, sleepy());
         case "down": {
@@ -246,7 +252,7 @@
           clingAt(a.tree, a.y, a.dx, a.dz, CLING);
           a.x = CLING[0]; a.z = CLING[2];
           clingAt(a.tree, 0, a.dx, a.dz, CLING);
-          return glide(a, CLING[0], 0, CLING[2], CLIMB_SPEED, "climb", "ground", 0, headingOf(-a.dx, -a.dz));
+          return glide(a, CLING[0], 0, CLING[2], CLIMB_SPEED, "climb", "ground", 0, headingOf(-a.dx, -a.dz), a.tree.base);
         }
         case "ground": leaveTree(a); return idle(a, 1 + rand() * 2);
         case "land": return idle(a, 2 + rand() * 4);
@@ -272,6 +278,11 @@
       const cfg = a.cfg;
       a.timer -= dt;
       a.moving = 0;
+      // On the ground an animal settles onto whatever terrace it has walked onto.
+      if (a.state !== "glide" && !a.tree && !a.log && !a.perch) {
+        const ground = groundAt(a.x, a.z);
+        if (ground > -Infinity) a.base += clamp(ground - a.base, -SETTLE * dt, SETTLE * dt);
+      }
       if (a.state === "walk") {
         const dx = a.gx - a.x, dz = a.gz - a.z, dist = Math.hypot(dx, dz);
         if (dist < 0.06 || a.timer < 0) return arrive(a);
@@ -299,6 +310,7 @@
         const t = a.gt / a.gdur;
         a.x = lerp(a.sx, a.ex, t); a.z = lerp(a.sz, a.ez, t);
         a.y = lerp(a.sy, a.ey, t) + Math.sin(t * Math.PI) * a.arc;
+        a.base = lerp(a.sb, a.eb, t);
         a.heading += clamp(angleTo(a.heading, a.face), -cfg.turn * 2 * dt, cfg.turn * 2 * dt);
         a.moving = Math.hypot(a.ex - a.sx, a.ey - a.sy, a.ez - a.sz) / a.gdur;
         a.phase = (a.phase + a.moving * dt / (a.pose === "climb" ? 0.5 : cfg.stride)) % 1;
@@ -373,12 +385,12 @@
       }
       P.head.rotation.y = a.headYaw;
       P.head.rotation.z = a.headPitch;
-      a.root.position.x = a.x; a.root.position.y = a.y; a.root.position.z = a.z;
+      a.root.position.x = a.x; a.root.position.y = a.base + a.y; a.root.position.z = a.z;
       a.root.rotation.y = a.heading;
     };
 
     for (const def of ctx.animals) {
-      const rig = BL.poolModels.beastRig(def.kind), root = createNode({ position: { x: def.x, y: 0, z: def.z }, rotation: { x: 0, y: def.heading, z: 0 }, sightHidden: true }), parts = {};
+      const rig = BL.poolModels.beastRig(def.kind), root = createNode({ position: { x: def.x, y: groundAt(def.x, def.z), z: def.z }, rotation: { x: 0, y: def.heading, z: 0 }, sightHidden: true }), parts = {};
       for (const name in rig) {
         const r = rig[name];
         parts[name] = createNode({ position: { x: r.at[0], y: r.at[1], z: r.at[2] }, geometry: r.geometry, sightHidden: true });
@@ -387,7 +399,7 @@
       addChild(parent, root);
       const a = {
         kind: def.kind, cfg: SPECIES[def.kind], root, parts, node: parts.body, seed: list.length * 1.7,
-        x: def.x, y: 0, z: def.z, heading: def.heading, gx: def.x, gz: def.z, state: "idle", timer: 1 + list.length, waits: 0,
+        x: def.x, y: 0, z: def.z, base: groundAt(def.x, def.z), sb: 0, eb: 0, heading: def.heading, gx: def.x, gz: def.z, state: "idle", timer: 1 + list.length, waits: 0,
         speed: 0, moving: 0, phase: 0, after: "", pose: "stand", arc: 0, face: 0, gt: 0, gdur: 1,
         sx: 0, sy: 0, sz: 0, ex: 0, ey: 0, ez: 0, dx: 1, dz: 0, u0: 0.2, onBranch: false,
         tree: null, branch: null, log: null, perch: null, asleep: false,
@@ -404,7 +416,7 @@
         step(a, dt);
         pose(a, dt, time);
         toWorld(a.x, a.z, WORLD);
-        a.wx = WORLD.x; a.wy = ctx.baseY + a.y; a.wz = WORLD.z;
+        a.wx = WORLD.x; a.wy = ctx.baseY + a.base + a.y; a.wz = WORLD.z;
         if (a.owner) { a.owner.x = a.wx; a.owner.z = a.wz; }
       }
     };

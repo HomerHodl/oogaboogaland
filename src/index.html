@@ -155,7 +155,6 @@
         <h1><a class="home-link" href="./" title="Back to the island"><span data-sign>Ooga Booga Land</span></a></h1>
         <p data-scene="hub" id="subtitle">an island of caves</p>
         <p data-scene="lab" hidden>EntropyLab cave</p>
-        <p data-scene="pool" hidden>Mempool cave</p>
         <p data-scene="factory" hidden>Lightning Factory</p>
         <p data-scene="bifrost" hidden>₿IFRÖST</p>
         <p data-scene="arcade" hidden>Ooga Arcade</p>
@@ -194,13 +193,6 @@
         <button type="button" data-preset="bunks">Bunks</button>
         <button type="button" data-preset="bench">Bench</button>
         <button type="button" class="leave" data-action="leave" data-scene="lab" hidden>Leave<span> cave</span></button>
-      </nav>
-      <nav class="presets" aria-label="Mempool cave" data-scene="pool" hidden>
-        <button type="button" data-preset="ladder">Ladder</button>
-        <button type="button" data-preset="tiers">Tiers</button>
-        <button type="button" data-preset="chain">Chain</button>
-        <button type="button" data-preset="epoch">Epoch</button>
-        <button type="button" class="leave" data-action="leave">Leave<span> cave</span></button>
       </nav>
       <nav class="presets" aria-label="Lightning Factory" data-scene="factory" hidden>
         <button type="button" data-preset="core">Core</button>
@@ -1611,7 +1603,10 @@ Then run npm run build and ONLY=characters node test/run.mjs.</pre>
   <script src="js/drop-models.js"></script>
   <script src="js/rocket.js"></script>
   <script src="js/rocket-models.js"></script>
-    <script src="js/pool-models.js"></script>
+  <script src="js/pool-layout.js"></script>
+  <script src="js/pool-models.js"></script>
+  <script src="js/pool-water.js"></script>
+  <script src="js/pool-paintings.js"></script>
   <script src="js/pool-wildlife.js"></script>
   <script src="js/timechain-models.js"></script>
   <script src="js/timechain-beer.js"></script>
@@ -1630,7 +1625,6 @@ Then run npm run build and ONLY=characters node test/run.mjs.</pre>
   <script src="js/clanker-play.js"></script>
   <script src="js/scene-hub.js"></script>
   <script src="js/scene-lab.js"></script>
-    <script src="js/scene-pool.js"></script>
   <script src="js/factory-feed.js"></script>
   <script src="js/factory-mock.js"></script>
   <script src="js/factory-models.js"></script>

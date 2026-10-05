@@ -2366,7 +2366,7 @@ const orbitFlow = async (b) => {
 // `node test/run.mjs race mine` runs the global unit tier plus those scenes; `full` runs every scene and the
 // perf floor; `perf` runs the perf floor alone; `unit` (or nothing) runs only the global tier.
 // Eight lanes saturate a 16-core box (measured 2026-09-20); raising it only adds heat.
-const SCENES = ["hub", "lab", "race", "drop", "orbit", "mine", "pool", "dsb", "factory", "bifrost", "poker", "arcade", "skee", "hoops", "shy", "claw", "hockey", "billiards", "darts", "pinball", "ride", "invaders", "snake", "pong", "stampede", "flap", "breaker", "dash", "stacker"];
+const SCENES = ["hub", "lab", "race", "drop", "orbit", "mine", "dsb", "factory", "bifrost", "poker", "arcade", "skee", "hoops", "shy", "claw", "hockey", "billiards", "darts", "pinball", "ride", "invaders", "snake", "pong", "stampede", "flap", "breaker", "dash", "stacker"];
 const LANES = Number(process.env.LANES) || 8;
 const ARGS = process.argv.slice(2);
 for (const a of ARGS) if (!SCENES.includes(a) && !["unit", "perf", "full", "poker-protocol"].includes(a)) throw new Error(`Unknown argument "${a}" (unit | perf | full | poker-protocol | ${SCENES.join(" | ")})`);
@@ -2868,8 +2868,111 @@ const weatherStepChecks = async () => {
     previous = wet;
   }
   const ends = wetAt(0) === 0 && wetAt(0.0999) === 0 && Math.abs(wetAt(0.1) - 0.12) < 1e-9 && wetAt(0.85) === 1 && wetAt(1) === 1;
-  record("weather steps: soak alone names dry through downpour, a step holds against a hover on its boundary, and the rain amount rises continuously",
+  record("weather steps: arrivals alone name dry through downpour, a step holds against a hover on its boundary, and the rain amount rises continuously",
     ladder && holds && continuous && ends, JSON.stringify({ names, holds, continuous, ends }));
+};
+// The Mempool island's layout, read through its own queries: the descent, its roof, and the beds.
+const poolLayoutChecks = async () => {
+  const context = { window: { BL: {} } };
+  for (const file of ["math", "pool-layout"]) runInNewContext(await readFile(new URL(`../src/js/${file}.js`, import.meta.url), "utf8"), context);
+  const L = context.window.BL.poolLayout, point = {};
+  let graded = true, open = true, roofed = true;
+  for (let s = 1; s <= L.RAMP.length - 1; s += 0.5) {
+    L.rampPoint(s, 0, point);
+    graded &&= Math.abs(point.y + s * L.RAMP.drop / L.RAMP.length) < 1e-9;
+    open &&= !L.solidAt(point.x, point.y + 0.75, point.z) && !L.solidAt(point.x, point.y + L.RAMP.head - 0.3, point.z);
+    // The first two metres are the mouth, open to the court.
+    roofed &&= s < 2 || L.covered(point.x, point.y + 1, point.z);
+  }
+  const beds = L.SLOTS.every((slot) => L.groundAt(slot.cx, slot.cz) === L.LEVEL.nest && L.groundAt(slot.x, slot.z) === L.LEVEL.nest)
+    && L.LEVEL.nest > L.WATER.flood + 0.5 && L.LEVEL.ground > L.WATER.flood;
+  let apart = Infinity;
+  for (const a of L.SLOTS) for (const b of L.SLOTS) if (a !== b) apart = Math.min(apart, Math.hypot(a.cx - b.cx, a.cz - b.cz));
+  const lake = L.waterRadius(L.WATER.spill) === L.LAKE_R && L.waterRadius(L.WATER.low) < L.waterRadius(L.WATER.normal) && L.membraneY(0) === -L.MEMBRANE_DEPTH && !L.covered(2, 1, 0) && L.covered(2, -6, 0);
+  // The two links off the descent, walked through the layout's own queries: out through the first mouth, along
+  // the gallery outside the pier and back in through the second, sight clear at chest and near the ceiling all the
+  // way, with floor under every station and rock over it; and the pier between the mouths solid at both heights.
+  const from = {}, to = {};
+  const wall = L.RAMP.r + L.RAMP.half, outside = L.RAMP.half + L.LINK.rib + 0.6;
+  const seen = (s0, r0, s1, r1) => [1, L.LINK.head - 0.4].every((lift) => {
+    L.rampPoint(s0, r0, from); L.rampPoint(s1, r1, to);
+    return L.sightClear(from.x, from.y + lift, from.z, to.x, to.y + lift, to.z);
+  });
+  const linked = L.LINKS.length === 2 && L.LINKS.every((link) => {
+    const s0 = link.from * L.RAMP.length + 1, s1 = link.to * L.RAMP.length - 1;
+    let ok = seen(s0, 0, s0, outside) && seen(s1, outside, s1, 0);
+    for (let s = s0; s <= s1; s += 0.5) {
+      ok &&= seen(s, outside, Math.min(s + 0.5, s1), outside);
+      L.rampPoint(s, outside, to);
+      ok &&= L.solidAt(to.x, L.stepUnder(to.y) - 0.25, to.z) && L.solidAt(to.x, to.y + L.LINK.head + 0.75, to.z);
+    }
+    for (let s = s0 + 3; s <= s1 - 3; s += 0.5) {
+      L.rampPoint(s, L.RAMP.half + L.LINK.rib / 2, to);
+      ok &&= L.solidAt(to.x, to.y + 1, to.z) && L.solidAt(to.x, to.y + L.LINK.head - 0.4, to.z);
+    }
+    return ok;
+  });
+  // What the outlines ask of this rock, through the layout's own sight queries: down the descent a walker sees
+  // three metres ahead; from outside the cliff the rock hides a walker everywhere but at a door or a link; the
+  // chamber sees up through the lake and down the shaft and not through its roof or its floor; a box in the
+  // tunnel is all open, one in the cliff all rock, one across the wall neither, and off the grid there is nothing.
+  const reach = L.LINK.mouth / L.RAMP.length, shown = [];
+  let along = true, hidden = true, doorways = 0;
+  for (let s = 2; s <= 96; s++) {
+    L.rampPoint(s, 0, from); L.rampPoint(s + 3, 0, to);
+    along &&= L.sightClear(from.x, from.y + 1.5, from.z, to.x, to.y + 1.5, to.z);
+  }
+  for (let s = 8; s <= 95; s++) {
+    L.rampPoint(s, 0, to); L.rampPoint(s, 14, from);
+    const clear = L.sightClear(from.x, to.y + 1.5, from.z, to.x, to.y + 1.5, to.z), f = s / L.RAMP.length;
+    const door = Math.min(...L.DOORS.map((d) => Math.abs(s - d.at * L.RAMP.length)));
+    const link = L.LINKS.find((link) => f > link.from - 0.03 && f < link.to + 0.03);
+    if (door < 1) doorways += clear ? 1 : 0;
+    else if (link && f > link.from + reach && f < link.to - reach) hidden &&= !clear;
+    else if (link) shown[L.LINKS.indexOf(link) * 2 + (f > (link.from + link.to) / 2 ? 1 : 0)] ||= clear;
+    else if (door > 2.5) hidden &&= !clear;
+  }
+  const mouths = shown.filter(Boolean).length;
+  const chamber = L.sightClear(3, L.FLOOR + 1, 5, 3, 12, 5) && !L.sightClear(10, L.FLOOR + 1, 0, 10, 12, 0) && L.sightClear(1, L.FLOOR + 1, 1, 1, -40, 1) && !L.sightClear(6, L.FLOOR + 1, 0, 6, -40, 0);
+  L.rampPoint(40, 0, to);
+  const out = Math.hypot(to.x, to.z), ux = to.x / out, uz = to.z / out;
+  const box = (r, half, test) => test(ux * r - half, to.y + 1, uz * r - half, ux * r + half, to.y + 1.4, uz * r + half);
+  const boxes = box(L.RAMP.r, 0.8, L.boxClear) && !box(L.RAMP.r, 0.8, L.boxSolid) && box(20, 0.2, L.boxSolid) && !box(20, 0.2, L.boxClear)
+    && !box(wall, 0.6, L.boxSolid) && !box(wall, 0.6, L.boxClear) && !L.boxSolid(40, 0, 40, 41, 1, 41) && L.boxClear(40, 0, 40, 41, 1, 41) && L.sightClear(40, 0, 40, 60, 5, 60);
+  record("pool layout: the descent falls ten metres in a hundred at one grade with its headroom open and rock over it all the way, its two links leave it and come back by open mouths round a pier of rock, every bed stands on a nest above the highest flood a body's width from the next, the lake's water stays inside its membrane, and the rock hides a walker from outside the cliff and never from behind in the tunnel",
+    graded && open && roofed && linked && beds && apart >= 1.7 && lake && along && hidden && doorways === L.DOORS.length && mouths === 2 * L.LINKS.length && chamber && boxes,
+    JSON.stringify({ graded, open, roofed, linked, beds, apart, lake, slots: L.SLOTS.length, along, hidden, doorways, mouths, chamber, boxes }));
+  // The water over that layout, through its own module: what the backlog floods and what it never reaches.
+  Object.assign(context, { document: { createElement: () => ({ getContext: () => null }) }, performance, console });
+  for (const file of ["scene", "models", "convex", "terrain", "hub-models", "pool-models", "pool-water"]) runInNewContext(await readFile(new URL(`../src/js/${file}.js`, import.meta.url), "utf8"), context);
+  const { poolWater: W, scene: S } = context.window.BL, H = W.HYDRO;
+  let rising = true, last = -Infinity;
+  for (let mvb = 0; mvb <= 400; mvb += 0.5) { const level = W.levelFor(mvb * 1e6); rising &&= level >= last; last = level; }
+  const anchors = W.levelFor(0) === L.WATER.low && W.levelFor(H.NORMAL_VB) === L.WATER.normal && W.levelFor(H.OVERFLOW_VB) === L.WATER.spill && W.levelFor(H.FULL_VB) === L.WATER.flood && W.levelFor(H.FULL_VB * 3) === L.WATER.flood;
+  const water = W.create({ site: { node: S.createNode(), membrane: S.createNode() }, renderer: { kind: "webgl2", quality: "high" }, seaY: -76 });
+  let elapsed = 0;
+  const run = (seconds, now) => { for (let t = 0; t < seconds; t += 1 / 20) water.update(1 / 20, elapsed += 1 / 20, now); };
+  const channel = L.CHANNELS[1], at = (r) => water.levelAt(Math.sin(channel.bearing) * r, Math.cos(channel.bearing) * r), nest = L.NESTS[2];
+  // Past the cliff the channel falls: no level in the air on its line, nor on the link's lip beside the fall.
+  const brink = L.edgeAt(channel.bearing) + 1, lip = channel.bearing + 1.5 / brink;
+  const wet = () => ({ lake: water.levelAt(3, 0) > -Infinity, shore: water.levelAt(8.7, 0) > -Infinity, lowland: water.levelAt(-10, 0.3) > -Infinity, path: water.levelAt(-11.5, 0.3) > -Infinity, channel: at(15) > -Infinity, past: at(brink) > -Infinity, lip: water.levelAt(Math.sin(lip) * brink, Math.cos(lip) * brink) > -Infinity, nest: water.levelAt(nest.x, nest.z) > -Infinity, falls: water.state.falls, status: water.state.status, stage: water.state.stage });
+  run(1, 1e6);
+  const none = wet();
+  water.apply({ backlogAt: 1e6, vsize: H.NORMAL_VB }); run(1, 1e6 + 1000);
+  const normal = wet();
+  water.apply({ backlogAt: 1e6, vsize: (H.OVERFLOW_VB + H.FULL_VB) / 2 }); run(40, 1e6 + 2000);
+  const spilling = wet();
+  water.apply({ backlogAt: 1e6, vsize: H.FULL_VB * 2 }); run(40, 1e6 + 3000);
+  const flooded = wet(), held = water.state.level;
+  run(1, 1e6 + H.FRESH_MS + 5000);
+  const stale = wet(), kept = water.state.level === held;
+  for (let i = 0; i < W.SEQUENCES + W.QUEUE + 2; i++) water.block();
+  const cubes = { falling: water.state.cubes, queued: water.state.queued, dropped: water.state.dropped };
+  const stages = none.status === "unavailable" && !none.lake && normal.status === "live" && normal.lake && !normal.shore && !normal.channel && !normal.falls
+    && spilling.stage === 1 && spilling.shore && spilling.channel && !spilling.lowland && spilling.falls > 0 && flooded.stage === 2 && flooded.lowland && flooded.falls > spilling.falls
+    && [normal, spilling, flooded].every((row) => !row.path && !row.nest && !row.past && !row.lip) && stale.status === "stale" && kept;
+  record("pool water: the backlog fills the lake by a rising scale to its crest and its highest flood, the shore and channels flood before the lowland while the path and the nests never do and a channel past the cliff holds no one up, a stale reading is held and said to be stale, and blocks found faster than they fall wait in a bounded queue",
+    rising && anchors && stages && cubes.falling === W.SEQUENCES && cubes.queued === W.QUEUE && cubes.dropped === 2, JSON.stringify({ rising, anchors, none, normal, spilling, flooded, stale, kept, cubes }));
 };
 const debugActivityStatusChecks = async () => {
   const sources = await Promise.all(CONTRIBUTOR_SOURCES.map((name) => readFile(new URL(`../src/js/${name}.js`, import.meta.url), "utf8")));
@@ -3582,18 +3685,59 @@ const hubRainforestSteps = { name: "rainforest bridge steps", why: "regression: 
   record("rainforest approach: Oogas walk onto the bridge and back without stopping or jumping, including the reported W-S Bitcoin combat position", r.rows.every(row => row.top > 32 && row.bottom < 27 && row.feet > 5 && row.longest < 4 && !row.airborne), JSON.stringify(r.rows));
   record("rainforest bridge: hanging vines end at the gateways instead of extending through the stair rock", r.tails === 0, JSON.stringify({ tails: r.tails }));
 } };
-// The island opens Ooga Arcade with Space at its mouth, and the Mempool with a tap on its stair.
+// The island opens Ooga Arcade with Space at its mouth; the Mempool is walked into.
 const WAIT_OUT = `(() => { const B = window.__ooga; for (let i = 0; i < 240 && (B.transitioning || B.scene === "hub"); i++) B.advance(1 / 30, 1 / 30); B.advance(0.3, 1 / 30); return B.scene; })()`;
 const hubRoutes = { name: "hub routes", why: "playthrough: every scene the island opens is reached the way a player gets there", run: async (b) => {
   await b.evaluate(`(() => { const B = window.__ooga, a = B.cavemen.get("portlandhodl"), slot = window.BL.caves.slots.find((s) => s.scene === "arcade"), m = B.mouths.find((m) => m.id === slot.id); if (B.crew.player !== a) B.pilot.possess(a); B.pilot.navigate({ position: { x: m.x - Math.sin(m.ry) * 1.2, y: m.floorY, z: m.z - Math.cos(m.ry) * 1.2 }, yaw: m.ry, pitch: 0.4, dist: 10 }); B.advance(0.5, 1 / 60); })()`);
   await b.key(" ");
   const reached = { arcade: await b.evaluate(WAIT_OUT) };
   await tourGo(b, "hub");
-  const t = await b.evaluate(`(() => { const B = window.__ooga, o = B.props.find((p) => p.prop === "poolstair"), w = o.node.world; B.pilot.navigate({ position: { x: w[12], y: w[13], z: w[14] }, target: { x: w[12], y: w[13], z: w[14] }, yaw: 0, pitch: 0.9, dist: 12 }); B.advance(0.6, 1 / 60); return B.project(w[12], w[13], w[14], {}); })()`);
-  await b.click(t.x, t.y);
-  reached.pool = await b.evaluate(WAIT_OUT);
-  await tourGo(b, "hub");
-  record("hub routes: Space at the arcade mouth and a tap on the Mempool stair each enter their scene", Object.entries(reached).every(([id, scene]) => id === scene), JSON.stringify(reached));
+  // The Mempool has no scene of its own: the same Ooga walks in at the mouth and down the whole descent. It is
+  // steered along the layout's own centreline by turning the view, with W held through the real key path.
+  const walked = await b.evaluate(`(() => {
+    const B = window.__ooga, M = B.poolIsland, L = M.layout, a = B.cavemen.get("portlandhodl"), point = {};
+    if (B.crew.player !== a) B.pilot.possess(a);
+    const world = (p) => ({ x: M.worldX(p.x, p.z), y: M.place.y + p.y, z: M.worldZ(p.x, p.z) });
+    const key = (type) => window.dispatchEvent(new KeyboardEvent(type, { key: "w", code: "KeyW" }));
+    B.pilot.navigate({ position: world(L.rampPoint(0.8, 0, point)), yaw: 0, pitch: 0.2, dist: 4 });
+    B.advance(0.3, 1 / 30);
+    const door = L.RAMP.start + L.RAMP.sweep + 0.06, ring = world({ x: Math.sin(door) * 7, y: L.FLOOR, z: Math.cos(door) * 7 });
+    let steps = 0, furthest = 0;
+    key("keydown");
+    for (; steps < 900; steps++) {
+      const p = a.root.position, lx = M.localX(p.x, p.z), lz = M.localZ(p.x, p.z);
+      if (Math.hypot(lx, lz) < 8.5) break;
+      const s = L.rampAngle(Math.atan2(lx, lz)) * L.RAMP.r;
+      // The descent's angle wraps just behind its own mouth, so progress only ever counts forward.
+      if (s < L.RAMP.length + 1 && s > furthest - 2) furthest = Math.max(furthest, s);
+      const to = furthest >= L.RAMP.length - 1.5 ? ring : world(L.rampPoint(furthest + 3, 0, point));
+      B.pilot.orbit.yaw = B.pilot.orbit.tYaw = Math.atan2(to.x - p.x, to.z - p.z) + Math.PI;
+      B.advance(1 / 30, 1 / 30);
+    }
+    key("keyup");
+    B.advance(0.3, 1 / 30);
+    const p = a.root.position, feet = p.y - a.baseY;
+    const out = { scene: B.scene, same: B.crew.player === a, steps, furthest, floor: M.place.y + L.FLOOR, feet, under: M.coveredAt(p.x, feet + 0.5, p.z), r: Math.hypot(M.localX(p.x, p.z), M.localZ(p.x, p.z)) };
+    // The walker's rim through this island's rock: standing on the tunnel's inner side with the view in the
+    // chamber, behind the wall between them; then with the view behind the walker in the tunnel, in plain sight.
+    B.pilot.navigate({ position: world(L.rampPoint(80, -1.9, point)), yaw: 0, pitch: 0.2, dist: 4 });
+    B.advance(1, 1 / 30);
+    B.pilot.orbit.yaw = B.pilot.orbit.tYaw = Math.atan2(p.x - M.place.x, p.z - M.place.z) + Math.PI;
+    B.pilot.orbit.pitch = B.pilot.orbit.tPitch = 0.15;
+    B.advance(1.5, 1 / 30);
+    const eye = B.camera.position;
+    out.rimBehindWall = B.headquarters.cameraCover.outlined; out.eyeInChamber = !M.solidAt(eye.x, eye.y, eye.z) && Math.hypot(M.localX(eye.x, eye.z), M.localZ(eye.x, eye.z)) < L.CHAMBER_R;
+    const ahead = world(L.rampPoint(84, -1.9, point));
+    B.pilot.orbit.yaw = B.pilot.orbit.tYaw = Math.atan2(ahead.x - p.x, ahead.z - p.z) + Math.PI;
+    B.advance(1.5, 1 / 30);
+    out.rimInSight = B.headquarters.cameraCover.outlined; out.eyeInTunnel = !M.solidAt(eye.x, eye.y, eye.z) && !B.renderOpts.birdsEyeCutaway;
+    B.pilot.release(true); B.pilot.goPreset("pile");
+    return out;
+  })()`);
+  record("hub routes: Space at the arcade mouth enters its scene, and the same Ooga walks from the mouth down the whole descent into the chamber under the lake without leaving the island",
+    reached.arcade === "arcade" && walked.scene === "hub" && walked.same && walked.steps < 900 && walked.under && Math.abs(walked.feet - walked.floor) < 0.05 && walked.r < 9, JSON.stringify({ reached, walked }));
+  record("hub routes: under the Mempool island a walker behind the chamber's wall is drawn through the rock as a rim from a view in the chamber, and gets none in plain sight from behind in the tunnel",
+    walked.eyeInChamber && walked.rimBehindWall === true && walked.eyeInTunnel && walked.rimInSight === false, JSON.stringify({ eyeInChamber: walked.eyeInChamber, rimBehindWall: walked.rimBehindWall, eyeInTunnel: walked.eyeInTunnel, rimInSight: walked.rimInSight }));
 } };
 const hubFall = { name: "hub fall", why: "rule: walking off the island drops the Ooga into the abyss and brings it back to the pile, still yours", run: async (b) => {
   await b.evaluate(`(() => { const B = window.__ooga, a = B.cavemen.get("portlandhodl"), I = B.island, ang = Math.PI / 4; if (B.crew.player !== a) B.pilot.possess(a); let r = 5; while (I.onLand(Math.sin(ang) * r, Math.cos(ang) * r)) r += 0.25; r -= 1.5; const x = Math.sin(ang) * r, z = Math.cos(ang) * r; B.pilot.navigate({ position: { x, y: I.surfaceAt(x, z), z }, yaw: ang + Math.PI, pitch: 0.4, dist: 10 }); B.advance(0.5, 1 / 60); })()`);
@@ -3700,13 +3844,6 @@ const labKeys = { name: "lab keys", why: "rule: B streams the test bananas onto 
   const second = await b.evaluate(`window.__ooga.scene`);
   record("lab keys: B lands 100 test bananas, the first Escape lets go of the Ooga and the second returns to the island", landed === 100 && first.scene === "lab" && !first.driving && second === "hub", JSON.stringify({ landed, first, second }));
 } };
-const poolLeave = { name: "pool leave", why: "rule: Escape takes the player from the Mempool cave back to the island", run: async (b) => {
-  await b.key("Escape");
-  await untilPage(b, 'B.scene === "hub" && !B.transitioning', 15000);
-  const scene = await b.evaluate(`window.__ooga.scene`);
-  record("pool leave: Escape in the Mempool cave returns to the island", scene === "hub", JSON.stringify({ scene }));
-} };
-
 // The Matrix room and the mirror, each inside one evaluate so no real frame falls between the steps.
 const hubMatrix = { name: "hub matrix", why: "rule: the room lever raises the mirror's bars and turns the glyph wave on, and pulling it back down puts both back", run: async (b) => {
   const r = await b.evaluate(`(() => { const B = window.__ooga, G = B.matrixGate, M = B.mirrorCave, W = B.renderOpts.matrix, D = BL.scenes.hub.debug.matrixCave, m = M.mouth, g = M.gate, a = B.cavemen.get("portlandhodl"); if (B.crew.player !== a) B.pilot.possess(a); B.pilot.navigate({ position: { x: G.x + Math.sin(m.ry) * 0.8, y: m.floorY, z: G.z + Math.cos(m.ry) * 0.8 }, yaw: m.ry, pitch: 0.3, dist: 3 }); B.advance(0.5, 1 / 60); const snap = () => ({ pressed: G.pressed, lever: +G.lever.rotation.x.toFixed(2), bars: +g.node.position.y.toFixed(2), wave: W.active, radius: +W.radius.toFixed(1), glyphs: W.livingGlobal, lights: G.lights.matrixLiving, grip: G.grip.matrixLiving, frame: !!G.button.matrixLiving, arm: !!G.lever.matrixLiving }); const before = { near: G.near, ...snap() }; const pressedIn = G.press(); B.advance(3, 1 / 60); const on = snap(), originalQuality = B.renderer.quality, tiers = []; for (const quality of ["high", "medium", "low"]) { B.renderer.setQuality(quality); B.advance(1 / 60, 1 / 60); tiers.push({ quality: D.quality, density: D.qualityDensity, coverage: D.drawnGlyphCount / D.surfaceGlyphCount }); } B.renderer.setQuality(originalQuality); B.advance(1 / 60, 1 / 60); const pressedOut = G.press(); B.advance(6, 1 / 60); return { before, pressedIn, on, tiers, pressedOut, off: snap() }; })()`);
@@ -3725,13 +3862,13 @@ const hubMatrix = { name: "hub matrix", why: "rule: the room lever raises the mi
     && carved.sealed.length === 2 && carved.sealed.map(entry => entry.id).sort().join() === "c10,c9" && carved.sealed.every(entry => entry.visible && Number.isFinite(entry.stop)), JSON.stringify(carved));
 } };
 const hubMirror = { name: "hub mirror", why: "rule: 500 damage shatters the mirror, unlocks its gate and ends the glyph hint; a short scene trip preserves the broken mirror before its repair delay", run: async (b) => {
-  const r = await b.evaluate(`(() => { const B = window.__ooga, M = B.mirrorCave, g = M.gate, w = M.node.world, G = B.matrixGate, m = M.mouth; B.pilot.navigate({ position: { x: G.x + Math.sin(m.ry) * 0.8, y: m.floorY, z: G.z + Math.cos(m.ry) * 0.8 }, yaw: m.ry, pitch: 0.3, dist: 3 }); B.advance(0.5, 1 / 60); const before = { broken: M.damage.broken, locked: g.locked, hint: M.guides.state.doorway }; M.damage.hit(499, w[12], w[13], w[14]); B.advance(1 / 60, 1 / 60); const whole = { broken: M.damage.broken, locked: g.locked }; M.damage.hit(1, w[12], w[13], w[14]); B.advance(1 / 60, 1 / 60); const u0 = M.guides.state.doorwayUpdates; B.advance(1, 1 / 60); const after = { broken: M.damage.broken, shattered: M.shattered, locked: g.locked, reveal: M.node.mirrorReveal, hint: M.guides.state.doorway, frozen: M.guides.state.doorwayUpdates === u0 }; B.go("pool"); let n = 0; while ((B.transitioning || B.scene !== "pool") && n++ < 600) B.advance(1 / 30, 1 / 30); B.go("hub"); n = 0; while ((B.transitioning || B.scene !== "hub") && n++ < 600) B.advance(1 / 30, 1 / 30); B.advance(0.5, 1 / 60); const N = B.mirrorCave; return { before, whole, after, back: { broken: N.damage.broken, shattered: N.shattered, locked: N.gate.locked, reveal: N.node.mirrorReveal, hint: N.guides.state.doorway } }; })()`);
+  const r = await b.evaluate(`(() => { const B = window.__ooga, M = B.mirrorCave, g = M.gate, w = M.node.world, G = B.matrixGate, m = M.mouth; B.pilot.navigate({ position: { x: G.x + Math.sin(m.ry) * 0.8, y: m.floorY, z: G.z + Math.cos(m.ry) * 0.8 }, yaw: m.ry, pitch: 0.3, dist: 3 }); B.advance(0.5, 1 / 60); const before = { broken: M.damage.broken, locked: g.locked, hint: M.guides.state.doorway }; M.damage.hit(499, w[12], w[13], w[14]); B.advance(1 / 60, 1 / 60); const whole = { broken: M.damage.broken, locked: g.locked }; M.damage.hit(1, w[12], w[13], w[14]); B.advance(1 / 60, 1 / 60); const u0 = M.guides.state.doorwayUpdates; B.advance(1, 1 / 60); const after = { broken: M.damage.broken, shattered: M.shattered, locked: g.locked, reveal: M.node.mirrorReveal, hint: M.guides.state.doorway, frozen: M.guides.state.doorwayUpdates === u0 }; B.go("lab"); let n = 0; while ((B.transitioning || B.scene !== "pool") && n++ < 600) B.advance(1 / 30, 1 / 30); B.go("hub"); n = 0; while ((B.transitioning || B.scene !== "hub") && n++ < 600) B.advance(1 / 30, 1 / 30); B.advance(0.5, 1 / 60); const N = B.mirrorCave; return { before, whole, after, back: { broken: N.damage.broken, shattered: N.shattered, locked: N.gate.locked, reveal: N.node.mirrorReveal, hint: N.guides.state.doorway } }; })()`);
   record("hub mirror: 499 damage leaves it whole and locked, 500 shatters it open with its gate unlocked and the glyph hint stopped, and it is still broken after a trip away", !r.before.broken && r.before.locked && r.before.hint && !r.whole.broken && r.whole.locked && r.after.broken && r.after.shattered && !r.after.locked && r.after.reveal === 1 && !r.after.hint && r.after.frozen && r.back.broken && r.back.shattered && !r.back.locked && r.back.reveal === 1 && !r.back.hint, JSON.stringify(r));
 } };
 // The Canvas 2D fallback, for a device without WebGL2: every scene, entered in one page, paints real
 // colour (sampled small, after the arrival fade) and keeps the leave contract; the console stays clean.
 const canvasTour = { name: "canvas2d tour", why: "contract: the Canvas 2D fallback boots and draws every scene with the leave contract kept", run: async (b) => {
-  const r = await b.evaluate(`(() => { const B = window.__ooga, c = document.getElementById("scene"), t = document.createElement("canvas"); t.width = t.height = 8; const x = t.getContext("2d", { willReadFrequently: true }); const paint = () => { x.drawImage(c, 0, 0, 8, 8); const d = x.getImageData(0, 0, 8, 8).data, seen = new Set(); for (let i = 0; i < d.length; i += 4) seen.add(d[i] + "," + d[i + 1] + "," + d[i + 2]); return seen.size; }; const rows = { hub: { kind: B.renderer.kind, colours: paint() } }; for (const id of ["lab", "race", "drop", "orbit", "mine", "pool", "arcade", "hub"]) { B.go(id); let n = 0; while ((B.transitioning || B.scene !== id) && n++ < 600) B.advance(1 / 30, 1 / 30); B.advance(0.5, 1 / 30); rows[id === "hub" ? "back" : id] = { arrived: B.scene === id && !B.transitioning, colours: paint() }; } return rows; })()`);
+  const r = await b.evaluate(`(() => { const B = window.__ooga, c = document.getElementById("scene"), t = document.createElement("canvas"); t.width = t.height = 8; const x = t.getContext("2d", { willReadFrequently: true }); const paint = () => { x.drawImage(c, 0, 0, 8, 8); const d = x.getImageData(0, 0, 8, 8).data, seen = new Set(); for (let i = 0; i < d.length; i += 4) seen.add(d[i] + "," + d[i + 1] + "," + d[i + 2]); return seen.size; }; const rows = { hub: { kind: B.renderer.kind, colours: paint() } }; for (const id of ["lab", "race", "drop", "orbit", "mine", "arcade", "hub"]) { B.go(id); let n = 0; while ((B.transitioning || B.scene !== id) && n++ < 600) B.advance(1 / 30, 1 / 30); B.advance(0.5, 1 / 30); rows[id === "hub" ? "back" : id] = { arrived: B.scene === id && !B.transitioning, colours: paint() }; } return rows; })()`);
   record("canvas2d tour: with WebGL2 unavailable every scene still boots, arrives and paints", r.hub.kind === "canvas2d" && Object.entries(r).every(([, row]) => row.colours >= 4 && row.arrived !== false), JSON.stringify(r));
 } };
 
@@ -6366,7 +6503,8 @@ scene("hub", { label: "lab work rotation", query: "status=clankin", steps: [{ na
     C.update(1 / 30); B.advance(1 / 60, 1 / 60);
     const restored = display.node.visible && !display.work.node.visible;
     const next = C.sites.findIndex((value, i) => i !== site && value.mirrorRoom);
-    const departing = workers.filter(e => e.active && e.site === site);
+    // The seventh's Ooga sleeps: its gorilla walks out to bed by itself, and is not one of the coworkers leaving.
+    const departing = workers.filter(e => e.active && e.site === site && e.mode !== "sleeping");
     for (const e of departing) {
       e.owner.work.site = e.owner.work.plannedSite = next;
       C.plan(e.owner, next);
@@ -7270,7 +7408,6 @@ scene("race", { query: "rain=0", steps: [raceStart, { name: "race tracks", why: 
 scene("drop", { steps: [dropStart, dropSteering, play("drop", "a jump lands on the target, scores its own medal and is saved as the best", dropRun), dropCrash, trip("drop")] });
 scene("orbit", { steps: [{ name: "orbit flow", why: "regression: the spacewalk air bonus was missing from the flight log", run: orbitFlow }, orbitSteering, orbitMissed, orbitEscape, trip("orbit")] });
 scene("mine", { steps: [mineResume, trip("mine"), mineControls] });
-scene("pool", { steps: [poolLeave, trip("pool")] });
 scene("factory", { query: "character=portlandhodl", steps: [factoryWalking, factoryGreeter, factoryLadders, factoryRailingJump, factoryWeapons, factoryForward, factoryForge, factoryShields, trip("factory")] });
 scene("factory", { label: "entrance", url: hubPage(src, "character=portlandhodl"), steps: [factoryFloor, factoryEntrance] });
 scene("factory", { label: "canvas2d", query: "canvas2d=1", steps: [factoryCanvas] });
@@ -7371,7 +7508,6 @@ scene("race", { query: "pos=0&rain=0", opts: PHONE_SIZE, steps: [phone("race", {
 scene("drop", { query: "pos=0", opts: PHONE_SIZE, steps: [phone("drop", { card: '[data-intro="drop"]', play: "window.__ooga.drop.start()", required: ["#joy-move", "#joy-look", "#act", ".leave"] })] });
 scene("orbit", { query: "pos=0", opts: PHONE_SIZE, steps: [phone("orbit", { card: '[data-intro="orbit"]', play: "window.__ooga.orbit.launch()", required: ["#joy-move", "#act", ".leave"] })] });
 scene("mine", { query: "pos=0", opts: PHONE_SIZE, steps: [phone("mine", { card: "#mine-intro", required: ["#joy-move", "#joy-look", "#act", "#mine-view-btn", "#mine-pause-btn", "#mine-mute", ".leave"] })] });
-scene("pool", { query: "pos=0", opts: PHONE_SIZE, steps: [phone("pool", { required: ["#joy-move", "#joy-look", ".leave"] })] });
 scene("factory", { query: "pos=0", opts: PHONE_SIZE, steps: [phone("factory", { required: ["#joy-move", "#joy-look", ".leave"] })] });
 scene("bifrost", { query: "pos=0", opts: PHONE_SIZE, steps: [phone("bifrost", { required: ["#joy-move", "#joy-look", ".leave"] })] });
 scene("arcade", { query: "pos=0", opts: PHONE_SIZE, steps: [phone("arcade", { required: ["#joy-move", "#joy-look", ".leave"] })] });
@@ -8707,11 +8843,20 @@ const unitChecks = async () => {
     record("QR invoices: matrices match independent reference at short and long capacities", rows.every(r => r.pass) && rejected, JSON.stringify(rows));
   }
   factoryChecks(BL);
-  await characterChecks(); await contributorActivityChecks(); await mempoolFeedChecks(); await debugActivityStatusChecks(); await soloDebugChecks(); await adaptiveQualityChecks(); await chainSnapshotChecks(); await dsbSharedDataChecks(); await timechainDataChecks(); await weatherStepChecks(); await gameRulesChecks();
+  await characterChecks(); await contributorActivityChecks(); await mempoolFeedChecks(); await debugActivityStatusChecks(); await soloDebugChecks(); await adaptiveQualityChecks(); await chainSnapshotChecks(); await dsbSharedDataChecks(); await timechainDataChecks(); await weatherStepChecks(); await poolLayoutChecks(); await gameRulesChecks();
 
   // Scene state built directly instead of booted; seed 1 matches scene-hub.js.
   // Sealed cave guides need the hub's seal nodes, so probes reading them stay in the browser tier.
   const island = BL.terrain.island({ seed: 1 });
+  {
+    const beds = BL.headquartersSleep.outdoorBeds(island, BL.caves.slots);
+    const caves = new Set(beds.map(b => b.caveId));
+    const supported = beds.every(b => b.outdoor && b.y >= island.surfaceAt(b.x, b.z) && b.y > 3);
+    const separate = beds.every((a, i) => beds.every((b, j) => i === j || Math.hypot(a.x - b.x, a.z - b.z) >= 1.79));
+    const blocked = BL.headquartersSleep.outdoorBeds(island, BL.caves.slots, () => false).length === 0;
+    record("outdoor sleep: open cave roofs provide separate supported anchors and reject blocked footprints", beds.length >= 8 && caves.size >= 3 && supported && separate && blocked,
+      JSON.stringify({ count: beds.length, caves: [...caves], supported, separate, blocked }));
+  }
 
   {
     // #93: compare the actual weld against independent coordinates, not a fixed hash of trig-built terrain.
@@ -8839,6 +8984,61 @@ const unitChecks = async () => {
       const reserved = !!bed.sleeper && crew.list.filter(c => c.bedroll === bed).length === 1;
       record("crew capacity: full HQ uses separate safe waiting spots, hides overflow, retries vacancies, and wakes away contributors", separated && noOrigin && away && recovered && returned && reserved,
         JSON.stringify({ separated, noOrigin, away, recovered, returned, reserved }));
+    } finally {
+      if (crew) crew.dispose();
+      C.roster.forEach((c, i) => Object.assign(c, saved[i]));
+    }
+  }
+  {
+    // Bed priority must work both on entry and when a vacancy opens mid-session.
+    const S = BL.scene, root = S.createNode(), noop = () => {}, C = BL.contributors, now = Date.now();
+    const saved = C.roster.map(c => ({ lastCommitAt: c.lastCommitAt, lastContributionAt: c.lastContributionAt, maintainer: c.maintainer }));
+    C.roster.forEach((c, i) => { c.lastCommitAt = c.lastContributionAt = now - 48 * 3600000 - (C.roster.length - i) * 60000; c.maintainer = false; });
+    const d = BL.headquartersModels.MATTRESS;
+    const bed = { x: 40, y: 0, z: 40, sr: 0, cr: 1, node: { rotation: { y: 0 } }, sleep: d,
+      collisionBoxes: new Float64Array([-d.width / 2, 0, -d.depth / 2, d.width / 2, d.surface, d.depth / 2,
+        -0.45, d.surface, d.pillowZ - 0.25, 0.45, d.pillowTop, d.pillowZ + 0.25]) };
+    const outdoors = C.roster.map((c, i) => ({ x: 10 + i * 4, y: 8, z: 10, outdoor: true, node: { rotation: { y: 0 } } }));
+    let crew;
+    try {
+      crew = BL.crew.create({ root, world: { level: 0 }, input: { add: noop, remove: noop }, hud: { setRosterRow: noop },
+        game: { state: { assignments: {}, inventory: [] } }, pile: { footprintEdge: 1, pileEdge: () => 1 }, viewYaw: 0,
+        buildSpots: [], walkIn: { x: 0, z: 3 }, groundAt: () => 0, walkable: () => true, bedrolls: [bed], outdoorBedrolls: outdoors,
+        bedRoute: () => null, fx: { say: noop, zzzAt: noop, burst: noop, puff: noop, spawnParticle: noop, damageNumber: noop }
+      });
+      const oldest = crew.list[0], newest = crew.list.at(-1), next = crew.list.at(-2), item = S.createNode();
+      item.swag = {};
+      oldest.swagNodes.push(item); S.addChild(oldest.parts.hat, item);
+      crew.refreshStates(true);
+      const initial = bed.sleeper === newest && oldest.bedroll.outdoor;
+      crew.poseWeapon(oldest);
+      const hiddenGear = !oldest.sleepWeapons.visible && !item.visible && oldest.parts.gun.parent === oldest.sleepWeapons;
+      const roofSleep = crew.list.filter(c => c.bedroll?.outdoor).every(c => c.bedTravel.mode === "rest" && c.root.visible && c.root.position.y >= 8
+        && c.root.quaternion && c.parts.head.geometry === c.headClosed);
+      const savedNet = BL.net;
+      let sync, sharedGear = false;
+      try {
+        BL.net = { state: { room: "live", hostId: "host", selfId: "host", followers: 1, npcVersion: 1 }, sendNpc(bytes) { this.npcFrame = bytes.slice().buffer; } };
+        sync = BL.npcSync.create({ crew, fx: {}, onPlan: noop, onHit: noop, onModelChange: noop });
+        sync.update(0.3);
+        BL.net.state.selfId = "follower";
+        const savedJet = oldest.jet, jetNode = S.createNode();
+        oldest.jet = { node: jetNode };
+        item.visible = oldest.sleepWeapons.visible = true;
+        sync.update(0.3);
+        sharedGear = !item.visible && !oldest.sleepWeapons.visible && !jetNode.visible && oldest.remoteOutdoorSleep;
+        oldest.jet = savedJet;
+      } finally { if (sync) sync.dispose(); BL.net = savedNet; }
+      newest.contributor.lastContributionAt = now;
+      crew.refreshStates(); crew.update(1.1, 1.1);
+      const priority = bed.sleeper === next && crew.list.filter(c => c.bedroll === bed).length === 1;
+      const previous = oldest.bedroll;
+      oldest.contributor.lastContributionAt = now;
+      crew.refreshStates(); crew.poseWeapon(oldest);
+      const restored = oldest.state === "working" && !oldest.bedroll && !previous.sleeper && item.visible
+        && oldest.parts.gun.parent !== oldest.sleepWeapons && oldest.parts.club.parent !== oldest.sleepWeapons;
+      record("sleep allocation: newest sleepers receive vacant beds, overflow lies on roofs with hidden gear, and waking restores items", initial && hiddenGear && roofSleep && sharedGear && priority && restored,
+        JSON.stringify({ initial, hiddenGear, roofSleep, sharedGear, priority, restored }));
     } finally {
       if (crew) crew.dispose();
       C.roster.forEach((c, i) => Object.assign(c, saved[i]));

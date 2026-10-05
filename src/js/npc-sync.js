@@ -26,7 +26,7 @@
   const EASE = 8, SNAP = 4, EVENTS_MAX = 96, SAY_MAX = 120;
   const F_VISIBLE = 1, F_CLOSED = 2, F_ROOT_Q = 4, F_ARM_L_Q = 8, F_ARM_R_Q = 16, F_HEAD_Q = 32;
   const F_CLUB = 64, F_CLUB_Q = 128, F_GUN = 256, F_GUN_Q = 512, F_FLASH = 1024, F_SNACK = 2048;
-  const F_STUNNED = 4096, F_FLAME = 8192, F_BED_GEAR = 16384;
+  const F_STUNNED = 4096, F_FLAME = 8192, F_BED_GEAR = 16384, F_OUTDOOR_SLEEP = 32768;
   const BODY = ["torso", "head", "legL", "legR", "armL", "armR"];
   const STATES = ["working", "chilling", "sleeping", "away"];
   const PHASES = ["", "outbound", "station", "shoot", "return", "reload"];
@@ -134,6 +134,7 @@
       out[o + 75] = p.snack.scale.x;
       writeXYZ(o + 76, cave.sleepWeapons.position); writeXYZ(o + 79, cave.sleepWeapons.rotation);
       if (cave.sleepWeapons.visible) flags |= F_BED_GEAR;
+      if (cave.state === "sleeping" && cave.bedroll?.outdoor) flags |= F_OUTDOOR_SLEEP;
       for (let b = 0; b < BODY.length; b++) {
         const node = p[BODY[b]];
         out[o + 82 + b] = node.ember || 0;
@@ -296,6 +297,14 @@
       p.snack.scale.x = p.snack.scale.y = p.snack.scale.z = t[o + 75];
       const bed = cave.sleepWeapons;
       bed.visible = (flags & F_BED_GEAR) !== 0;
+      const outdoor = (flags & F_OUTDOOR_SLEEP) !== 0;
+      if (outdoor || cave.remoteOutdoorSleep) {
+        for (const node of cave.sleepParts.equipment) node.visible = STATES[t[o + 96]] !== "sleeping";
+        for (const node of cave.swagNodes) node.visible = !outdoor;
+        for (const model of cave.magazineModels) if (model) model.node.visible = !outdoor;
+        if (cave.jet) cave.jet.node.visible = !outdoor;
+      }
+      cave.remoteOutdoorSleep = outdoor;
       easeXYZ(bed.position, t, o + 76, gearK); easeAngles(bed.rotation, t, o + 79, gearK);
       for (let b = 0; b < BODY.length; b++) {
         const node = p[BODY[b]];

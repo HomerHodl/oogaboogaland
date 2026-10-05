@@ -1,8 +1,13 @@
-// The island's weather, derived from the chain snapshot rather than pinged by it. Two axes come out
-// of chain.js — soak (how much of the backlog pays a fee) and gale (how fast transactions arrive) —
-// and soak alone names one of six standing steps (dry, drizzle, light rain, rain, heavy rain, downpour); gale only sets the wind.
-// Precipitation is a population held at a target, not a burst per transaction, so it rains for as
-// long as the backlog stands; a block strikes.
+// The Mempool island's weather, derived from the chain snapshot rather than pinged by it. One reading drives the
+// storm: how fast transactions are arriving, in virtual bytes a second (chain.js `inflow`, normalised as `gale`).
+// Smoothed, it names one of six standing steps (dry, drizzle, light rain, rain, heavy rain, downpour) and sets how
+// thick and dark the cloud deck stands; as it arrives it sets the wind. What is waiting is the lake's business
+// (pool-water.js), not the sky's: a full lake under a clearing sky is the mempool draining. A block strikes.
+//
+// Arrivals are raw from the socket, so the storm follows them through an average of STORM_TAU seconds and the
+// steps' own hysteresis: clouds gather, darken, rain and disperse without flickering. A reading is only as good as
+// the socket that sent it: once `socketAt` is older than ARRIVALS_FRESH_MS the storm eases to calm and reports the
+// reading unavailable, measured here every frame, never as nothing arriving.
 //
 // One fixed-capacity instanced batch carries the rain. Bolts are eight jagged variants built once at
 // boot and picked at random, so a strike allocates nothing. The sky is written over the daylight clock's colours after it
@@ -10,19 +15,20 @@
 // every sampled value exactly as it was.
 //
 // The weather is a cell standing over one place, not a curtain that follows the camera. `create`
-// takes the cell's `centre` and the `heightAt` its rain lands on; precipitation falls inside FIELD_R
-// of that centre, sky, fog and flash scale by `near` (full within NEAR_FULL, gone by NEAR_NONE) and
-// the sound by its own shorter HEARD_FULL/HEARD_NONE, so the rain is heard only around the rainforest.
+// takes the cell's `centre` and the `heightAt` its rain lands on (-Infinity where there is nothing under a
+// drop); precipitation falls inside FIELD_R of that centre, sky, fog and flash scale by `near` (full within
+// NEAR_FULL, gone by NEAR_NONE) and the sound by its own shorter HEARD_FULL/HEARD_NONE, so the rain is heard only
+// around the rainforest. `update` takes a `shelter` (0 to 1): under the island's ground the sky, the flash and
+// the sound of the storm stay outside, and only a distant thunder comes through.
 //
-// `stepFor(soak, prev)` climbs a step as soon as soak reaches it and leaves it only HYSTERESIS below.
-// How much falls, the drop size and the sky's grey follow the continuous `wetAt(soak)` through the
+// `stepFor(storm, prev)` climbs a step as soon as the storm reaches it and leaves it only HYSTERESIS below.
+// How much falls, the drop size and the sky's grey follow the continuous `wetAt(storm)` through the
 // steps' own points, so a step names the weather while the rain only eases.
 // Lightning is for new blocks only: every block strikes whatever the weather is doing, nothing else does; a bolt
-// takes a random turn, scale and mirror. The rain batch is tier-scaled (720/480/260, 120 on Canvas
-// 2D), and a streak lies along its drop's velocity, so its head is upwind and the rain leans the way
-// the wind travels. The sky goes through `cloudFor` on `wetAt`, the same clear band, after
-// `daylight.sample`. Audio is background: MASTER sits under the rally and drop engines and a strike
-// is a few times the rain, never the page's loudest thing.
+// takes a random turn, scale and mirror. The rain batch is tier-scaled, and a streak lies along its drop's
+// velocity, so its head is upwind and the rain leans the way the wind travels. The sky goes through `cloudFor` on
+// `wetAt`, the same clear band, after `daylight.sample`. Audio is background: MASTER sits under the rally and drop
+// engines and a strike is a few times the rain, never the page's loudest thing.
 //
 // Exports STEPS, stepFor, wetAt, cloudFor and create; an instance offers apply, strike, update,
 // setMuted, dispose, state, active and stats.
@@ -34,34 +40,39 @@
   const { clamp, lerp, mulberry32 } = math;
 
   // Tier-scaled populations: the batch is one draw call at any size, the cost is the simulation.
-  const CAP = { high: 720, medium: 480, low: 260 }, CAP_CANVAS = 120;
+  const CAP = { high: 1100, medium: 720, low: 380 }, CAP_CANVAS = 160;
   // The weather is a cell standing over one place, not a curtain that follows the camera. It falls
   // inside FIELD_R of its centre and the sky only greys for a camera close enough to be under it.
-  const FIELD_R = 16, FIELD_TOP = 17, FIELD_SPREAD = 7, RECYCLE_BELOW = 8;
-  // Full under the islet, gone by the far end of its bridge, so a storm over there never greys the
-  // sky over here: the home island is ~58 out from the cell and the rim head ~29.
+  const FIELD_R = 25, FIELD_TOP = 20, FIELD_SPREAD = 7, RECYCLE_BELOW = 8;
+  // Full under the island, gone by the far end of its bridge, so a storm over there never greys the
+  // sky over here: the home island is ~67 out from the cell and the rim head ~38.
   // A distant bolt still flickers the sky and still rolls, both faintly; never zero, because an
   // exponential gain ramp cannot be given one.
-  const NEAR_FULL = 16, NEAR_NONE = 30, DISTANT_FLASH = 0.3, DISTANT_THUNDER = 0.12;
+  const NEAR_FULL = 26, NEAR_NONE = 39, DISTANT_FLASH = 0.3, DISTANT_THUNDER = 0.12;
   // Sound carries less far than the sky greys, and deliberately so: the rain is only heard around the
-  // rainforest itself. The islet is 13 across from its centre and the bridge's near end is 29 out, so
+  // rainforest itself. The island is 22 across from its centre and the bridge's near end is 38 out, so
   // full on the island, fading over the far half of the crossing and silent before the home rim.
-  const HEARD_FULL = 14, HEARD_NONE = 24;
+  const HEARD_FULL = 24, HEARD_NONE = 34;
+  // Under the island's ground: how much of the rain and wind, of the flash and of the thunder is shut out.
+  const SHELTER_SOUND = 0.9, SHELTER_FLASH = 0.85, SHELTER_THUNDER = 0.65;
+  // The storm follows arrivals through an average of this many seconds, and a socket silent this long has
+  // stopped saying anything about them.
+  const STORM_TAU = 30, ARRIVALS_FRESH_MS = 90000;
   // A fixed deck of cloud nodes over the cell, sharing one cached geometry so the whole sky above the
   // island is a single draw call. They are built once and never allocated again: coverage is scale and
   // visibility, colour is a geometry swap, and a strike lights them through each node's own glow.
   // A rainforest is never without cloud, so the deck is always there: CLOUD_FLOOR of it stands even
   // under a clear sky and the weather only thickens and darkens it. Every node shares one cached
   // geometry, so the whole deck is a single instanced draw call whatever its size.
-  const CLOUD = { high: 48, medium: 36, low: 22 }, CLOUD_CANVAS = 14;
-  const CLOUD_R = 26, CLOUD_LIFT = 3.2, CLOUD_DRIFT = 0.06, CLOUD_EASE = 0.7;
+  const CLOUD = { high: 64, medium: 46, low: 28 }, CLOUD_CANVAS = 16;
+  const CLOUD_R = 34, CLOUD_LIFT = 3.2, CLOUD_DRIFT = 0.06, CLOUD_EASE = 0.7;
   const CLOUD_FLOOR = 0.62, CLOUD_TIERS = 3;
   // Drops grow with the rain: fine in a drizzle, fat in a downpour.
   const DROP_MIN = 0.7, DROP_MAX = 4, DROP_LIFT = 0.7;
   const RAIN_FALL = 11, RAIN_FALL_PER_SIZE = 3;
   const SPLASH_SIZE = 1.4;
   const WIND_MAX = 9, WIND_TURN = 0.05;
-  const FLASH_MAX = 0.85, FLASH_TAU = 0.12, BOLT_SHOW = 0.25, BOLT_RANGE = 18, BOLT_HEIGHT = 26, BOLT_VARIANTS = 8;
+  const FLASH_MAX = 0.85, FLASH_TAU = 0.12, BOLT_SHOW = 0.25, BOLT_RANGE = 21, BOLT_HEIGHT = 26, BOLT_VARIANTS = 8;
   const THUNDER_DELAY_MIN = 0.5, THUNDER_DELAY_SPREAD = 1;
   // Weather is background, not an event: the whole bed sits well under the rally and drop engines, and
   // a strike is only a few times the rain rather than the loudest thing on the page.
@@ -77,7 +88,7 @@
   // turn to pale grey near the rainforest. Rain thickens the haze without ever washing the horizon out.
   const FOG_NEAR = 60, FOG_FAR = 560, FOG_OFF_NEAR = 90, FOG_OFF_FAR = 620;
 
-  // Six standing steps on soak. `from` is where a step begins, `wet` how much falls there.
+  // Six standing steps on the storm, the smoothed arrivals. `from` is where a step begins, `wet` how much falls there.
   const STEPS = [
     { name: "dry", from: 0, wet: 0 },
     { name: "drizzle", from: 0.1, wet: 0.12 },
@@ -86,23 +97,23 @@
     { name: "heavy rain", from: 0.65, wet: 0.75 },
     { name: "downpour", from: 0.85, wet: 1 }
   ];
-  // A step is climbed as soon as soak reaches it and left only once soak falls HYSTERESIS below it,
-  // so a backlog hovering on a boundary holds its step instead of flicking between two.
+  // A step is climbed as soon as the storm reaches it and left only once it falls HYSTERESIS below it,
+  // so arrivals hovering on a boundary hold their step instead of flicking between two.
   const HYSTERESIS = 0.05;
-  const stepFor = (soak, prev = 0) => {
+  const stepFor = (storm, prev = 0) => {
     let i = prev;
-    while (i < STEPS.length - 1 && soak >= STEPS[i + 1].from) i++;
-    while (i > 0 && soak < STEPS[i].from - HYSTERESIS) i--;
+    while (i < STEPS.length - 1 && storm >= STEPS[i + 1].from) i++;
+    while (i > 0 && storm < STEPS[i].from - HYSTERESIS) i--;
     return i;
   };
   // How much falls, continuous through the steps' own points: a step names the weather, while the rain
   // itself only ever eases. Nothing below drizzle, all of it at downpour.
-  const wetAt = (soak) => {
-    if (soak < STEPS[1].from) return 0;
+  const wetAt = (storm) => {
+    if (storm < STEPS[1].from) return 0;
     let i = 1;
-    while (i < STEPS.length - 1 && soak >= STEPS[i + 1].from) i++;
+    while (i < STEPS.length - 1 && storm >= STEPS[i + 1].from) i++;
     if (i === STEPS.length - 1) return 1;
-    return lerp(STEPS[i].wet, STEPS[i + 1].wet, (soak - STEPS[i].from) / (STEPS[i + 1].from - STEPS[i].from));
+    return lerp(STEPS[i].wet, STEPS[i + 1].wet, (storm - STEPS[i].from) / (STEPS[i + 1].from - STEPS[i].from));
   };
   const cloudFor = (overcast, day) => {
     const band = lerp(CLEAR_NIGHT, CLEAR_DAY, clamp(day, 0, 1));
@@ -192,7 +203,8 @@
     let count = 0;
     let flash = 0, flashT = -1, boltT = -1, thunderAt = -1, strikes = 0, boltVariant = -1;
     // Everything the feed sets is a target; the live value walks there so nothing snaps.
-    let soak = 0, soakTarget = 0, gale = 0, galeTarget = 0, wet = 0;
+    // `reading` is the arrivals as last heard, `heardAt` when; `storm` is their average and `gale` the wind.
+    let storm = 0, reading = 0, heardAt = 0, inflow = 0, fresh = false, gale = 0, wet = 0, shelter = 0;
     let cloud = 0, near = 0, heard = 0, windAngle = Math.random() * Math.PI * 2, windX = 0, windZ = 0;
     let stepAt = 0, state = STEPS[0], applied = false;
     const fog = new Float32Array(3);
@@ -267,7 +279,7 @@
     const heardNow = () => {
       const dx = camera.target.x - centre.x, dz = camera.target.z - centre.z;
       const k = clamp((HEARD_NONE - Math.sqrt(dx * dx + dz * dz)) / (HEARD_NONE - HEARD_FULL), 0, 1);
-      return k * k;
+      return k * k * (1 - SHELTER_THUNDER * shelter);
     };
     const rumble = () => {
       if (!initAudio() && !ctx) return;
@@ -308,15 +320,16 @@
       h[i] = 0.8 + size * 0.35;
       vy[i] = RAIN_FALL + RAIN_FALL_PER_SIZE * size;
     };
-    // The feed's standing view of the chain. Targets only; `update` walks the live values there.
-    const apply = (snapshot) => {
+    // The feed's standing view of the chain. Targets only; `update` walks the live values there, and judges
+    // for itself whether the arrivals it was told about are still worth believing.
+    const apply = (snapshot, now = Date.now()) => {
       if (!snapshot) return;
-      soakTarget = clamp(snapshot.soak, 0, 1);
-      galeTarget = clamp(snapshot.gale, 0, 1);
+      reading = clamp(snapshot.gale, 0, 1);
+      heardAt = snapshot.socketAt || 0;
+      inflow = snapshot.inflow || 0;
       if (!applied) {
         applied = true;
-        soak = soakTarget;
-        gale = galeTarget;
+        storm = gale = heardAt > 0 && now - heardAt < ARRIVALS_FRESH_MS ? reading : 0;
       }
     };
     const strike = () => {
@@ -326,7 +339,8 @@
       thunderAt = THUNDER_DELAY_MIN + Math.random() * THUNDER_DELAY_SPREAD;
       const a = Math.random() * Math.PI * 2, r = 6 + Math.random() * (BOLT_RANGE - 6), t = centre;
       const bx = t.x + Math.cos(a) * r, bz = t.z + Math.sin(a) * r;
-      const ground = heightAt(bx, bz);
+      // A bolt that finds no ground under it strikes down to the island's own datum.
+      const found = heightAt(bx, bz), ground = found > -Infinity ? found : t.y;
       boltVariant = (Math.random() * variants.length) | 0;
       boltNode.geometry = variants[boltVariant];
       boltNode.position.x = bx;
@@ -342,9 +356,13 @@
 
     const walk = (value, target, step) => value > target ? Math.max(target, value - step) : Math.min(target, value + step);
 
-    const update = (dt, opts) => {
+    const update = (dt, opts, sheltered = 0, now = Date.now()) => {
       const previousCount = node.instanceCount;
       const step = dt / EASE;
+      shelter = sheltered;
+      // Arrivals no socket has vouched for lately say nothing: the storm eases to calm, it does not read zero.
+      fresh = heardAt > 0 && now - heardAt < ARRIVALS_FRESH_MS;
+      const arriving = fresh ? reading : 0;
       // How far under the cell the listener is. `camera.target` is the Ooga you are driving when you
       // are in one and the look-at point when you are flying free, so one value serves both. The sky,
       // the fog, the flash and the sound all read it, so they cannot disagree about where you stand.
@@ -354,11 +372,11 @@
       // Loudness on its own shorter curve, then squared: audible only around the rainforest, already
       // almost gone halfway back over the bridge, and exactly zero anywhere else in the world.
       const reach = clamp((HEARD_NONE - away) / (HEARD_NONE - HEARD_FULL), 0, 1);
-      heard = reach * reach;
-      if (Math.abs(soak - soakTarget) > DEAD_BAND) soak = walk(soak, soakTarget, step); else soak = soakTarget;
-      if (Math.abs(gale - galeTarget) > DEAD_BAND) gale = walk(gale, galeTarget, step); else gale = galeTarget;
-      state = STEPS[stepAt = stepFor(soak, stepAt)];
-      wet = wetAt(soak);
+      heard = reach * reach * (1 - SHELTER_SOUND * shelter);
+      storm += (arriving - storm) * (1 - Math.exp(-dt / STORM_TAU));
+      if (Math.abs(gale - arriving) > DEAD_BAND) gale = walk(gale, arriving, step); else gale = arriving;
+      state = STEPS[stepAt = stepFor(storm, stepAt)];
+      wet = wetAt(storm);
 
       // Wind turns slowly and never snaps; the gale sets its strength.
       windAngle += WIND_TURN * dt;
@@ -367,7 +385,7 @@
       windZ = Math.sin(windAngle) * windSpeed;
 
       // The deck above: how much of it is there, what colour, and how hard it is lit from below.
-      const wantCover = clamp(wet * 0.55 + soak * 0.45, 0, 1);
+      const wantCover = clamp(wet * 0.55 + storm * 0.45, 0, 1);
       cloudCover += (wantCover - cloudCover) * Math.min(1, dt / CLOUD_EASE);
       const wantForm = cloudCover < 0.18 ? "fair" : "grey";
       if (wantForm !== cloudForm) {
@@ -402,7 +420,7 @@
 
       // The population is the weather: hold `target` particles alive and the rain lasts as long as
       // the backlog stands, instead of stopping the moment a transaction stops arriving.
-      const target = Math.min(cap, Math.round(cap * clamp(wet * (0.65 + 0.35 * soak), 0, 1)));
+      const target = Math.min(cap, Math.round(cap * clamp(wet * (0.65 + 0.35 * storm), 0, 1)));
       if (count < target) {
         // Fill over about a second so a change eases in rather than popping a full field.
         const room = Math.min(target - count, Math.max(1, Math.ceil(cap * dt)));
@@ -482,7 +500,7 @@
       if (opts) {
         // A clear sky leaves the clock's colours and light exactly as sampled, under the clear-air haze. The
         // sky greys with how hard it is raining, so a drizzle falls under the clock's own sky.
-        cloud = cloudFor(wet, opts.day) * near;
+        cloud = cloudFor(wet, opts.day) * near * (1 - shelter);
         if (cloud > 0.02) {
           const k = cloud * OVERCAST_MIX;
           greyen(opts.clear, k, OVERCAST_TINT); greyen(opts.horizon, k, OVERCAST_TINT); greyen(opts.zenith, k, OVERCAST_TINT);
@@ -497,7 +515,7 @@
       }
       if (flash > 0 && opts) {
         // A distant bolt still flickers the sky, just faintly; underneath it the whole sky goes white.
-        const k = flash * FLASH_MAX * lerp(DISTANT_FLASH, 1, near);
+        const k = flash * FLASH_MAX * lerp(DISTANT_FLASH, 1, near) * (1 - SHELTER_FLASH * shelter);
         brighten(opts.clear, k); brighten(opts.horizon, k); brighten(opts.zenith, k);
         brighten(opts.sky, k); brighten(opts.ground, k); brighten(opts.direct, k);
         opts.ambientFloor = lerp(opts.ambientFloor, 0.9, k);
@@ -528,7 +546,11 @@
       get boltVariants() { return variants.length; },
       get thunderPending() { return thunderAt >= 0; },
       get strikes() { return strikes; },
-      get soak() { return soak; },
+      get storm() { return storm; },
+      // What is arriving, in vB/s as last heard, and whether a live socket still vouches for it.
+      get inflow() { return inflow; },
+      get arrivals() { return fresh ? "live" : "unavailable"; },
+      get shelter() { return shelter; },
       get wet() { return wet; },
       get step() { return stepAt; },
       get gale() { return gale; },
@@ -566,5 +588,5 @@
     };
   };
 
-  BL.weather = { STEPS, CLEAR_NIGHT, CLEAR_DAY, stepFor, wetAt, cloudFor, create };
+  BL.weather = { STEPS, CLEAR_NIGHT, CLEAR_DAY, STORM_TAU, ARRIVALS_FRESH_MS, stepFor, wetAt, cloudFor, create };
 })();
