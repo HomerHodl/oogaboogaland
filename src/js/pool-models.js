@@ -163,23 +163,56 @@
     const geo = { verts: [], faces: [], lines: [] }, RAMP = L.RAMP, STEP = 1 / RAMP.r;
     const at = (bearing, r, y) => pushVert(geo, Math.sin(bearing) * r, y, Math.cos(bearing) * r);
     const SHEET = { emissive: 0 };
+    // Slightly overlap the one-metre waterfall so no daylight seam shows at either bank.
+    // Its voxel support still needs the wider corner allowance from the layout.
+    const fallMouthHalf = 0.49;
     const quad = (b0, b1, r0, r1, y0, y1, color) => face(geo, [at(b0, r0, y0), at(b0, r1, y0), at(b1, r1, y1), at(b1, r0, y1)], color, SHEET);
     const floorEdge = (bearing, edge) => {
       for (const channel of L.CHANNELS) {
         if (channel.inner) continue;
         const angle = L.turn(bearing, channel.bearing);
-        if (Math.abs(angle) * edge < L.CHANNEL.low + L.UNIT * Math.SQRT1_2) edge = Math.min(edge, (L.channelOutlet(channel) - 0.05) / Math.cos(angle));
+        if (Math.abs(angle) * edge < fallMouthHalf) edge = Math.min(edge, (L.channelOutlet(channel) - 0.05) / Math.cos(angle));
       }
       return edge;
     };
-    // Close exposed ends of the smooth outer shelves down into their voxel backing, including fall gaps
-    // and the places where a gallery lip changes width. Only the top surface was continuous there.
+    const fallCuts = [];
+    for (const channel of L.CHANNELS) if (channel.falls) {
+      const width = fallMouthHalf;
+      let left = channel.bearing - width / L.edgeAt(channel.bearing);
+      let right = channel.bearing + width / L.edgeAt(channel.bearing);
+      for (let i = 0; i < 4; i++) {
+        left = channel.bearing - width / L.edgeAt(left);
+        right = channel.bearing + width / L.edgeAt(right);
+      }
+      fallCuts.push({ left, right, channel });
+    }
+    const cutInnerEdge = (bearing, inner) => {
+      for (const cut of fallCuts) {
+        if (Math.abs(bearing - cut.left) < 1e-6 || Math.abs(bearing - cut.right) < 1e-6)
+          return Math.min(inner, L.channelOutlet(cut.channel) - 0.25);
+      }
+      return inner;
+    };
+    const drySpans = (from, to, draw) => {
+      let start = from;
+      for (const cut of fallCuts) {
+        if (cut.right <= start || cut.left >= to) continue;
+        if (cut.left > start + 1e-6) draw(start, Math.min(cut.left, to));
+        start = Math.max(start, cut.right);
+        if (start >= to - 1e-6) return;
+      }
+      if (start < to - 1e-6) draw(start, to);
+    };
+    // Close exposed ends of the smooth outer shelves into their voxel backing, including fall gaps
+    // and both sides of a gallery lip's change in width. Match the shallow outer skirt.
     const capEnd = (bearing, inner, outer, y, end) => {
       if (outer <= inner + 1e-6) return;
-      const ids = [at(bearing, inner, y), at(bearing, inner, y - 0.62),
-        at(bearing, outer, y - 0.62), at(bearing, outer, y)];
+      const bottom = y - 0.62;
+      const ids = [at(bearing, inner, y), at(bearing, inner, bottom),
+        at(bearing, outer, bottom), at(bearing, outer, y)];
       if (end) ids.reverse();
       face(geo, ids, SKIRT, SHEET);
+      face(geo, [...ids].reverse(), SKIRT, SHEET);
     };
     const shelfJoin = (previous, b0, b1, inner0, inner1, outer0, outer1, y0, y1) => {
       if (!previous || Math.abs(previous.b - b0) > 1e-6) {
@@ -187,6 +220,10 @@
         capEnd(b0, inner0, outer0, y0, false);
       } else if (previous.outer > outer0) capEnd(b0, outer0, previous.outer, y0, true);
       else capEnd(b0, previous.outer, outer0, y0, false);
+      if (previous && Math.abs(previous.b - b0) <= 1e-6) {
+        if (previous.inner < inner0) capEnd(b0, previous.inner, inner0, y0, true);
+        else capEnd(b0, inner0, previous.inner, y0, false);
+      }
       return { b: b1, inner: inner1, outer: outer1, y: y1 };
     };
     let galleryEnd = null, ledgeEnd = null;
@@ -225,20 +262,26 @@
       // Through a link: carry the descent's surface out through the mouths and along the gallery. Between
       // galleries only the exterior lip continues, with its inner edge buried in the intact cliff wall.
       const link = L.linkAt((a + to) / 2);
-      if (link || L.lipAt(RAMP.start + (a + to) / 2)) for (let h = 0; h < 2; h++) {
+      for (let h = 0; h < 2; h++) {
         const a0 = a + (to - a) * h / 2, a1 = a + (to - a) * (h + 1) / 2, b0 = RAMP.start + a0, b1 = RAMP.start + a1;
-        // Each end keeps its own reach: a panel crossing a fall bank or gallery end tapers
-        // into the cut instead of losing the entire corner when just one end has no lip.
-        const lip0 = L.lipAt(b0), lip1 = L.lipAt(b1);
-        if (!link && ((!lip0 && !lip1) || L.fallGap(b0, L.edgeAt(b0), L.UNIT * Math.SQRT1_2) || L.fallGap(b1, L.edgeAt(b1), L.UNIT * Math.SQRT1_2))) continue;
-        const r0 = floorEdge(b0, L.edgeAt(b0) + (lip0 ? lip0 - 0.04 : -0.25));
-        const r1 = floorEdge(b1, L.edgeAt(b1) + (lip1 ? lip1 - 0.04 : -0.25));
-        const y0 = L.rampY(a0), y1 = L.rampY(a1);
-        const inner0 = link ? RAMP.r + reach : L.edgeAt(b0) - 0.3, inner1 = link ? RAMP.r + reach : L.edgeAt(b1) - 0.3;
-        if (!link && (r0 <= inner0 || r1 <= inner1)) continue;
-        face(geo, [at(b0, inner0, y0), at(b0, r0, y0), at(b1, r1, y1), at(b1, inner1, y1)], LEDGE_TONES[n & 1], SHEET);
-        if (lip0 || lip1) face(geo, [at(b0, r0, y0), at(b0, r0, y0 - 0.62), at(b1, r1, y1 - 0.62), at(b1, r1, y1)], SKIRT, SHEET);
-        galleryEnd = shelfJoin(galleryEnd, b0, b1, inner0, inner1, r0, r1, y0, y1);
+        const draw = (start, end) => {
+          const lip0 = L.lipAt(start), lip1 = L.lipAt(end);
+          if (!link && !lip0 && !lip1) return;
+          const edge0 = L.edgeAt(start) + (lip0 ? lip0 - 0.04 : -0.25);
+          const edge1 = L.edgeAt(end) + (lip1 ? lip1 - 0.04 : -0.25);
+          const r0 = floorEdge(start, edge0), r1 = floorEdge(end, edge1);
+          const y0 = L.rampY(start - RAMP.start), y1 = L.rampY(end - RAMP.start);
+          const inner0 = link ? RAMP.r + reach : L.edgeAt(start) - 0.3, inner1 = link ? RAMP.r + reach : L.edgeAt(end) - 0.3;
+          if (!link && (r0 <= inner0 || r1 <= inner1)) return;
+          face(geo, [at(start, inner0, y0), at(start, r0, y0), at(end, r1, y1), at(end, inner1, y1)], LEDGE_TONES[n & 1], SHEET);
+          face(geo, [at(start, inner0, y0 - 0.62), at(end, inner1, y1 - 0.62),
+            at(end, r1, y1 - 0.62), at(start, r0, y0 - 0.62)], SKIRT, SHEET);
+          // The gallery mouth exposes this edge even where the lip has zero width.
+          face(geo, [at(start, r0, y0), at(start, r0, y0 - 0.62), at(end, r1, y1 - 0.62), at(end, r1, y1)], SKIRT, SHEET);
+          galleryEnd = shelfJoin(galleryEnd, start, end, inner0, inner1, r0, r1, y0, y1);
+        };
+        if (link) draw(b0, b1);
+        else drySpans(b0, b1, draw);
       }
     }
     if (galleryEnd) capEnd(galleryEnd.b, galleryEnd.inner, galleryEnd.outer, galleryEnd.y, true);
@@ -281,13 +324,20 @@
     for (let n = -leadSteps; n * STEP < end - 1e-6; n++) {
       const a = n < 0 ? n * L.LEDGE.lead / leadSteps : n * STEP;
       const to = n < 0 ? (n + 1) * L.LEDGE.lead / leadSteps : Math.min(end, a + STEP);
-      const b0 = RAMP.start + a, b1 = RAMP.start + to, y0 = L.ledgeY(a) + 0.008, y1 = L.ledgeY(to) + 0.008;
-      const r0 = L.edgeAt(b0), r1 = L.edgeAt(b1);
-      const out0 = Math.max(0, L.ledgeWidth(a) - 0.04), out1 = Math.max(0, L.ledgeWidth(to) - 0.04);
-      if (L.fallGap(b0, r0, L.UNIT * Math.SQRT1_2) || L.fallGap(b1, r1, L.UNIT * Math.SQRT1_2)) continue;
-      face(geo, [at(b0, r0 - 0.3, y0), at(b0, r0 + out0, y0), at(b1, r1 + out1, y1), at(b1, r1 - 0.3, y1)], LEDGE_TONES[n & 1], SHEET);
-      face(geo, [at(b0, r0 + out0, y0), at(b0, r0 + out0, y0 - 0.62), at(b1, r1 + out1, y1 - 0.62), at(b1, r1 + out1, y1)], SKIRT, SHEET);
-      ledgeEnd = shelfJoin(ledgeEnd, b0, b1, r0 - 0.3, r1 - 0.3, r0 + out0, r1 + out1, y0, y1);
+      drySpans(RAMP.start + a, RAMP.start + to, (b0, b1) => {
+        const a0 = b0 - RAMP.start, a1 = b1 - RAMP.start;
+        const y0 = L.ledgeY(a0) + 0.008, y1 = L.ledgeY(a1) + 0.008;
+        const r0 = L.edgeAt(b0), r1 = L.edgeAt(b1);
+        const out0 = Math.max(0, L.ledgeWidth(a0) - 0.04), out1 = Math.max(0, L.ledgeWidth(a1) - 0.04);
+        // At a fall the cliff itself is recessed to the outlet. Carry the cut end back
+        // into that rock, or the ledge's inner 0.7 m is left uncapped beside the water.
+        const inner0 = cutInnerEdge(b0, r0 - 0.3), inner1 = cutInnerEdge(b1, r1 - 0.3);
+        face(geo, [at(b0, inner0, y0), at(b0, r0 + out0, y0), at(b1, r1 + out1, y1), at(b1, inner1, y1)], LEDGE_TONES[n & 1], SHEET);
+        face(geo, [at(b0, inner0, y0 - 0.62), at(b1, inner1, y1 - 0.62),
+          at(b1, r1 + out1, y1 - 0.62), at(b0, r0 + out0, y0 - 0.62)], SKIRT, SHEET);
+        face(geo, [at(b0, r0 + out0, y0), at(b0, r0 + out0, y0 - 0.62), at(b1, r1 + out1, y1 - 0.62), at(b1, r1 + out1, y1)], SKIRT, SHEET);
+        ledgeEnd = shelfJoin(ledgeEnd, b0, b1, inner0, inner1, r0 + out0, r1 + out1, y0, y1);
+      });
     }
     if (ledgeEnd) capEnd(ledgeEnd.b, ledgeEnd.inner, ledgeEnd.outer, ledgeEnd.y, true);
     // Support only: a sheet is a floor to stand on, never a wall, a ceiling or the skin of a solid.
@@ -390,6 +440,31 @@
       lathe({ profile: [[L.LAKE_R, -0.3], [L.LAKE_R, 0]], segments: 64, color: WATER[0] })
     );
     return geo;
+  });
+  const membraneRock = cached(() => {
+    const tones = ["#60605a", "#696963", "#585853", "#74746d"];
+    // Overlap both the faceted shore and the waterline so neither boundary
+    // exposes a slit as the lake level moves through the round basin.
+    const profile = [[L.LAKE_R + L.UNIT + 0.2, 0.015], ...membraneProfile(-0.065)];
+    const geo = noShadow(latheBy({ profile, segments: 192,
+      color: (ring, segment) => tones[(Math.floor(ring * 24 / 3) * 7 + Math.floor(segment / 9) * 11) % tones.length] }));
+    // The opaque WebGL pass culls back faces. Keep the exposed bowl solid from
+    // the chamber below as well as from the shore above when the lake recedes.
+    const upper = geo.faces.slice();
+    for (const face of upper) geo.faces.push({ ...face, i: [...face.i].reverse() });
+    return geo;
+  });
+  const membraneRim = cached(() => {
+    // The voxel shore's bevel ends just outside the round bowl. Bridge that joint with a
+    // closed stone collar, buried under the shore at its outer edge and into the bowl at
+    // its inner edge, so neither side can show daylight as the lake level changes.
+    const inner = L.LAKE_R - 0.25, outer = L.LAKE_R + L.UNIT + 0.1;
+    const tones = ["#60605a", "#696963", "#585853", "#74746d"];
+    return noShadow(latheBy({ profile: [
+      [outer, -0.02], [L.LAKE_R + 0.15, -0.02], [inner, L.membraneY(inner) + 0.035],
+      [inner, L.membraneY(inner) - 0.035], [L.LAKE_R + 0.15, -1.05],
+      [outer, L.roofUnder(L.LAKE_R) - 0.04], [outer, -0.02]
+    ], segments: 64, color: (ring, segment) => tones[(Math.floor(ring * 8) * 7 + Math.floor(segment / 3) * 11) % tones.length] }));
   });
   // The plank bridge that carries the ring path over a channel, in its own frame: x along the path, the deck's
   // top at y = 0 and the channel passing under along z. Round logs for bearers, bevelled planks across them.
@@ -1026,7 +1101,7 @@
   // The chain board stands just inside the far shoreline, in front of the trees. Its inward-facing slate,
   // frame and live lettering share the pool's circular arc; +z faces the centre in the board's own frame.
   // Its feet reach the bowl, while the face stays above the fullest waterline.
-  const CHAIN_BOARD = { w: 6.8, h: 3, y: 1, d: 0.3, px: 0.06, r: L.LAKE_R - 0.75 };
+  const CHAIN_BOARD = { w: 7.4, h: 3, y: 1, d: 0.3, px: 0.03, r: L.LAKE_R - 0.75 };
   const BOARD_FOOT = L.membraneY(CHAIN_BOARD.r - 0.3) - 0.08;
   const curveChainBoard = (source, ox = 0, oy = 0, oz = 0) => {
     const geo = { ...source, verts: [], faces: [], lines: [] }, v = source.verts, radius = CHAIN_BOARD.r;
@@ -1220,6 +1295,8 @@
     const bridgeNode = createNode({ position: { x: 0, y: 0, z: place.bridgeLocalZ }, geometry: bridge() });
     // Own the clipping height per visit; the cached collision shell remains unchanged.
     const membraneNode = createNode({ geometry: { ...membrane(), clipMaxY: place.y + L.WATER.low }, sightHidden: true });
+    const membraneRockNode = createNode({ geometry: { ...membraneRock(), clipMinY: place.y + L.WATER.low + 0.018 }, sightHidden: true });
+    const membraneRimNode = createNode({ geometry: membraneRim(), sightHidden: true });
     // Canvas 2D sorts by depth alone: the bias draws the backing before everything it lies behind.
     const backingNode = createNode({ geometry: chamberBacking(), sightHidden: true, depthBias: 60 });
     const vinesNode = createNode({ geometry: chamberVines(), sightHidden: true });
@@ -1237,12 +1314,12 @@
       const r = L.RAMP.r + side * (L.RAMP.half + 0.9), b = L.RAMP.start - 0.07;
       return createNode({ position: { x: Math.sin(b) * r, y: L.LEVEL.court, z: Math.cos(b) * r }, geometry: torchPost(), matrixEmissiveLiving: true });
     });
-    addChild(node, groundNode, floorNode, bridgeNode, membraneNode, backingNode, vinesNode, signNode, ...crossings, ...beds, ...torches);
-    return { node, ground: groundNode, floor: floorNode, bridge: bridgeNode, membrane: membraneNode, vines: vinesNode, sign: signNode, crossings, beds, torches };
+    addChild(node, groundNode, floorNode, bridgeNode, membraneNode, membraneRockNode, membraneRimNode, backingNode, vinesNode, signNode, ...crossings, ...beds, ...torches);
+    return { node, ground: groundNode, floor: floorNode, bridge: bridgeNode, membrane: membraneNode, membraneRock: membraneRockNode, vines: vinesNode, sign: signNode, crossings, beds, torches };
   };
 
   BL.poolModels = {
-    SITE, UNIT, BEARING, DIR, WATER, FOAM, spot, build, latheBy, islet, rampFloor, membrane, chamberBacking, chamberVines, crossing, CROSSING, NEST_BEDS, bridge, caveSign, torchPost, wallTorch, VEINS, roots,
+    SITE, UNIT, BEARING, DIR, WATER, FOAM, spot, build, latheBy, islet, rampFloor, membrane, membraneRock, chamberBacking, chamberVines, crossing, CROSSING, NEST_BEDS, bridge, caveSign, torchPost, wallTorch, VEINS, roots,
     TORCH_STEM_H, carve, carveCells, panelFrom, chainPanel, chainBoard, chainBoardLegs, CHAIN_BOARD, infoSign, infoSignLeg, INFO_SIGN, CANOPY, UNDERGROWTH, fern, shrub, mossRock, deckY,
     beastRig, flowers, log,
     COLORS: { LEAF, LEAF_DK, LEAF_LT, BARK, BARK_LT, STONE, STONE_DK, MOSS, WET, GOLD }
