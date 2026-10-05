@@ -4985,7 +4985,7 @@
     },
     rowPage(0, "Block height", (s) => s.lastTxCount ? `${gameMod.formatLarge(s.lastTxCount)} TX IN IT` : "", "A block's height is its number in the Bitcoin chain. When a new block arrives, lightning strikes and a water cube drops through the chamber. The cube marks the block; the next mempool reading determines how much waiting data remains in the lake."),
     rowPage(1, "Arriving data", (s) => [arrivalsLive(s) ? weatherMod.STEPS[weather.state.step].name.toUpperCase() : "ARRIVALS UNAVAILABLE", s.backlogAt ? `QUEUE ${backlogText(s.vsize)}` : "QUEUE UNAVAILABLE"], "The large number is new transaction data arriving each second, in virtual bytes (vB/s). Rain strength follows a roughly 30-second average of this rate. Arrivals add to the mempool; blocks confirm transactions and can reduce it. The queue below is the current waiting size, not another arrival rate."),
-    rowPage(2, "Mempool", (s) => s.backlogAt ? backlogDetails(s.count, s.vsize) : ["TX COUNT UNKNOWN", "EST BLOCKS UNKNOWN"], "The mempool is the data still waiting for a block, measured in millions of virtual bytes (MvB). The two smaller figures count waiting transactions and estimate how many blocks of space they would fill at about 1 MvB each. Rain shows new arrivals; a mined block can clear some of this queue."),
+    rowPage(2, "Mempool", (s) => s.backlogAt ? backlogDetails(s.count, s.vsize) : ["TX COUNT UNKNOWN", "EST BLOCKS UNKNOWN"], "The mempool is the data still waiting for a block, measured in millions of virtual bytes (MvB). The smaller figures count waiting transactions and estimate full blocks of space. SegWit blocks can exceed 1 MB on disk, but their weight limit is 1 MvB. Rain shows new arrivals; a mined block can clear some of this queue."),
     rowPage(3, "Next-block fee", (s) => s.hourFee ? `HOUR ${String(+s.hourFee.toFixed(s.hourFee >= 10 ? 0 : 2))} SAT/VB` : "", "This fee estimate helps a transaction compete for space in the next block, in satoshis per virtual byte (sat/vB). The smaller figure estimates a fee for confirmation within an hour; neither time is guaranteed. Fees affect queue order, while arrivals set the rain and total waiting data fills the lake.")
   ]);
   // The key to the island: what arrives makes the weather, what waits fills the lake, and a block is a bolt and a
@@ -5001,7 +5001,7 @@
       note: () => "The large number is new transaction data arriving per second (vB/s). Rain follows a roughly 30-second average, so the weather changes smoothly. The queue below is data still waiting in the mempool (MvB): arrivals can grow it, while new blocks can reduce it. If arrival updates stop for 90 seconds, rain fades and the rate becomes unavailable; that does not mean zero arrivals."
     },
     {
-      caption: "Mempool",
+      caption: "Lake",
       draw: (c2, s) => {
         const water = mempoolIsland.water.state;
         const known = water.status !== "unavailable" || water.preview !== null;
@@ -5012,7 +5012,7 @@
         const water = mempoolIsland.water.state;
         const override = water.debugFill !== null ? ` The poolfill=${water.debugFill} setting overrides the lake height, but not these backlog figures.` : "";
         const preview = water.preview !== null ? " A test backlog is active, so the transaction count is unavailable." : "";
-        return `MvB means millions of virtual bytes still waiting for a block. The smaller figures show the transaction count and roughly how many blocks of space the queue needs. Incoming data drives the rain and can grow this queue; blocks confirm transactions and can shrink it. Around ${BL.poolWater.HYDRO.OVERFLOW_VB / 1e6} MvB, the lake reaches the rim and spills over. That is this island's visual scale, not a Bitcoin limit.${override}${preview}`;
+        return `MvB means millions of virtual bytes still waiting for a block. The smaller figures show the transaction count and an estimate using 1 MvB per full block, Bitcoin's weight limit after SegWit, not its raw size on disk. Fees affect which transactions fit first. Incoming data drives the rain and can grow this queue; blocks confirm transactions and can shrink it. Around ${BL.poolWater.HYDRO.OVERFLOW_VB / 1e6} MvB, the lake reaches the rim and spills over. That is this island's visual scale, not a Bitcoin limit.${override}${preview}`;
       }
     },
     {
