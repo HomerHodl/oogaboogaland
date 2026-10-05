@@ -266,7 +266,7 @@
     const lightDir = new Float32Array([0, 1, 0]);
     let directStrength = 1, ambientFloor = 0.3, diffuseFloor = 0, skyLuma = 0.5, groundLuma = 0.2;
     let waterTime = 0;
-    const waterWave = new Float64Array(3);
+    const waterWave = new Float64Array(3), waterBodyPoint = new Float64Array(3);
     let pointLights = null, pointLightCount = 0;
     let spotLight = null;
     const spotEnergy = (x, y, z, nx, ny, nz) => {
@@ -359,6 +359,7 @@
       const portalFace = !!node.mirrorPortal || !!node.mirrorWalkThrough && mirrorDebug.portal;
       const localMatrixGlyph = !!node.geometry.matrixGlyph;
       const liquid = !!node.geometry.portalSurface, projective = !!node.geometry.projective;
+      const waterBody = node.geometry.lakeBody;
       // Every voxel face in a glyph shares this instance plane and basis.
       const glyphLength = localMatrixGlyph ? Math.hypot(w[8], w[9], w[10]) : 1;
       const glyphNx = w[8] / glyphLength, glyphNy = w[9] / glyphLength, glyphNz = w[10] / glyphLength;
@@ -391,19 +392,23 @@
           let centerX = 0, centerY = 0, centerZ = 0, liquidX = 0, liquidZ = 0;
           for (let k = 0; k < count; k++) {
             const b = idx[k] * 3;
-            let x = verts[b], z = verts[b + 2];
+            let x = verts[b], y = verts[b + 1], z = verts[b + 2];
+            if (waterBody && waterBody[2] > 0) {
+              BL.poolWater.sampleBody(waterBodyPoint, x, y, z, waterBody);
+              x = waterBodyPoint[0]; y = waterBodyPoint[1]; z = waterBodyPoint[2];
+            }
             if (liquid) {
               const radius = Math.hypot(x, z);
               if (radius > node.portalReveal) { const clip = node.portalReveal / radius; x *= clip; z *= clip; }
               liquidX += x / count; liquidZ += z / count;
             }
             const displacement = liquid ? BL.oogaPortalModels.liquidHeight(x, z, node.portalTime, node.portalSurge) : 0;
-            mat4.transformPoint(V[k], w, x, verts[b + 1] + displacement, z);
+            mat4.transformPoint(V[k], w, x, y + displacement, z);
             if (face.lake && node.geometry.lakeWaves) {
               BL.poolWater.sampleWaves(waterWave, V[k][0], V[k][2], node.geometry.lakeWaves, node.geometry.lakeWaveEnd);
               V[k][1] += waterWave[0];
             }
-            if (projective) divideW(V[k], w, x, verts[b + 1] + displacement, z);
+            if (projective) divideW(V[k], w, x, y + displacement, z);
             centerX += V[k][0];
             centerY += V[k][1];
             centerZ += V[k][2];

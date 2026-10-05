@@ -16,6 +16,7 @@
   const yawParam = parseFloat(params.get("yaw"));
   // Debug-only clock params: hour pins the hour, daylen is the day length in seconds.
   const DEBUG = params.has("debug");
+  const DEBUG_POOL_BLOCK = DEBUG && params.get("poolblock") === "1";
   const DEBUG_GORILLA_MOVE = DEBUG && (params.get("gorillamove") === "1" || params.get("climbers") === "1");
   const timeParam = DEBUG ? params.get("time") : null;
   const hourParam = DEBUG ? parseFloat(params.get("hour")) : NaN;
@@ -1392,12 +1393,22 @@
     }
     return true;
   };
+  // Keep fixed stores and constructed equipment out of the three lamps' full travel corridors.
+  // Foliage yields to their current claims when the pile grows or shrinks.
+  const pilePostCorridorClear = (x, z, radius) => {
+    for (const degrees of PILE_POST_DEGREES) {
+      const s = Math.sin(degrees * DEG), c = Math.cos(degrees * DEG);
+      if (x * s - z * c > 0 && Math.abs(x * c + z * s) < radius + 0.7) return false;
+    }
+    return true;
+  };
   const spotAt = (deg, r, margin) => {
     for (const off of NUDGES) {
       const p = polar(deg + off, r);
-      if (!nearPath(p.x, p.z, margin) && island.surfaceAt(p.x, p.z) === 0) return p;
+      if (!nearPath(p.x, p.z, margin) && island.surfaceAt(p.x, p.z) === 0
+        && pilePostCorridorClear(p.x, p.z, margin) && free(p.x, p.z, margin)) return p;
     }
-    return polar(deg, r);
+    return null;
   };
   const addLamp = (node, kind, x, y, z, light = true, order = lamps.length, id = `lamp:${lamps.length}`) => {
     node.glow = LAMP_OFF;
@@ -1662,19 +1673,21 @@
     for (let i = 0; i < g.length; i += 2) claim(m.x + cr * g[i] + sr * g[i + 1], m.z - sr * g[i] + cr * g[i + 1], 0.8);
   };
   const movePilePosts = () => {
-    for (const post of pilePosts) post.claim.x = post.claim.z = Infinity;
-    for (const post of pilePosts) {
-      let spot = null;
-      for (let step = 0; step <= 12 && !spot; step++) for (const nudge of NUDGES) {
-        const p = polar(post.degrees + nudge, island.path.debug.ringOuterRadius + 0.5 + step * 0.25);
-        if (!island.isGrassAt(p.x, p.z) || island.path.overlaps(p.x, p.z, 0.65)
-          || !workSceneryClear(p.x, p.z, 0.7) || nearMouth(p.x, p.z, 7)) continue;
-        let blocked = false;
-        for (const c of claimed) if (!c.scenery && Math.hypot(c.x - p.x, c.z - p.z) < c.r + 0.7) { blocked = true; break; }
-        if (!blocked) { spot = p; break; }
+    if (!pilePosts.length) return;
+    // A shared radius keeps the same three angles as the ring changes. Check the actual half-metre
+    // post bases against the rasterized road, not the broad NPC work-area reservations.
+    let radius = island.path.debug.ringOuterRadius + 0.8;
+    for (; radius < MEADOW - 0.7; radius += island.pathUnit) {
+      let clear = true;
+      for (const post of pilePosts) {
+        const p = polar(post.degrees, radius);
+        if (!island.isGrassAt(p.x, p.z) || island.path.overlaps(p.x, p.z, 0.36)) { clear = false; break; }
       }
-      post.node.visible = post.pick.node.visible = post.lamp.light = !!spot;
-      if (!spot) continue;
+      if (clear) break;
+    }
+    for (const post of pilePosts) {
+      const spot = polar(post.degrees, radius);
+      post.node.visible = post.pick.node.visible = post.lamp.light = true;
       const y = island.surfaceAt(spot.x, spot.z);
       post.node.position.x = post.claim.x = spot.x;
       post.node.position.y = y;
@@ -1701,7 +1714,8 @@
     let baked = byIsland.get("meadow");
     if (!baked) {
       const set = BL.dressing.set(), ground = [];
-      const ok = (x, z, r) => island.surfaceAt(x, z) === 0 && free(x, z, r) && workSceneryClear(x, z, r) && !nearMouth(x, z, 7);
+      const ok = (x, z, r) => island.surfaceAt(x, z) === 0 && free(x, z, r) && workSceneryClear(x, z, r)
+        && !nearMouth(x, z, 7) && pilePostCorridorClear(x, z, r);
       const stand = (kind, x, z, turns, variant, r) => {
         if (kind) set.put(kind, x, 0, z, turns, variant);
         ground.push(x, z, r);
@@ -1738,6 +1752,11 @@
       lamp.nightOnly = dressingLights[i + 3] !== 4;
     }
     dressingLights.length = 0;
+  };
+  // Keep all three posts in both renderers, independently of the heavier meadow dressing.
+  const buildPilePosts = () => {
+    let byIsland = DRESSED.get(island);
+    if (!byIsland) DRESSED.set(island, byIsland = new Map());
     // These three meadow lanterns stand at the grass edge beside the growing pile path.
     for (let i = 0; i < PILE_POST_DEGREES.length; i++) {
       const degrees = PILE_POST_DEGREES[i];
@@ -2357,19 +2376,24 @@
     addProp("poolbridge", site.bridge, worldX(0, place.bridgeLocalZ + S.span / 2), worldZ(0, place.bridgeLocalZ + S.span / 2), S.width);
     addLamp(site.bridge, LAMP.lantern, worldX(0, place.bridgeLocalZ), place.y + 3.4, worldZ(0, place.bridgeLocalZ), false, 0, "poolbridge:lanterns").nightOnly = true;
     atNode("poolsign", site.sign, site.sign.geometry.signWidth * 0.55);
-    // World east is the far shore from the bridge. Face inward across the water, in front of the shoreline
-    // trees, with the board and its lettering curved around the pool's centre at this same radius.
-    const B = P.CHAIN_BOARD, boardBearing = Math.PI / 2 - place.ry;
+    // Centre the board across the pool on the bridge's axis, facing the crossing with trees behind it.
+    // Its face and lettering stay curved around the pool's centre at this same radius.
+    const B = P.CHAIN_BOARD, boardBearing = Math.PI;
     const boardNode = createNode({ position: { x: Math.sin(boardBearing) * B.r, y: L.LEVEL.shore, z: Math.cos(boardBearing) * B.r }, rotation: { x: 0, y: boardBearing + Math.PI, z: 0 }, geometry: P.chainBoard() });
     const panelNode = createNode();
-    addChild(boardNode, panelNode);
+    const boardLegs = createNode({ geometry: { ...P.chainBoardLegs() } });
+    addChild(boardNode, panelNode, boardLegs);
+    site.boardLegs = boardLegs;
     addChild(site.node, boardNode);
     atNode("chainsign", boardNode, B.w * 0.55);
-    // Keep the question-mark weather key beside the board, just past its curved frame.
-    const infoBearing = boardBearing + (B.w / 2 + P.INFO_SIGN.w / 2 + 0.8) / B.r;
+    // The weather key sits to the right when entering from the bridge, just past the curved frame.
+    const infoBearing = boardBearing - (B.w / 2 + P.INFO_SIGN.w / 2 + 0.8) / B.r;
     const infoNode = createNode({ position: { x: Math.sin(infoBearing) * B.r, y: L.LEVEL.shore, z: Math.cos(infoBearing) * B.r }, rotation: { x: 0, y: infoBearing + Math.PI, z: 0 }, geometry: P.infoSign() });
+    const infoLeg = createNode({ geometry: { ...P.infoSignLeg() } });
+    addChild(infoNode, infoLeg);
+    site.infoLeg = infoLeg;
     addChild(site.node, infoNode);
-    atNode("weathersign", infoNode, 1);
+    atNode("weathersign", infoNode, 1).priority = 2;
     {
       const canvas = document.createElement("canvas");
       canvas.width = CHAIN_PANEL_W;
@@ -2640,8 +2664,11 @@
     }
     // The water, and the paintings on the chamber's wall, each a pick target that opens the board behind it.
     const water = BL.poolWater.create({ site, renderer, seaY: SEA_Y - place.y });
+    for (const owner of water.picks) { owner.weaponType = "none"; addTarget(owner.node, owner); }
     const fillParam = DEBUG ? params.get("poolfill") : null;
     if (fillParam !== null && fillParam.trim() !== "" && Number.isFinite(Number(fillParam))) water.previewFill(Number(fillParam));
+    // A debug visit can preview the existing cube sequence without a live block or a weather change.
+    if (DEBUG_POOL_BLOCK) water.block();
     const rainHit = (x, y, z, size, wet) => water.rain(localX(x, z), y - place.y, localZ(x, z), size, wet);
     const wake = (key, x, feet, z, height, radius) => water.wake(key, localX(x, z), feet - place.y, localZ(x, z), height, radius);
     const paintings = BL.poolPaintings.create({ site, renderer });
@@ -2729,6 +2756,15 @@
     // world box is asked as the island-frame box that holds it, so "all rock" and "all open" both stay proofs.
     const sightClear = (ax, ay, az, bx, by, bz) => L.sightClear(localX(ax, az), ay - place.y, localZ(ax, az), localX(bx, bz), by - place.y, localZ(bx, bz));
     const solidAt = (wx, wy, wz) => L.solidAt(localX(wx, wz), wy - place.y, localZ(wx, wz));
+    // The camera's near-plane rock fill uses the same voxels and palette as the visible island shell.
+    const rockSource = site.ground.geometry.cutawaySource;
+    const rockMaterialAt = (wx, wy, wz) => {
+      const i = Math.floor((localX(wx, wz) - L.ORIGIN.x) / L.UNIT);
+      const j = Math.floor((wy - place.y - L.ORIGIN.y) / L.UNIT);
+      const k = Math.floor((localZ(wx, wz) - L.ORIGIN.z) / L.UNIT);
+      return i < 0 || j < 0 || k < 0 || i >= L.SX || j >= L.SY || k >= L.SZ ? null
+        : rockSource.palette[rockSource.data[(i * L.SY + j) * L.SZ + k]] || null;
+    };
     const turned = Math.abs(cos), across = Math.abs(sin);
     const boxIn = (test) => (minX, minY, minZ, maxX, maxY, maxZ) => {
       const cx = (minX + maxX) / 2, cz = (minZ + maxZ) / 2, hx = (maxX - minX) / 2, hz = (maxZ - minZ) / 2;
@@ -2738,7 +2774,7 @@
     const boxSolid = boxIn(L.boxSolid), boxClear = boxIn(L.boxClear);
     // What is walked on here rather than walked round: the bridge and the island's own ground in all its pieces.
     const walked = new Set([site.bridge, site.ground, site.floor, site.membrane, ...site.crossings]);
-    return { site, place, centre, groundAt, rainAt, rainHit, wake, worldX, worldZ, localX, localZ, cos, sin, claimGround, wildlife, water, paintings, overAt, coveredAt, sightClear, solidAt, boxSolid, boxClear, floatAt, afloat, walked, layout: L, preview };
+    return { site, place, centre, groundAt, rainAt, rainHit, wake, worldX, worldZ, localX, localZ, cos, sin, claimGround, wildlife, water, paintings, overAt, coveredAt, sightClear, solidAt, rockMaterialAt, boxSolid, boxClear, floatAt, afloat, walked, layout: L, preview };
   };
   // Where the gorillas sleep while their Oogas do: the banana-leaf beds of the Mempool island's nests, and the dry
   // way to each from the home island, as x, z pairs: up the approach stair, over the bridge, across the court,
@@ -4191,12 +4227,15 @@
       const z = up.x * downhill.x + up.y * downhill.y + up.z * downhill.z;
       marker.node.rotation.y = Math.atan2(-x, -z);
     }
-    const mix = cameraMix;
+    // An eye still inside the Mempool roof must see the intact chamber, even
+    // when a shoulder/orbit transition lifts it above the actor's cut height.
+    const poolInteriorView = cutawayPool === 2 && !overhead
+      && mempoolIsland.coveredAt(camera.position.x, camera.position.y, camera.position.z);
     // Carry can finish its projection blend before the camera handoff ends.
-    // Restore rock only after shoulder settles with the eye inside the ceiling.
-    const active = mix > 0 || !!player && (overhead
+    const mix = poolInteriorView ? 0 : cameraMix;
+    const active = !poolInteriorView && (mix > 0 || !!player && (overhead
       || subterranean && (camera.position.y > birdsEyeCeiling(player, gorilla)
-        || !gorilla && (pilot.mode === "orbit" || pilot.shoulderEntryMix < 1)));
+        || !gorilla && (pilot.mode === "orbit" || pilot.shoulderEntryMix < 1))));
     // Below ground, camera interpolation must never restore upstairs rock or
     // props. Floor/ramp progress still moves the cut as the character travels.
     const rockMix = active && subterranean ? 1 : mix;
@@ -4818,7 +4857,7 @@
       // Every block mined while the page is open strikes, whatever the weather is doing.
       weather.strike();
       // And a cube of the lake leaves through the chamber. It takes nothing with it: the backlog says what is left.
-      mempoolIsland.water.block();
+      mempoolIsland.water.block(event.height);
       hud.toast(`Block ${event.height} mined${event.txCount ? ` · ${event.txCount} transactions` : ""}`);
     }
   };
@@ -4866,10 +4905,17 @@
     canvas.width = POOL_BOARD_W;
     canvas.height = POOL_BOARD_H;
     const c2 = canvas.getContext("2d", { alpha: false, willReadFrequently: true });
+    let nextRefresh = 0;
     const board = {
       title, help: "Live Bitcoin data. Arrow keys flip the pages.", canvas, count: pages.length, index: 0, version: 0, caption: "", note: "",
       go(i) {
         board.index = i;
+        board.refresh();
+      },
+      update(elapsed) {
+        // Freshness and the weather can change even when no feed event arrives.
+        if (!Number.isFinite(elapsed) || elapsed < nextRefresh) return;
+        nextRefresh = elapsed + 1;
         board.refresh();
       },
       refresh() {
@@ -4939,29 +4985,38 @@
         const live = weather.state.arrivals === "live";
         reading(c2, "RAIN", live ? weatherMod.STEPS[weather.state.step].name.toUpperCase() : "UNAVAILABLE", live ? "#8fc3ff" : STALE_INK, live ? `${gameMod.formatLarge(Math.round(weather.state.inflow))} VB/S ARRIVING` : "NO ARRIVALS HEARD", live ? weather.state.storm : -1);
       },
-      note: () => "Transactions arriving, in virtual bytes a second (vB/s), averaged over half a minute. The more that arrive, the darker the cloud and the harder it rains: dry, drizzle, light rain, rain, heavy rain, then a downpour. With nothing heard from the feed for a minute and a half the storm eases off and this reads unavailable. That is not the same as nothing arriving."
+      note: () => "Transaction arrivals in virtual bytes per second (vB/s) drive the rain. The rate is smoothed over about 30 seconds, then shown as dry, drizzle, light rain, rain, heavy rain or downpour. Drops fall straight down. After 90 seconds without a socket reading, the storm eases off and this reads unavailable; that does not mean zero arrivals."
     },
     {
       caption: "Wind",
       draw: (c2) => {
         const live = weather.state.arrivals === "live";
-        reading(c2, "WIND", live ? `${gameMod.formatLarge(Math.round(weather.state.inflow))} VB/S` : "UNAVAILABLE", live ? "#e6f2ff" : STALE_INK, "TRANSACTIONS ARRIVING", live ? weather.state.gale : -1);
+        reading(c2, "WIND INPUT", live ? `${Math.round(weather.state.gale * 100)}%` : "UNAVAILABLE", live ? "#e6f2ff" : STALE_INK, live ? "CLOUD DRIFT AND SOUND" : "NO ARRIVALS HEARD", live ? weather.state.gale : -1);
       },
-      note: () => "The same arrivals, as they come. The busier it gets, the further the rain leans over. Rain always slants the way the wind is going, never into it."
+      note: () => "The arrival rate also sets a 0–100% input for the island's wind effect. Wind drifts the clouds and changes the sound; it does not push raindrops sideways. This is a visual effect, not a measured weather reading."
     },
     {
       caption: "The lake",
       draw: (c2, s) => {
-        const water = mempoolIsland.water.state, W = BL.poolLayout.WATER;
-        reading(c2, "LAKE", water.status === "unavailable" ? "NO READING" : `${(water.vsize / 1e6).toFixed(1)} MVB`, water.status === "live" ? "#7cc8ff" : STALE_INK,
-          water.status === "stale" ? "HELD, READING IS STALE" : "WAITING BACKLOG", water.status === "unavailable" ? -1 : (water.level - W.low) / (W.flood - W.low), "#4aa6ff");
+        const water = mempoolIsland.water.state, W = BL.poolLayout.WATER, fill = water.debugFill;
+        const value = fill !== null ? `DEBUG ${fill}/200` : water.status === "unavailable" ? "NO READING" : `${(water.vsize / 1e6).toFixed(1)} MVB`;
+        const under = fill !== null ? "POOL HEIGHT OVERRIDE" : water.preview !== null ? "DEBUG BACKLOG"
+          : water.status === "stale" ? "HELD, READING IS STALE" : water.status === "live" ? "CURRENT BACKLOG" : "NO BACKLOG READING";
+        reading(c2, "LAKE", value, water.status === "live" ? "#7cc8ff" : STALE_INK, under,
+          water.status === "unavailable" ? -1 : (water.level - W.low) / (W.flood - W.low), "#4aa6ff");
       },
-      note: (s) => `Everything waiting for a block, in millions of virtual bytes (MvB), fills the lake. At about ${BL.poolWater.HYDRO.OVERFLOW_VB / 1e6} MvB it reaches its rim, floods the shore and the channels, and pours over the cliffs. That is this island's own scale, not a limit of Bitcoin. The part of the backlog paying 1 sat/vB or more${s.paying ? ` (${s.paying.toFixed(1)} MvB now)` : ""} is still read, but it no longer makes the rain.`
+      note: (s) => {
+        const water = mempoolIsland.water.state;
+        if (water.debugFill !== null) return `poolfill=${water.debugFill} controls the lake height for debugging. This is not the live Bitcoin backlog; remove the flag to follow the feed again.`;
+        const source = water.preview !== null ? "A debug backlog value" : "Everything waiting for a block";
+        return `${source}, in millions of virtual bytes (MvB), fills the lake. At about ${BL.poolWater.HYDRO.OVERFLOW_VB / 1e6} MvB it reaches its rim, floods the shore and the channels, and pours over the cliffs. That is this island's own scale, not a limit of Bitcoin. The part of the backlog paying 1 sat/vB or more${s.paying && water.preview === null ? ` (${s.paying.toFixed(1)} MvB now)` : ""} is still read, but it no longer makes the rain.`;
+      }
     },
     {
       caption: "Lightning",
-      draw: (c2, s) => reading(c2, "LAST BLOCK", s.height ? String(s.height) : "-", s.live ? "#ffe066" : STALE_INK, "A BOLT AND A CUBE"),
-      note: () => "Somebody found a block. Every one throws a bolt over the island and sends a cube of the lake down through the chamber to the sea, and only a block does. The cube takes nothing with it: the next backlog reading says what is left."
+      draw: (c2, s) => reading(c2, "LAST BLOCK", s.height ? String(s.height) : "-",
+        s.heightAt > 0 && Date.now() - s.heightAt < 180000 ? "#ffe066" : STALE_INK, "A BOLT AND A CUBE"),
+      note: () => `A new block throws a bolt over the island and sends a cube of lake water through the chamber. The cube is a visual marker; the next backlog reading says what remains.${DEBUG_POOL_BLOCK ? " In poolblock debug mode, P also triggers a test bolt and cube." : ""}`
     }
   ]);
   const openPoolBoard = (board) => {
@@ -5039,6 +5094,50 @@
       pileTipText = `🍌 ${PILE_COUNT.format(count)}`;
     }
     hud.tooltip.show(pileTipText, screen.x, screen.y, null, false, true);
+  };
+  const POOL_BLOCK_SCREEN = { x: 0, y: 0, depth: 0 }, POOL_BLOCK_POINTER = { x: 0, y: 0 };
+  const POOL_BLOCK_RAY = { ox: 0, oy: 0, oz: 0, dx: 0, dy: 0, dz: 0 };
+  const POOL_BLOCK_HIT = { node: null, owner: null, distance: Infinity, x: 0, y: 0, z: 0 };
+  const POOL_BLOCK_VERTEX = new Float32Array(3);
+  let poolBlockHovered = null, poolBlockHoverIgnore = null;
+  const poolBlockHoverTarget = owner => !poolBlockHoverIgnore || owner.cave !== poolBlockHoverIgnore;
+  const showPoolBlockTooltip = () => {
+    const owner = poolBlockHovered, node = owner.node;
+    if (!owner.sequence.active || !node.visible || node.smokeOpacity === 0) {
+      poolBlockHovered = null; hud.tooltip.hide(); return;
+    }
+    // The suspended block moves even when the pointer does not. Keep the label only while its visible
+    // body is still under the pointer, with the same precise target ordering as ordinary hover.
+    renderer.ray(POOL_BLOCK_POINTER.x, POOL_BLOCK_POINTER.y, camera, POOL_BLOCK_RAY);
+    const ray = POOL_BLOCK_RAY, hit = POOL_BLOCK_HIT;
+    poolBlockHoverIgnore = hooks.hoverIgnore();
+    if (!input.weaponTargets.ray(hit, ray.ox, ray.oy, ray.oz, ray.dx, ray.dy, ray.dz,
+      camera.far, null, poolBlockHoverTarget, true) || hit.owner !== owner
+      || !guideSegmentClear(ray.ox, ray.oy, ray.oz, hit.x, hit.y, hit.z)
+      || !mempoolIsland.sightClear(ray.ox, ray.oy, ray.oz, hit.x, hit.y, hit.z)) {
+      poolBlockHovered = null; hud.tooltip.hide(); return;
+    }
+    const geometry = node.geometry, verts = geometry.verts, body = geometry.lakeBody, m = node.world;
+    let top = -Infinity;
+    // The last two vertices only bound every possible deformation; they are not part of the water.
+    // Follow the actual animated body's top rather than that deliberately oversized culling box.
+    for (let i = 0; i < verts.length - 6; i += 3) {
+      BL.poolWater.sampleBody(POOL_BLOCK_VERTEX, verts[i], verts[i + 1], verts[i + 2], body);
+      top = Math.max(top, m[1] * POOL_BLOCK_VERTEX[0] + m[5] * POOL_BLOCK_VERTEX[1] + m[9] * POOL_BLOCK_VERTEX[2] + m[13]);
+    }
+    const screen = renderer.project(m[12], top + 0.15, m[14], POOL_BLOCK_SCREEN);
+    if (!screen) { hud.tooltip.hide(); return; }
+    hud.tooltip.show(owner.sequence.label, screen.x, screen.y, null, false, true);
+  };
+  const showHoverTooltip = (hit, p) => {
+    pileHovered = hit?.owner.kind === "pile";
+    poolBlockHovered = hit?.owner.kind === "poolblock" ? hit.owner : null;
+    if (poolBlockHovered) {
+      POOL_BLOCK_POINTER.x = p.x; POOL_BLOCK_POINTER.y = p.y;
+      showPoolBlockTooltip();
+    } else if (pileHovered) showPileTooltip();
+    else if (hit) hud.tooltip.show(tooltipFor(hit), p.x, p.y, hit.owner.cave, hit.owner.kind === "clanker");
+    else hud.tooltip.hide();
   };
   const reticleTarget = (hit) => {
     const o = hit.owner;
@@ -6081,6 +6180,8 @@
       hud.toast("That arrival is blocked. Choose another map dot.");
       return;
     }
+    // A destination switches a gorilla driver back to free view after validating the arrival.
+    if (clankerPlay.active) clankerPlay.release();
     if (enteringTween) { enteringTween.alive = false; enteringTween = null; }
     entering = false;
     cameraPreviousValid = cameraTerrainValid = cameraTerrainRecovering = cameraManualContact = false;
@@ -6754,8 +6855,8 @@
     updateLamps(dt, elapsed, phase !== null);
     if (jumbotron) {
       jumbotron.update(elapsed, renderer);
-      hud.updateBoard(elapsed);
     }
+    hud.updateBoard(elapsed);
     if (fireworksShells.length) updateFireworks();
     const next = daylight.phaseAt(hour);
     if (next !== phase) setPhase(next);
@@ -7033,11 +7134,18 @@
     }
   };
   const cameraPlatformAt = (x, y, z) => y >= 0 && y <= ALTAR_HEIGHT && Math.hypot(x, z) <= altar.platformRadius;
-  // One solid mask spans the terrain, dais and fruit contact.
-  // The fruit pass supplies its own color over this opaque backing, including shared edges.
+  // One solid mask spans both islands, the dais and fruit contact. A cheap extent check keeps the
+  // Mempool grid out of the HUB's per-pixel rock texture pass.
+  const cameraPoolNear = (x, z) => {
+    const dx = x - mempoolIsland.place.x, dz = z - mempoolIsland.place.z, reach = poolModels.SITE.reach + 1;
+    return dx * dx + dz * dz < reach * reach;
+  };
   const cameraRockAt = (x, y, z) => cameraPlatformAt(x, y, z) || bananaCover.contains(x, y, z)
-    || island.solidAt(x, y, z) || !island.clearAt(x, y, z, 1e-5, 2e-5) || !entranceSegmentClear(x, y, z, x, y, z, 1e-5);
-  const cameraRockMaterialAt = (x, y, z) => cameraPlatformAt(x, y, z) ? altar.slab.geometry.faces[0].color : island.rockMaterialAt(x, y, z);
+    || cameraPoolNear(x, z) && mempoolIsland.solidAt(x, y, z) || island.solidAt(x, y, z)
+    || !island.clearAt(x, y, z, 1e-5, 2e-5) || !entranceSegmentClear(x, y, z, x, y, z, 1e-5);
+  const cameraRockMaterialAt = (x, y, z) => cameraPlatformAt(x, y, z) ? altar.slab.geometry.faces[0].color
+    : cameraPoolNear(x, z) ? mempoolIsland.rockMaterialAt(x, y, z) || island.rockMaterialAt(x, y, z) : island.rockMaterialAt(x, y, z);
+  const cameraCutRockAt = (x, y, z) => y <= RENDER_OPTS.cutawayMaxY && mempoolIsland.solidAt(x, y, z);
   const bananaLightVisibleAt = (x, y, z, lx, ly, lz) => {
     const reach = RENDER_OPTS.shadowExtent * 3, toX = x + lx * reach, toY = y + ly * reach, toZ = z + lz * reach;
     return island.sightClearAt(x, y, z, toX, toY, toZ) && solids.segmentClear(x, y, z, toX, toY, toZ, 0, 1e-5)
@@ -8415,7 +8523,8 @@
   // frame of lag never shows, and it is the difference between 42 and 59 fps behind cave rock at 4K.
   const SIGHT_RECOMPUTE_HZ = 30;
   const overlay = (dt) => {
-    if (pileHovered) showPileTooltip();
+    if (poolBlockHovered) showPoolBlockTooltip();
+    else if (pileHovered) showPileTooltip();
     sleepSightFrame++;
     if (CAMERA_GLYPHS.radius !== MATRIX_WORLD.radius || CAMERA_GLYPHS.active !== MATRIX_WORLD.active || CAMERA_GLYPHS.permanentCave !== MATRIX_WORLD.permanentCave) {
       CAMERA_GLYPHS.radius = MATRIX_WORLD.radius; CAMERA_GLYPHS.active = MATRIX_WORLD.active; CAMERA_GLYPHS.permanentCave = MATRIX_WORLD.permanentCave;
@@ -8443,8 +8552,12 @@
       const buried = !combatBirdsEye && cutawayPool === 2 && !!player && !pilot.closeWanted && pilot.closeMix < 1
         && (eye.y > RENDER_OPTS.cutawayMaxY || !mempoolIsland.solidAt(eye.x, eye.y, eye.z))
         && (collectViewObjects(), !objectGuides.actorVisible(player, poolSeam()));
+      const near = camera.near * Math.sqrt(1 + Math.tan(camera.fov / 2) ** 2 * (1 + (renderer.size.width / Math.max(1, renderer.size.height)) ** 2));
+      const cutTop = Math.min(eye.y + near, RENDER_OPTS.cutawayMaxY);
+      const touchesPoolRock = !combatBirdsEye && cutawayPool === 2 && cutTop >= eye.y - near
+        && !mempoolIsland.boxClear(eye.x - near, eye.y - near, eye.z - near, eye.x + near, cutTop, eye.z + near);
       cameraCover.state.opacity = 0.22 * (1 - pilot.closeMix);
-      cameraCover.draw(camera, buried ? player.root : null, false, buried, cameraRockAt, cameraRockMaterialAt, null, dt);
+      cameraCover.draw(camera, buried ? player.root : null, touchesPoolRock, buried, cameraCutRockAt, cameraRockMaterialAt, null, dt);
       return;
     }
     const insideMirror = !!player && playerCaveIndex === matrixCave.caveIndex;
@@ -8461,7 +8574,9 @@
       touchesRock = island.solidAt(eye.x, eye.y, eye.z)
         || eye.y + radius >= 0 && eye.y - radius <= ALTAR_HEIGHT && Math.hypot(eye.x, eye.z) <= altar.platformRadius + radius
         || !island.clearAt(eye.x, eye.y - radius, eye.z, radius, radius * 2)
-        || !entranceSegmentClear(eye.x, eye.y, eye.z, eye.x, eye.y, eye.z, radius);
+        || !entranceSegmentClear(eye.x, eye.y, eye.z, eye.x, eye.y, eye.z, radius)
+        || cameraPoolNear(eye.x, eye.z)
+          && !mempoolIsland.boxClear(eye.x - radius, eye.y - radius, eye.z - radius, eye.x + radius, eye.y + radius, eye.z + radius);
     }
     if (player) {
       const p = player.root.position, aspect = renderer.size.width / Math.max(1, renderer.size.height);
@@ -8526,6 +8641,13 @@
   };
   const onKey = (e) => {
     if (factoryDeparting || bifrostDeparting) return;
+    if (DEBUG_POOL_BLOCK && (e.key === "p" || e.key === "P")) {
+      if (!e.repeat && !e.metaKey && !e.ctrlKey && !e.altKey) {
+        e.preventDefault();
+        mempoolIsland.preview.block();
+      }
+      return;
+    }
     if (e.key === "Escape" && debugSelectedGorilla) { selectDebugGorilla(null); e.preventDefault(); return; }
     if (clankerPlay.active) return;
     if ((e.key === "x" || e.key === "X") && !e.repeat && pilot.modeAction("mode-toggle")) return;
@@ -8694,10 +8816,12 @@
       if (slot.scene) presets[slot.scene] = mouthView(m);
     }
     const buildSpotsList = BUILD_DEGREES.map((deg) => {
-      const { x, z } = spotAt(deg, BUILD_RADIUS, 1);
+      const spot = spotAt(deg, BUILD_RADIUS, 1);
+      if (!spot) return null;
+      const { x, z } = spot;
       claim(x, z, 0.9);
       return { x, z, ry: Math.atan2(-x, -z) };
-    });
+    }).filter(Boolean);
     buildRim();
     mempoolIsland = buildMempoolIsland();
     timechainIsland = buildTimechainIsland();
@@ -8740,6 +8864,7 @@
       });
     }
     meadowDressing(firePos);
+    buildPilePosts();
     plantPalms();
     raiseIslets();
     buildLife();
@@ -8886,6 +9011,8 @@
     mark("rockGuides");
     pile = shared.pile = pileMod.create(shared);
     pileHovered = false;
+    poolBlockHovered = poolBlockHoverIgnore = null;
+    POOL_BLOCK_HIT.node = POOL_BLOCK_HIT.owner = null;
     pileTipCount = -1;
     pileTopY = BL.scene.boundsOf(pile.core.geometry).max[1];
     addTarget(pile.core, { kind: "pile", weaponType: "none" });
@@ -9166,16 +9293,8 @@
     });
 
     Object.assign(hooks, {
-      onHover: (hit, p) => {
-        pileHovered = hit?.owner.kind === "pile";
-        if (pileHovered) showPileTooltip();
-        else if (hit) hud.tooltip.show(tooltipFor(hit), p.x, p.y, hit.owner.cave, hit.owner.kind === "clanker");
-        else hud.tooltip.hide();
-      },
-      onHoverMove: (hit, p) => {
-        if (hit.owner.kind === "pile") showPileTooltip();
-        else hud.tooltip.show(tooltipFor(hit), p.x, p.y, hit.owner.cave, hit.owner.kind === "clanker");
-      },
+      onHover: showHoverTooltip,
+      onHoverMove: showHoverTooltip,
       onTap,
       ...pilot.hooks,
       hoverIgnore: () => clankerPlay.firstPerson ? clankerPlay.player : pilot.hooks.hoverIgnore(),
@@ -9547,6 +9666,8 @@
     if (factoryMouth && factoryMouth.snap) snapFactoryView();
     if (bifrostIsle && bifrostIsle.snap) snapBifrostView();
     glCanvas = null;
+    poolBlockHovered = poolBlockHoverIgnore = null;
+    POOL_BLOCK_HIT.node = POOL_BLOCK_HIT.owner = null;
     selectDebugGorilla(null);
     debugMovementTerrain = DEBUG_MOVE_HIT.node = DEBUG_MOVE_HIT.owner = null;
     DEBUG_GORILLA_HIT.node = DEBUG_GORILLA_HIT.owner = null;

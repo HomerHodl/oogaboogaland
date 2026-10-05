@@ -413,8 +413,8 @@
       el.act.textContent = label;
     };
     let actionHandler = null;
-    const DETACHED_PRESETS = ["pile", "lab", "mirror", "underground", "basement"];
-    const DETACHED_NAMES = { pile: "Pile", lab: "Lab", mirror: "Mirror", underground: "HQ", basement: "Basement" };
+    const DETACHED_PRESETS = ["pile", "lab", "mirror", "underground", "basement", "mempool"];
+    const DETACHED_NAMES = { pile: "Pile", lab: "Lab", mirror: "Mirror", underground: "HQ", basement: "Basement", mempool: "Mempool" };
     let detachedPreset = "pile", detachedNameShown = false, detachedSelectionShown = false, areaLabel = "";
     let destinationAnchored = false, destinationX = 0, destinationY = 0, destinationZ = 0;
     const showAreaLabel = () => {

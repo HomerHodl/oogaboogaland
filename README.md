@@ -15,6 +15,7 @@ npm run watch   # the same, rebuilding on every change under src/
 
 ## The island
 
+- **Destinations:** press the hub/map button to cycle places, or select a dot. **MEMPOOL** goes to the underground room below the rainforest lake.
 - **Fly:** **W A S D**, **Q E** turn, **Z**/**Space** up, **X** down; drag to orbit, scroll to zoom. On a phone the left stick moves and the right stick looks.
 - **Play an Ooga:** double-tap one. Hold **Left Shift** while moving to run. **Space** jumps (twice for a double jump) and uses whatever is beside you; **Escape** lets go.
 - **Factory ladders:** walk into a ladder to attach automatically. **W/S** climb up/down, **A/D** shift sideways, and **Space** jumps off. Walking outward onto a ladder from its upper landing starts a descent; release the movement key, then use **W/S** to change direction.
@@ -68,6 +69,8 @@ The mempool is the Mempool island: transactions arriving make its weather (six s
 Each game and cave has an address to share, with its own preview card: `/oogarally`, `/oogadrop`, `/oogaorbit`, `/oogamine`, `/mempool`, `/dsb`, `/entropylab`, `/lightning` and `/sphere`. They work on the site and under `npm run serve`, and as `oogaboogaland.html#/oogarally` when the file is opened from disk; routes live in `src/js/routes.js`, and `npm run cards` recaptures the cards. `?scene=lab`, `race`, `drop`, `orbit`, `mine` or `dsb` opens that scene; `?nosim=1` silences the simulator and every feed; `?canvas2d=1` forces the Canvas 2D fallback; `?debug=1` exposes `window.__ooga`. AGENTS.md lists every flag and fixture.
 
 With `debug=1&poolfill=100`, pin the Mempool lake at half depth immediately. `poolfill` runs from 0 (empty bowl) to 200 (overflowing, with flooded shores and waterfalls), is clamped to that range, and ignores blank or invalid values. It controls depth from the bowl bottom through the full flood level, not volume or transaction backlog. Overflow starts around 176; 180 and 190 show partially filled trenches, and 200 fills the trenches completely. It leaves the live rain unchanged. Omit it for the live backlog level. In the debug console, `__ooga.poolIsland.preview.fill(150)` changes it without reloading; `fill(null)` restores the feed.
+
+With `debug=1&poolblock=1`, trigger one block-cube drop from the bottom of the lake per island visit. It uses the normal gathering, hanging and falling animation without changing the backlog or rain. The rounded water cube floats freely for 4.5 seconds before dropping; hover over it to show its block height above it. Debug cubes capture the current known chain height (or show that it is unavailable). Add `view=mempool` to start in the underground chamber, then turn toward the central shaft to watch. While the flag is on, press **P** for another block animation (lightning and cube); it replaces the normal pile shortcut for that visit.
 
 With `debug=1`, repeat `ooga=<handle>:<mode>[:<caves>]` to set individual owners to `clank`, `chill` or `sleep`. Once any `ooga` flag is present, unlisted owners and omitted/invalid modes sleep, including maintainers and Sani. This fixture overrides `status=` and live activity for the visit; without `ooga`, normal activity and the existing debug defaults apply. GitHub logins also work. Repeating an owner replaces its earlier setting. The companion gorillas follow their owners' modes.
 
