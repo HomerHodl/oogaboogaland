@@ -3623,10 +3623,22 @@ const hubSheetPersistence = { name: "side panel persistence", why: "rule: a firs
     && closed.open === "false" && closed.tab === "bananas" && !closed.saved.open && closed.saved.tab === "bananas", JSON.stringify({ first, opened, restored, closed }));
 } };
 const hubBlockHeight = { name: "header clock and block height", why: "rule: the single-digit clock is centered from its visible glyphs with a time zone, and the shared chain reading is shown beneath it", run: async (b) => {
-  const before = await b.evaluate(`(() => { const clock = document.getElementById("world-clock"), label = clock.getAttribute("aria-label"), text = label.replace(/^Ooga Booga time /, ""), cells = [...text].reduce((sum, ch) => sum + (ch === " " ? 2 : 4), -1), zone = (new Intl.DateTimeFormat("en-US", { timeZoneName: "short" }).formatToParts(new Date()).find(part => part.type === "timeZoneName")?.value || "UTC").toUpperCase().replaceAll("−", "-"); return { height: document.getElementById("world-block-height").textContent, bananas: !!document.getElementById("world-banana-count"), label, text, zone, cells, viewWidth: clock.querySelector("svg").viewBox.baseVal.width, cssWidth: parseFloat(clock.style.width) }; })()`);
+  const before = await b.evaluate(`(() => { const clock = document.getElementById("world-clock"), label = clock.querySelector("svg").getAttribute("aria-label"), text = label.replace(/^Ooga Booga time /, ""), cells = [...text].reduce((sum, ch) => sum + (ch === " " ? 2 : 4), -1), zone = (new Intl.DateTimeFormat("en-US", { timeZoneName: "short" }).formatToParts(new Date()).find(part => part.type === "timeZoneName")?.value || "UTC").toUpperCase().replaceAll("−", "-"); return { height: document.getElementById("world-block-height").textContent, bananas: !!document.getElementById("world-banana-count"), label, namedImage: !clock.hasAttribute("aria-label") && clock.querySelector("svg").getAttribute("role") === "img", text, zone, cells, viewWidth: clock.querySelector("svg").viewBox.baseVal.width, cssWidth: parseFloat(clock.style.width) }; })()`);
   await b.evaluate(`BL.mempool.emit({ type: "block", height: 900123, txCount: 3210 })`);
   const after = await b.evaluate(`(() => { const B = __ooga, height = document.getElementById("world-block-height"), block = document.getElementById("world-block"); const shown = height.textContent; B.hud.setMeter(42, 60, "Ready"); return { shown, afterMeter: height.textContent, label: block.getAttribute("aria-label"), bananas: !!document.getElementById("world-banana-count"), icon: !!block.querySelector(".banana-icon") }; })()`);
-  record("header: a single-digit clock is centered from its displayed time and local zone, while the chain feed paints block height below it and banana-meter updates cannot overwrite it", before.height === "\u2014" && !before.bananas && before.text === `9:00 AM ${before.zone}` && before.viewWidth === before.cells && Math.abs(before.cssWidth - before.cells / 6) < 1e-6 && after.shown === "900,123" && after.afterMeter === after.shown && after.label === "Bitcoin block height 900123" && !after.bananas && !after.icon, JSON.stringify({ before, after }));
+  record("header: a single-digit clock is centered from its displayed time and local zone, while the chain feed paints block height below it and banana-meter updates cannot overwrite it", before.height === "\u2014" && before.namedImage && !before.bananas && before.text === `9:00 AM ${before.zone}` && before.viewWidth === before.cells && Math.abs(before.cssWidth - before.cells / 6) < 1e-6 && after.shown === "900,123" && after.afterMeter === after.shown && after.label === "Bitcoin block height 900123" && !after.bananas && !after.icon, JSON.stringify({ before, after }));
+} };
+const hubDestinationNames = { name: "destination accessible names", why: "regression: each visible destination label must occur in the button's accessible name", run: async (b) => {
+  const rows = [];
+  await b.send("Accessibility.enable");
+  for (const preset of ["pile", "lab", "mirror", "underground", "basement", "mempool"]) {
+    const label = await b.evaluate(`(() => { document.querySelector('[data-detached-preset="${preset}"]').click(); __ooga.advance(0.1, 1 / 60); return document.getElementById("detached-destination-name").textContent; })()`);
+    const tree = await b.send("Accessibility.getFullAXTree");
+    const names = tree.result.nodes.filter(node => node.role?.value === "button" && node.name?.value.includes("Ooga Booga Land destinations")).map(node => node.name.value);
+    rows.push({ preset, label, names });
+  }
+  await b.evaluate(`__ooga.pilot.goPreset("pile"); __ooga.advance(0.1, 1 / 60)`);
+  record("destinations: every visible place label is included in the actual browser accessibility name", rows.every(row => row.label && row.names.length === 1 && row.names[0].toLowerCase().includes(row.label.toLowerCase())), JSON.stringify(rows));
 } };
 const hubWalking = { name: "hub walking", why: "regression: steering keys came out mirrored, and the removed hub Agent could still be summoned", run: async (b) => {
   // Keep each directional check in the same clear patch as walking speed changes.
@@ -7583,7 +7595,7 @@ scene("hub", { label: "birds-eye combat projection and targets", query: "solo=1&
 scene("hub", { label: "birds-eye lower floors", query: "solo=1&character=portlandhodl&weapon=1&mode=shoulder&combat=1", steps: [hubBirdsEyeFloors] });
 scene("hub", { label: "mirror", steps: [hubJumbotron, hubMatrix, hubMirror] });
 scene("hub", { label: "side panel", query: "pos=0", steps: [hubSheetPersistence] });
-scene("hub", { label: "clock and block height", query: "pos=0&time=0900", steps: [hubBlockHeight] });
+scene("hub", { label: "clock and block height", query: "pos=0&time=0900", steps: [hubBlockHeight, hubDestinationNames] });
 scene("hub", { label: "canvas2d", query: "canvas2d=1", steps: [canvasTour] });
 scene("hub", { query: "pos=0", opts: PHONE_SIZE, steps: [phone("hub", { required: ["#joy-move", "#joy-look", "#sheet-toggle", "#sheet-bananas"], sheet: true })] });
 scene("lab", { query: "pos=0", opts: PHONE_SIZE, steps: [phone("lab", { required: ["#joy-move", "#joy-look", ".leave"] })] });
