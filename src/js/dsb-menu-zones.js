@@ -3,7 +3,7 @@
   "use strict";
   const zone=(route,label,x,z,rx,rz,priority=2)=>({route,label,x,z,rx,rz,priority});
   const home=(route,label)=>({route,label,priority:0});
-  const fallbacks={"meme-factory":home("home","Explore Meme Factory"),"without-rulers":home("home","Browse Without Rulers"),"proof-of-ink":home("featured","Browse Proof of Ink"),"big-bitcoin":home("overview","BIG BITCOIN Info"),"maxis-club":home("home","Open MAXIS MEDIA")};
+  const fallbacks={"svrn-society":home("home","Browse SVRN Society"),"meme-factory":home("home","Explore Meme Factory"),"without-rulers":home("home","Browse Without Rulers"),"proof-of-ink":home("featured","Browse Proof of Ink"),"big-bitcoin":home("overview","BIG BITCOIN Info"),"maxis-club":home("home","Open MAXIS MEDIA")};
   const zones={
     "without-rulers":[
       zone("shirts","Browse Shirts",-5.3,1.5,2.5,1.3),zone("hoodies","Browse Hoodies",5.3,1.5,2.5,1.3),

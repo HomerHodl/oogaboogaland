@@ -15,6 +15,7 @@
   const LAMP_SPOTS=[[-49,-45],[-57,37],[20,63],[64,49]], lamps=[];
   let clock,water,waterInteraction,weather,nature,detail,enrichment,interiors,exterior,noderunner,tv,spaces,studioTools,maxisMedia,maxisButton,maxisReview=false,maxisPick=null,studioReview=false,shopMenu,shopTools,shopPick=null,shopReview=false,shopMenuReview=0;
   let inkMenu,inkTools,inkPick=null,inkReview=false,inkMenuReview=0,inkLayoutObserver,inkLayoutPending=false;
+  let svrnMenu,svrnPick=null,svrnReview=false;
   let memeMenu,memeReview=false,contextReview=false,stackchainMenu,stackchainReview=false;
   let bigMenu,bigPick=null,bigReview=false,bigMenuReview=0;
   const requestInkLayout=()=>{inkLayoutPending=true;};
@@ -78,11 +79,12 @@
   const nearInk=()=>{const q=inkRoom()?.mediaAt,p=avatar.root.position;return !!q&&Math.hypot(p.x-q.x,p.z-q.z)<2;};
   const memeRoom=()=>interiors?.active?.room.id==="meme-factory"?interiors.active.room:null;
   const stackchainRoom=()=>interiors?.active?.room.id==="stackchain-magazine"?interiors.active.room:null;
-  const seatRoom=()=>studioRoom()||maxisRoom()||shopRoom()||inkRoom()||bigRoom()||memeRoom()||stackchainRoom();
-  const venueMenu=()=>stackchainRoom()?stackchainMenu:memeRoom()?memeMenu:shopRoom()?shopMenu:inkRoom()?inkMenu:bigRoom()?bigMenu:maxisRoom()?maxisMedia:null;
+  const svrnRoom=()=>interiors?.active?.room.id==="svrn-society"?interiors.active.room:null;
+  const seatRoom=()=>studioRoom()||maxisRoom()||shopRoom()||inkRoom()||bigRoom()||memeRoom()||stackchainRoom()||svrnRoom();
+  const venueMenu=()=>svrnRoom()?svrnMenu:stackchainRoom()?stackchainMenu:memeRoom()?memeMenu:shopRoom()?shopMenu:inkRoom()?inkMenu:bigRoom()?bigMenu:maxisRoom()?maxisMedia:null;
   const menuZone=()=>{const room=interiors?.active?.room;return room&&venueMenu()?BL.dsbMenuZones.resolve(room,avatar.root.position):null;};
   const openVenue=()=>{const menu=venueMenu();return menu?menu.open(menuZone().route):false;};
-  const menuOpen=()=>tv?.isOpen||spaces?.isOpen||maxisMedia?.isOpen||shopMenu?.isOpen||inkMenu?.isOpen||bigMenu?.isOpen||memeMenu?.isOpen||stackchainMenu?.isOpen;
+  const menuOpen=()=>tv?.isOpen||spaces?.isOpen||maxisMedia?.isOpen||shopMenu?.isOpen||inkMenu?.isOpen||bigMenu?.isOpen||memeMenu?.isOpen||stackchainMenu?.isOpen||svrnMenu?.isOpen;
   const nearShop=()=>{const q=shopRoom()?.mediaAt,p=avatar.root.position;return !!q&&Math.hypot(p.x-q.x,p.z-q.z)<2;};
   const nearMaxis=()=>{const q=maxisRoom()?.mediaAt,p=avatar.root.position;return !!q&&Math.hypot(p.x-q.x,p.z-q.z)<2;};
   const seatNear=()=>{
@@ -152,7 +154,7 @@
     noderunner=BL.dsbNoderunner.create({root:exterior,land});
     weather=BL.dsbWeather.create({root:exterior,renderer:ctx.renderer,camera,land,water,params,audioFactory:noderunner.createAudio});
     input.add(noderunner.screenFace,{kind:"dsb-tv"});
-    const tap=hooks.onTap;hooks.onTap=(hit,p)=>{if(hit?.owner?.kind==="big-terminal"&&bigRoom()){openVenue();return;}if(hit?.owner?.kind==="ink-kiosk"&&inkRoom()){openVenue();return;}if(hit?.owner?.kind==="rulers-kiosk"&&shopRoom()){openVenue();return;}if(hit?.owner?.kind==="maxis-media"&&maxisRoom()){openVenue();return;}if(hit?.owner?.kind==="dsb-tv"){if(nearTv())act();return;}tap?.(hit,p);};
+    const tap=hooks.onTap;hooks.onTap=(hit,p)=>{if(hit?.owner?.kind==="svrn-kiosk"&&svrnRoom()){openVenue();return;}if(hit?.owner?.kind==="big-terminal"&&bigRoom()){openVenue();return;}if(hit?.owner?.kind==="ink-kiosk"&&inkRoom()){openVenue();return;}if(hit?.owner?.kind==="rulers-kiosk"&&shopRoom()){openVenue();return;}if(hit?.owner?.kind==="maxis-media"&&maxisRoom()){openVenue();return;}if(hit?.owner?.kind==="dsb-tv"){if(nearTv())act();return;}tap?.(hit,p);};
     tv=BL.dsbTv.create(noderunner.screen,ctx.renderer,{play:()=>noderunner.audio?.play(),radioStatus:()=>noderunner.audio?.status||"Press Play radio to enable sound",onOpen:open=>{pilot.setActive(!open);pilot.controls.reset();input.reset();}});
     nature=BL.dsbNature.create({root:exterior,land,renderer:ctx.renderer,camera,weather});
     detail=BL.dsbExterior.create({root:exterior,land,nature});
@@ -180,11 +182,14 @@
         if(bigRoom()){bigMenu?.enter();bigPick=bigRoom();input.add(bigPick.screen,{kind:"big-terminal"});}else bigMenu?.leave();
         if(memeRoom())memeMenu?.enter();else memeMenu?.leave();
         if(stackchainRoom())stackchainMenu?.enter();else stackchainMenu?.leave();
+        if(svrnPick){input.remove(svrnPick.screen);svrnPick=null;}
+        if(svrnRoom()){svrnMenu?.enter();svrnPick=svrnRoom();input.add(svrnPick.screen,{kind:"svrn-kiosk"});}else svrnMenu?.leave();
         if(interiors.active)tv?.close();
         scene.renderOpts=lighting||renderOpts;hud.setAreaLabel(label);
       }
     });
     memeMenu=BL.memeFactoryMenu.create({onOpen:on=>{pilot.setActive(!on&&!interiors.transitioning);pilot.controls.reset();input.reset();crew.setWeaponTrigger(false);}});
+    svrnMenu=BL.svrnMenu.create({onOpen:on=>{pilot.setActive(!on&&!interiors.transitioning);pilot.controls.reset();input.reset();crew.setWeaponTrigger(false);}});
     stackchainMenu=BL.stackchainMenu.create({onOpen:on=>{pilot.setActive(!on&&!interiors.transitioning);pilot.controls.reset();input.reset();crew.setWeaponTrigger(false);}});
     spaces=BL.dsbSpaces.create({onOpen:on=>{pilot.setActive(!on&&!interiors.transitioning);pilot.controls.reset();input.reset();crew.setWeaponTrigger(false);},onPlaying:()=>{}});
     maxisMedia=BL.maxisMedia.create({onOpen:on=>{pilot.setActive(!on&&!interiors.transitioning);pilot.controls.reset();input.reset();crew.setWeaponTrigger(false);},onSource:source=>maxisRoom()?.setMedia(!!source)});
@@ -203,9 +208,9 @@
     maxisButton=document.createElement("button");maxisButton.type="button";maxisButton.textContent="MAXIS MEDIA";maxisButton.hidden=true;maxisButton.onclick=openVenue;studioTools.appendChild(maxisButton);
     document.body.appendChild(studioTools);
     studioReview=false;maxisReview=false;shopReview=false;shopMenuReview=0;inkReview=false;inkMenuReview=0;
-    bigReview=false;bigMenuReview=0;memeReview=false;contextReview=false;stackchainReview=false;
+    bigReview=false;bigMenuReview=0;memeReview=false;contextReview=false;stackchainReview=false;svrnReview=false;
     scene.renderOpts=renderOpts;
-    Object.assign(scene,{root,camera,input,setInterior:weather.setInterior,debug:{get audio(){return entrance?.audio;},weather:weather.shared,renderOpts,daylight:clock,camera,pilot,crew,controls:pilot.controls,hud,dsb:{land,vacancies,water,waterInteraction,weather,nature,detail,enrichment,get town(){return town;},get atmosphere(){return atmosphere;},get entrance(){return entrance;},get olympus(){return olympus;},noderunner,tv,spaces,maxisMedia,shopMenu,inkMenu,bigMenu,memeMenu,stackchainMenu,menuZone,openVenue,interiors,exterior,setInterior:weather.setInterior,gate,avatar,get phase(){return interiors?.active?"interior":"land";},overview:OVERVIEW}}});
+    Object.assign(scene,{root,camera,input,setInterior:weather.setInterior,debug:{get audio(){return entrance?.audio;},weather:weather.shared,renderOpts,daylight:clock,camera,pilot,crew,controls:pilot.controls,hud,dsb:{land,vacancies,water,waterInteraction,weather,nature,detail,enrichment,get town(){return town;},get atmosphere(){return atmosphere;},get entrance(){return entrance;},get olympus(){return olympus;},noderunner,tv,spaces,maxisMedia,shopMenu,inkMenu,bigMenu,memeMenu,stackchainMenu,svrnMenu,menuZone,openVenue,interiors,exterior,setInterior:weather.setInterior,gate,avatar,get phase(){return interiors?.active?"interior":"land";},overview:OVERVIEW}}});
     walk();
     if(ctx.from==="bifrost"||DEBUG&&params.has("entrance"))entrance=BL.dsbEntrance.create({root,camera,avatar,pilot,fx,exterior,scene,renderOpts,land,gate,hold:on=>{overview=on;},muted:()=>weather.shared.state.muted,onArrive:walk,onLeave:()=>{if(leaving)return;world.pilot=avatar.traits.name;leaving=go("bifrost");}});
     if(DEBUG&&params.get("view")==="clearing") {
@@ -235,6 +240,7 @@
       }
     }
     if(params.get("overview")==="1")overviewView();
+    if(DEBUG&&(params.get("view")==="svrn-door"||params.get("interior")==="svrn-society"))interiors.review("svrn-society",params.get("interior")==="svrn-society");
     if(DEBUG&&(params.get("view")==="stackchain-door"||params.get("interior")==="stackchain-magazine"))interiors.review("stackchain-magazine",params.get("interior")==="stackchain-magazine");
     if(DEBUG&&(params.get("view")==="meme-factory"||params.get("interior")==="meme-factory"))interiors.review("meme-factory",params.get("interior")==="meme-factory");
     if(DEBUG&&(params.get("view")==="maxis-door"||params.get("interior")==="maxis-club"))interiors.review("maxis-club",params.get("interior")==="maxis-club");
@@ -280,6 +286,10 @@
       memeReview=true;const room=memeRoom(),view=params.get("view");
       if(view==="meme-seat")sit(room.seats[0]);else if(room.reviews[view])pilot.navigate(room.reviews[view]);
     }
+    if(DEBUG&&!svrnReview&&svrnRoom()&&!interiors.transitioning){
+      svrnReview=true;const room=svrnRoom(),view=params.get("view");
+      if(view==="svrn-seat")sit(room.seats[0]);else if(room.reviews[view])pilot.navigate(room.reviews[view]);
+    }
     if(DEBUG&&!stackchainReview&&stackchainRoom()&&!interiors.transitioning){
       stackchainReview=true;const room=stackchainRoom(),view=params.get("view");
       if(view==="stackchain-seat")sit(room.seats[0]);else if(room.reviews[view])pilot.navigate(room.reviews[view]);
@@ -324,7 +334,7 @@
     const door=interiors.target(avatar.root.position);
     const nearbySeat=seatRoom()?seatNear():null,zone=menuZone();
     const studioLabel=avatar.camp.seat?"Stand up":nearSpaces()?"Open DSB Spaces":nearbySeat?"Sit":!door&&zone?zone.label:null;
-    const label=studioLabel||(nearTv()?"Open DSB TV":door?`${interiors.active?"Exit":"Enter"} ${door.building.name}`:"Dial Portara → Bifrost");
+    const label=studioLabel||(nearTv()?"Open DSB TV":door?`${interiors.active?"Exit":"Enter"} ${door.label||door.building.name}`:"Dial Portara → Bifrost");
     if(context.textContent!==label)context.textContent=label;
     context.classList.toggle("ink-context-browse",!!inkRoom()&&!!zone&&!nearbySeat&&!door);
     if(inkLayoutPending&&inkRoom()){inkLayoutPending=false;layoutInkBrowse();}
@@ -335,6 +345,7 @@
     inkLayoutObserver.disconnect();inkLayoutObserver=null;window.removeEventListener("resize",requestInkLayout);
     context.classList.remove("ink-context-browse");
     memeMenu.dispose();memeMenu=null;
+    svrnMenu.dispose();svrnMenu=null;if(svrnPick){input.remove(svrnPick.screen);svrnPick=null;}
     stackchainMenu.dispose();stackchainMenu=null;
     bigMenu.dispose();bigMenu=null;if(bigPick){input.remove(bigPick.screen);bigPick=null;}
     inkMenu.dispose();inkMenu=null;inkTools.remove();inkTools=null;if(inkPick){input.remove(inkPick.screen);inkPick=null;}
@@ -348,6 +359,6 @@
     lamps.length=0;renderOpts.lightCount=0;clock=null;water=renderOpts.dsbWater=null;
     scene.setInterior=scene.debug=scene.input=null;land=avatar=crew=pilot=gate=fx=hud=input=null;return {targets};
   };
-  Object.assign(scene,{enter,update,leave,onKey:e=>{if(entrance?.onKey(e))return true;if(stackchainMenu?.isOpen){if(e.key==="Escape")stackchainMenu.close();return true;}if(memeMenu?.isOpen){if(e.key==="Escape")memeMenu.close();return true;}if(tv?.isOpen){if(e.key==="Escape")tv.close();return true;}if(bigMenu?.isOpen){if(e.key==="Escape")bigMenu.close();return true;}if(inkMenu?.isOpen){if(e.key==="Escape")inkMenu.close();return true;}if(shopMenu?.isOpen){if(e.key==="Escape")shopMenu.close();return true;}if(maxisMedia?.isOpen){if(e.key==="Escape")maxisMedia.close();return true;}if(spaces?.isOpen){if(e.key==="Escape")spaces.close();return true;}if(seatRoom()&&(e.key==="1"||e.key==="2"))return pilot.weaponMode(Number(e.key));if(seatRoom()&&e.key.toLowerCase()==="v")return pilot.weaponAction("weapon-fire");if(e.key.toLowerCase()==="t"&&seatRoom()){crew.throwTomato();return true;}if(tv?.isOpen){if(e.key==="Escape")tv.close();return true;}if(e.key.toLowerCase()==="m"){mute();return true;}if(e.key==="Escape"&&!gate.isOpen){overviewView();return true;}return false;},overlay:dt=>{const dpr=Math.min(devicePixelRatio||1,2),w=Math.round(overlayCanvas.clientWidth*dpr),h=Math.round(overlayCanvas.clientHeight*dpr);if(overlayCanvas.width!==w||overlayCanvas.height!==h){overlayCanvas.width=w;overlayCanvas.height=h;}overlayCanvas.getContext("2d").setTransform(dpr,0,0,dpr,0,0);fx.drawOverlay(dt,drawExtra);},stats:()=>({targets:input.targetCount,tweens:0}),liveGeometry:set=>{if(avatar)set.add(avatar.headOpen).add(avatar.headClosed);},onDonation:()=>{},onLootCleared:()=>{}});
+  Object.assign(scene,{enter,update,leave,onKey:e=>{if(entrance?.onKey(e))return true;if(svrnMenu?.isOpen){if(e.key==="Escape")svrnMenu.close();return true;}if(stackchainMenu?.isOpen){if(e.key==="Escape")stackchainMenu.close();return true;}if(memeMenu?.isOpen){if(e.key==="Escape")memeMenu.close();return true;}if(tv?.isOpen){if(e.key==="Escape")tv.close();return true;}if(bigMenu?.isOpen){if(e.key==="Escape")bigMenu.close();return true;}if(inkMenu?.isOpen){if(e.key==="Escape")inkMenu.close();return true;}if(shopMenu?.isOpen){if(e.key==="Escape")shopMenu.close();return true;}if(maxisMedia?.isOpen){if(e.key==="Escape")maxisMedia.close();return true;}if(spaces?.isOpen){if(e.key==="Escape")spaces.close();return true;}if(seatRoom()&&(e.key==="1"||e.key==="2"))return pilot.weaponMode(Number(e.key));if(seatRoom()&&e.key.toLowerCase()==="v")return pilot.weaponAction("weapon-fire");if(e.key.toLowerCase()==="t"&&seatRoom()){crew.throwTomato();return true;}if(tv?.isOpen){if(e.key==="Escape")tv.close();return true;}if(e.key.toLowerCase()==="m"){mute();return true;}if(e.key==="Escape"&&!gate.isOpen){overviewView();return true;}return false;},overlay:dt=>{const dpr=Math.min(devicePixelRatio||1,2),w=Math.round(overlayCanvas.clientWidth*dpr),h=Math.round(overlayCanvas.clientHeight*dpr);if(overlayCanvas.width!==w||overlayCanvas.height!==h){overlayCanvas.width=w;overlayCanvas.height=h;}overlayCanvas.getContext("2d").setTransform(dpr,0,0,dpr,0,0);fx.drawOverlay(dt,drawExtra);},stats:()=>({targets:input.targetCount,tweens:0}),liveGeometry:set=>{if(avatar)set.add(avatar.headOpen).add(avatar.headClosed);},onDonation:()=>{},onLootCleared:()=>{}});
   BL.scenes.dsb=scene;
 })();

@@ -40,7 +40,7 @@
     [33,"VACANT 29",2.5,-6,"house",2.78,0.16,"facade"],
     [34,"olympus-mill-east",-14,-58,"windmill",1.05,2.18,"beside tower door"],
     [35,"olympus-mill-west",-24,-66,"windmill",1.05,2.18,"beside tower door"]
-  ].map(([number,buildingId,x,z,type,signY,signZ,mount])=>Object.freeze({number,buildingId,x,z,type,signY,signZ,mount})));
+  ].map(([number,buildingId,x,z,type,signY,signZ,mount])=>Object.freeze({number,buildingId,x,z,type,signY,signZ,mount,status:number===7?"occupied":"vacant",occupant:number===7?"SVRN Society":null,interiorId:number===7?"svrn-society":null})));
   const REVIEWS={
     "vac-overview":{yaw:.35,pitch:.75,dist:137,target:{x:17,y:12,z:17}},
     "vac-lower":{yaw:.1,pitch:.48,dist:64,target:{x:30,y:6,z:48}},
@@ -59,7 +59,7 @@
       const yaw=house?building.yaw:building.rotation.y,floor=house?building.floor:building.position.y,front=house?building.d/2:0;
       const c=Math.cos(yaw),s=Math.sin(yaw),point=(lx,y,lz)=>({x:x+c*lx+s*lz,y:floor+y,z:z-s*lx+c*lz});
       const node=S.createNode({position:{x,y:floor,z},rotation:{x:0,y:yaw+(house?0:.85),z:0},sightHidden:true});S.addChild(group,node);
-      const text="VAC "+address.number,width=house?2.25:1.65,height=house?.58:.48,depth=.16,signZ=front+address.signZ;
+      const text=address.occupant||"VAC "+address.number,width=address.occupant?4.4:house?2.25:1.65,height=house?.58:.48,depth=.16,signZ=front+address.signZ;
       const plaque=BL.dsbModels.block(node,"#346e9c",0,address.signY,signZ,width,height,depth);
       const lettering=BL.dsbModels.sign(node,text,.04,address.signY-(house?.18:.14),signZ+.12,house?.48:.36,"#fff4df");
       properties.push({address,building,node,plaque,lettering,text,x,z,yaw,floor,front:"local +z",mount:address.mount,

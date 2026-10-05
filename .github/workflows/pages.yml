@@ -61,6 +61,12 @@ jobs:
         run: |
           export CHROME="$(command -v google-chrome)"
           LANES=1 VERBOSE=1 ONLY="vacancy checkpoint" node test/run.mjs vacancy-unit dsb
+      - name: Validate SVRN Society interior and capture review
+        working-directory: preview-src
+        run: |
+          export CHROME="$(command -v google-chrome)"
+          TEST_CANVAS2D=1 LANES=1 VERBOSE=1 ONLY="SVRN checkpoint" node test/run.mjs svrn-unit dsb
+          LANES=1 VERBOSE=1 ONLY="SVRN visual review" node test/run.mjs svrn-unit dsb
       - name: Validate preview menus and preserved media contracts
         working-directory: preview-src
         run: |
@@ -94,6 +100,7 @@ jobs:
         with:
           name: dsb-menu-review
           path: |
+            preview-src/untracked/svrn-review
             preview-src/untracked/vacancy-review
             preview-src/untracked/water-review
             preview-src/untracked/dsb-menu-review

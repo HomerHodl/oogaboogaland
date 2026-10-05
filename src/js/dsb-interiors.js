@@ -3,7 +3,7 @@
   "use strict";
   const BL=window.BL, {addChild,removeChild}=BL.scene;
   // Only implemented interiors register here. Later venues supply the same room contract.
-  const definitions=[{id:"meme-factory",building:"Meme Factory House",ambience:"meme-factory",build:BL.memeFactoryRoom.build},{id:"dsb-studio",building:"DSB Studio Stage",ambience:"studio",build:BL.dsbStudio.build},{id:"maxis-club",building:"Maxis Club Theater",ambience:"studio",build:BL.maxisClub.build},{id:"without-rulers",building:"Without Rulers Shop",ambience:"shop",build:BL.withoutRulersShop.build},{id:"proof-of-ink",building:"Proof Of Ink",ambience:"shop",build:BL.proofOfInkRoom.build},{id:"big-bitcoin",building:"Big Bitcoin",ambience:"shop",build:BL.bigBitcoinRoom.build},{id:"stackchain-magazine",building:"Stackchain Magazine",ambience:"shop",build:BL.stackchainRoom.build}];
+  const definitions=[{id:"meme-factory",building:"Meme Factory House",ambience:"meme-factory",build:BL.memeFactoryRoom.build},{id:"dsb-studio",building:"DSB Studio Stage",ambience:"studio",build:BL.dsbStudio.build},{id:"maxis-club",building:"Maxis Club Theater",ambience:"studio",build:BL.maxisClub.build},{id:"without-rulers",building:"Without Rulers Shop",ambience:"shop",build:BL.withoutRulersShop.build},{id:"proof-of-ink",building:"Proof Of Ink",ambience:"shop",build:BL.proofOfInkRoom.build},{id:"big-bitcoin",building:"Big Bitcoin",ambience:"shop",build:BL.bigBitcoinRoom.build},{id:"stackchain-magazine",building:"Stackchain Magazine",ambience:"shop",build:BL.stackchainRoom.build},{id:"svrn-society",building:"VACANT 2",label:"SVRN Society",ambience:"shop",build:BL.svrnRoom.build}];
   const create=({root,exterior,land,weather,relocate,lock,onChange})=>{
     const rooms=new Map(),registry=new Map(),entries=[];
     const exteriorGround=land.groundAt||land.heightAt;
@@ -34,7 +34,7 @@
       active=definition?{definition,room:roomFor(definition)}:null;
       exterior.visible=!active;weather.setInterior(!!active);audio.update(weather.shared.state.muted);audio.setActive(!!active,active?.definition.ambience);
       if(active)active.room.root.visible=true;
-      onChange(active?active.room.lighting:null,active?active.definition.building.name:"DSB LAND · CHORA");
+      onChange(active?active.room.lighting:null,active?(active.definition.label||active.definition.building.name):"DSB LAND · CHORA");
       const point=active?active.room.spawn:pending.returnPoint;
       relocate(point,active?active.room.spawnYaw:pending.building.yaw,active?active.room.followDistance:7);
     };

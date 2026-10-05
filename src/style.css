@@ -7637,3 +7637,26 @@ body.dsb-menu-open :is(.bottom-hud,.top-hud,#joy-move,#joy-look,#act,.weapon-hud
   .stackchain-grid { grid-template-columns: 1fr; gap: 12px; }
   .stackchain-card img { max-height: 235px; object-fit: contain; }
 }
+
+/* SVRN's restrained boutique palette; layout and focus stay in the shared DSB shell. */
+.svrn-menu { color: #eee2cb; background: #242321; border: 1px solid #a6804e; border-radius: 6px; }
+.svrn-menu header { display: flex; justify-content: space-between; align-items: center; gap: 16px; background: #292521; border-bottom: 2px solid #b47135; }
+.svrn-menu h2 { font-size: clamp(20px,3vw,30px); margin: 3px 0; letter-spacing: .08em; }
+.svrn-menu small { color: #c5aa80; }
+.svrn-menu nav { display: flex; flex-wrap: wrap; gap: 7px; padding: 14px 18px; border-bottom: 1px solid #5a4d3d; }
+.svrn-menu button { font: inherit; color: #f2e7d3; background: #38332c; border: 1px solid #847155; border-radius: 3px; padding: 8px 12px; cursor: pointer; }
+.svrn-menu button:hover,.svrn-menu button[aria-pressed="true"] { background: #62503a; border-color: #e2b77a; }
+.svrn-menu :focus-visible { outline: 3px solid #efc183; outline-offset: 2px; }
+.svrn-content { padding: 20px; font-size: 16px; }
+.svrn-content h3 { margin: 0 0 12px; overflow-wrap: anywhere; }
+.svrn-grid { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 14px; margin: 20px 0; }
+.svrn-card { background: #2e2a25; border: 1px solid #635440; padding: 16px; min-width: 0; }
+.svrn-card h3 { font-size: 19px; margin-top: 12px; }
+.svrn-menu a { display: inline-block; color: #edc58c; padding: 12px 0; overflow-wrap: anywhere; }
+.svrn-note { display: block; font-size: 13px; color: #c3b5a0; margin-top: 18px; }
+@media (max-width:600px) {
+  .svrn-menu header button { max-width: 110px; }
+  .svrn-menu nav button { flex: 1 0 42%; }
+  .svrn-grid { grid-template-columns: 1fr; }
+  .svrn-content { padding: 14px; }
+}

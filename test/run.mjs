@@ -2392,7 +2392,7 @@ const orbitFlow = async (b) => {
 const SCENES = ["hub", "lab", "race", "drop", "orbit", "mine", "pool", "dsb", "factory", "bifrost", "poker", "arcade", "skee", "hoops", "shy", "claw", "hockey", "billiards", "darts", "pinball", "ride", "invaders", "snake", "pong", "stampede", "flap", "breaker", "dash", "stacker"];
 const LANES = Number(process.env.LANES) || 8;
 const ARGS = process.argv.slice(2);
-for (const a of ARGS) if (!SCENES.includes(a) && !["unit", "vacancy-unit", "portal-unit", "water-baseline", "water-review", "water-unit", "stackchain-review", "stackchain-unit", "dsb-menus-unit", "maxis-unit", "exterior-unit", "rulers-unit", "ink-unit", "big-unit", "perf", "full", "poker-protocol"].includes(a)) throw new Error(`Unknown argument "${a}" (unit | perf | full | poker-protocol | ${SCENES.join(" | ")})`);
+for (const a of ARGS) if (!SCENES.includes(a) && !["unit", "svrn-unit", "svrn-review", "vacancy-unit", "portal-unit", "water-baseline", "water-review", "water-unit", "stackchain-review", "stackchain-unit", "dsb-menus-unit", "maxis-unit", "exterior-unit", "rulers-unit", "ink-unit", "big-unit", "perf", "full", "poker-protocol"].includes(a)) throw new Error(`Unknown argument "${a}" (unit | perf | full | poker-protocol | ${SCENES.join(" | ")})`);
 const ONLY = process.env.ONLY || ""; // Optional substring within the requested scenes; defaults are unchanged.
 const FULL = ARGS.includes("full");
 const PICKED = FULL ? SCENES : SCENES.filter((s) => ARGS.includes(s));
@@ -8367,13 +8367,13 @@ const vacancyChecks = async BL => {
   const W=waterWorld(BL),S=BL.scene,before=waterGolden(W),labels=JSON.stringify(W.detail.facades),children=W.root.children.length;
   const V=BL.dsbVacancies.create(W),P=V.properties,R=BL.dsbVacancies.REGISTRY;
   const houses=W.land.buildings.filter(b=>b.name.startsWith("VACANT ")),mills=W.olympus.group.children.filter(n=>n.children.length===1&&n.children[0].geometry.verts.length>100);
-  record("Vacancies: every authored vacant white house resolves exactly once",houses.length===33&&houses.every(b=>P.filter(p=>p.building===b).length===1)&&P.filter(p=>p.address.type==="house").length===houses.length);
+  record("Vacancies: every initially vacant white house retains its frozen address",houses.length===33&&houses.every(b=>P.filter(p=>p.building===b).length===1)&&P.filter(p=>p.address.type==="house").length===houses.length);
   record("Vacancies: both original animated white windmills resolve exactly once",mills.length===2&&mills.every(b=>P.filter(p=>p.building===b&&p.address.type==="windmill").length===1));
   record("Vacancies: occupied venues, Noderunner and harbor utilities are excluded",W.land.buildings.filter(b=>!b.name.startsWith("VACANT ")).every(b=>!P.some(p=>p.building===b))&&W.detail.facades.length===7);
   record("Vacancies: frozen initial IDs are unique and contiguous 1 through 35",R.length===35&&new Set(R.map(p=>p.number)).size===35&&Array.from({length:35},(_,i)=>i+1).every(n=>V.resolve(n))&&Object.isFrozen(R)&&R.every(Object.isFrozen));
   record("Vacancies: published identities cannot silently renumber",JSON.stringify(R.map(p=>p.buildingId))===JSON.stringify([21,20,19,4,1,5,2,3,11,10,9,8,7,6,25,24,23,22,15,12,13,14,17,18,16,32,26,33,27,28,31,30,29].map(n=>"VACANT "+n).concat(["olympus-mill-east","olympus-mill-west"])));
   record("Vacancies: one two-part world sign belongs to each registered address",V.group.children.length===35&&P.every(p=>p.node.parent===V.group&&p.node.children.length===2&&p.plaque.parent===p.node&&p.lettering.parent===p.node)&&new Set(P.map(p=>p.building)).size===35);
-  record("Vacancies: actual lettering uses the venue glyphs and exact VAC number",P.every(p=>p.text==="VAC "+p.address.number&&p.lettering.geometry===BL.dsbModels.text(p.text,"#fff4df")));
+  record("Vacancies: actual lettering preserves VAC numbers with only VAC 7 occupied by SVRN Society",P.every(p=>p.text===(p.address.number===7?"SVRN Society":"VAC "+p.address.number)&&p.lettering.geometry===BL.dsbModels.text(p.text,"#fff4df")));
   S.updateWorld(W.root);
   const bounds=node=>{const lo=[Infinity,Infinity,Infinity],hi=[-Infinity,-Infinity,-Infinity],q=[];for(let i=0;i<node.geometry.verts.length;i+=3){BL.math.mat4.transformPoint(q,node.local,...node.geometry.verts.slice(i,i+3));for(let j=0;j<3;j++){lo[j]=Math.min(lo[j],q[j]);hi[j]=Math.max(hi[j],q[j]);}}return {lo,hi};};
   const placement=P.map(p=>{const b=p.building,a=bounds(p.plaque),t=bounds(p.lettering),house=p.address.type==="house",front=house?b.d/2:2.1;
@@ -8804,6 +8804,41 @@ const stackchainChecks = BL => {
   C.dispose();I.dispose();record("Stackchain lifecycle: ten visits preserve exterior return and audio gates without growing room/input resources",lifecycle&&targets.size===0&&!roomRoot.children.includes(R.root)&&!I.audio.stats.contexts);
 };
 
+const svrnChecks = BL => {
+  const rootPath=root;
+  const noop=()=>{},S=BL.scene,roomRoot=S.createNode(),targets=new Set(),exterior={visible:true},weather={shared:{state:{muted:true}},inside:false,setInterior(on){this.inside=on;}};
+  const land=BL.dsbGeography.build();let returned=null;
+  const I=BL.dsbInteriors.create({root:roomRoot,exterior,land,weather,relocate:p=>returned={...p},lock:noop,onChange:noop});
+  I.review("svrn-society",true);I.update(.4);const R=I.active.room,D=BL.svrnData;
+  const C=BL.crew.create({root:roomRoot,world:{level:0},playerName:"YellowBrokeIt",input:{add:n=>targets.add(n),remove:n=>targets.delete(n)},hud:{setRosterRow:noop},game:{state:{assignments:{},inventory:[]}},viewYaw:0,groundAt:I.groundAt,walkable:I.walkable,fx:{say:noop,zzzAt:noop,burst:noop,puff:noop,spawnParticle:noop,damageNumber:noop}});
+  const A=C.cavemen.get("YellowBrokeIt");C.control(A);
+  const clear=(ax,az,bx=ax,bz=az)=>I.walkable(ax,az,bx,bz,0,A.bodyHeight,A),step=.25,minX=-12.5,minZ=-14.5,w=101,h=117,seen=new Uint8Array(w*h),queue=[];
+  const index=(x,z)=>Math.round((z-minZ)/step)*w+Math.round((x-minX)/step),start=index(R.spawn.x,R.spawn.z);seen[start]=1;queue.push(start);
+  for(let head=0;head<queue.length;head++){const n=queue[head],ix=n%w,iz=Math.floor(n/w),x=minX+ix*step,z=minZ+iz*step;
+    for(const [dx,dz] of [[1,0],[-1,0],[0,1],[0,-1]]){const nx=ix+dx,nz=iz+dz,i=nz*w+nx;if(nx<0||nx>=w||nz<0||nz>=h||seen[i]||!clear(x,z,x+dx*step,z+dz*step))continue;seen[i]=1;queue.push(i);}}
+  const reachable=p=>{const i=index(p.x,p.z),ix=i%w,iz=Math.floor(i/w);for(let dx=-1;dx<=1;dx++)for(let dz=-1;dz<=1;dz++){const nx=ix+dx,nz=iz+dz;if(nx>=0&&nx<w&&nz>=0&&nz<h&&seen[nz*w+nx]&&clear(minX+nx*step,minZ+nz*step,p.x,p.z))return true;}return false;};
+  const goals=[R.exit,...R.browseGoals,...R.seats.map(s=>s.walkAt)];
+  record("SVRN navigation: real Yellow reaches all review areas, every seat and the existing exit",clear(R.spawn.x,R.spawn.z)&&goals.every(reachable),JSON.stringify({radius:A.bodyRadius,unreachable:goals.filter(p=>!reachable(p))}));
+  let seating=true;for(const seat of R.seats){Object.assign(A.root.position,{x:seat.walkAt.x,y:A.baseY,z:seat.walkAt.z});A.hop=A.hopV=0;seating&&=C.sitPlayer(seat);C.steer(.6,0);C.look(seat.ry,.3,1);C.update(.2,1);seating&&=A.camp.seat===seat&&A.root.position.x===seat.x&&A.root.position.z===seat.z;C.steer(0,0);seating&&=C.standPlayer()&&!A.camp.seat&&!seat.sitter&&clear(A.root.position.x,A.root.position.z);}
+  record("SVRN seating: two shared seats support pose, look, movement lock and safe stand",seating&&R.seats.length===2);
+  const v=BL.dsbVacancies.REGISTRY.find(p=>p.number===7),e=I.registry.get("svrn-society");
+  record("SVRN address: occupied VAC 7 keeps VACANT 2 at 10/23 and original facade",v.status==="occupied"&&v.occupant==="SVRN Society"&&v.interiorId===R.id&&e.building.name===v.buildingId&&e.building.x===10&&e.building.z===23&&e.building.yaw===Math.PI/2&&e.building.w===6&&e.building.d===5&&BL.dsbVacancies.REGISTRY.filter(p=>p.status==="vacant").length===34);
+  const cases=[[8.3,11,"home"],[-9,-4,"shirts"],[-9,4,"hoodies"],[9,-4,"faith"],[9,5,"hats"],[0,-11.7,"collections"],[-6.5,-8.5,"lookbook"],[0,6.5,"home"]];
+  record("SVRN zones: walkable apparel, faith, hats, collections, kiosk and lounge routes",cases.every(([x,z,r])=>reachable({x,z})&&BL.dsbMenuZones.resolve(R,{x,z}).route===r),JSON.stringify(cases.map(([x,z,want])=>({x,z,want,got:BL.dsbMenuZones.resolve(R,{x,z}).route,clear:reachable({x,z})}))));
+  let nodes=0,finite=true;const geometry=new Set(),walk=n=>{nodes++;if(n.geometry){geometry.add(n.geometry);finite&&=n.geometry.verts.every(Number.isFinite);}n.children.forEach(walk);};S.updateWorld(R.root);walk(R.root);
+  record("SVRN stock: real mounted garments, stacks, caps, mannequins and seven collection panels",R.displays.filter(d=>["shirt","hoodie"].includes(d.kind)).length>=80&&R.displays.filter(d=>d.kind==="folded").length>=60&&R.displays.filter(d=>d.kind==="cap").length>=20&&R.displays.filter(d=>d.kind==="mannequin").length===3&&R.counts.collectionPanels===7&&R.displays.every(d=>d.node.parent&&geometry.has(d.node.geometry)),JSON.stringify(R.counts));
+  record("SVRN budget: finite shared meshes and six bounded lights",finite&&nodes<1800&&geometry.size<160&&R.lighting.lightCount===6,JSON.stringify({nodes,geometries:geometry.size,counts:R.counts}));
+  const low=n=>{let y=Infinity;for(let i=1;i<n.geometry.verts.length;i+=3)y=Math.min(y,n.geometry.verts[i]);return y;};
+  record("SVRN fixtures: floor-standing supports and supported retail displays",R.fixtures.every(f=>f.node.position.y===0)&&R.displays.every(d=>{const y=d.node.position.y+low(d.node);return d.kind==="shirt"||d.kind==="hoodie"?Math.abs(d.node.position.y+1.33-2.64)<.015:y>=d.supportY-.01&&y<=d.supportY+.12;}));
+  record("SVRN sources: dated official-only categories, seven collections and bounded real listings",D.verified==="2026-10-05"&&D.pages.length===16&&D.collections.map(c=>c.title).join("|")==="1913|1984|Captivated|Faith Apparel|Fix The Money|Flip The Tables|Moms Against Money Printing"&&D.products.length===8&&[...D.pages,...D.collections,...D.products].every(p=>new URL(p.url).origin===D.origin));
+  const source=["svrn-data","svrn-menu","svrn-room","svrn-models"].map(f=>readFileSync(join(rootPath,"src/js/"+f+".js"),"utf8")).join("\n");
+  record("SVRN privacy: offline room/catalog, no remote fetch, image hotlinks, accounts or checkout",!/fetch\(|XMLHttpRequest|localStorage|sessionStorage|setInterval|createElement\("(?:iframe|form)"/.test(source)&&!D.products.some(p=>"price" in p||"stock" in p)&&D.pages.every(p=>!/(cart|checkout|account)/.test(p.url)));
+  let lifecycle=true;const children=roomRoot.children.length,entry=I.registry.get("svrn-society").entry;
+  for(let i=0;i<10;i++){lifecycle&&=weather.inside&&!exterior.visible&&I.audio.stats.active;I.request(R.exit);I.update(.4);lifecycle&&=!I.active&&!weather.inside&&exterior.visible&&!I.audio.stats.active&&!I.audio.stats.connected&&returned.x===entry.x&&returned.z===entry.z;I.review("svrn-society",true);I.update(.4);lifecycle&&=I.active.room===R&&roomRoot.children.length===children;}
+  C.dispose();I.dispose();record("SVRN lifecycle: ten visits preserve exterior return and audio gates without growing room/input resources",lifecycle&&targets.size===0&&!roomRoot.children.includes(R.root)&&!I.audio.stats.contexts);
+};
+
+
 // Contract: actual shared shell + lazy menu lifecycle, using a DOM transport double (no browser layout claims).
 const menuShellChecks = BL => {
   const keys=["document","innerWidth","innerHeight","visualViewport","addEventListener","removeEventListener"],saved=Object.fromEntries(keys.map(k=>[k,globalThis[k]]));
@@ -8853,6 +8888,17 @@ const menuShellChecks = BL => {
     P.open("unsupported");okay&&=P.stats.route==="home";P.dispose();
     record("Stackchain menu: article search and empty results over bounded titles, bylines and summaries",search);
     record("Stackchain menu: twelve visits, free browsing, safe product links, Home reset and complete listener disposal",okay&&body.children.length===1&&elements.every(e=>!e.listeners.size)&&!windowListeners.size);
+
+    const V=BL.svrnMenu.create();let vroutes=!V.open(),vlinks=true,visolated=true;V.enter();
+    for(const page of BL.svrnData.pages){
+      V.open(page.id);const panel=body.children.find(n=>n.tag==="dialog"),nav=panel.children.find(n=>n.tag==="nav");vroutes&&=V.stats.route===page.id;
+      vlinks&&=panel.querySelectorAll("a").every(a=>new URL(a.href).origin===BL.svrnData.origin&&a.target==="_blank"&&a.rel==="noopener noreferrer");
+      visolated&&=world.inert&&BL.dsbMenuShell.count===1;panel.listeners.get("click")({target:nav.children.find(n=>n.dataset.route==="collections")});vroutes&&=V.stats.route==="collections";
+      V.leave();visolated&&=!world.inert&&BL.dsbMenuShell.count===0&&!listeners.size&&!vlisteners.size;V.enter();
+    }
+    V.open("invalid");vroutes&&=V.stats.route==="home";V.dispose();
+    record("SVRN menu: all 16 routes, free navigation, safe official links and invalid-route fallback",vroutes&&vlinks);
+    record("SVRN menu: shared world isolation, focus restoration and bounded disposal",visolated&&body.children.length===1&&elements.every(e=>!e.listeners.size)&&!windowListeners.size);
 
   }finally{for(const [k,v] of Object.entries(saved))globalThis[k]=v;}
 };
@@ -8943,11 +8989,31 @@ const unitChecks = async () => {
     }
     renderer.dispose();I.dispose();W.dispose();document.createElement=oldCreate;console.log("Exported "+rows.length+" actual Canvas water review views to "+out);return;
   }
+  if(ARGS.includes("svrn-unit")){svrnChecks(BL);menuShellChecks(BL);return;}
   if(ARGS.includes("vacancy-unit")){await vacancyChecks(BL);return;}
   if(ARGS.includes("portal-unit")){portalChecks(BL,el);return;}
   if(ARGS.includes("water-unit")){await shorelineHarnessChecks();waterChecks(BL);return;}
   // Offline visual export through the actual Canvas renderer when this workspace cannot start Chrome.
   // Adapter is supplied by the review environment; it is never a production/package dependency.
+  if(ARGS.includes("svrn-review")){
+    if(!process.env.SVRN_CANVAS)throw Error("Set SVRN_CANVAS to a Canvas 2D adapter module for offline review");
+    const {createCanvas}=await import(process.env.SVRN_CANVAS),oldCreate=document.createElement;
+    document.createElement=tag=>tag==="canvas"?createCanvas(1,1):oldCreate(tag);
+    const S=BL.scene,sceneRoot=S.createNode(),R=BL.svrnRoom.build(),noop=()=>{};
+    R.root.visible=true;S.addChild(sceneRoot,R.root);
+    const crew=BL.crew.create({root:sceneRoot,world:{level:0},playerName:"YellowBrokeIt",input:{add:noop,remove:noop},hud:{setRosterRow:noop},game:{state:{assignments:{},inventory:[]}},viewYaw:0,groundAt:()=>0,walkable:()=>true,fx:{say:noop,zzzAt:noop,burst:noop,puff:noop,spawnParticle:noop,damageNumber:noop}});
+    const avatar=crew.cavemen.get("YellowBrokeIt");crew.control(avatar);
+    const canvas=createCanvas(1440,900),renderer=BL.canvasRenderer.createRenderer(canvas,{width:1440,height:900}),camera=S.createCamera({fov:56,near:.1,far:100}),out=join(root,"untracked/svrn-review");mkdirSync(out,{recursive:true});
+    for(const [name,pose] of Object.entries(R.reviews)){
+      const p=pose.position;Object.assign(avatar.root.position,{x:p.x,y:avatar.baseY,z:p.z});avatar.root.rotation.y=pose.yaw+Math.PI;
+      Object.assign(camera.position,{x:p.x+Math.sin(pose.yaw)*3.3,y:2.9,z:p.z+Math.cos(pose.yaw)*3.3});
+      Object.assign(camera.target,{x:p.x-Math.sin(pose.yaw)*4,y:2.9-Math.sin(pose.pitch)*7,z:p.z-Math.cos(pose.yaw)*4});
+      camera.position.x=Math.max(-12.3,Math.min(12.3,camera.position.x));camera.position.z=Math.max(-14.3,Math.min(14.3,camera.position.z));
+      renderer.render(sceneRoot,camera,R.lighting);writeFileSync(join(out,name+".png"),canvas.toBuffer("image/png"));
+    }
+    renderer.dispose();crew.dispose();document.createElement=oldCreate;
+    console.log("Rendered eight actual room views to "+out+" (visual export, no browser assertions)");return;
+  }
   if(ARGS.includes("stackchain-review")){
     if(!process.env.STACKCHAIN_CANVAS)throw Error("Set STACKCHAIN_CANVAS to a Canvas 2D adapter module for offline review");
     const {createCanvas}=await import(process.env.STACKCHAIN_CANVAS),oldCreate=document.createElement;
@@ -9584,9 +9650,54 @@ const unitChecks = async () => {
 };
 
 
+// Contract: the actual VAC 7 door, shared seats and centered catalog remain usable on desktop/phone.
+scene("dsb",{label:"SVRN checkpoint",query:"&view=svrn-door&weather=storm&time=1200",opts:{w:640,h:400,motion:true},steps:[{name:"dsb SVRN checkpoint",why:"contract: VAC 7 enters the boutique, safely browses and seats, then returns without growing resources",run:async b=>{
+  const out=join(root,"untracked/svrn-review");mkdirSync(out,{recursive:true});
+  const step=()=>b.evaluate('for(let i=0;i<36;i++)BL.scenes.dsb.update(1/60,i/60)');
+  await step();await b.key(" ");await step();
+  const entry=await b.evaluate('(()=>{const D=__ooga.dsb,I=D.interiors,V=D.vacancies.resolve(7);window.__svrnAvatar=D.avatar;return {id:I.active?.room.id,text:V.text,occupied:V.address.status,exterior:D.exterior.visible,drops:D.weather.shared.state.drops,master:D.weather.shared.state.masterLevel,radio:D.noderunner.stats,weather:D.weather.state.exterior};})()');
+  record("SVRN browser: real VAC 7 door enters its occupied room and suppresses exterior weather/audio",entry.id==="svrn-society"&&entry.text==="SVRN Society"&&entry.occupied==="occupied"&&!entry.exterior&&!entry.weather&&entry.drops===0&&entry.master===0&&entry.radio.target===0&&entry.radio.level===0,JSON.stringify(entry));
+  await b.evaluate('__ooga.pilot.navigate(__ooga.dsb.interiors.active.room.reviews["svrn-kiosk"])');await step();
+  await b.key(" ");await step();
+  record("SVRN browser: physical kiosk approach opens the shared contextual Home catalog",await b.evaluate('__ooga.dsb.svrnMenu.isOpen&&__ooga.dsb.svrnMenu.stats.route==="home"&&document.querySelector(".svrn-menu").classList.contains("dsb-menu-engaged")'));
+  for(const [w,h] of [[1440,900],[390,844],[844,390]]){
+    await b.send("Emulation.setDeviceMetricsOverride",{width:w,height:h,deviceScaleFactor:1,mobile:w!==1440});
+    const synced=await b.evaluate('new Promise(resolve=>{const p=document.querySelector(".svrn-menu"),start=performance.now();const tick=()=>{const v=visualViewport,s=p.style,ready=Math.abs(parseFloat(s.getPropertyValue("--menu-w"))-v.width)<.01&&Math.abs(parseFloat(s.getPropertyValue("--menu-h"))-v.height)<.01;if(ready||performance.now()-start>5000)resolve(ready);else requestAnimationFrame(tick);};requestAnimationFrame(tick);})');
+    const r=await b.evaluate('(()=>{const p=document.querySelector(".svrn-menu"),r=p.getBoundingClientRect(),v=visualViewport,s=getComputedStyle(p);p.scrollTop=10;const scrolls=p.scrollHeight>p.clientHeight&&p.scrollTop>0;p.scrollTop=0;return {cx:Math.abs(r.x+r.width/2-v.offsetLeft-v.width/2),cy:Math.abs(r.y+r.height/2-v.offsetTop-v.height/2),margins:[r.x-v.offsetLeft,r.y-v.offsetTop,v.offsetLeft+v.width-r.right,v.offsetTop+v.height-r.bottom],scrolls,width:p.scrollWidth<=p.clientWidth+1,overflow:s.overflowY,body:getComputedStyle(document.body).overflowY,isolated:BL.dsbMenuShell.count===1&&getComputedStyle(document.getElementById("dsb-context")).visibility==="hidden"};})()');
+    record(`SVRN browser ${w}x${h}: centered, safe margins, internal scroll and isolated controls`,synced&&r.cx<1&&r.cy<1&&r.margins.every(n=>n>=11.5)&&r.scrolls&&r.width&&r.overflow==="auto"&&r.body==="hidden"&&r.isolated,JSON.stringify(r));
+    await b.screenshot(join(out,"svrn-menu-"+w+".png"));
+  }
+  const before=await b.evaluate('({...__ooga.dsb.avatar.root.position})');await b.send("Input.dispatchKeyEvent",{type:"keyDown",key:"d",code:"KeyD"});await step();await b.send("Input.dispatchKeyEvent",{type:"keyUp",key:"d",code:"KeyD"});
+  const still=await b.evaluate('({...__ooga.dsb.avatar.root.position})');record("SVRN browser: held movement cannot move the player behind the catalog",before.x===still.x&&before.z===still.z);
+  const routes=await b.evaluate('(()=>{const D=__ooga.dsb,M=D.svrnMenu,p=document.querySelector(".svrn-menu");let okay=true;for(const page of BL.svrnData.pages){p.querySelector(`[data-route="${page.id}"]`).click();okay&&=M.stats.route===page.id&&Array.from(p.querySelectorAll("a")).every(a=>new URL(a.href).origin===BL.svrnData.origin&&a.target==="_blank"&&a.rel==="noopener noreferrer");}return {okay,forms:p.querySelectorAll("form,input,iframe").length};})()');
+  record("SVRN browser: all sixteen catalog routes use safe official links with no transaction/account forms",routes.okay&&routes.forms===0,JSON.stringify(routes));
+  await b.key("Escape");await step();
+  await b.evaluate('(()=>{const B=__ooga,R=B.dsb.interiors.active.room,s=R.seats[0];B.pilot.navigate({position:{...s.walkAt,y:0},yaw:s.viewYaw,pitch:.12,dist:3});return s.walkAt;})()');await step();await b.key(" ");await step();
+  record("SVRN browser: shared seat interaction locks the lounge pose",await b.evaluate('__ooga.dsb.avatar.camp.seat===__ooga.dsb.interiors.active.room.seats[0]'));
+  await b.key(" ");await step();record("SVRN browser: shared stand interaction restores the floor",await b.evaluate('!__ooga.dsb.avatar.camp.seat&&Math.abs(__ooga.dsb.avatar.root.position.y-__ooga.dsb.avatar.baseY)<.01'));
+  const snapshot=()=>b.evaluate('(()=>{const I=__ooga.dsb.interiors,R=I.active.room;let nodes=0;const visit=n=>{nodes++;n.children.forEach(visit);};visit(R.root);return {nodes,rooms:I.rooms.size,targets:BL.scenes.dsb.input.targetCount,contexts:I.audio.stats.contexts,panels:document.querySelectorAll(".svrn-menu").length};})()');
+  const base=await snapshot();let roundtrip=true;
+  for(let i=0;i<3;i++){
+    await b.evaluate('__ooga.pilot.navigate({position:__ooga.dsb.interiors.active.room.exit,yaw:Math.PI,pitch:.12,dist:3})');await step();await b.key(" ");await step();
+    roundtrip&&=await b.evaluate('(()=>{const D=__ooga.dsb,e=D.interiors.registry.get("svrn-society").entry,p=D.avatar.root.position;return !D.interiors.active&&D.exterior.visible&&D.avatar===__svrnAvatar&&Math.hypot(p.x-e.x,p.z-e.z)<.01&&!D.svrnMenu.isOpen&&BL.dsbMenuShell.count===0;})()');
+    await b.key(" ");await step();
+  }
+  const after=await snapshot();record("SVRN browser: three real door round trips preserve VAC 7 and bounded room/input/menu/audio resources",roundtrip&&JSON.stringify(base)===JSON.stringify(after),JSON.stringify({base,after}));
+  await b.evaluate('__ooga.dsb.svrnMenu.open();window.__oldSvrn=__ooga.dsb.svrnMenu;window.__oldSvrnI=__ooga.dsb.interiors;__ooga.go("dsb",null,true);__ooga.advance(.05)');
+  record("SVRN browser: scene departure removes kiosk/menu handlers, cached room and audio context",await b.evaluate('__oldSvrn.stats.disposed&&!document.querySelector(".svrn-menu")&&__oldSvrnI.rooms.size===0&&__oldSvrnI.audio.stats.contexts===0&&BL.dsbMenuShell.count===0'));
+}}]});
+scene("dsb",{label:"SVRN visual review",query:"&view=svrn-door&weather=clear&time=1200",opts:{w:640,h:400,motion:true},steps:[{name:"dsb shoreline SVRN visual review",why:"contract: VAC 7 sign and deterministic boutique views render in the actual WebGL scene",run:async b=>{
+  const out=join(root,"untracked/svrn-review");mkdirSync(out,{recursive:true});
+  const capture=async name=>{const health=await b.evaluate(`(${shorelineState.toString()})()`);record("SVRN WebGL: "+name,shorelineHealthy(health),JSON.stringify(health));const shot=await b.send("Page.captureScreenshot",{format:"png"},5000);if(!shot.result?.data)throw Error("SVRN screenshot returned no image");writeFileSync(join(out,name+".png"),Buffer.from(shot.result.data,"base64"));};
+  await b.evaluate('__shoreline.advance(.3)');await capture("svrn-door");
+  await b.key(" ");await b.evaluate('__shoreline.until(()=>__ooga.dsb.interiors.active?.room.id==="svrn-society"&&!__ooga.dsb.interiors.transitioning,2)');
+  const views=await b.evaluate('Object.keys(__ooga.dsb.interiors.active.room.reviews)');
+  for(const view of views){await b.evaluate(`__ooga.pilot.navigate(__ooga.dsb.interiors.active.room.reviews[${JSON.stringify(view)}]);__shoreline.advance(.3)`);await capture(view);}
+}}]});
+
 scene("dsb",{label:"vacancy checkpoint",query:"&view=vac-overview&weather=clear&time=1200",opts:{w:640,h:400,motion:true},steps:[{name:"dsb shoreline vacancy review",why:"contract: the integrated scene draws every vacancy sign and preserves review evidence",run:async b=>{
   const out=join(root,"untracked/vacancy-review");mkdirSync(out,{recursive:true});
-  const state=await b.evaluate('(()=>{const V=__ooga.dsb.vacancies;return {count:V.properties.length,signs:V.group.children.length,ids:V.properties.map(p=>p.address.number),texts:V.properties.every(p=>p.text==="VAC "+p.address.number),visible:V.group.visible&&__ooga.dsb.exterior.visible};})()');
+  const state=await b.evaluate('(()=>{const V=__ooga.dsb.vacancies;return {count:V.properties.length,signs:V.group.children.length,ids:V.properties.map(p=>p.address.number),texts:V.properties.every(p=>p.text===(p.address.number===7?"SVRN Society":"VAC "+p.address.number)),visible:V.group.visible&&__ooga.dsb.exterior.visible};})()');
   record("Vacancy browser: 35 registered signs are attached to the visible exterior",state.count===35&&state.signs===35&&state.texts&&state.visible&&new Set(state.ids).size===35,JSON.stringify(state));
   for(const name of ["vac-overview","vac-lower","vac-central","vac-upper","vac-windmills"]){
     await b.evaluate(`__ooga.pilot.goPreset(${JSON.stringify(name)});__shoreline.advance(.3)`);
@@ -9626,8 +9737,8 @@ const dsbShorelineCheckpoint={name:"dsb shoreline checkpoint",why:"playthrough: 
     const r=await b.evaluate(`(()=>{const B=__ooga,D=B.dsb,W=D.waterInteraction,f=D.olympus.impacts[0];B.pilot.navigate({position:{x:f.x+5,y:D.land.heightAt(f.x+5,f.z+3),z:f.z+3},yaw:1.05,pitch:.4,dist:18});B.daylight.read=()=>${hour};B.daylight.continuousDay=B.daylight.dayOfYear-1+${hour}/24;D.weather.setMode(${JSON.stringify(weather)});let stats=null,finite=true,maxActive=0;__shoreline.advance(2,()=>{finite&&=D.water.environment.every(Number.isFinite);maxActive=Math.max(maxActive,W.stats.active);if(W.stats.impacts===5&&W.impulses.slice(0,5).every(p=>p.node.visible&&p.node.smokeOpacity>0))stats={...W.stats};});return {stats:stats||{...W.stats},visible:!!stats,finite,maxActive,light:D.weather.state.mode,nodes:W.group.children.length};})()`);
     record("DSB shoreline browser: "+name+" has finite water and bounded waterfall impacts",r.finite&&r.visible&&r.stats.impacts===5&&r.stats.streaks>0&&r.stats.active<=24&&r.maxActive<=24,JSON.stringify(r));
   }
-  const preserved=await b.evaluate(`(()=>{const D=__ooga.dsb,O=D.olympus,L=D.land,A=D.avatar;let blocked=0;for(let i=1;i<L.trail.length;i++){const a=L.trail[i-1],b=L.trail[i];if(!L.walkable(...a.slice(0,2),...b.slice(0,2),L.heightAt(...a),A.bodyHeight,A)||!O.clearSegment(...a.slice(0,2),...b.slice(0,2),L.heightAt(...a),A.bodyHeight,A))blocked++;}return {blocked,bridges:O.bridges.length,rear:L.heightAt(-55,-91),milestones:D.interiors.registry.size};})()`);
-  record("DSB shoreline browser: Sacred Way, both bridges, seven venues and deep rear Olympus remain intact",preserved.blocked===0&&preserved.bridges===2&&preserved.rear===-5&&preserved.milestones===7,JSON.stringify(preserved));
+  const preserved=await b.evaluate(`(()=>{const D=__ooga.dsb,O=D.olympus,L=D.land,A=D.avatar;let blocked=0;for(let i=1;i<L.trail.length;i++){const a=L.trail[i-1],b=L.trail[i];if(!L.walkable(...a.slice(0,2),...b.slice(0,2),L.heightAt(...a),A.bodyHeight,A)||!O.clearSegment(...a.slice(0,2),...b.slice(0,2),L.heightAt(...a),A.bodyHeight,A))blocked++;}return {blocked,bridges:O.bridges.length,rear:L.heightAt(-55,-91),milestones:Array.from(D.interiors.registry.keys())};})()`);
+  record("DSB shoreline browser: Sacred Way, both bridges, seven preserved venues plus SVRN and deep rear Olympus remain intact",preserved.blocked===0&&preserved.bridges===2&&preserved.rear===-5&&preserved.milestones.length===8&&["meme-factory","dsb-studio","maxis-club","without-rulers","proof-of-ink","big-bitcoin","stackchain-magazine","svrn-society"].every(id=>preserved.milestones.includes(id)),JSON.stringify(preserved));
   const before=await b.evaluate('({nodes:__ooga.dsb.waterInteraction.group.children.length,records:__ooga.renderer.stats.records})');
   const visits=[];
   for(let i=0;i<2;i++){
@@ -10126,7 +10237,7 @@ const dsbStudioCheckpoint = {name:"dsb studio checkpoint",why:"playthrough: Stud
   for(let cycle=0;cycle<3;cycle++){
     if(cycle){await tap("#dsb-context");await step();}
     await b.evaluate(`(()=>{const B=__ooga,s=B.dsb.interiors.active.room.stageSeats[${cycle}];B.pilot.navigate({position:{x:s.walkAt.x,y:s.floor,z:s.walkAt.z},yaw:0,pitch:.12,dist:3});})()`);await step();await tap("#dsb-context");
-    const seated=await b.evaluate('({seat:!!__ooga.dsb.avatar.camp.seat,leg:__ooga.dsb.avatar.parts.legL.rotation.x,p:{...__ooga.dsb.avatar.root.position},close:__ooga.pilot.closeWanted,yaw:__ooga.dsb.avatar.root.rotation.y})');
+    await b.evaluate('({seat:!!__ooga.dsb.avatar.camp.seat,leg:__ooga.dsb.avatar.parts.legL.rotation.x,p:{...__ooga.dsb.avatar.root.position},close:__ooga.pilot.closeWanted,yaw:__ooga.dsb.avatar.root.rotation.y})');
     await b.send("Input.dispatchKeyEvent",{type:"keyDown",key:"w",code:"KeyW"});await step();await b.send("Input.dispatchKeyEvent",{type:"keyUp",key:"w",code:"KeyW"});
     await tap("#weapon-hud");await tap("#weapon-hud");await tap(".dsb-studio-tools button");
     await b.evaluate('if(!__ooga.dsb.avatar.weapon.aiming)__ooga.pilot.modeAction("mode-toggle");__ooga.crew.look(2.7,.1,1)');await step();
