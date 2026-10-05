@@ -2381,12 +2381,17 @@
     const B = P.CHAIN_BOARD, boardBearing = Math.PI;
     const boardNode = createNode({ position: { x: Math.sin(boardBearing) * B.r, y: L.LEVEL.shore, z: Math.cos(boardBearing) * B.r }, rotation: { x: 0, y: boardBearing + Math.PI, z: 0 }, geometry: P.chainBoard() });
     const panelNode = createNode();
-    addChild(boardNode, panelNode);
+    const boardLegs = createNode({ geometry: { ...P.chainBoardLegs() } });
+    addChild(boardNode, panelNode, boardLegs);
+    site.boardLegs = boardLegs;
     addChild(site.node, boardNode);
     atNode("chainsign", boardNode, B.w * 0.55);
     // The weather key sits to the right when entering from the bridge, just past the curved frame.
     const infoBearing = boardBearing - (B.w / 2 + P.INFO_SIGN.w / 2 + 0.8) / B.r;
     const infoNode = createNode({ position: { x: Math.sin(infoBearing) * B.r, y: L.LEVEL.shore, z: Math.cos(infoBearing) * B.r }, rotation: { x: 0, y: infoBearing + Math.PI, z: 0 }, geometry: P.infoSign() });
+    const infoLeg = createNode({ geometry: { ...P.infoSignLeg() } });
+    addChild(infoNode, infoLeg);
+    site.infoLeg = infoLeg;
     addChild(site.node, infoNode);
     atNode("weathersign", infoNode, 1);
     {

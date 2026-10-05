@@ -811,6 +811,11 @@
       site.membrane.glow = bright;
       site.membrane.smokeOpacity = surfaceNode.visible ? 1 : 0;
       site.membrane.geometry.clipMaxY = origin.y + lake;
+      // Posts end at the higher of the live waterline and the bowl's curved edge, so their submerged
+      // ends cannot show through the translucent underside when the lake is low.
+      const postBottom = origin.y + Math.max(lake, L.membraneY(BL.poolModels.CHAIN_BOARD.r + 0.3) + 0.06);
+      site.boardLegs.geometry.clipMinY = postBottom;
+      site.infoLeg.geometry.clipMinY = postBottom;
       floodNode.visible = floodY > HYDRO.PARK + 0.01;
       floodNode.position.y = floodY;
       floodNode.glow = bright;
