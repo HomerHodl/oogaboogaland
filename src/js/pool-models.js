@@ -1026,7 +1026,7 @@
   // The chain board stands just inside the far shoreline, in front of the trees. Its inward-facing slate,
   // frame and live lettering share the pool's circular arc; +z faces the centre in the board's own frame.
   // Its feet reach the bowl, while the face stays above the fullest waterline.
-  const CHAIN_BOARD = { w: 6.8, h: 3, y: 1, d: 0.3, px: 0.06, r: L.LAKE_R - 0.75 };
+  const CHAIN_BOARD = { w: 7.4, h: 3, y: 1, d: 0.3, px: 0.03, r: L.LAKE_R - 0.75 };
   const BOARD_FOOT = L.membraneY(CHAIN_BOARD.r - 0.3) - 0.08;
   const curveChainBoard = (source, ox = 0, oy = 0, oz = 0) => {
     const geo = { ...source, verts: [], faces: [], lines: [] }, v = source.verts, radius = CHAIN_BOARD.r;

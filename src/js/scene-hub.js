@@ -4864,7 +4864,7 @@
   // The chain board's four readings, set in the jumbotron's 5x7 font and run-length merged into quads,
   // exactly as the cave sets its wall panels. The rows are rebuilt only when one of them changed, so a
   // board left standing all day replaces no geometry and holds its size.
-  const CHAIN_PANEL_W = 96, CHAIN_PANEL_H = 36, CHAIN_PANEL_BG = [42, 39, 36];
+  const CHAIN_PANEL_W = 208, CHAIN_PANEL_H = 72, CHAIN_PANEL_BG = [42, 39, 36];
   // A board that has stopped being fed says so by going grey. Holding the last reading out in its
   // usual colours would be the one genuinely misleading thing this island could do.
   const STALE_INK = "#7d766a";
@@ -4875,7 +4875,7 @@
     return `${mvb < 100 ? mvb.toFixed(1) : Math.round(mvb)} MVB`;
   };
   const backlogDetails = (count, countKnown = true) => countKnown ? `${count.toLocaleString("en-US")} TX WAITING` : "TX COUNT UNKNOWN";
-  // Compact unit glyphs keep the billboard's 1-pixel values crisp; popup values use the shared font at half scale.
+  // Popup rows at 1-pixel scale use compact glyphs; the billboard's finer pixels fit the shared font at half size.
   const UNIT_FONT = {
     A: [0b010, 0b101, 0b111, 0b101], B: [0b110, 0b101, 0b110, 0b111],
     M: [0b101, 0b111, 0b111, 0b101], S: [0b111, 0b100, 0b011, 0b110],
@@ -4942,11 +4942,11 @@
     const c2 = chainSign.ctx2d, text = BL.jumbotron.text;
     c2.fillStyle = `rgb(${CHAIN_PANEL_BG[0]},${CHAIN_PANEL_BG[1]},${CHAIN_PANEL_BG[2]})`;
     c2.fillRect(0, 0, CHAIN_PANEL_W, CHAIN_PANEL_H);
-    let y = 2;
+    let y = 4;
     for (const [label, value, color] of rows) {
-      text.drawText(c2, label, 1, y, "#9b8f7a", 1);
-      drawMetric(c2, value, CHAIN_PANEL_W - 1, y, color, 1, true);
-      y += 8;
+      text.drawText(c2, label, 2, y, "#9b8f7a", 2);
+      drawMetric(c2, value, CHAIN_PANEL_W - 2, y, color, 2, true);
+      y += 16;
     }
     const node = chainSign.node;
     if (node.geometry) renderer.releaseGeometry(node.geometry);
