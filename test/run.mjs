@@ -1,9 +1,12 @@
 import { AsyncLocalStorage } from "node:async_hooks";
-import { mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { readFile, writeFile } from "node:fs/promises";
 import { runInNewContext } from "node:vm";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { tmpdir } from "node:os";
+import { createHash } from "node:crypto";
+import { externalizeAudio } from "../scripts/distribution-audio.mjs";
 import { launch, acquire, dispose, driverError } from "./browser.mjs";
 import { writeCharacters } from "../scripts/characters.mjs";
 // ---- solid-props.mjs ----
@@ -8829,7 +8832,28 @@ const pokerProtocolChecks = async () => {
   } catch (e) { record("poker protocol: timeouts refund chips, repeated requests cannot stall, and signers cannot be impersonated", false, e.stack); }
 };
 
+// Staging must preserve exact recordings and hash the final script, including literal replacement tokens.
+const distributionAudioChecks = async () => {
+  const out = mkdtempSync(join(tmpdir(), "ooga-audio-"));
+  try {
+    const source = readFileSync(join(root, "src/js/dsb-audio-data.js"), "utf8").trim();
+    const script = `\nwindow.BL = {};\n${source}\nconst literal = "$& $$ $' $` + "`" + `";\n`;
+    const hash = value => createHash("sha256").update(value).digest("base64");
+    const html = `<meta content="default-src 'none'; script-src 'sha256-${hash(script)}'; connect-src 'self' https: wss:"><script>${script}</script>`;
+    const staged = externalizeAudio(html, root, out), updated = staged.match(/<script>([\s\S]*?)<\/script>/)[1];
+    const context = { window: { BL: {} } };
+    runInNewContext(updated, context);
+    const descriptor = context.window.BL.dsbAudioData, original = { window: {} };
+    runInNewContext(source, original);
+    const encoded = [...original.window.BL.dsbAudioData.voices, original.window.BL.dsbAudioData.music];
+    const urls = [...descriptor.voices, descriptor.music];
+    record("distribution audio: exact MP3 assets replace embedded text and the final script retains its literal bytes and strict CSP hash",
+      descriptor.external && urls.length === 5 && urls.every((url, i) => /^\/audio\/dsb-[a-f0-9]{64}\.mp3$/.test(url) && readFileSync(join(out, url)).equals(Buffer.from(encoded[i], "base64")))
+      && staged.includes(`script-src 'sha256-${hash(updated)}'`) && updated.endsWith(script.slice(script.indexOf("const literal"))) && !updated.includes(encoded[0]), "staged recording/CSP mismatch");
+  } finally { rmSync(out, { recursive: true, force: true }); }
+};
 const unitChecks = async () => {
+  await distributionAudioChecks();
   const canvasStub = () => ({
     width: 0, height: 0,
     getContext: () => ({
