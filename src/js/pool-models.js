@@ -168,7 +168,7 @@
       for (const channel of L.CHANNELS) {
         if (channel.inner) continue;
         const angle = L.turn(bearing, channel.bearing);
-        if (Math.abs(angle) * edge < L.CHANNEL.low + L.UNIT * 2) edge = Math.min(edge, (L.channelOutlet(channel) - 0.05) / Math.cos(angle));
+        if (Math.abs(angle) * edge < L.CHANNEL.low + L.UNIT * Math.SQRT1_2) edge = Math.min(edge, (L.channelOutlet(channel) - 0.05) / Math.cos(angle));
       }
       return edge;
     };

@@ -212,9 +212,9 @@
     for (const link of LINKS) if (a > link.from * RAMP.sweep - DOOR.half / 18 && a < link.to * RAMP.sweep + DOOR.half / 18) return link;
     return null;
   };
-  // Keep both the voxel shelf and its smooth floor out of the falling water's path.
+  // Keep the fall's opening clear while letting the shelf reach its banks on either side.
   const fallGap = (bearing, r = edgeAt(bearing), margin = 0) => {
-    for (const channel of CHANNELS) if (channel.falls && Math.abs(turn(bearing, channel.bearing)) * r < CHANNEL.low + UNIT + margin) return true;
+    for (const channel of CHANNELS) if (channel.falls && Math.abs(turn(bearing, channel.bearing)) * r < CHANNEL.low + margin) return true;
     return false;
   };
   const lipAt = (bearing, r = edgeAt(bearing)) => {
