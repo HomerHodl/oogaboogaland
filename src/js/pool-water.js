@@ -43,8 +43,8 @@
     SHOWN: { under: -0.03, over: 0.05, belowLowland: L.LEVEL.lowland - 0.05, aboveLowland: L.LEVEL.lowland + 0.05 },
     // How fast the drawn water rises and falls into place, and how far under its bed a drained flood is parked.
     FILL: 0.3, PARK: L.LEVEL.bed - 0.06,
-    // How brightly water without a live reading behind it glows, against 1.
-    DIM: 0.5
+    // A stale reading gently dims the water without making it look unlit.
+    DIM: 0.82, BRIGHT_EASE: 2
   };
   const levelFor = (vsize) => {
     const points = HYDRO.POINTS, v = Math.max(0, vsize);
@@ -540,7 +540,7 @@
     let queued = 0, queueHead = 0, dropped = 0, started = 0, sequenceClock = 0, lastStart = -BLOCK_GAP;
 
     // The reading and the level. `reading` is false until any backlog figure has been seen at all.
-    let target = L.WATER.low, level = L.WATER.low, shown = L.WATER.low, floodY = HYDRO.PARK, stage = 0, reading = false, observedAt = 0, vsize = 0, status = "unavailable", preview = null, settle = false;
+    let target = L.WATER.low, level = L.WATER.low, shown = L.WATER.low, floodY = HYDRO.PARK, stage = 0, reading = false, observedAt = 0, vsize = 0, status = "unavailable", preview = null, settle = false, bright = HYDRO.DIM;
     let fill = null;
     const apply = (snapshot) => {
       if (!snapshot || preview !== null || fill !== null) return;
@@ -768,8 +768,10 @@
       shown = settle ? want : walk(shown, want, HYDRO.FILL * dt);
       floodY = settle ? (stage ? shown : HYDRO.PARK) : walk(floodY, stage ? shown : HYDRO.PARK, HYDRO.FILL * dt * (stage ? 2.5 : 1.5));
       settle = false;
-      // A lake with no live reading behind it goes dim rather than pretending.
-      const bright = status === "live" ? 1 : HYDRO.DIM;
+      // A lake with no live reading behind it eases to a softer glow rather than snapping dark.
+      const targetBright = status === "live" ? 1 : HYDRO.DIM;
+      bright += (targetBright - bright) * (1 - Math.exp(-dt / HYDRO.BRIGHT_EASE));
+      if (Math.abs(targetBright - bright) < 1e-3) bright = targetBright;
       const lake = Math.min(shown, stage ? Math.max(floodY, L.WATER.spill - 0.01) : shown), reach = L.waterRadius(lake);
       surfaceNode.position.y = lake;
       surfaceNode.scale.x = surfaceNode.scale.z = reach;
@@ -919,7 +921,7 @@
         target = fill === null ? (reading ? levelFor(vsize) : L.WATER.low) : lerp(-L.MEMBRANE_DEPTH, L.WATER.flood, fill / 200);
         level = target; stage = target > HYDRO.STAGE.highOn ? 2 : target > HYDRO.STAGE.on ? 1 : 0; settle = true;
       },
-      get active() { if (rippleCount) return true; for (const seq of sequences) if (seq.active) return true; return Math.abs(level - target) > 1e-3 || Math.abs(shown - level) > 0.11; },
+      get active() { if (rippleCount) return true; for (const seq of sequences) if (seq.active) return true; return Math.abs(level - target) > 1e-3 || Math.abs(shown - level) > 0.11 || Math.abs(bright - (status === "live" ? 1 : HYDRO.DIM)) > 1e-3; },
       stats: () => ({ waterCubes: state.cubes, waterQueued: queued, waterRipples: rippleCount })
     };
   };
