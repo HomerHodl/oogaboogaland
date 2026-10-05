@@ -6853,7 +6853,7 @@
       RENDER_OPTS.directStrength *= 1 - 0.92 * poolShade;
       for (let i = 0; i < 3; i++) { RENDER_OPTS.sky[i] *= keep; RENDER_OPTS.ground[i] *= keep; }
     }
-    mempoolIsland.water.update(dt, elapsed);
+    mempoolIsland.water.update(dt, elapsed, Date.now(), sheltered === 1);
     mempoolIsland.paintings.update(dt);
     updateLamps(dt, elapsed, phase !== null);
     if (jumbotron) {

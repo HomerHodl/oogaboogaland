@@ -753,7 +753,7 @@
     };
 
     const walk = (value, to, step) => value > to ? Math.max(to, value - step) : Math.min(to, value + step);
-    const update = (dt, elapsed, now = Date.now()) => {
+    const update = (dt, elapsed, now = Date.now(), inside = true) => {
       rippleDt = dt;
       if (dt > 0) rippleFrame++;
       status = fill !== null || preview !== null ? "live" : !reading ? "unavailable" : observedAt > 0 && now - observedAt < HYDRO.FRESH_MS ? "live" : "stale";
@@ -805,8 +805,11 @@
         waves.data[o + 2] = radius;
         waves.data[o + 3] = ripple.amplitude * ripple.strength * Math.min(1, u / 0.08) * (1 - u) * (1 - u);
       }
+      // The collector lies below the island's roof. Its luminous arc must not show through the
+      // translucent lake from outdoors, but remains visible while walking the descent and chamber.
+      rillNode.visible = inside;
       rillNode.glow = bright * (floodNode.visible ? 0.8 : 0.5);
-      for (const node of tailNodes) node.glow = rillNode.glow;
+      for (const node of tailNodes) { node.visible = inside; node.glow = rillNode.glow; }
       // Fill the trench's steps, but let the actual banks covering its mouth narrow the falling sheet.
       for (const fall of falls) {
         const half = channelHalf(floodY);
