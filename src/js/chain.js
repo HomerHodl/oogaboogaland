@@ -468,6 +468,8 @@
       snapshot.heightAt = Number.isInteger(Number(event.height)) && Number(event.height) > 0 ? Date.now() : 0;
       snapshot.height = event.height | 0;
       snapshot.lastTxCount = event.txCount | 0;
+      snapshot.lastWeight = 0;
+      snapshot.lastSize = 0;
       snapshot.lastBlockAt = Date.now();
       // A new block empties part of the pool and replaces the tip, so both are refreshed rather than
       // left to their intervals: the socket gives the height at once, but the size, weight and pace
