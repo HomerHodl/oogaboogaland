@@ -27,7 +27,7 @@
   const { drawText, measureText } = BL.jumbotron.text;
 
   // Wide enough for the longest label beside the largest reading and its unit, on a stop's 6 m flat face.
-  const W = 152, H = 104, PX = 0.033, ROW = 16, TOP = 23;
+  const W = 160, H = 104, PX = 0.033, ROW = 16, TOP = 23;
   // A colour no pigment uses: `panelFrom` leaves it out, so the wall shows through.
   const CLEAR = [3, 1, 2], STONE = "#241b14";
   const INK = { ochre: "#d9a441", earth: "#c8643a", bone: "#f1e7cf", dim: "#cdbb96", charcoal: "#8a7c66", stale: "#8d8272", water: "#7cc8ff" };
@@ -37,9 +37,10 @@
   // A new block's own details may take this long to follow its height before they are called missing.
   const DETAIL_MS = 30000;
 
-  const fmt = (n) => BL.game.formatLarge(Math.round(n));
+  const sig = (n) => BL.game.formatThree(n);
+  const compact = (n) => BL.game.formatThree(n, true);
   const dec = (n, d) => String(+n.toFixed(d));
-  const sat = (n) => n >= 10 ? dec(n, 0) : dec(n, 2);
+  const sat = sig;
   const grouped = (n) => Math.round(n).toLocaleString("en-US");
   const span = (ms) => ms < 90000 ? `${Math.max(1, Math.round(ms / 1000))} S` : ms < 5400000 ? `${Math.round(ms / 60000)} MIN` : `${dec(ms / 3600000, 1)} HRS`;
   const sourceName = (s) => s.source === "mempool.space" ? "MEMPOOL.SPACE" : s.source === "esplora" ? "ESPLORA" : "PINNED SOURCE";
@@ -86,10 +87,10 @@
         return {
           state, status: statusText(s, state, s.backlogAt, now), figures: state === "none" ? 0 : Math.min(12, Math.ceil(s.deep / 10)),
           lines: [
-            ["WAITING", "", shown(state, grouped(s.count)), "TX", ink],
-            ["BACKLOG", "", shown(state, (s.vsize / 1e6).toFixed(2)), "MVB", ink],
-            ["BLOCKS DEEP", "", shown(state, dec(s.deep, 1)), "ABOUT", ink],
-            ["FEES WAITING", "", shown(state, fmt(s.totalFee)), "SAT", ink],
+            ["WAITING", "", shown(state, compact(s.count)), "TX", ink],
+            ["BACKLOG", "", shown(state, sig(s.vsize / 1e6)), "MVB", ink],
+            ["BLOCKS DEEP", "", shown(state, sig(s.deep)), "ABOUT", ink],
+            ["FEES WAITING", "", shown(state, compact(s.totalFee)), "SAT", ink],
             ["NEXT BLOCK", `FLOOR ${shown(state, sat(s.floor))}`, shown(state, sat(s.nextFee)), "SAT/VB", ink]
           ]
         };
@@ -124,10 +125,10 @@
           state, status: statusText(s, state, s.heightAt, now),
           lines: [
             ["BLOCK", "", shown(state, grouped(s.height)), "", ink],
-            ["BLOCK TX", "", shown(state, s.lastTxCount > 0 ? grouped(s.lastTxCount) : "..."), "", ink],
-            ["WEIGHT", "", shown(state, own && s.lastWeight > 0 ? (s.lastWeight / 1e6).toFixed(2) : "..."), "MWU", ink],
-            ["PACE", "", shown(state, dec(s.pace / 60, 1)), "MIN", ink],
-            ["PRICE", price === "live" ? "LIVE" : price === "stale" ? "STALE" : price === "held" ? "HELD" : "NONE", shown(price, `$${grouped(s.priceUsd)}`), "", valueInk(price)]
+            ["BLOCK TX", "", shown(state, s.lastTxCount > 0 ? compact(s.lastTxCount) : "..."), "", ink],
+            ["WEIGHT", "", shown(state, own && s.lastWeight > 0 ? sig(s.lastWeight / 1e6) : "..."), "MWU", ink],
+            ["PACE", "", shown(state, sig(s.pace / 60)), "MIN", ink],
+            ["PRICE", price === "live" ? "LIVE" : price === "stale" ? "STALE" : price === "held" ? "HELD" : "NONE", shown(price, `$${compact(s.priceUsd)}`), "", valueInk(price)]
           ]
         };
       },
@@ -144,11 +145,11 @@
         return {
           state, status: state === "none" ? "NO READING" : state === "stale" ? "STALE" : "AGE UNKNOWN", percent: s.progressPercent,
           lines: [
-            ["EPOCH", "", shown(state, dec(s.progressPercent, 1)), "%", ink],
-            ["BLOCKS LEFT", "", shown(state, grouped(s.remainingBlocks)), "", ink],
-            ["RETARGET", "", shown(state, `${s.difficultyChange >= 0 ? "+" : ""}${dec(s.difficultyChange, 2)}`), "% EST", ink],
-            ["HASHRATE", "", shown(state, s.hashrate ? dec(s.hashrate / 1e18, 0) : "-"), "EH/S", ink],
-            ["DIFFICULTY", "", shown(state, s.difficulty ? dec(s.difficulty / 1e12, 1) : "-"), "T", ink]
+            ["EPOCH", "", shown(state, sig(s.progressPercent)), "%", ink],
+            ["BLOCKS LEFT", "", shown(state, compact(s.remainingBlocks)), "", ink],
+            ["RETARGET", "", shown(state, `${s.difficultyChange >= 0 ? "+" : ""}${sig(s.difficultyChange)}`), "% EST", ink],
+            ["HASHRATE", "", shown(state, s.hashrate ? sig(s.hashrate / 1e18) : "-"), "EH/S", ink],
+            ["DIFFICULTY", "", shown(state, s.difficulty ? sig(s.difficulty / 1e12) : "-"), "T", ink]
           ]
         };
       },

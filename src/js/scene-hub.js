@@ -4869,12 +4869,9 @@
   // usual colours would be the one genuinely misleading thing this island could do.
   const STALE_INK = "#7d766a";
   const arrivalsLive = (s) => s.socketAt > 0 && Date.now() - s.socketAt < weatherMod.ARRIVALS_FRESH_MS;
-  const rateText = (vbs) => `${gameMod.formatLarge(Math.round(vbs))} VB/S`;
-  const backlogText = (vsize) => {
-    const mvb = vsize / 1e6;
-    return `${mvb < 100 ? mvb.toFixed(1) : Math.round(mvb)} MVB`;
-  };
-  const backlogDetails = (count, countKnown = true) => countKnown ? `${count.toLocaleString("en-US")} TX WAITING` : "TX COUNT UNKNOWN";
+  const rateText = (vbs) => `${gameMod.formatThree(vbs, true)} VB/S`;
+  const backlogText = (vsize) => `${gameMod.formatThree(vsize / 1e6)} MVB`;
+  const backlogDetails = (count, countKnown = true) => countKnown ? `${gameMod.formatThree(count, true)} TX WAITING` : "TX COUNT UNKNOWN";
   // Popup rows at 1-pixel scale use compact glyphs; the billboard's finer pixels fit the shared font at half size.
   const UNIT_FONT = {
     A: [0b010, 0b101, 0b111, 0b101], B: [0b110, 0b101, 0b110, 0b111],
@@ -4930,7 +4927,7 @@
       ["BLOCK", s.height ? String(s.height) : "-", ink("#e8c14a")],
       ["ARR DATA", arrivalsLive(s) ? rateText(s.inflow) : "-", arrivalsLive(s) ? "#8fc3ff" : STALE_INK],
       ["MEMPOOL", s.backlogAt ? backlogText(s.vsize) : "-", s.backlogAt && Date.now() - s.backlogAt < BL.poolWater.HYDRO.FRESH_MS ? "#7cc8ff" : STALE_INK],
-      ["FAST", s.fastestFee ? `${String(+s.fastestFee.toFixed(s.fastestFee >= 10 ? 0 : 2))} SAT/VB` : "-", ink("#ff9a2a")]
+      ["FAST", s.fastestFee ? `${gameMod.formatThree(s.fastestFee)} SAT/VB` : "-", ink("#ff9a2a")]
     ];
   };
   const refreshChainSign = () => {
@@ -5042,10 +5039,10 @@
       },
       note: chainStatus
     },
-    rowPage(0, "Block height", (s) => s.lastTxCount && s.lastWeight ? `${gameMod.formatLarge(s.lastTxCount)} TX · ${(Math.floor(s.lastWeight / 40000) / 100).toFixed(2)} MVB` : "", "A block's height is its number in the Bitcoin chain. The third line shows that block's transaction count and virtual size. When a new block arrives, lightning strikes and a water cube drops through the chamber; the next mempool reading determines how much waiting data remains in the lake.", "BLOCK HEIGHT"),
+    rowPage(0, "Block height", (s) => s.lastTxCount && s.lastWeight ? `${gameMod.formatThree(s.lastTxCount, true)} TX · ${gameMod.formatThree(s.lastWeight / 4e6)} MVB` : "", "A block's height is its number in the Bitcoin chain. The third line shows that block's transaction count and virtual size. When a new block arrives, lightning strikes and a water cube drops through the chamber; the next mempool reading determines how much waiting data remains in the lake.", "BLOCK HEIGHT"),
     rowPage(1, "Arriving data", (s) => arrivalsLive(s) ? weatherMod.STEPS[weather.state.step].name.toUpperCase() : "ARRIVALS UNAVAILABLE", "The large number is new transaction data arriving each second, in virtual bytes (vB/s). Rain strength follows a roughly 30-second average of this rate. Arrivals add to the mempool; blocks confirm transactions and can reduce it.", "ARRIVING DATA"),
     rowPage(2, "Mempool", (s) => backlogDetails(s.count, !!s.backlogAt), "The mempool is the data still waiting for a block, measured in millions of virtual bytes (MvB). The smaller figure counts waiting transactions. Rain shows new arrivals; a mined block can clear some of this queue."),
-    rowPage(3, "Next-block fee", (s) => s.hourFee ? `HOUR ${String(+s.hourFee.toFixed(s.hourFee >= 10 ? 0 : 2))} SAT/VB` : "", "This fee estimate helps a transaction compete for space in the next block, in satoshis per virtual byte (sat/vB). The smaller figure estimates a fee for confirmation within an hour; neither time is guaranteed. Fees affect queue order, while arrivals set the rain and total waiting data fills the lake.", "FAST FEE RATE")
+    rowPage(3, "Next-block fee", (s) => s.hourFee ? `HOUR ${gameMod.formatThree(s.hourFee)} SAT/VB` : "", "This fee estimate helps a transaction compete for space in the next block, in satoshis per virtual byte (sat/vB). The smaller figure estimates a fee for confirmation within an hour; neither time is guaranteed. Fees affect queue order, while arrivals set the rain and total waiting data fills the lake.", "FAST FEE RATE")
   ], true);
   // The key to the island: what arrives makes the weather, what waits fills the lake, and a block is a bolt and a
   // cube. A reading that has stopped being fed goes grey and says so; it is never drawn as a calm zero.
