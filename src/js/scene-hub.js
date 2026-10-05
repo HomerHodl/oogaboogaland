@@ -2756,6 +2756,15 @@
     // world box is asked as the island-frame box that holds it, so "all rock" and "all open" both stay proofs.
     const sightClear = (ax, ay, az, bx, by, bz) => L.sightClear(localX(ax, az), ay - place.y, localZ(ax, az), localX(bx, bz), by - place.y, localZ(bx, bz));
     const solidAt = (wx, wy, wz) => L.solidAt(localX(wx, wz), wy - place.y, localZ(wx, wz));
+    // The camera's near-plane rock fill uses the same voxels and palette as the visible island shell.
+    const rockSource = site.ground.geometry.cutawaySource;
+    const rockMaterialAt = (wx, wy, wz) => {
+      const i = Math.floor((localX(wx, wz) - L.ORIGIN.x) / L.UNIT);
+      const j = Math.floor((wy - place.y - L.ORIGIN.y) / L.UNIT);
+      const k = Math.floor((localZ(wx, wz) - L.ORIGIN.z) / L.UNIT);
+      return i < 0 || j < 0 || k < 0 || i >= L.SX || j >= L.SY || k >= L.SZ ? null
+        : rockSource.palette[rockSource.data[(i * L.SY + j) * L.SZ + k]] || null;
+    };
     const turned = Math.abs(cos), across = Math.abs(sin);
     const boxIn = (test) => (minX, minY, minZ, maxX, maxY, maxZ) => {
       const cx = (minX + maxX) / 2, cz = (minZ + maxZ) / 2, hx = (maxX - minX) / 2, hz = (maxZ - minZ) / 2;
@@ -2765,7 +2774,7 @@
     const boxSolid = boxIn(L.boxSolid), boxClear = boxIn(L.boxClear);
     // What is walked on here rather than walked round: the bridge and the island's own ground in all its pieces.
     const walked = new Set([site.bridge, site.ground, site.floor, site.membrane, ...site.crossings]);
-    return { site, place, centre, groundAt, rainAt, rainHit, wake, worldX, worldZ, localX, localZ, cos, sin, claimGround, wildlife, water, paintings, overAt, coveredAt, sightClear, solidAt, boxSolid, boxClear, floatAt, afloat, walked, layout: L, preview };
+    return { site, place, centre, groundAt, rainAt, rainHit, wake, worldX, worldZ, localX, localZ, cos, sin, claimGround, wildlife, water, paintings, overAt, coveredAt, sightClear, solidAt, rockMaterialAt, boxSolid, boxClear, floatAt, afloat, walked, layout: L, preview };
   };
   // Where the gorillas sleep while their Oogas do: the banana-leaf beds of the Mempool island's nests, and the dry
   // way to each from the home island, as x, z pairs: up the approach stair, over the bridge, across the court,
@@ -7106,11 +7115,18 @@
     }
   };
   const cameraPlatformAt = (x, y, z) => y >= 0 && y <= ALTAR_HEIGHT && Math.hypot(x, z) <= altar.platformRadius;
-  // One solid mask spans the terrain, dais and fruit contact.
-  // The fruit pass supplies its own color over this opaque backing, including shared edges.
+  // One solid mask spans both islands, the dais and fruit contact. A cheap extent check keeps the
+  // Mempool grid out of the HUB's per-pixel rock texture pass.
+  const cameraPoolNear = (x, z) => {
+    const dx = x - mempoolIsland.place.x, dz = z - mempoolIsland.place.z, reach = poolModels.SITE.reach + 1;
+    return dx * dx + dz * dz < reach * reach;
+  };
   const cameraRockAt = (x, y, z) => cameraPlatformAt(x, y, z) || bananaCover.contains(x, y, z)
-    || island.solidAt(x, y, z) || !island.clearAt(x, y, z, 1e-5, 2e-5) || !entranceSegmentClear(x, y, z, x, y, z, 1e-5);
-  const cameraRockMaterialAt = (x, y, z) => cameraPlatformAt(x, y, z) ? altar.slab.geometry.faces[0].color : island.rockMaterialAt(x, y, z);
+    || cameraPoolNear(x, z) && mempoolIsland.solidAt(x, y, z) || island.solidAt(x, y, z)
+    || !island.clearAt(x, y, z, 1e-5, 2e-5) || !entranceSegmentClear(x, y, z, x, y, z, 1e-5);
+  const cameraRockMaterialAt = (x, y, z) => cameraPlatformAt(x, y, z) ? altar.slab.geometry.faces[0].color
+    : cameraPoolNear(x, z) ? mempoolIsland.rockMaterialAt(x, y, z) || island.rockMaterialAt(x, y, z) : island.rockMaterialAt(x, y, z);
+  const cameraCutRockAt = (x, y, z) => y <= RENDER_OPTS.cutawayMaxY && mempoolIsland.solidAt(x, y, z);
   const bananaLightVisibleAt = (x, y, z, lx, ly, lz) => {
     const reach = RENDER_OPTS.shadowExtent * 3, toX = x + lx * reach, toY = y + ly * reach, toZ = z + lz * reach;
     return island.sightClearAt(x, y, z, toX, toY, toZ) && solids.segmentClear(x, y, z, toX, toY, toZ, 0, 1e-5)
@@ -8517,8 +8533,12 @@
       const buried = !combatBirdsEye && cutawayPool === 2 && !!player && !pilot.closeWanted && pilot.closeMix < 1
         && (eye.y > RENDER_OPTS.cutawayMaxY || !mempoolIsland.solidAt(eye.x, eye.y, eye.z))
         && (collectViewObjects(), !objectGuides.actorVisible(player, poolSeam()));
+      const near = camera.near * Math.sqrt(1 + Math.tan(camera.fov / 2) ** 2 * (1 + (renderer.size.width / Math.max(1, renderer.size.height)) ** 2));
+      const cutTop = Math.min(eye.y + near, RENDER_OPTS.cutawayMaxY);
+      const touchesPoolRock = !combatBirdsEye && cutawayPool === 2 && cutTop >= eye.y - near
+        && !mempoolIsland.boxClear(eye.x - near, eye.y - near, eye.z - near, eye.x + near, cutTop, eye.z + near);
       cameraCover.state.opacity = 0.22 * (1 - pilot.closeMix);
-      cameraCover.draw(camera, buried ? player.root : null, false, buried, cameraRockAt, cameraRockMaterialAt, null, dt);
+      cameraCover.draw(camera, buried ? player.root : null, touchesPoolRock, buried, cameraCutRockAt, cameraRockMaterialAt, null, dt);
       return;
     }
     const insideMirror = !!player && playerCaveIndex === matrixCave.caveIndex;
@@ -8535,7 +8555,9 @@
       touchesRock = island.solidAt(eye.x, eye.y, eye.z)
         || eye.y + radius >= 0 && eye.y - radius <= ALTAR_HEIGHT && Math.hypot(eye.x, eye.z) <= altar.platformRadius + radius
         || !island.clearAt(eye.x, eye.y - radius, eye.z, radius, radius * 2)
-        || !entranceSegmentClear(eye.x, eye.y, eye.z, eye.x, eye.y, eye.z, radius);
+        || !entranceSegmentClear(eye.x, eye.y, eye.z, eye.x, eye.y, eye.z, radius)
+        || cameraPoolNear(eye.x, eye.z)
+          && !mempoolIsland.boxClear(eye.x - radius, eye.y - radius, eye.z - radius, eye.x + radius, eye.y + radius, eye.z + radius);
     }
     if (player) {
       const p = player.root.position, aspect = renderer.size.width / Math.max(1, renderer.size.height);
