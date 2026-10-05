@@ -16,6 +16,7 @@
   const yawParam = parseFloat(params.get("yaw"));
   // Debug-only clock params: hour pins the hour, daylen is the day length in seconds.
   const DEBUG = params.has("debug");
+  const DEBUG_POOL_BLOCK = DEBUG && params.get("poolblock") === "1";
   const DEBUG_GORILLA_MOVE = DEBUG && (params.get("gorillamove") === "1" || params.get("climbers") === "1");
   const timeParam = DEBUG ? params.get("time") : null;
   const hourParam = DEBUG ? parseFloat(params.get("hour")) : NaN;
@@ -1392,12 +1393,22 @@
     }
     return true;
   };
+  // Keep fixed stores and constructed equipment out of the three lamps' full travel corridors.
+  // Foliage yields to their current claims when the pile grows or shrinks.
+  const pilePostCorridorClear = (x, z, radius) => {
+    for (const degrees of PILE_POST_DEGREES) {
+      const s = Math.sin(degrees * DEG), c = Math.cos(degrees * DEG);
+      if (x * s - z * c > 0 && Math.abs(x * c + z * s) < radius + 0.7) return false;
+    }
+    return true;
+  };
   const spotAt = (deg, r, margin) => {
     for (const off of NUDGES) {
       const p = polar(deg + off, r);
-      if (!nearPath(p.x, p.z, margin) && island.surfaceAt(p.x, p.z) === 0) return p;
+      if (!nearPath(p.x, p.z, margin) && island.surfaceAt(p.x, p.z) === 0
+        && pilePostCorridorClear(p.x, p.z, margin) && free(p.x, p.z, margin)) return p;
     }
-    return polar(deg, r);
+    return null;
   };
   const addLamp = (node, kind, x, y, z, light = true, order = lamps.length, id = `lamp:${lamps.length}`) => {
     node.glow = LAMP_OFF;
@@ -1662,19 +1673,21 @@
     for (let i = 0; i < g.length; i += 2) claim(m.x + cr * g[i] + sr * g[i + 1], m.z - sr * g[i] + cr * g[i + 1], 0.8);
   };
   const movePilePosts = () => {
-    for (const post of pilePosts) post.claim.x = post.claim.z = Infinity;
-    for (const post of pilePosts) {
-      let spot = null;
-      for (let step = 0; step <= 12 && !spot; step++) for (const nudge of NUDGES) {
-        const p = polar(post.degrees + nudge, island.path.debug.ringOuterRadius + 0.5 + step * 0.25);
-        if (!island.isGrassAt(p.x, p.z) || island.path.overlaps(p.x, p.z, 0.65)
-          || !workSceneryClear(p.x, p.z, 0.7) || nearMouth(p.x, p.z, 7)) continue;
-        let blocked = false;
-        for (const c of claimed) if (!c.scenery && Math.hypot(c.x - p.x, c.z - p.z) < c.r + 0.7) { blocked = true; break; }
-        if (!blocked) { spot = p; break; }
+    if (!pilePosts.length) return;
+    // A shared radius keeps the same three angles as the ring changes. Check the actual half-metre
+    // post bases against the rasterized road, not the broad NPC work-area reservations.
+    let radius = island.path.debug.ringOuterRadius + 0.8;
+    for (; radius < MEADOW - 0.7; radius += island.pathUnit) {
+      let clear = true;
+      for (const post of pilePosts) {
+        const p = polar(post.degrees, radius);
+        if (!island.isGrassAt(p.x, p.z) || island.path.overlaps(p.x, p.z, 0.36)) { clear = false; break; }
       }
-      post.node.visible = post.pick.node.visible = post.lamp.light = !!spot;
-      if (!spot) continue;
+      if (clear) break;
+    }
+    for (const post of pilePosts) {
+      const spot = polar(post.degrees, radius);
+      post.node.visible = post.pick.node.visible = post.lamp.light = true;
       const y = island.surfaceAt(spot.x, spot.z);
       post.node.position.x = post.claim.x = spot.x;
       post.node.position.y = y;
@@ -1701,7 +1714,8 @@
     let baked = byIsland.get("meadow");
     if (!baked) {
       const set = BL.dressing.set(), ground = [];
-      const ok = (x, z, r) => island.surfaceAt(x, z) === 0 && free(x, z, r) && workSceneryClear(x, z, r) && !nearMouth(x, z, 7);
+      const ok = (x, z, r) => island.surfaceAt(x, z) === 0 && free(x, z, r) && workSceneryClear(x, z, r)
+        && !nearMouth(x, z, 7) && pilePostCorridorClear(x, z, r);
       const stand = (kind, x, z, turns, variant, r) => {
         if (kind) set.put(kind, x, 0, z, turns, variant);
         ground.push(x, z, r);
@@ -1738,6 +1752,11 @@
       lamp.nightOnly = dressingLights[i + 3] !== 4;
     }
     dressingLights.length = 0;
+  };
+  // Keep all three posts in both renderers, independently of the heavier meadow dressing.
+  const buildPilePosts = () => {
+    let byIsland = DRESSED.get(island);
+    if (!byIsland) DRESSED.set(island, byIsland = new Map());
     // These three meadow lanterns stand at the grass edge beside the growing pile path.
     for (let i = 0; i < PILE_POST_DEGREES.length; i++) {
       const degrees = PILE_POST_DEGREES[i];
@@ -2642,6 +2661,8 @@
     const water = BL.poolWater.create({ site, renderer, seaY: SEA_Y - place.y });
     const fillParam = DEBUG ? params.get("poolfill") : null;
     if (fillParam !== null && fillParam.trim() !== "" && Number.isFinite(Number(fillParam))) water.previewFill(Number(fillParam));
+    // A debug visit can preview the existing cube sequence without a live block or a weather change.
+    if (DEBUG_POOL_BLOCK) water.block();
     const rainHit = (x, y, z, size, wet) => water.rain(localX(x, z), y - place.y, localZ(x, z), size, wet);
     const wake = (key, x, feet, z, height, radius) => water.wake(key, localX(x, z), feet - place.y, localZ(x, z), height, radius);
     const paintings = BL.poolPaintings.create({ site, renderer });
@@ -6081,6 +6102,8 @@
       hud.toast("That arrival is blocked. Choose another map dot.");
       return;
     }
+    // A destination switches a gorilla driver back to free view after validating the arrival.
+    if (clankerPlay.active) clankerPlay.release();
     if (enteringTween) { enteringTween.alive = false; enteringTween = null; }
     entering = false;
     cameraPreviousValid = cameraTerrainValid = cameraTerrainRecovering = cameraManualContact = false;
@@ -8526,6 +8549,13 @@
   };
   const onKey = (e) => {
     if (factoryDeparting || bifrostDeparting) return;
+    if (DEBUG_POOL_BLOCK && (e.key === "p" || e.key === "P")) {
+      if (!e.repeat && !e.metaKey && !e.ctrlKey && !e.altKey) {
+        e.preventDefault();
+        mempoolIsland.preview.block();
+      }
+      return;
+    }
     if (e.key === "Escape" && debugSelectedGorilla) { selectDebugGorilla(null); e.preventDefault(); return; }
     if (clankerPlay.active) return;
     if ((e.key === "x" || e.key === "X") && !e.repeat && pilot.modeAction("mode-toggle")) return;
@@ -8694,10 +8724,12 @@
       if (slot.scene) presets[slot.scene] = mouthView(m);
     }
     const buildSpotsList = BUILD_DEGREES.map((deg) => {
-      const { x, z } = spotAt(deg, BUILD_RADIUS, 1);
+      const spot = spotAt(deg, BUILD_RADIUS, 1);
+      if (!spot) return null;
+      const { x, z } = spot;
       claim(x, z, 0.9);
       return { x, z, ry: Math.atan2(-x, -z) };
-    });
+    }).filter(Boolean);
     buildRim();
     mempoolIsland = buildMempoolIsland();
     timechainIsland = buildTimechainIsland();
@@ -8740,6 +8772,7 @@
       });
     }
     meadowDressing(firePos);
+    buildPilePosts();
     plantPalms();
     raiseIslets();
     buildLife();

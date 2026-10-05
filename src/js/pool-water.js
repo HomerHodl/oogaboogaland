@@ -243,6 +243,59 @@
     for (const f of geo.faces) f.lake = true;
     return glass(geo, 0.64, both);
   };
+  // Dry-weather streaks are patches of the actual bevelled wall, not shrunken falling sheets.
+  // Clip once at construction: no water can bridge an opening or rise above the channel bed.
+  const residualWall = (rock, channel, both) => {
+    const geo = { verts: [], faces: [], lines: [] }, ux = Math.sin(channel.bearing), uz = Math.cos(channel.bearing);
+    const end = L.channelOutlet(channel), top = L.LEVEL.bed - 0.02, height = Math.max(0, top - channel.floor - 0.03);
+    const clip = (points, axis, edge, direction) => {
+      const out = [];
+      for (let i = 0; i < points.length; i++) {
+        const a = points[i], b = points[(i + 1) % points.length], da = (a[axis] - edge) * direction, db = (b[axis] - edge) * direction;
+        if (da >= 0) out.push(a);
+        if ((da < 0) !== (db < 0)) {
+          const t = da / (da - db);
+          out.push([lerp(a[0], b[0], t), lerp(a[1], b[1], t), lerp(a[2], b[2], t)]);
+        }
+      }
+      return out;
+    };
+    const v = rock.verts;
+    for (const f of rock.faces) {
+      let minY = Infinity, maxY = -Infinity, minAcross = Infinity, maxAcross = -Infinity, minAlong = Infinity, maxAlong = -Infinity;
+      for (const id of f.i) {
+        const x = v[id * 3], y = v[id * 3 + 1], z = v[id * 3 + 2], across = x * uz - z * ux, along = x * ux + z * uz;
+        minY = Math.min(minY, y); maxY = Math.max(maxY, y);
+        minAcross = Math.min(minAcross, across); maxAcross = Math.max(maxAcross, across);
+        minAlong = Math.min(minAlong, along); maxAlong = Math.max(maxAlong, along);
+      }
+      if (minY >= top || maxY <= top - height || minAcross > 0.25 || maxAcross < -0.25
+        || minAlong > end + L.UNIT || maxAlong < end - L.UNIT) continue;
+      // Preserve the rock's triangle split, including the sloping last row above the ramp floor.
+      for (let t = 1; t < f.i.length - 1; t++) {
+        const points = [f.i[0], f.i[t], f.i[t + 1]].map(id => [v[id * 3] * uz - v[id * 3 + 2] * ux, v[id * 3 + 1], v[id * 3] * ux + v[id * 3 + 2] * uz]);
+        const a = points[0], b = points[1], c = points[2];
+        const bx = b[0] - a[0], by = b[1] - a[1], bz = b[2] - a[2], cx = c[0] - a[0], cy = c[1] - a[1], cz = c[2] - a[2];
+        const nx = by * cz - bz * cy, ny = bz * cx - bx * cz, nz = bx * cy - by * cx, length = Math.hypot(nx, ny, nz);
+        if (nz <= length * 0.25 || length < 1e-9) continue;
+        const offset = 0.004 / length;
+        for (let j = 0; j < 3; j++) {
+          const side = (j - 1) * 0.2, half = (0.055 + j * 0.015) / 2, bottom = top - height * (0.6 + j * 0.15);
+          let patch = clip(clip(points, 0, side - half, 1), 0, side + half, -1);
+          patch = clip(clip(patch, 1, bottom, 1), 1, top, -1);
+          patch = clip(clip(patch, 2, end - L.UNIT, 1), 2, end + L.UNIT, -1);
+          if (patch.length < 3) continue;
+          const ids = patch.map(p => {
+            const across = p[0] + nx * offset, along = p[2] + nz * offset;
+            return pushVert(geo, ux * along + uz * across, p[1] + ny * offset, uz * along - ux * across);
+          });
+          for (let k = 1; k < ids.length - 1; k++) face(geo, [ids[0], ids[k], ids[k + 1]], CALM, { emissive: 0.9 });
+        }
+      }
+    }
+    for (const f of geo.faces) f.lake = true;
+    return glass(geo, 0.64, both);
+  };
   const drip = cached(() => noShadow(box({ w: 0.12, h: 0.18, d: 0.12, color: "#bfe8ff", emissive: 1 })));
   // The cube and what goes with it: a shell of glass round a brighter heart, the neck it hangs by, a droplet,
   // and a flat ring that spreads on the membrane as it gathers and on the sea where it lands.
@@ -377,11 +430,8 @@
         drips.push({ node: drop, top: tip.y - 0.12, speed: 0.55 + (d % 3) * 0.17, seed: (falls.length * 7 + d) * 0.29 });
         addChild(node, drop);
       }
-      if (channel.inner) for (let j = 0; j < 3; j++) {
-        const side = (j - 1) * 0.2;
-        const residual = hidden({ geometry: node.geometry, smokeOpacity: 0.4,
-          position: { x: ux * r + uz * side, y: 0.02, z: uz * r - ux * side }, rotation: { x: 0, y: channel.bearing, z: 0 },
-          scale: { x: 0.055 + j * 0.015, y: Math.max(0.1, -channel.floor - 0.1) / length * (0.6 + j * 0.15), z: 0.08 } });
+      if (channel.inner) {
+        const residual = hidden({ geometry: { ...residualWall(site.ground.geometry, channel, both), lakeFlow: fallingFlow }, smokeOpacity: 0.4 });
         fall.residuals.push(residual);
         addChild(group, residual);
       }
@@ -639,6 +689,7 @@
         set.add(surfaceNode.geometry).add(floodNode.geometry).add(site.membrane.geometry).add(rillNode.geometry);
         for (const fall of falls) {
           set.add(fall.stream.geometry).add(fall.node.geometry);
+          for (const residual of fall.residuals) set.add(residual.geometry);
         }
         for (const node of tailNodes) set.add(node.geometry);
       },
