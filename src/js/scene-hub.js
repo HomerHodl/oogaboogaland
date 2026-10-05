@@ -2357,16 +2357,16 @@
     addProp("poolbridge", site.bridge, worldX(0, place.bridgeLocalZ + S.span / 2), worldZ(0, place.bridgeLocalZ + S.span / 2), S.width);
     addLamp(site.bridge, LAMP.lantern, worldX(0, place.bridgeLocalZ), place.y + 3.4, worldZ(0, place.bridgeLocalZ), false, 0, "poolbridge:lanterns").nightOnly = true;
     atNode("poolsign", site.sign, site.sign.geometry.signWidth * 0.55);
-    // World east is the far shore from the bridge. Face inward across the water, in front of the shoreline
-    // trees, with the board and its lettering curved around the pool's centre at this same radius.
-    const B = P.CHAIN_BOARD, boardBearing = Math.PI / 2 - place.ry;
+    // Centre the board across the pool on the bridge's axis, facing the crossing with trees behind it.
+    // Its face and lettering stay curved around the pool's centre at this same radius.
+    const B = P.CHAIN_BOARD, boardBearing = Math.PI;
     const boardNode = createNode({ position: { x: Math.sin(boardBearing) * B.r, y: L.LEVEL.shore, z: Math.cos(boardBearing) * B.r }, rotation: { x: 0, y: boardBearing + Math.PI, z: 0 }, geometry: P.chainBoard() });
     const panelNode = createNode();
     addChild(boardNode, panelNode);
     addChild(site.node, boardNode);
     atNode("chainsign", boardNode, B.w * 0.55);
-    // Keep the question-mark weather key beside the board, just past its curved frame.
-    const infoBearing = boardBearing + (B.w / 2 + P.INFO_SIGN.w / 2 + 0.8) / B.r;
+    // The weather key sits to the right when entering from the bridge, just past the curved frame.
+    const infoBearing = boardBearing - (B.w / 2 + P.INFO_SIGN.w / 2 + 0.8) / B.r;
     const infoNode = createNode({ position: { x: Math.sin(infoBearing) * B.r, y: L.LEVEL.shore, z: Math.cos(infoBearing) * B.r }, rotation: { x: 0, y: infoBearing + Math.PI, z: 0 }, geometry: P.infoSign() });
     addChild(site.node, infoNode);
     atNode("weathersign", infoNode, 1);

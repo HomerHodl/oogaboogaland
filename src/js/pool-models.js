@@ -14,7 +14,7 @@
 //
 // `carve` cuts headline type from `hubModels.SIGN_GLYPHS` and `panelFrom` merges a canvas of the jumbotron's 5x7
 // font into bounded quads, which is how the chamber's wall paintings are set. `chainBoard`/`CHAIN_BOARD`
-// is the curved stats board on the lake's east shore, whose panel follows the same arc, and `infoSign` the
+// is the curved stats board on the lake's far shore, whose panel follows the same arc, and `infoSign` the
 // weather key beside it. The plants, rocks, animals and bridge are cartoon geometry from the hub's kit (`leafy`,
 // `puff`, `limb`, `flatInto`), one cached build each shared by every copy; the solid ones keep their first block
 // build as `collisionGeometry`. `spot` finds the rim and `build` returns the placed group.
@@ -981,7 +981,7 @@
     bevelBox({ w: size, h: size, d: size, color: "#ffb347", emissive: 1, bevel: size * 0.2, offset: { y: y + size * 0.72 } }),
     bevelBox({ w: size * 1.2, h: size * 0.22, d: size * 1.2, color: "#3b2a1c", offset: { y: y + size * 1.32 } })
   ];
-  // The chain board stands just inside the east shoreline, in front of the trees. Its inward-facing slate,
+  // The chain board stands just inside the far shoreline, in front of the trees. Its inward-facing slate,
   // frame and live lettering share the pool's circular arc; +z faces the centre in the board's own frame.
   // Its feet reach the bowl, while the face stays above the fullest waterline.
   const CHAIN_BOARD = { w: 6.8, h: 3, y: 1, d: 0.3, px: 0.06, r: L.LAKE_R - 0.75 };
