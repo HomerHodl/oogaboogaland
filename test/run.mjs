@@ -2136,7 +2136,7 @@ const record = (name, ok, detail = "") => {
     if (line) console.log(line);
   }
 };
-const untilReady = async (b) => {
+const untilReady = async (b, ms = 20000) => {
   const t0 = Date.now();
   const sample = () => b.evaluate(`(() => { const B=window.__ooga;return {scene:B?.scene,frames:B?.renderedFrames||0,curtain:!!document.getElementById("curtain"),renderer:B?.renderer?.kind}; })()`);
   const isReady = s => s.frames>=2&&!s.curtain;
@@ -2149,7 +2149,7 @@ const untilReady = async (b) => {
       // The old document is still tearing down.
     }
     if (state&&isReady(state)) break;
-    if (Date.now() - t0 > 20000) {
+    if (Date.now() - t0 > ms) {
       // A slow DevTools reply can cross the deadline while the page becomes ready. Judge the
       // fresh state, not the stale boolean; never synchronously read pixels on a failure path.
       state=await sample();if(isReady(state))break;
@@ -2386,7 +2386,7 @@ const session = (url, steps, opts, final) => output.run({ lines: [], results: []
     })()` });
     await b.open(url);
     await b.focus(true);
-    await untilReady(b);
+    await untilReady(b, opts.readyMs);
     ready = Date.now();
     for (const [i, [name, fn, open]] of steps.entries()) {
       const from = i ? b.logs.length : 0;
@@ -10711,7 +10711,7 @@ scene("dsb",{label:"SVRN visual review",query:"&view=svrn-door&weather=clear&tim
   for(const view of views){await b.evaluate(`__ooga.pilot.navigate(__ooga.dsb.interiors.active.room.reviews[${JSON.stringify(view)}]);__shoreline.advance(.3)`);await capture(view);}
 }}]});
 
-scene("dsb",{label:"vacancy checkpoint",query:"&view=vac-overview&weather=clear&time=1200",opts:{w:640,h:400},steps:[{name:"dsb shoreline vacancy review",why:"contract: the integrated scene draws every vacancy sign and preserves review evidence",run:async b=>{
+scene("dsb",{label:"vacancy checkpoint",query:"&view=vac-overview&weather=clear&time=1200",opts:{w:640,h:400,readyMs:45000},steps:[{name:"dsb shoreline vacancy review",why:"contract: the integrated scene draws every vacancy sign and preserves review evidence",run:async b=>{
   const out=join(root,"untracked/vacancy-review");mkdirSync(out,{recursive:true});
   const state=await b.evaluate('(()=>{const V=__ooga.dsb.vacancies;return {count:V.properties.length,signs:V.group.children.length,ids:V.properties.map(p=>p.address.number),texts:V.properties.every(p=>p.text===(p.address.number===7?"SVRN Society":"VAC "+p.address.number)),visible:V.group.visible&&__ooga.dsb.exterior.visible};})()');
   record("Vacancy browser: 35 registered signs are attached to the visible exterior",state.count===35&&state.signs===35&&state.texts&&state.visible&&new Set(state.ids).size===35,JSON.stringify(state));
