@@ -921,7 +921,7 @@
     };
     const state = {
       get level() { return level; }, get target() { return target; }, get shown() { return shown; }, get flood() { return floodY; }, get stage() { return stage; },
-      get status() { return status; }, get vsize() { return vsize; }, get observedAt() { return observedAt; }, get reach() { return surfaceNode.scale.x; },
+      get status() { return status; }, get vsize() { return vsize; }, get observedAt() { return observedAt; }, get debugFill() { return fill; }, get reach() { return surfaceNode.scale.x; },
       get falls() { let n = 0; for (const fall of falls) if (fall.node.visible) n++; return n; },
       get cubes() { let n = 0; for (const seq of sequences) if (seq.active) n++; return n; },
       get queued() { return queued; }, get dropped() { return dropped; }, get started() { return started; }, get preview() { return preview; }

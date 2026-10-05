@@ -4905,10 +4905,17 @@
     canvas.width = POOL_BOARD_W;
     canvas.height = POOL_BOARD_H;
     const c2 = canvas.getContext("2d", { alpha: false, willReadFrequently: true });
+    let nextRefresh = 0;
     const board = {
       title, help: "Live Bitcoin data. Arrow keys flip the pages.", canvas, count: pages.length, index: 0, version: 0, caption: "", note: "",
       go(i) {
         board.index = i;
+        board.refresh();
+      },
+      update(elapsed) {
+        // Freshness and the weather can change even when no feed event arrives.
+        if (!Number.isFinite(elapsed) || elapsed < nextRefresh) return;
+        nextRefresh = elapsed + 1;
         board.refresh();
       },
       refresh() {
@@ -4978,29 +4985,38 @@
         const live = weather.state.arrivals === "live";
         reading(c2, "RAIN", live ? weatherMod.STEPS[weather.state.step].name.toUpperCase() : "UNAVAILABLE", live ? "#8fc3ff" : STALE_INK, live ? `${gameMod.formatLarge(Math.round(weather.state.inflow))} VB/S ARRIVING` : "NO ARRIVALS HEARD", live ? weather.state.storm : -1);
       },
-      note: () => "Transactions arriving, in virtual bytes a second (vB/s), averaged over half a minute. The more that arrive, the darker the cloud and the harder it rains: dry, drizzle, light rain, rain, heavy rain, then a downpour. With nothing heard from the feed for a minute and a half the storm eases off and this reads unavailable. That is not the same as nothing arriving."
+      note: () => "Transaction arrivals in virtual bytes per second (vB/s) drive the rain. The rate is smoothed over about 30 seconds, then shown as dry, drizzle, light rain, rain, heavy rain or downpour. Drops fall straight down. After 90 seconds without a socket reading, the storm eases off and this reads unavailable; that does not mean zero arrivals."
     },
     {
       caption: "Wind",
       draw: (c2) => {
         const live = weather.state.arrivals === "live";
-        reading(c2, "WIND", live ? `${gameMod.formatLarge(Math.round(weather.state.inflow))} VB/S` : "UNAVAILABLE", live ? "#e6f2ff" : STALE_INK, "TRANSACTIONS ARRIVING", live ? weather.state.gale : -1);
+        reading(c2, "WIND INPUT", live ? `${Math.round(weather.state.gale * 100)}%` : "UNAVAILABLE", live ? "#e6f2ff" : STALE_INK, live ? "CLOUD DRIFT AND SOUND" : "NO ARRIVALS HEARD", live ? weather.state.gale : -1);
       },
-      note: () => "The same arrivals, as they come. The busier it gets, the further the rain leans over. Rain always slants the way the wind is going, never into it."
+      note: () => "The arrival rate also sets a 0–100% input for the island's wind effect. Wind drifts the clouds and changes the sound; it does not push raindrops sideways. This is a visual effect, not a measured weather reading."
     },
     {
       caption: "The lake",
       draw: (c2, s) => {
-        const water = mempoolIsland.water.state, W = BL.poolLayout.WATER;
-        reading(c2, "LAKE", water.status === "unavailable" ? "NO READING" : `${(water.vsize / 1e6).toFixed(1)} MVB`, water.status === "live" ? "#7cc8ff" : STALE_INK,
-          water.status === "stale" ? "HELD, READING IS STALE" : "WAITING BACKLOG", water.status === "unavailable" ? -1 : (water.level - W.low) / (W.flood - W.low), "#4aa6ff");
+        const water = mempoolIsland.water.state, W = BL.poolLayout.WATER, fill = water.debugFill;
+        const value = fill !== null ? `DEBUG ${fill}/200` : water.status === "unavailable" ? "NO READING" : `${(water.vsize / 1e6).toFixed(1)} MVB`;
+        const under = fill !== null ? "POOL HEIGHT OVERRIDE" : water.preview !== null ? "DEBUG BACKLOG"
+          : water.status === "stale" ? "HELD, READING IS STALE" : water.status === "live" ? "CURRENT BACKLOG" : "NO BACKLOG READING";
+        reading(c2, "LAKE", value, water.status === "live" ? "#7cc8ff" : STALE_INK, under,
+          water.status === "unavailable" ? -1 : (water.level - W.low) / (W.flood - W.low), "#4aa6ff");
       },
-      note: (s) => `Everything waiting for a block, in millions of virtual bytes (MvB), fills the lake. At about ${BL.poolWater.HYDRO.OVERFLOW_VB / 1e6} MvB it reaches its rim, floods the shore and the channels, and pours over the cliffs. That is this island's own scale, not a limit of Bitcoin. The part of the backlog paying 1 sat/vB or more${s.paying ? ` (${s.paying.toFixed(1)} MvB now)` : ""} is still read, but it no longer makes the rain.`
+      note: (s) => {
+        const water = mempoolIsland.water.state;
+        if (water.debugFill !== null) return `poolfill=${water.debugFill} controls the lake height for debugging. This is not the live Bitcoin backlog; remove the flag to follow the feed again.`;
+        const source = water.preview !== null ? "A debug backlog value" : "Everything waiting for a block";
+        return `${source}, in millions of virtual bytes (MvB), fills the lake. At about ${BL.poolWater.HYDRO.OVERFLOW_VB / 1e6} MvB it reaches its rim, floods the shore and the channels, and pours over the cliffs. That is this island's own scale, not a limit of Bitcoin. The part of the backlog paying 1 sat/vB or more${s.paying && water.preview === null ? ` (${s.paying.toFixed(1)} MvB now)` : ""} is still read, but it no longer makes the rain.`;
+      }
     },
     {
       caption: "Lightning",
-      draw: (c2, s) => reading(c2, "LAST BLOCK", s.height ? String(s.height) : "-", s.live ? "#ffe066" : STALE_INK, "A BOLT AND A CUBE"),
-      note: () => "Somebody found a block. Every one throws a bolt over the island and sends a cube of the lake down through the chamber to the sea, and only a block does. The cube takes nothing with it: the next backlog reading says what is left."
+      draw: (c2, s) => reading(c2, "LAST BLOCK", s.height ? String(s.height) : "-",
+        s.heightAt > 0 && Date.now() - s.heightAt < 180000 ? "#ffe066" : STALE_INK, "A BOLT AND A CUBE"),
+      note: () => `A new block throws a bolt over the island and sends a cube of lake water through the chamber. The cube is a visual marker; the next backlog reading says what remains.${DEBUG_POOL_BLOCK ? " In poolblock debug mode, P also triggers a test bolt and cube." : ""}`
     }
   ]);
   const openPoolBoard = (board) => {
@@ -6839,8 +6855,8 @@
     updateLamps(dt, elapsed, phase !== null);
     if (jumbotron) {
       jumbotron.update(elapsed, renderer);
-      hud.updateBoard(elapsed);
     }
+    hud.updateBoard(elapsed);
     if (fireworksShells.length) updateFireworks();
     const next = daylight.phaseAt(hour);
     if (next !== phase) setPhase(next);
