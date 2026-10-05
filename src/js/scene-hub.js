@@ -4227,12 +4227,15 @@
       const z = up.x * downhill.x + up.y * downhill.y + up.z * downhill.z;
       marker.node.rotation.y = Math.atan2(-x, -z);
     }
-    const mix = cameraMix;
+    // An eye still inside the Mempool roof must see the intact chamber, even
+    // when a shoulder/orbit transition lifts it above the actor's cut height.
+    const poolInteriorView = cutawayPool === 2 && !overhead
+      && mempoolIsland.coveredAt(camera.position.x, camera.position.y, camera.position.z);
     // Carry can finish its projection blend before the camera handoff ends.
-    // Restore rock only after shoulder settles with the eye inside the ceiling.
-    const active = mix > 0 || !!player && (overhead
+    const mix = poolInteriorView ? 0 : cameraMix;
+    const active = !poolInteriorView && (mix > 0 || !!player && (overhead
       || subterranean && (camera.position.y > birdsEyeCeiling(player, gorilla)
-        || !gorilla && (pilot.mode === "orbit" || pilot.shoulderEntryMix < 1)));
+        || !gorilla && (pilot.mode === "orbit" || pilot.shoulderEntryMix < 1))));
     // Below ground, camera interpolation must never restore upstairs rock or
     // props. Floor/ramp progress still moves the cut as the character travels.
     const rockMix = active && subterranean ? 1 : mix;
