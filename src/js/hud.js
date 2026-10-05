@@ -1076,7 +1076,7 @@
         el.boardResize.hidden = !board.floating;
         el.boardFilter.hidden = !board.floating;
         showFilters(false);
-        el.boardHelp.hidden = !!board.floating;
+        el.boardHelp.hidden = !!board.floating || !board.help;
         el.boardHelp.textContent = board.help;
         if (board.floating) {
           if (!boardWindow.placed) {

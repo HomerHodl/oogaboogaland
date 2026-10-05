@@ -4917,7 +4917,7 @@
     const c2 = canvas.getContext("2d", { alpha: false, willReadFrequently: true });
     let nextRefresh = 0, lastElapsed = 0, switchAt = NaN, paused = false;
     const board = {
-      title, help: "Use the arrows or dots to explore each reading; pause to hold a page.", captionAbove: true, carousel: true, canvas, count: pages.length, index: 0, version: 0, caption: "", note: "",
+      title, help: "", captionAbove: true, carousel: true, canvas, count: pages.length, index: 0, version: 0, caption: "", note: "",
       get paused() { return paused; },
       setPaused(value) { paused = value; switchAt = lastElapsed; },
       begin() { lastElapsed = switchAt = NaN; },
