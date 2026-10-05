@@ -4872,16 +4872,10 @@
   const rateText = (vbs) => `${gameMod.formatThree(vbs, true)} VB/S`;
   const backlogText = (vsize) => `${gameMod.formatThree(vsize / 1e6)} MVB`;
   const backlogDetails = (count, countKnown = true) => countKnown ? `${gameMod.formatThree(count, true)} TX WAITING` : "TX COUNT UNKNOWN";
-  // Popup rows at 1-pixel scale use compact glyphs; the billboard's finer pixels fit the shared font at half size.
-  const UNIT_FONT = {
-    A: [0b010, 0b101, 0b111, 0b101], B: [0b110, 0b101, 0b110, 0b111],
-    M: [0b101, 0b111, 0b111, 0b101], S: [0b111, 0b100, 0b011, 0b110],
-    T: [0b111, 0b010, 0b010, 0b010], V: [0b101, 0b101, 0b101, 0b010],
-    X: [0b101, 0b010, 0b010, 0b101], "/": [0b001, 0b001, 0b010, 0b100]
-  };
+  // The billboard and popup canvases use a fine enough pixel grid for full 5x7 units at half value size.
   const UNIT_WORDS = new Set(["VB/S", "MVB", "SAT/VB", "TX"]);
   const metricUnit = (word, previous) => UNIT_WORDS.has(word) && /[0-9KMB]$/.test(previous);
-  const unitWidth = (word, scale) => scale === 2 ? BL.jumbotron.text.measureText(word, 1) : word.length * 4 - 1;
+  const unitWidth = (word, scale) => BL.jumbotron.text.measureText(word, scale / 2);
   const metricWidth = (value, scale) => {
     const text = BL.jumbotron.text, words = value.split(" ");
     let width = 0, previous = "";
@@ -4904,19 +4898,9 @@
       if (!unit) {
         text.drawText(c2, word, x, y, color, scale);
         x += text.measureText(word, scale);
-      } else if (scale === 2) {
-        text.drawText(c2, word, x, y + 7, color, 1);
-        x += unitWidth(word, scale);
       } else {
-        c2.fillStyle = color;
-        for (const ch of word) {
-          const glyph = UNIT_FONT[ch];
-          for (let row = 0; row < 4; row++) for (let col = 0; col < 3; col++) {
-            if (glyph[row] & (1 << (2 - col))) c2.fillRect(x + col, y + row + 3, 1, 1);
-          }
-          x += 4;
-        }
-        x--;
+        text.drawText(c2, word, x, y + 7 * scale / 2, color, scale / 2);
+        x += unitWidth(word, scale);
       }
       previous = word;
     }
@@ -4952,7 +4936,7 @@
   // The Mempool island's two boards in the shared board dialog. Each is a list of pages, every page a caption, a
   // note and a drawing in the jumbotron's 5x7 font on the board's own small canvas; `refresh` redraws the shown
   // page and moves `version`, which is all the dialog watches.
-  const POOL_BOARD_W = 128, POOL_BOARD_H = 48, POOL_BOARD_BG = "#0f110f", POOL_DIM = "#9b8f7a";
+  const POOL_BOARD_W = 256, POOL_BOARD_H = 96, POOL_BOARD_BG = "#0f110f", POOL_DIM = "#9b8f7a";
   const poolBoard = (title, pages, hideCaption = false) => {
     const canvas = document.createElement("canvas");
     canvas.width = POOL_BOARD_W;
@@ -4999,17 +4983,17 @@
   // A reading: its label small at the top, its value as large as fits, one or two detail lines and an optional gauge.
   const reading = (c2, label, value, color, under, gauge = -1, gaugeColor = color) => {
     const text = BL.jumbotron.text, centre = (t, y, ink, scale) => text.drawText(c2, t, Math.round((POOL_BOARD_W - text.measureText(t, scale)) / 2), y, ink, scale);
-    centre(label, 4, POOL_DIM, 1);
-    const scale = metricWidth(value, 2) <= POOL_BOARD_W - 8 ? 2 : 1;
-    drawMetric(c2, value, POOL_BOARD_W / 2, scale === 2 ? 15 : 19, color, scale);
+    centre(label, 8, POOL_DIM, 2);
+    const scale = metricWidth(value, 4) <= POOL_BOARD_W - 16 ? 4 : 2;
+    drawMetric(c2, value, POOL_BOARD_W / 2, scale === 4 ? 30 : 38, color, scale);
     if (Array.isArray(under)) {
-      for (let i = 0; i < under.length; i++) drawMetric(c2, under[i], POOL_BOARD_W / 2, 32 + i * 8, POOL_DIM, 1);
-    } else if (under) drawMetric(c2, under, POOL_BOARD_W / 2, 34, POOL_DIM, 1);
+      for (let i = 0; i < under.length; i++) drawMetric(c2, under[i], POOL_BOARD_W / 2, 64 + i * 16, POOL_DIM, 2);
+    } else if (under) drawMetric(c2, under, POOL_BOARD_W / 2, 68, POOL_DIM, 2);
     if (gauge < 0) return;
     c2.fillStyle = "#2a2724";
-    c2.fillRect(14, 43, POOL_BOARD_W - 28, 3);
+    c2.fillRect(28, 86, POOL_BOARD_W - 56, 6);
     c2.fillStyle = gaugeColor;
-    c2.fillRect(14, 43, Math.round((POOL_BOARD_W - 28) * clamp(gauge, 0, 1)), 3);
+    c2.fillRect(28, 86, Math.round((POOL_BOARD_W - 56) * clamp(gauge, 0, 1)), 6);
   };
   const chainStatus = (s) => {
     const age = s.at ? Math.round((Date.now() - s.at) / 1000) : 0;
@@ -5030,11 +5014,11 @@
       caption: "At a glance",
       draw: (c2, s) => {
         const text = BL.jumbotron.text;
-        let y = 5;
+        let y = 10;
         for (const [label, value, color] of chainRows(s)) {
-          text.drawText(c2, label, 8, y, POOL_DIM, 1);
-          drawMetric(c2, value, POOL_BOARD_W - 8, y, color, 1, true);
-          y += 10;
+          text.drawText(c2, label, 16, y, POOL_DIM, 2);
+          drawMetric(c2, value, POOL_BOARD_W - 16, y, color, 2, true);
+          y += 20;
         }
       },
       note: chainStatus
