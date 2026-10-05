@@ -758,6 +758,7 @@
       get count() { return cycle().length; },
       get caption() { return captionOf(view); },
       get paused() { return paused; },
+      get cycleSeconds() { return rotateEvery; },
       // Popup readers share the parsed feed, but own only a small bitmap and
       // their page/cycling state. They never build another cabinet or GPU mesh.
       createReader(state = null) {
