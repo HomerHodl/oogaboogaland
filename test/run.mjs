@@ -2148,6 +2148,11 @@ const shorelineState = () => {
     capacity:D?.waterInteraction.stats.capacity,nodes:D?.waterInteraction.group.children.length,records:B?.renderer.stats.records,textures:B?.renderer.stats.waterTextures};
 };
 const shorelineHealthy = s => s.scene==="dsb"&&s.kind==="webgl2"&&s.ready&&!s.failure&&s.frames>=3&&s.draws>=2&&!s.curtain&&!s.lost&&!s.errors.length&&s.initialized&&s.capacity===24&&s.textures===2;
+// Interiors intentionally omit the exterior water render targets. Keep renderer health strict
+// and measure the actual active room/visibility instead of demanding water textures indoors.
+const svrnReviewHealthy = (s,inside) => s.scene==="dsb"&&s.kind==="webgl2"&&s.ready&&!s.failure&&s.frames>=3&&s.draws>=2&&!s.curtain&&!s.lost&&!s.errors.length&&s.initialized&&s.capacity===24&&s.records>0&&
+  (inside?s.interior==="svrn-society"&&s.roomVisible&&!s.exteriorVisible&&s.textures===0:!s.interior&&s.exteriorVisible&&s.textures===2);
+
 const readbackPerformanceNotice = line => /^\[log\.warning\] \[\.WebGL-[^\]]+\]GL Driver Message \(OpenGL, Performance, [^)]*\): GPU stall due to ReadPixels(?: \(this message will no longer repeat\))?$/.test(line);
 const shorelineHarnessChecks = async () => {
   const now=Date.now;let elapsed=0,calls=0,screenshots=0;
@@ -8805,6 +8810,10 @@ const stackchainChecks = BL => {
 };
 
 const svrnChecks = BL => {
+  // Regression: a healthy interior has zero water targets, unlike its exterior doorway.
+  const health={scene:"dsb",kind:"webgl2",ready:true,failure:"",frames:111,draws:17,curtain:false,lost:false,errors:[],initialized:true,capacity:24,records:411,textures:0,interior:"svrn-society",roomVisible:true,exteriorVisible:false};
+  const rejected=[{textures:2},{lost:true},{errors:[1282]},{failure:"shader compile"},{kind:"canvas2d"},{ready:false},{draws:0},{records:0},{interior:"meme-factory"},{roomVisible:false},{exteriorVisible:true}];
+  record("SVRN review validator: interior water targets differ without masking shader/context/room failures",svrnReviewHealthy(health,true)&&rejected.every(p=>!svrnReviewHealthy({...health,...p},true))&&svrnReviewHealthy({...health,textures:2,interior:null,roomVisible:false,exteriorVisible:true},false)&&!svrnReviewHealthy({...health,interior:null,exteriorVisible:true},false));
   const rootPath=root;
   const noop=()=>{},S=BL.scene,roomRoot=S.createNode(),targets=new Set(),exterior={visible:true},weather={shared:{state:{muted:true}},inside:false,setInterior(on){this.inside=on;}};
   const land=BL.dsbGeography.build();let returned=null;
@@ -9688,7 +9697,13 @@ scene("dsb",{label:"SVRN checkpoint",query:"&view=svrn-door&weather=storm&time=1
 }}]});
 scene("dsb",{label:"SVRN visual review",query:"&view=svrn-door&weather=clear&time=1200",opts:{w:640,h:400,motion:true},steps:[{name:"dsb shoreline SVRN visual review",why:"contract: VAC 7 sign and deterministic boutique views render in the actual WebGL scene",run:async b=>{
   const out=join(root,"untracked/svrn-review");mkdirSync(out,{recursive:true});
-  const capture=async name=>{const health=await b.evaluate(`(${shorelineState.toString()})()`);record("SVRN WebGL: "+name,shorelineHealthy(health),JSON.stringify(health));const shot=await b.send("Page.captureScreenshot",{format:"png"},5000);if(!shot.result?.data)throw Error("SVRN screenshot returned no image");writeFileSync(join(out,name+".png"),Buffer.from(shot.result.data,"base64"));};
+  const capture=async name=>{
+    const health=await b.evaluate(`(()=>{const s=(${shorelineState.toString()})(),D=__ooga.dsb,R=D.interiors.active?.room;return {...s,interior:R?.id||null,roomVisible:!!R?.root.visible,exteriorVisible:D.exterior.visible};})()`);
+    const healthy=svrnReviewHealthy(health,name!=="svrn-door");record("SVRN WebGL: "+name,healthy,JSON.stringify(health));
+    // Same narrowly scoped software-driver notice policy as the existing exterior captures.
+    b.shorelineHealthy=healthy&&output.getStore().results.every(r=>r.ok);b.shorelineSoftware=/SwiftShader|llvmpipe|software/i.test(health.gpu);
+    const shot=await b.send("Page.captureScreenshot",{format:"png"},5000);if(!shot.result?.data)throw Error("SVRN screenshot returned no image");writeFileSync(join(out,name+".png"),Buffer.from(shot.result.data,"base64"));
+  };
   await b.evaluate('__shoreline.advance(.3)');await capture("svrn-door");
   await b.key(" ");await b.evaluate('__shoreline.until(()=>__ooga.dsb.interiors.active?.room.id==="svrn-society"&&!__ooga.dsb.interiors.transitioning,2)');
   const views=await b.evaluate('Object.keys(__ooga.dsb.interiors.active.room.reviews)');
