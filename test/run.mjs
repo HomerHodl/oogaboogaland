@@ -10693,7 +10693,10 @@ scene("dsb",{label:"SVRN checkpoint",query:"&view=svrn-door&weather=storm&time=1
   await b.evaluate('__ooga.dsb.svrnMenu.open();window.__oldSvrn=__ooga.dsb.svrnMenu;window.__oldSvrnI=__ooga.dsb.interiors;__ooga.go("dsb",null,true);__ooga.advance(.05)');
   record("SVRN browser: scene departure removes kiosk/menu handlers, cached room and audio context",await b.evaluate('__oldSvrn.stats.disposed&&!document.querySelector(".svrn-menu")&&__oldSvrnI.rooms.size===0&&__oldSvrnI.audio.stats.contexts===0&&BL.dsbMenuShell.count===0'));
 }}]});
-scene("dsb",{label:"SVRN visual review",query:"&view=svrn-door&weather=clear&time=1200",opts:{w:640,h:400,motion:true},steps:[{name:"dsb shoreline SVRN visual review",why:"contract: VAC 7 sign and deterministic boutique views render in the actual WebGL scene",run:async b=>{
+// Review measures settled WebGL views, not the opening curtain's CSS animation.
+// Keep the driver's reduced-motion default: software compositing can delay the
+// full curtain past readiness even on the approved pre-merge build.
+scene("dsb",{label:"SVRN visual review",query:"&view=svrn-door&weather=clear&time=1200",opts:{w:640,h:400},steps:[{name:"dsb shoreline SVRN visual review",why:"contract: VAC 7 sign and deterministic boutique views render in the actual WebGL scene",run:async b=>{
   const out=join(root,"untracked/svrn-review");mkdirSync(out,{recursive:true});
   const capture=async name=>{
     const health=await b.evaluate(`(()=>{const s=(${shorelineState.toString()})(),D=__ooga.dsb,R=D.interiors.active?.room;return {...s,interior:R?.id||null,roomVisible:!!R?.root.visible,exteriorVisible:D.exterior.visible};})()`);
