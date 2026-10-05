@@ -4868,12 +4868,22 @@
   // A board that has stopped being fed says so by going grey. Holding the last reading out in its
   // usual colours would be the one genuinely misleading thing this island could do.
   const STALE_INK = "#7d766a";
+  const arrivalsLive = (s) => s.socketAt > 0 && Date.now() - s.socketAt < weatherMod.ARRIVALS_FRESH_MS;
+  const rateText = (vbs) => `${gameMod.formatLarge(Math.round(vbs))} VB/S`;
+  const backlogText = (vsize) => {
+    const mvb = vsize / 1e6;
+    return `${mvb < 100 ? mvb.toFixed(1) : Math.round(mvb)} MVB`;
+  };
+  const backlogDetails = (count, vsize, countKnown = true) => [
+    countKnown ? `${count.toLocaleString("en-US")} TX WAITING` : "TX COUNT UNKNOWN",
+    `EST ${(vsize / 1e6).toFixed(1)} BLOCKS`
+  ];
   const chainRows = (s) => {
     const ink = (live) => s.live ? live : STALE_INK;
     return [
       ["BLOCK", s.height ? String(s.height) : "-", ink("#e8c14a")],
-      ["PRICE", s.priceUsd ? `$${Math.round(s.priceUsd).toLocaleString("en-US")}` : "-", ink("#8fbf6a")],
-      ["MEMPOOL", s.count ? `${gameMod.formatLarge(s.count)} TX` : "-", ink("#e8c14a")],
+      ["RAIN", arrivalsLive(s) ? rateText(s.inflow) : "-", arrivalsLive(s) ? "#8fc3ff" : STALE_INK],
+      ["MEMPOOL", s.backlogAt ? backlogText(s.vsize) : "-", s.backlogAt && Date.now() - s.backlogAt < BL.poolWater.HYDRO.FRESH_MS ? "#7cc8ff" : STALE_INK],
       ["FAST", s.fastestFee ? `${String(+s.fastestFee.toFixed(s.fastestFee >= 10 ? 0 : 2))} SAT/VB` : "-", ink("#ff9a2a")]
     ];
   };
@@ -4930,13 +4940,15 @@
     };
     return board;
   };
-  // A reading: its label small at the top, its value as large as fits, a line under it and an optional gauge.
+  // A reading: its label small at the top, its value as large as fits, one or two detail lines and an optional gauge.
   const reading = (c2, label, value, color, under, gauge = -1, gaugeColor = color) => {
     const text = BL.jumbotron.text, centre = (t, y, ink, scale) => text.drawText(c2, t, Math.round((POOL_BOARD_W - text.measureText(t, scale)) / 2), y, ink, scale);
     centre(label, 4, POOL_DIM, 1);
     const scale = text.measureText(value, 2) <= POOL_BOARD_W - 8 ? 2 : 1;
     centre(value, scale === 2 ? 15 : 19, color, scale);
-    if (under) centre(under, 34, POOL_DIM, 1);
+    if (Array.isArray(under)) {
+      for (let i = 0; i < under.length; i++) centre(under[i], 32 + i * 8, POOL_DIM, 1);
+    } else if (under) centre(under, 34, POOL_DIM, 1);
     if (gauge < 0) return;
     c2.fillStyle = "#2a2724";
     c2.fillRect(14, 43, POOL_BOARD_W - 28, 3);
@@ -4945,8 +4957,8 @@
   };
   const chainStatus = (s) => {
     const age = s.at ? Math.round((Date.now() - s.at) / 1000) : 0;
-    return !s.height ? "Waiting for Bitcoin block data."
-      : s.live ? `The latest block is ${s.height}. About ${gameMod.formatLarge(s.count)} transactions are waiting, enough to fill roughly ${s.deep.toFixed(1)} blocks.`
+    return !s.height ? "Waiting for Bitcoin data."
+      : s.live ? `Block ${s.height} is the latest. Rain follows new transactions arriving in vB/s; the mempool holds the transactions still waiting, in MvB. A new block can shrink that queue after the next backlog update. Fees affect which transactions are likely to get in first.`
       : `Last updated ${age > 90 ? `${Math.round(age / 60)} minutes` : `${age} seconds`} ago. These numbers may be out of date until the feed responds again.`;
   };
   const rowPage = (i, caption, under, note) => ({
@@ -4971,44 +4983,43 @@
       },
       note: chainStatus
     },
-    rowPage(0, "Block height", (s) => s.lastTxCount ? `${gameMod.formatLarge(s.lastTxCount)} TX IN IT` : "", "A block's height is its number in the Bitcoin chain. When a new block arrives, lightning strikes the rainforest and a water cube drops through the chamber below."),
-    rowPage(1, "Bitcoin price", () => "US DOLLARS", "The price of one bitcoin in US dollars, from an exchange feed. It does not change the lake or rain."),
-    rowPage(2, "Waiting transactions", (s) => s.count ? `${s.deep.toFixed(1)} BLOCKS DEEP` : "", "These transactions are waiting to be included in a block. The line below estimates how many blocks of space they would fill."),
-    rowPage(3, "Next-block fee", (s) => s.hourFee ? `HOUR ${String(+s.hourFee.toFixed(s.hourFee >= 10 ? 0 : 2))} SAT/VB` : "", "An estimated fee rate for a transaction aiming for the next block, measured in satoshis per virtual byte (sat/vB). The line below shows the estimate for confirmation within an hour. Neither time is guaranteed.")
+    rowPage(0, "Block height", (s) => s.lastTxCount ? `${gameMod.formatLarge(s.lastTxCount)} TX IN IT` : "", "A block's height is its number in the Bitcoin chain. When a new block arrives, lightning strikes and a water cube drops through the chamber. The cube marks the block; the next mempool reading determines how much waiting data remains in the lake."),
+    rowPage(1, "Arriving data", (s) => [arrivalsLive(s) ? weatherMod.STEPS[weather.state.step].name.toUpperCase() : "ARRIVALS UNAVAILABLE", s.backlogAt ? `QUEUE ${backlogText(s.vsize)}` : "QUEUE UNAVAILABLE"], "The large number is new transaction data arriving each second, in virtual bytes (vB/s). Rain strength follows a roughly 30-second average of this rate. Arrivals add to the mempool; blocks confirm transactions and can reduce it. The queue below is the current waiting size, not another arrival rate."),
+    rowPage(2, "Mempool", (s) => s.backlogAt ? backlogDetails(s.count, s.vsize) : ["TX COUNT UNKNOWN", "EST BLOCKS UNKNOWN"], "The mempool is the data still waiting for a block, measured in millions of virtual bytes (MvB). The two smaller figures count waiting transactions and estimate how many blocks of space they would fill at about 1 MvB each. Rain shows new arrivals; a mined block can clear some of this queue."),
+    rowPage(3, "Next-block fee", (s) => s.hourFee ? `HOUR ${String(+s.hourFee.toFixed(s.hourFee >= 10 ? 0 : 2))} SAT/VB` : "", "This fee estimate helps a transaction compete for space in the next block, in satoshis per virtual byte (sat/vB). The smaller figure estimates a fee for confirmation within an hour; neither time is guaranteed. Fees affect queue order, while arrivals set the rain and total waiting data fills the lake.")
   ]);
   // The key to the island: what arrives makes the weather, what waits fills the lake, and a block is a bolt and a
   // cube. A reading that has stopped being fed goes grey and says so; it is never drawn as a calm zero.
   const weatherBoard = poolBoard("Reading the weather", [
     {
       caption: "Rain",
-      draw: (c2) => {
+      draw: (c2, s) => {
         const live = weather.state.arrivals === "live";
-        reading(c2, "RAIN", live ? weatherMod.STEPS[weather.state.step].name.toUpperCase() : "UNAVAILABLE", live ? "#8fc3ff" : STALE_INK, live ? `${gameMod.formatLarge(Math.round(weather.state.inflow))} VB/S ARRIVING` : "NO ARRIVALS HEARD", live ? weather.state.storm : -1);
+        reading(c2, "ARRIVALS", live ? rateText(weather.state.inflow) : "NO READING", live ? "#8fc3ff" : STALE_INK,
+          [live ? weatherMod.STEPS[weather.state.step].name.toUpperCase() : "RAIN UNAVAILABLE", s.backlogAt ? `QUEUE ${backlogText(s.vsize)}` : "QUEUE UNAVAILABLE"]);
       },
-      note: () => "Rain shows how quickly new transactions are arriving, measured in virtual bytes per second (vB/s). The game averages about 30 seconds of arrivals so the rain changes smoothly. If updates stop for 90 seconds, the rain fades and this reading becomes unavailable; that does not mean no transactions arrived."
+      note: () => "The large number is new transaction data arriving per second (vB/s). Rain follows a roughly 30-second average, so the weather changes smoothly. The queue below is data still waiting in the mempool (MvB): arrivals can grow it, while new blocks can reduce it. If arrival updates stop for 90 seconds, rain fades and the rate becomes unavailable; that does not mean zero arrivals."
     },
     {
-      caption: "The lake",
-      draw: (c2) => {
-        const water = mempoolIsland.water.state, W = BL.poolLayout.WATER, fill = water.debugFill;
-        const value = fill !== null ? `DEBUG ${fill}/200` : water.status === "unavailable" ? "NO READING" : `${(water.vsize / 1e6).toFixed(1)} MVB`;
-        const under = fill !== null ? "POOL HEIGHT OVERRIDE" : water.preview !== null ? "DEBUG BACKLOG"
-          : water.status === "stale" ? "HELD, READING IS STALE" : water.status === "live" ? "CURRENT BACKLOG" : "NO BACKLOG READING";
-        reading(c2, "LAKE", value, water.status === "live" ? "#7cc8ff" : STALE_INK, under,
-          water.status === "unavailable" ? -1 : (water.level - W.low) / (W.flood - W.low), "#4aa6ff");
+      caption: "Mempool",
+      draw: (c2, s) => {
+        const water = mempoolIsland.water.state;
+        const known = water.status !== "unavailable" || water.preview !== null;
+        reading(c2, "MEMPOOL", known ? backlogText(water.vsize) : "NO READING", water.status === "live" ? "#7cc8ff" : STALE_INK,
+          known ? backlogDetails(s.count, water.vsize, water.preview === null && !!s.backlogAt) : ["TX COUNT UNKNOWN", "EST BLOCKS UNKNOWN"]);
       },
       note: () => {
         const water = mempoolIsland.water.state;
-        if (water.debugFill !== null) return `The poolfill=${water.debugFill} debug setting overrides the lake level. Remove it to use the live mempool again.`;
-        const source = water.preview !== null ? "A test backlog" : "The total backlog";
-        return `${source} fills the lake. MvB means millions of virtual bytes of transactions waiting for a block; every waiting transaction counts, regardless of its fee rate. Around ${BL.poolWater.HYDRO.OVERFLOW_VB / 1e6} MvB, the lake reaches the rim and spills into the channels and waterfalls. That is this island's visual scale, not a Bitcoin limit.`;
+        const override = water.debugFill !== null ? ` The poolfill=${water.debugFill} setting overrides the lake height, but not these backlog figures.` : "";
+        const preview = water.preview !== null ? " A test backlog is active, so the transaction count is unavailable." : "";
+        return `MvB means millions of virtual bytes still waiting for a block. The smaller figures show the transaction count and roughly how many blocks of space the queue needs. Incoming data drives the rain and can grow this queue; blocks confirm transactions and can shrink it. Around ${BL.poolWater.HYDRO.OVERFLOW_VB / 1e6} MvB, the lake reaches the rim and spills over. That is this island's visual scale, not a Bitcoin limit.${override}${preview}`;
       }
     },
     {
       caption: "Lightning",
       draw: (c2, s) => reading(c2, "LAST BLOCK", s.height ? String(s.height) : "-",
         s.heightAt > 0 && Date.now() - s.heightAt < 180000 ? "#ffe066" : STALE_INK, "A BOLT AND A CUBE"),
-      note: () => `A newly mined block triggers lightning above the island and a water cube in the chamber below. The cube marks the block; it does not directly drain the lake. The next backlog reading sets the lake level.${DEBUG_POOL_BLOCK ? " With poolblock enabled, press P to trigger a test block." : ""}`
+      note: () => `A newly mined block triggers lightning above the island and a water cube in the chamber below. Confirmed transactions leave the mempool, so its next reading may be smaller; new arrivals can also keep it growing. The cube only marks the block and does not directly drain the lake.${DEBUG_POOL_BLOCK ? " With poolblock enabled, press P to trigger a test block." : ""}`
     }
   ]);
   const openPoolBoard = (board) => {
