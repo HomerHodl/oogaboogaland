@@ -4988,14 +4988,6 @@
       note: () => "Transaction arrivals in virtual bytes per second (vB/s) drive the rain. The rate is smoothed over about 30 seconds, then shown as dry, drizzle, light rain, rain, heavy rain or downpour. Drops fall straight down. After 90 seconds without a socket reading, the storm eases off and this reads unavailable; that does not mean zero arrivals."
     },
     {
-      caption: "Wind",
-      draw: (c2) => {
-        const live = weather.state.arrivals === "live";
-        reading(c2, "WIND INPUT", live ? `${Math.round(weather.state.gale * 100)}%` : "UNAVAILABLE", live ? "#e6f2ff" : STALE_INK, live ? "CLOUD DRIFT AND SOUND" : "NO ARRIVALS HEARD", live ? weather.state.gale : -1);
-      },
-      note: () => "The arrival rate also sets a 0–100% input for the island's wind effect. Wind drifts the clouds and changes the sound; it does not push raindrops sideways. This is a visual effect, not a measured weather reading."
-    },
-    {
       caption: "The lake",
       draw: (c2, s) => {
         const water = mempoolIsland.water.state, W = BL.poolLayout.WATER, fill = water.debugFill;
