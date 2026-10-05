@@ -7,7 +7,7 @@
 // level walks toward its reading at a bounded rate, so it never snaps, and it is shown in three stages with
 // hysteresis between them (lake only, shore and channels, lowland too), so water hovering at a terrace's height
 // neither flickers over it nor lies flush with its top. A reading that goes stale is held where it stood and
-// said to be stale; with no reading at all the lake stands low and dim and says so. The cube subtracts nothing:
+// said to be stale; with no reading at all the lake stands low. The cube subtracts nothing:
 // what the block cleared arrives as the next backlog reading.
 //
 // The lake, streams and falls share luminous blue blocks and pale foam. Rain and wakes still displace
@@ -15,7 +15,7 @@
 // material below the current waterline. On Canvas 2D, the sheets are built with both windings.
 //
 // Everything is built once in `create` and pooled: streams and falls are fixed water meshes, a block's cube,
-// and droplets come from SEQUENCES fixed sets; rain and wakes share a bounded wave field. Blocks found faster than they can fall wait in a queue
+// and droplets come from SEQUENCES fixed sets; trench mist and rain/wakes use bounded pools. Blocks found faster than they can fall wait in a queue
 // of QUEUE at most, the rest dropped. `update` allocates nothing.
 (() => {
   "use strict";
@@ -42,9 +42,7 @@
     STAGE: { on: 0.04, off: -0.04, highOn: L.LEVEL.lowland + 0.04, highOff: L.LEVEL.lowland - 0.04 },
     SHOWN: { under: -0.03, over: 0.05, belowLowland: L.LEVEL.lowland - 0.05, aboveLowland: L.LEVEL.lowland + 0.05 },
     // How fast the drawn water rises and falls into place, and how far under its bed a drained flood is parked.
-    FILL: 0.3, PARK: L.LEVEL.bed - 0.06,
-    // A stale reading gently dims the water without making it look unlit.
-    DIM: 0.82, BRIGHT_EASE: 2
+    FILL: 0.3, PARK: L.LEVEL.bed - 0.06
   };
   const levelFor = (vsize) => {
     const points = HYDRO.POINTS, v = Math.max(0, vsize);
@@ -58,10 +56,12 @@
   const channelHalf = (level) => (level > L.LEVEL.lowland ? L.CHANNEL.low : level > L.LEVEL.shore ? L.CHANNEL.bank : L.CHANNEL.bed) + BANK_COVER;
   const outletAt = (channel) => L.channelOutlet(channel) + 0.02;
   const SEQUENCES = 4, QUEUE = 3, DROPLETS = 20, BLOCK_GAP = 0.35;
-  // A block's cube: one point emerges from the membrane, the body clears it and sheds a few drops, then falls
-  // through the chamber and its shaft for `drop` seconds, then on down the open air to the sea, where it dissolves.
-  // The detached `float` phase gives the visitor time to hover and read the captured block height.
-  const CUBE = { size: 1.5, gather: 1.6, bulge: 1.7, hang: 1.5, float: 4.5, drop: 3.2, splash: 1.4, hangY: -L.MEMBRANE_DEPTH - 1.5, spin: 0.38 };
+  // The cube gathers from the lake, travels through it at a steady pull, then hovers below the bowl
+  // until the charge fronts meet. Its spin never waits for separation.
+  const CUBE = { size: 1.5, form: 1.8, pullSpeed: 1.65, pullEase: 0.18, drop: 3.2, splash: 1.4,
+    hangY: -L.MEMBRANE_DEPTH - 1.5, spin: 0.38 };
+  // The two charge fronts meet across the room's far side exactly when the formed cube begins to fall.
+  const CHARGE = { pool: 0.8, ramp: 3.7, bend: 0.8, ring: 4, fade: 1.6, rise: 0.085 };
   // Rotate a cube's body diagonal onto world down: a corner, rather than a face, breaks the lake first.
   const POINT_AXIS = Math.SQRT1_2, POINT_ANGLE = Math.acos(-1 / Math.sqrt(3));
   const pointReach = (stretch, size) => CUBE.size * size / (2 * Math.sqrt(3)) * (2 / Math.sqrt(stretch) + stretch);
@@ -92,6 +92,13 @@
     if (end) {
       const t = clamp(x * end[0] + z * end[2] + end[3], 0, 1), fade = t * t * (3 - 2 * t), slope = 6 * t * (1 - t) * out[0];
       out[1] = out[1] * fade + slope * end[0]; out[2] = out[2] * fade + slope * end[2]; out[0] *= fade;
+    }
+    const suction = waves.suction;
+    if (suction && suction[3] > 0) {
+      const dx = x - suction[0], dz = z - suction[1], r = Math.hypot(dx, dz);
+      const q = clamp(1 - r / suction[2], 0, 1), dip = q * q * (3 - 2 * q);
+      const slope = suction[3] * 6 * q * (1 - q) / suction[2] / Math.max(r, 0.0001);
+      out[0] -= suction[3] * dip; out[1] += slope * dx; out[2] += slope * dz;
     }
     return out;
   };
@@ -300,6 +307,7 @@
     return glass(geo, 0.64, both);
   };
   const drip = cached(() => noShadow(box({ w: 0.12, h: 0.18, d: 0.12, color: "#bfe8ff", emissive: 1 })));
+  const mistDot = cached(() => noShadow(box({ w: 0.09, h: 0.09, d: 0.09, color: "#dcf6ff", emissive: 1.2 })));
   // Continuous local-space deformation, shared with the WebGL vertex shader. Canvas writes into its
   // own scratch vector before transforming the vertex. Buffers and topology never change during a frame.
   // [time, ripple metres, vertical stretch, neck pinch, bend x, bend z, neck flag, reserved].
@@ -396,16 +404,50 @@
     const group = createNode({ sightHidden: true });
     addChild(site.node, group);
     const hidden = (options) => createNode({ sightHidden: true, ...options });
-    const waves = { data: new Float32Array(WAVE_CAP * 4), surface: new Float32Array(4), count: 0 };
-    const surfaceNode = hidden({ geometry: { ...surface[both](), lakeWaves: waves } });
-    const floodNode = hidden({ geometry: { ...flood[both](), lakeWaves: waves }, visible: false });
+    const waves = { data: new Float32Array(WAVE_CAP * 4), surface: new Float32Array(4), suction: new Float32Array(4), count: 0 };
     const cs = Math.cos(site.node.rotation.y), sn = Math.sin(site.node.rotation.y), origin = site.node.position;
+    // [lit distance, intensity, radial/forward/split mode, path length, world centre x/z].
+    const chargePool = new Float32Array([0, 0, 1, 0, origin.x, origin.z]);
+    const chargeRamp = new Float32Array([0, 0, 2, 0, origin.x, origin.z]);
+    const chargeBend = new Float32Array([0, 0, 2, 0, origin.x, origin.z]);
+    const chargeRing = new Float32Array([0, 0, 3, TAU * L.RILL_TAIL[1].r, origin.x, origin.z]);
+    const surfaceNode = hidden({ geometry: { ...surface[both](), lakeWaves: waves, lakeCharge: chargePool } });
+    const floodNode = hidden({ geometry: { ...flood[both](), lakeWaves: waves, lakeCharge: chargePool }, visible: false });
+    site.membrane.geometry.lakeCharge = chargePool;
+    const lakeOcclude = new Float32Array(4);
     const rillNode = hidden({ geometry: { ...rampRill[both](),
-      lakeFlowCurve: new Float32Array([origin.x, origin.z, L.RAMP.start + site.node.rotation.y, L.RAMP.r]) } });
+      lakeFlowCurve: new Float32Array([origin.x, origin.z, L.RAMP.start + site.node.rotation.y, L.RAMP.r]), lakeOcclude, lakeCharge: chargeRamp, lakeChargeRise: CHARGE.rise } });
     const tailNodes = L.RILL_TAIL.map((arc, i) => hidden({ geometry: { ...tailRills[both][i](),
       lakeFlowCurve: new Float32Array([origin.x + arc.x * cs + arc.z * sn, origin.z - arc.x * sn + arc.z * cs,
-        arc.start + site.node.rotation.y, arc.r * Math.sign(arc.sweep)]) } }));
+        arc.start + site.node.rotation.y, arc.r * Math.sign(arc.sweep)]), lakeOcclude, lakeCharge: i ? chargeRing : chargeBend, lakeChargeRise: CHARGE.rise } }));
     addChild(group, surfaceNode, floodNode, rillNode, ...tailNodes);
+    // Small pooled motes float over the charged water only. Their positions follow the same three
+    // trench paths as the light, including both directions around the chamber's ring.
+    const mist = [], mistScratch = {}, mistRandom = math.mulberry32(math.fnv1a("mempool-trench-mist"));
+    const addMist = (section, distance, x, y, z) => {
+      const node = hidden({ geometry: mistDot(), visible: false });
+      addChild(group, node);
+      mist.push({ node, section, distance, x, y, z, phase: mistRandom(), speed: 0.35 + mistRandom() * 0.45,
+        lift: 0.03 + mistRandom() * 0.13, drift: 0.015 + mistRandom() * 0.045, size: 0.5 + mistRandom() * 0.55 });
+    };
+    const rampDots = low ? 20 : 42;
+    for (let i = 0; i < rampDots; i++) {
+      const a = lerp(L.RILL.start, L.RILL.end, (i + 0.15 + mistRandom() * 0.7) / rampDots), bearing = L.RAMP.start + a;
+      const r = L.rillRadius(a) + (mistRandom() * 2 - 1) * 0.055;
+      addMist(0, a * L.RAMP.r, Math.sin(bearing) * r, L.rampY(a) - L.RILL.depth + 0.08,
+        Math.cos(bearing) * r);
+    }
+    for (let section = 1; section <= 2; section++) {
+      const arc = L.RILL_TAIL[section - 1], count = section === 1 ? (low ? 5 : 10) : (low ? 18 : 34);
+      for (let i = 0; i < count; i++) {
+        const fraction = (i + 0.15 + mistRandom() * 0.7) / count, a = arc.start + arc.sweep * fraction;
+        L.rillTailPoint(arc, a, (mistRandom() * 2 - 1) * 0.055, mistScratch);
+        const turn = ((Math.atan2(mistScratch.x - arc.x, mistScratch.z - arc.z) - arc.start) % TAU + TAU) % TAU;
+        const distance = section === 1 ? turn * arc.r : Math.min(fraction, 1 - fraction) * TAU * arc.r;
+        const y = (arc.squeeze ? L.rillJunctionY(mistScratch.x, mistScratch.z) : L.FLOOR) - L.RILL.depth + 0.08;
+        addMist(section, distance, mistScratch.x, y, mistScratch.z);
+      }
+    }
     // Separate budgets keep heavy rain from evicting the visitor's wake. All wave records and tracking slots live
     // for this visit; no allocation is needed when a drop lands or a body takes a step.
     const rippleTier = both ? "canvas2d" : renderer.quality;
@@ -527,12 +569,13 @@
       const cube = fluid(cubeShell[+low]()), splash = fluid(splashCrown[+low]());
       cube.quaternion = quat.create();
       const droplets = Array.from({ length: low ? 8 : DROPLETS }, () => ({
-        node: hidden({ geometry: drip(), visible: false }), age: 0, life: 0, vx: 0, vy: 0, vz: 0, size: 1
+        node: hidden({ geometry: drip(), visible: false }), age: 0, life: 0, vx: 0, vy: 0, vz: 0, size: 1, sucked: false
       }));
       addChild(group, cube, splash);
       for (const drop of droplets) addChild(group, drop.node);
-      sequences.push({ active: false, t: 0, y: 0, v: 0, splashT: -1,
-        dropClock: 0, dropCursor: 0, emitted: 0, height: 0, label: "", order: 0, push: 0, shift: 0, extent: 0, impactQuat: quat.create(), cube, splash, droplets });
+      sequences.push({ active: false, t: 0, y: 0, v: 0, splashT: -1, sourceY: 0, formY: 0, pullDuration: 0, detached: false,
+        dropClock: 0, dropCursor: 0, emitted: 0, suckClock: 0, intakeCount: 0,
+        height: 0, label: "", order: 0, push: 0, shift: 0, extent: 0, impactQuat: quat.create(), cube, splash, droplets });
     }
     const ordered = sequences.slice();
     const picks = sequences.map((sequence) => ({ kind: "poolblock", node: sequence.cube, sequence }));
@@ -540,7 +583,8 @@
     let queued = 0, queueHead = 0, dropped = 0, started = 0, sequenceClock = 0, lastStart = -BLOCK_GAP;
 
     // The reading and the level. `reading` is false until any backlog figure has been seen at all.
-    let target = L.WATER.low, level = L.WATER.low, shown = L.WATER.low, floodY = HYDRO.PARK, stage = 0, reading = false, observedAt = 0, vsize = 0, status = "unavailable", preview = null, settle = false, bright = HYDRO.DIM;
+    let target = L.WATER.low, level = L.WATER.low, shown = L.WATER.low, floodY = HYDRO.PARK, stage = 0, reading = false, observedAt = 0, vsize = 0, status = "unavailable", preview = null, settle = false;
+    const bright = 1;
     let fill = null;
     const apply = (snapshot) => {
       if (!snapshot || preview !== null || fill !== null) return;
@@ -555,8 +599,10 @@
     };
     const begin = (seq, height, label) => {
       lastStart = sequenceClock;
-      seq.active = true; seq.t = 0; seq.y = L.membraneY(0); seq.v = 0; seq.splashT = -1;
-      seq.dropClock = seq.dropCursor = seq.emitted = 0;
+      seq.active = true; seq.t = 0; seq.sourceY = shown; seq.formY = shown - 0.65;
+      seq.pullDuration = (seq.formY - CUBE.hangY) / CUBE.pullSpeed + CUBE.pullEase;
+      seq.y = seq.sourceY - 0.05; seq.v = 0; seq.splashT = -1; seq.detached = false;
+      seq.dropClock = seq.dropCursor = seq.emitted = seq.suckClock = seq.intakeCount = 0;
       seq.height = height;
       seq.label = label;
       seq.order = started + 1; seq.push = seq.shift = 0;
@@ -564,6 +610,7 @@
       seq.cube.position.x = seq.cube.position.z = 0;
       seq.cube.smokeOpacity = seq.splash.smokeOpacity = 1;
       for (const drop of seq.droplets) { drop.life = 0; drop.node.visible = false; }
+      disturb(0, 0, 2.4, 1);
       started++;
     };
     // One sequence a block. With every set busy it waits its turn; past QUEUE waiting, it is let go.
@@ -586,10 +633,10 @@
       for (const drop of seq.droplets) { drop.life = 0; drop.node.visible = false; }
     };
     const ease = (t) => t * t * (3 - 2 * t);
-    const emitDrop = (seq, x, y, z, vx, vy, vz, life, size) => {
+    const emitDrop = (seq, x, y, z, vx, vy, vz, life, size, sucked = false) => {
       const drop = seq.droplets[seq.dropCursor];
       seq.dropCursor = (seq.dropCursor + 1) % seq.droplets.length;
-      drop.age = 0; drop.life = life; drop.vx = vx; drop.vy = vy; drop.vz = vz; drop.size = size;
+      drop.age = 0; drop.life = life; drop.vx = vx; drop.vy = vy; drop.vz = vz; drop.size = size; drop.sucked = sucked;
       drop.node.position.x = x; drop.node.position.y = y; drop.node.position.z = z;
       drop.node.visible = true;
     };
@@ -611,32 +658,31 @@
     const stepSequence = (seq, dt, bright) => {
       seq.t += dt;
       const t = seq.t, top = L.membraneY(0), cube = seq.cube, body = cube.geometry.lakeBody;
-      const bulgeAt = CUBE.gather, hangAt = bulgeAt + CUBE.bulge, detachAt = bulgeAt + CUBE.bulge * 0.85;
-      const releaseAt = hangAt + CUBE.hang, fallAt = releaseAt + CUBE.float, half = CUBE.size / 2;
-      const freeAge = Math.max(0, t - releaseAt), age = Math.max(0, t - fallAt);
+      const hoverAt = CUBE.form + seq.pullDuration;
+      const fallAt = CHARGE.pool + CHARGE.ramp + CHARGE.bend + CHARGE.ring, half = CUBE.size / 2;
+      const hoverAge = Math.max(0, t - hoverAt), age = Math.max(0, t - fallAt);
       let size = 1, y = seq.y, falling = false;
-      // Only the emerging water flexes. It settles to an undeformed cube before detaching and spinning.
-      const forming = t < bulgeAt ? 1 : t < releaseAt ? 1 - ease((t - bulgeAt) / (releaseAt - bulgeAt)) : 0;
+      // The water gathers into a cube in the lake; after that its shape stays solid through the pull and fall.
+      const forming = 1 - ease(clamp(t / CUBE.form, 0, 1));
       body[0] = t; body[1] = 0.024 * forming;
       body[4] = 0.018 * forming * Math.sin(t * 1.7);
       body[5] = 0.014 * forming * Math.cos(t * 1.3);
-      if (t < bulgeAt) {
-        // Keep the leading corner just below the curved underside as the cube takes shape.
-        const u = ease(t / bulgeAt);
-        size = lerp(0.04, 0.72, u); body[2] = lerp(0.12, 0.5, u);
-        y = top + pointReach(body[2], size) - lerp(0.03, 0.19, u);
-      } else if (t < hangAt) {
-        const u = ease((t - bulgeAt) / CUBE.bulge);
-        size = lerp(0.72, 1, u); body[2] = lerp(0.5, 1.08, u);
-        y = lerp(top + pointReach(0.5, 0.72) - 0.19, CUBE.hangY, u);
-      } else if (t < releaseAt) {
-        const u = ease((t - hangAt) / CUBE.hang);
-        body[2] = lerp(1.08, 1, u);
-        y = CUBE.hangY - 0.18 * u;
-      } else if (t < fallAt) {
-        // The formed block holds its shape while hovering and turning in the chamber.
+      if (t < CUBE.form) {
+        const u = ease(t / CUBE.form);
+        size = lerp(0.06, 1, u); body[2] = lerp(0.8, 1, u);
+        y = lerp(seq.sourceY - 0.05, seq.formY, u);
+      } else if (t < hoverAt) {
+        const pullAge = t - CUBE.form, ramp = CUBE.pullEase, duration = seq.pullDuration;
+        const distance = seq.formY - CUBE.hangY;
+        const travelled = pullAge < ramp ? CUBE.pullSpeed * pullAge * pullAge / (2 * ramp)
+          : pullAge > duration - ramp ? distance - CUBE.pullSpeed * (duration - pullAge) ** 2 / (2 * ramp)
+            : CUBE.pullSpeed * (pullAge - ramp / 2);
         body[2] = 1;
-        y = CUBE.hangY - 0.18 - 0.07 * Math.sin(freeAge * 1.4);
+        y = seq.formY - travelled;
+      } else if (t < fallAt) {
+        // Hold the formed block below the membrane until the light completes the trench ring.
+        body[2] = 1;
+        y = CUBE.hangY + 0.035 * Math.sin(hoverAge * 1.4);
       } else if (seq.splashT < 0) {
         falling = true;
         const slow = age < CUBE.drop, step = Math.min(dt, age);
@@ -655,11 +701,10 @@
           }
         }
       }
-      if (t >= releaseAt && seq.splashT < 0) {
-        const spin = 1 - Math.exp(-freeAge * 2);
-        quat.integrate(cube.quaternion, cube.quaternion, 0.16 * spin, CUBE.spin * spin, 0.21 * spin, Math.min(dt, freeAge));
-        cube.position.x = 0.14 * Math.sin(freeAge * 0.9) * spin;
-        cube.position.z = 0.11 * Math.sin(freeAge * 0.7) * spin;
+      if (seq.splashT < 0) {
+        quat.integrate(cube.quaternion, cube.quaternion, 0.16, CUBE.spin, 0.21, dt);
+        cube.position.x = t < hoverAt ? 0 : 0.09 * Math.sin(hoverAge * 0.9);
+        cube.position.z = t < hoverAt ? 0 : 0.07 * Math.sin(hoverAge * 0.7);
       }
       seq.y = y;
       seq.splash.visible = seq.splashT >= 0;
@@ -682,7 +727,18 @@
       cube.visible = size > 0.005;
       cube.position.y = y; cube.glow = bright;
       bodyFlow(cube);
-      if (t >= detachAt && t - dt < detachAt) {
+      if (t < CUBE.form + 0.4) {
+        seq.suckClock += dt * 10;
+        while (seq.suckClock >= 1) {
+          seq.suckClock--;
+          const i = seq.intakeCount++, a = i * 2.399963, radius = 1.35 + (i % 4) * 0.25, life = 0.65;
+          emitDrop(seq, Math.sin(a) * radius, seq.sourceY + 0.08, Math.cos(a) * radius,
+            -Math.sin(a) * radius / life, (y - seq.sourceY - 0.08) / life, -Math.cos(a) * radius / life,
+            life, 0.65 + (i % 3) * 0.15, true);
+        }
+      }
+      if (!seq.detached && t >= CUBE.form && y + pointReach(1, 1) < top - 0.03) {
+        seq.detached = true;
         // The cube has cleared the membrane: only a few free droplets follow its tip.
         for (let i = 0; i < 3; i++) {
           const a = i * 2.399963;
@@ -704,7 +760,7 @@
         drop.age += dt;
         if (drop.age >= drop.life) { drop.life = 0; drop.node.visible = false; continue; }
         const node = drop.node, u = drop.age / drop.life;
-        drop.vy -= 8 * dt;
+        if (!drop.sucked) drop.vy -= 8 * dt;
         node.position.x += drop.vx * dt; node.position.y += drop.vy * dt; node.position.z += drop.vz * dt;
         if (node.position.y < seaY) { drop.life = 0; node.visible = false; continue; }
         const shrink = 1 - ease(clamp((u - 0.65) / 0.35, 0, 1));
@@ -723,7 +779,7 @@
         ordered[j] = seq;
       }
       let above = null;
-      const distance = CUBE.hangY - 0.18 - seaY;
+      const distance = CUBE.hangY - seaY;
       for (const seq of ordered) {
         const cube = seq.cube;
         if (!seq.active || !cube.visible || seq.splashT >= 0) continue;
@@ -753,7 +809,51 @@
     };
 
     const walk = (value, to, step) => value > to ? Math.max(to, value - step) : Math.min(to, value + step);
-    const update = (dt, elapsed, now = Date.now(), inside = true) => {
+    const chargeEnd = CHARGE.pool + CHARGE.ramp + CHARGE.bend + CHARGE.ring;
+    const updateCharge = (reach) => {
+      let newest = null;
+      for (const seq of sequences) if (seq.active && seq.t < chargeEnd + CHARGE.fade && (!newest || seq.order > newest.order)) newest = seq;
+      if (!newest) {
+        chargePool[1] = chargeRamp[1] = chargeBend[1] = chargeRing[1] = 0;
+        waves.suction[3] = 0;
+        for (const dot of mist) dot.node.visible = false;
+        return;
+      }
+      const t = newest.t, fade = 1 - ease(clamp((t - chargeEnd) / CHARGE.fade, 0, 1));
+      const suction = waves.suction;
+      suction[0] = origin.x; suction[1] = origin.z;
+      suction[2] = lerp(2.8, 1.8, ease(clamp(t / CUBE.form, 0, 1)));
+      suction[3] = 0.42 * ease(clamp(t / 0.45, 0, 1)) *
+        (1 - ease(clamp((t - CUBE.form) / 0.8, 0, 1)));
+      chargePool[0] = reach * clamp(t / CHARGE.pool, 0, 1);
+      chargePool[1] = fade * (1 - 0.45 * ease(clamp((t - CHARGE.pool) / 1.5, 0, 1)));
+      const rampAt = t - CHARGE.pool;
+      chargeRamp[0] = L.RILL.start * L.RAMP.r + clamp(rampAt / CHARGE.ramp, 0, 1) * (L.RILL.end - L.RILL.start) * L.RAMP.r;
+      chargeRamp[1] = rampAt >= 0 ? fade : 0;
+      const bendAt = rampAt - CHARGE.ramp;
+      chargeBend[0] = clamp(bendAt / CHARGE.bend, 0, 1) * Math.PI * L.RILL_TAIL[0].r;
+      chargeBend[1] = bendAt >= 0 ? fade : 0;
+      const ringAt = bendAt - CHARGE.bend;
+      // Carry the front just past the antipode so the last arc is fully lit at the drop frame.
+      chargeRing[0] = clamp(ringAt / CHARGE.ring, 0, 1) * (chargeRing[3] / 2 + 0.6);
+      chargeRing[1] = ringAt >= 0 ? fade : 0;
+      for (const dot of mist) {
+        const charge = dot.section === 0 ? chargeRamp : dot.section === 1 ? chargeBend : chargeRing;
+        const arrival = clamp((charge[0] - dot.distance + 0.15) / 0.5, 0, 1);
+        const age = (dot.phase + t * dot.speed) % 1;
+        const scale = dot.size * charge[1] * arrival * Math.sin(Math.PI * age);
+        const node = dot.node;
+        node.visible = scale > 0.05;
+        if (!node.visible) continue;
+        node.position.x = dot.x + Math.sin(t * 1.8 + dot.phase * TAU) * dot.drift;
+        node.position.y = dot.y + CHARGE.rise * charge[1] * arrival + dot.lift + age * 0.4;
+        node.position.z = dot.z + Math.cos(t * 1.6 + dot.phase * TAU) * dot.drift;
+        node.scale.x = node.scale.z = scale;
+        node.scale.y = scale * 1.15;
+        node.glow = 1.2 + charge[1] * 0.5;
+      }
+    };
+    const update = (dt, elapsed, now = Date.now()) => {
       rippleDt = dt;
       if (dt > 0) rippleFrame++;
       status = fill !== null || preview !== null ? "live" : !reading ? "unavailable" : observedAt > 0 && now - observedAt < HYDRO.FRESH_MS ? "live" : "stale";
@@ -768,19 +868,18 @@
       shown = settle ? want : walk(shown, want, HYDRO.FILL * dt);
       floodY = settle ? (stage ? shown : HYDRO.PARK) : walk(floodY, stage ? shown : HYDRO.PARK, HYDRO.FILL * dt * (stage ? 2.5 : 1.5));
       settle = false;
-      // A lake with no live reading behind it eases to a softer glow rather than snapping dark.
-      const targetBright = status === "live" ? 1 : HYDRO.DIM;
-      bright += (targetBright - bright) * (1 - Math.exp(-dt / HYDRO.BRIGHT_EASE));
-      if (Math.abs(targetBright - bright) < 1e-3) bright = targetBright;
       const lake = Math.min(shown, stage ? Math.max(floodY, L.WATER.spill - 0.01) : shown), reach = L.waterRadius(lake);
       surfaceNode.position.y = lake;
       surfaceNode.scale.x = surfaceNode.scale.z = reach;
       surfaceNode.visible = reach > 0.01;
       surfaceNode.glow = bright;
       waves.surface[0] = origin.x; waves.surface[1] = origin.z; waves.surface[2] = reach; waves.surface[3] = elapsed;
+      lakeOcclude[0] = origin.x; lakeOcclude[1] = origin.y + lake;
+      lakeOcclude[2] = origin.z; lakeOcclude[3] = Math.min(reach, L.LAKE_R);
       site.membrane.glow = bright;
       site.membrane.smokeOpacity = surfaceNode.visible ? 1 : 0;
       site.membrane.geometry.clipMaxY = origin.y + lake;
+      site.membraneRock.geometry.clipMinY = origin.y + lake + 0.018;
       // Posts end at the higher of the live waterline and the bowl's curved edge, so their submerged
       // ends cannot show through the translucent underside when the lake is low.
       const postBottom = origin.y + Math.max(lake, L.membraneY(BL.poolModels.CHAIN_BOARD.r + 0.3) + 0.06);
@@ -805,11 +904,9 @@
         waves.data[o + 2] = radius;
         waves.data[o + 3] = ripple.amplitude * ripple.strength * Math.min(1, u / 0.08) * (1 - u) * (1 - u);
       }
-      // The collector lies below the island's roof. Its luminous arc must not show through the
-      // translucent lake from outdoors, but remains visible while walking the descent and chamber.
-      rillNode.visible = inside;
+      // Hide only rays that pass through the lake; the exposed collector stays visible from outside.
       rillNode.glow = bright * (floodNode.visible ? 0.8 : 0.5);
-      for (const node of tailNodes) { node.visible = inside; node.glow = rillNode.glow; }
+      for (const node of tailNodes) node.glow = rillNode.glow;
       // Fill the trench's steps, but let the actual banks covering its mouth narrow the falling sheet.
       for (const fall of falls) {
         const half = channelHalf(floodY);
@@ -857,6 +954,7 @@
         }
       }
       spaceBlocks();
+      updateCharge(reach);
     };
     // The water's surface over a point of the island's frame, or -Infinity where there is none: the lake inside
     // its waterline, and the flood wherever the sheet stands over lower ground.
@@ -883,7 +981,7 @@
     const dispose = () => {
       removeChild(site.node, group);
       site.membrane.glow = 1;
-      falls.length = drips.length = sequences.length = ordered.length = ripples.length = picks.length = 0;
+      falls.length = drips.length = mist.length = sequences.length = ordered.length = ripples.length = picks.length = 0;
       queuedLabels.fill(""); queued = queueHead = 0; sequenceClock = 0; lastStart = -BLOCK_GAP;
       actorKeys.fill(null);
       rippleCount = waves.count = 0;
@@ -898,12 +996,13 @@
     return {
       apply, block, update, levelAt, rain, wake, dispose, state, picks,
       liveGeometry(set) {
-        set.add(surfaceNode.geometry).add(floodNode.geometry).add(site.membrane.geometry).add(rillNode.geometry);
+        set.add(surfaceNode.geometry).add(floodNode.geometry).add(site.membrane.geometry).add(site.membraneRock.geometry).add(rillNode.geometry);
         for (const fall of falls) {
           set.add(fall.stream.geometry).add(fall.node.geometry);
           for (const residual of fall.residuals) set.add(residual.geometry);
         }
         for (const node of tailNodes) set.add(node.geometry);
+        if (mist.length) set.add(mist[0].node.geometry);
         for (const seq of sequences) {
           set.add(seq.cube.geometry).add(seq.splash.geometry);
           for (const drop of seq.droplets) set.add(drop.node.geometry);
@@ -924,7 +1023,7 @@
         target = fill === null ? (reading ? levelFor(vsize) : L.WATER.low) : lerp(-L.MEMBRANE_DEPTH, L.WATER.flood, fill / 200);
         level = target; stage = target > HYDRO.STAGE.highOn ? 2 : target > HYDRO.STAGE.on ? 1 : 0; settle = true;
       },
-      get active() { if (rippleCount) return true; for (const seq of sequences) if (seq.active) return true; return Math.abs(level - target) > 1e-3 || Math.abs(shown - level) > 0.11 || Math.abs(bright - (status === "live" ? 1 : HYDRO.DIM)) > 1e-3; },
+      get active() { if (rippleCount) return true; for (const seq of sequences) if (seq.active) return true; return Math.abs(level - target) > 1e-3 || Math.abs(shown - level) > 0.11; },
       stats: () => ({ waterCubes: state.cubes, waterQueued: queued, waterRipples: rippleCount })
     };
   };
