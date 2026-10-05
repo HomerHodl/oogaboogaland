@@ -4864,7 +4864,7 @@
   // The chain board's four readings, set in the jumbotron's 5x7 font and run-length merged into quads,
   // exactly as the cave sets its wall panels. The rows are rebuilt only when one of them changed, so a
   // board left standing all day replaces no geometry and holds its size.
-  const CHAIN_PANEL_W = 96, CHAIN_PANEL_H = 36, CHAIN_PANEL_BG = [42, 39, 36];
+  const CHAIN_PANEL_W = 104, CHAIN_PANEL_H = 36, CHAIN_PANEL_BG = [42, 39, 36];
   // A board that has stopped being fed says so by going grey. Holding the last reading out in its
   // usual colours would be the one genuinely misleading thing this island could do.
   const STALE_INK = "#7d766a";
@@ -4879,7 +4879,7 @@
     const ink = (live) => s.live ? live : STALE_INK;
     return [
       ["BLOCK", s.height ? String(s.height) : "-", ink("#e8c14a")],
-      ["RAIN", arrivalsLive(s) ? rateText(s.inflow) : "-", arrivalsLive(s) ? "#8fc3ff" : STALE_INK],
+      ["ARR DATA", arrivalsLive(s) ? rateText(s.inflow) : "-", arrivalsLive(s) ? "#8fc3ff" : STALE_INK],
       ["MEMPOOL", s.backlogAt ? backlogText(s.vsize) : "-", s.backlogAt && Date.now() - s.backlogAt < BL.poolWater.HYDRO.FRESH_MS ? "#7cc8ff" : STALE_INK],
       ["FAST", s.fastestFee ? `${String(+s.fastestFee.toFixed(s.fastestFee >= 10 ? 0 : 2))} SAT/VB` : "-", ink("#ff9a2a")]
     ];
@@ -4907,14 +4907,14 @@
   // note and a drawing in the jumbotron's 5x7 font on the board's own small canvas; `refresh` redraws the shown
   // page and moves `version`, which is all the dialog watches.
   const POOL_BOARD_W = 128, POOL_BOARD_H = 48, POOL_BOARD_BG = "#0f110f", POOL_DIM = "#9b8f7a";
-  const poolBoard = (title, pages) => {
+  const poolBoard = (title, pages, hideCaption = false) => {
     const canvas = document.createElement("canvas");
     canvas.width = POOL_BOARD_W;
     canvas.height = POOL_BOARD_H;
     const c2 = canvas.getContext("2d", { alpha: false, willReadFrequently: true });
     let nextRefresh = 0, lastElapsed = 0, switchAt = NaN, paused = false;
     const board = {
-      title, help: "", captionAbove: true, carousel: true, canvas, count: pages.length, index: 0, version: 0, caption: "", note: "",
+      title, help: "", captionAbove: true, hideCaption, carousel: true, canvas, count: pages.length, index: 0, version: 0, caption: "", note: "",
       get paused() { return paused; },
       setPaused(value) { paused = value; switchAt = lastElapsed; },
       begin() { lastElapsed = switchAt = NaN; },
@@ -4971,11 +4971,11 @@
       : s.live ? `Block ${s.height} is the latest. Rain follows new transactions arriving in vB/s; the mempool holds the transactions still waiting, in MvB. A new block can shrink that queue after the next backlog update. Fees affect which transactions are likely to get in first.`
       : `Last updated ${age > 90 ? `${Math.round(age / 60)} minutes` : `${age} seconds`} ago. These numbers may be out of date until the feed responds again.`;
   };
-  const rowPage = (i, caption, under, note) => ({
+  const rowPage = (i, caption, under, note, detailLabel = null) => ({
     caption,
     draw: (c2, s) => {
       const [label, value, color] = chainRows(s)[i];
-      reading(c2, label, value, color, under(s));
+      reading(c2, detailLabel || label, value, color, under(s));
     },
     note: () => note
   });
@@ -4994,10 +4994,10 @@
       note: chainStatus
     },
     rowPage(0, "Block height", (s) => s.lastTxCount ? `${gameMod.formatLarge(s.lastTxCount)} TX IN IT` : "", "A block's height is its number in the Bitcoin chain. When a new block arrives, lightning strikes and a water cube drops through the chamber. The cube marks the block; the next mempool reading determines how much waiting data remains in the lake."),
-    rowPage(1, "Arriving data", (s) => [arrivalsLive(s) ? weatherMod.STEPS[weather.state.step].name.toUpperCase() : "ARRIVALS UNAVAILABLE", s.backlogAt ? `QUEUE ${backlogText(s.vsize)}` : "QUEUE UNAVAILABLE"], "The large number is new transaction data arriving each second, in virtual bytes (vB/s). Rain strength follows a roughly 30-second average of this rate. Arrivals add to the mempool; blocks confirm transactions and can reduce it. The queue below is the current waiting size, not another arrival rate."),
+    rowPage(1, "Arriving data", (s) => arrivalsLive(s) ? weatherMod.STEPS[weather.state.step].name.toUpperCase() : "ARRIVALS UNAVAILABLE", "The large number is new transaction data arriving each second, in virtual bytes (vB/s). Rain strength follows a roughly 30-second average of this rate. Arrivals add to the mempool; blocks confirm transactions and can reduce it.", "ARRIVING DATA"),
     rowPage(2, "Mempool", (s) => backlogDetails(s.count, !!s.backlogAt), "The mempool is the data still waiting for a block, measured in millions of virtual bytes (MvB). The smaller figure counts waiting transactions. Rain shows new arrivals; a mined block can clear some of this queue."),
     rowPage(3, "Next-block fee", (s) => s.hourFee ? `HOUR ${String(+s.hourFee.toFixed(s.hourFee >= 10 ? 0 : 2))} SAT/VB` : "", "This fee estimate helps a transaction compete for space in the next block, in satoshis per virtual byte (sat/vB). The smaller figure estimates a fee for confirmation within an hour; neither time is guaranteed. Fees affect queue order, while arrivals set the rain and total waiting data fills the lake.")
-  ]);
+  ], true);
   // The key to the island: what arrives makes the weather, what waits fills the lake, and a block is a bolt and a
   // cube. A reading that has stopped being fed goes grey and says so; it is never drawn as a calm zero.
   const weatherBoard = poolBoard("Reading the weather", [

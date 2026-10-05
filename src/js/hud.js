@@ -1071,7 +1071,7 @@
           boardCenter.prepend(el.boardCaption);
           boardNav.after(el.boardDots);
         }
-        el.boardCaption.hidden = !!board.floating;
+        el.boardCaption.hidden = !!board.floating || !!board.hideCaption;
         el.boardPause.hidden = !board.floating && !board.carousel;
         el.boardResize.hidden = !board.floating;
         el.boardFilter.hidden = !board.floating;
