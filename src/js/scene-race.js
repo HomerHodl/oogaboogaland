@@ -78,6 +78,7 @@
 
   const buildTrack = (id) => {
     if (track) {
+      fx.clearParticles();
       removeChild(root, track.root);
       track.dispose();
     }
@@ -179,6 +180,7 @@
   };
   const toGarage = () => {
     phase = "garage";
+    fx.clearParticles();
     cup.active = false;
     cup.done = false;
     rhud.setCup(game.state.race.cup);

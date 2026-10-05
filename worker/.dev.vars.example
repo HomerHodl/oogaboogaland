@@ -1,0 +1,14 @@
+# Copy to .dev.vars at the repo root (next to wrangler.staging.jsonc) for `npm run dev`. Never deployed
+# (wrangler deploy ignores this file). Values here override `vars` in the config while running locally.
+
+# Redirects, cookies and the Origin check all use this origin. `npm run dev` passes
+# --local-upstream localhost:8787 so wrangler does not rewrite requests to the workers.dev address.
+SITE_ORIGIN=http://localhost:8787
+
+# The development OAuth App (callback http://localhost:8787/auth/callback).
+GITHUB_CLIENT_ID=
+GITHUB_CLIENT_SECRET=
+
+# Voice: a Realtime SFU app's App ID and App token. Without them voice says unavailable.
+REALTIME_APP_ID=
+REALTIME_SECRET=

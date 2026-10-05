@@ -3,7 +3,7 @@
 (() => {
   "use strict";
   const BL = window.BL = window.BL || {};
-  const RAMP_STEP = 1.16, RAMP_SLOPE = 2.5;
+  const RAMP_STEP = 1.16, RAMP_SLOPE = 2;
   const rampAt = (surfaceAt, x, y, z, heading, out) => {
     const sx = Math.sin(heading), sz = Math.cos(heading), center = surfaceAt(x, z);
     if (!Number.isFinite(center) || Math.abs(center - y) > RAMP_STEP) return false;
@@ -20,7 +20,7 @@
       for (let row = 0; row < 16; row++) {
         const along = -0.8 + row * 0.2, a = along - 0.7;
         const height = surfaceAt(x + sx * along + sz * side, z + sz * along - sx * side);
-        if (!Number.isFinite(height) || Math.abs(height - center) > RAMP_SLOPE * 3
+        if (!Number.isFinite(height) || Math.abs(height - center) > 6
           || Number.isFinite(previous) && Math.abs(height - previous) > RAMP_STEP) return false;
         previous = height;
         sum += height; sumAlong += height * a; sumSide += height * side;

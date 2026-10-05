@@ -4,6 +4,7 @@
 import { readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import vm from "node:vm";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const source = process.argv[2];
@@ -15,7 +16,7 @@ if (!source) {
 const text = /^https?:/.test(source)
   ? await (await fetch(source)).text()
   : readFileSync(source, "utf8");
-const stats = JSON.parse(text);
+let stats = JSON.parse(text);
 // Only an org-wide v3 snapshot (the worker's /v2/stats) carries what this bake
 // needs. While the worker still answers with an older shape, keep the
 // committed bake instead of failing the deploy: the page paints from that
@@ -34,6 +35,11 @@ if (stats.repos.some((r) => (Array.isArray(r.contributors) ? r.contributors : []
   console.warn("keeping the committed bake: repos[].contributors are not repo-scoped");
   process.exit(0);
 }
+
+const context = { window: {} };
+vm.runInNewContext(readFileSync(join(root, "src", "js", "contributor-identities.js"), "utf8"), context);
+vm.runInNewContext(readFileSync(join(root, "src", "js", "activity-repos.js"), "utf8"), context);
+stats = context.window.BL.activityRepos.normalizeStats(stats);
 
 // Ship public handles and activity only, never profile names or metadata.
 const counts = ({ commits, prs, reviews, issues, comments }) => ({ commits, prs, reviews, issues, comments });

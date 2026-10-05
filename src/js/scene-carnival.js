@@ -389,27 +389,27 @@
       if (w.delay > 0) w.delay -= dt;
       else w.moodT = Math.max(0, w.moodT - dt);
       const mood = w.delay > 0 || w.moodT <= 0 ? 0 : w.mood;
-      let lean = leaning, armL = -0.12 + Math.sin(t * 1.3) * 0.05, armR = -0.12 + Math.sin(t * 1.3 + 1) * 0.05, spread = 0.1, head = leaning ? 0.15 : 0, look = leaning ? 0 : Math.sin(t * 0.45) * 0.35, sway = 0, kick = 0;
+      let lean = leaning, armR = -0.12 + Math.sin(t * 1.3) * 0.05, armL = -0.12 + Math.sin(t * 1.3 + 1) * 0.05, spread = 0.1, head = leaning ? 0.15 : 0, look = leaning ? 0 : Math.sin(t * 0.45) * 0.35, sway = 0, kick = 0;
       if (dance) {
         const b = t * 7.5;
-        armL = -2.4 + Math.sin(b) * 0.6; armR = -2.4 - Math.sin(b) * 0.6; spread = 0.35; lean = -0.05; look = 0;
+        armR = -2.4 + Math.sin(b) * 0.6; armL = -2.4 - Math.sin(b) * 0.6; spread = 0.35; lean = -0.05; look = 0;
         sway = Math.sin(b * 0.5) * 0.45; head = Math.sin(b) * 0.15; kick = Math.sin(b);
       } else if (mood === CHEER) {
-        armL = armR = -2.55 - Math.abs(Math.sin(t * 11)) * 0.35; spread = 0.35; head = -0.3; lean = -0.1; look = 0;
+        armR = armL = -2.55 - Math.abs(Math.sin(t * 11)) * 0.35; spread = 0.35; head = -0.3; lean = -0.1; look = 0;
       } else if (mood === FLOP) {
-        armL = armR = -2.8; spread = -0.55; head = 0.3; lean = 0.08; look = Math.sin(t * 9) * 0.25;
+        armR = armL = -2.8; spread = -0.55; head = 0.3; lean = 0.08; look = Math.sin(t * 9) * 0.25;
       } else if (mood === PUMP) {
-        armR = -2.5 - Math.abs(Math.sin(t * 12)) * 0.3;
-      } else if (leaning) armL = armR = -0.55;
-      w.lean += (lean - w.lean) * ease; w.armL += (armL - w.armL) * ease; w.armR += (armR - w.armR) * ease;
+        armL = -2.5 - Math.abs(Math.sin(t * 12)) * 0.3;
+      } else if (leaning) armR = armL = -0.55;
+      w.lean += (lean - w.lean) * ease; w.armR += (armR - w.armR) * ease; w.armL += (armL - w.armL) * ease;
       w.spread += (spread - w.spread) * ease; w.head += (head - w.head) * ease; w.look += (look - w.look) * ease; w.sway += (sway - w.sway) * ease;
       w.cave.root.position.x = w.at[o]; w.cave.root.position.z = w.at[o + 1];
       w.cave.root.rotation.x = w.lean;
       w.cave.root.rotation.y = w.at[o + 2] + w.sway;
-      P.legL.rotation.x = -w.lean - Math.max(0, kick) * 0.5;
-      P.legR.rotation.x = -w.lean - Math.max(0, -kick) * 0.5;
-      P.armL.rotation.x = w.armL; P.armR.rotation.x = w.armR;
-      P.armL.rotation.z = -w.spread; P.armR.rotation.z = w.spread;
+      P.legR.rotation.x = -w.lean - Math.max(0, kick) * 0.5;
+      P.legL.rotation.x = -w.lean - Math.max(0, -kick) * 0.5;
+      P.armR.rotation.x = w.armR; P.armL.rotation.x = w.armL;
+      P.armR.rotation.z = -w.spread; P.armL.rotation.z = w.spread;
       P.head.rotation.x = w.head; P.head.rotation.y = w.look;
     }
   };
@@ -450,13 +450,13 @@
     // Each arm on its grip, or easing to its mood's pose as it lets go.
     aimArm(-1, sit, r.roll, gy, gz);
     r.lx += ((holdL ? RIDER_AIM.x : lx) - r.lx) * ease; r.lz += ((holdL ? RIDER_AIM.z : lz) - r.lz) * ease;
-    P.armL.rotation.x = r.lx + (RIDER_AIM.x - r.lx) * r.holdL; P.armL.rotation.z = r.lz + (RIDER_AIM.z - r.lz) * r.holdL;
+    P.armR.rotation.x = r.lx + (RIDER_AIM.x - r.lx) * r.holdL; P.armR.rotation.z = r.lz + (RIDER_AIM.z - r.lz) * r.holdL;
     aimArm(1, sit, r.roll, gy, gz);
     r.rx += ((holdR ? RIDER_AIM.x : rx) - r.rx) * ease; r.rz += ((holdR ? RIDER_AIM.z : rz) - r.rz) * ease;
-    P.armR.rotation.x = r.rx + (RIDER_AIM.x - r.rx) * r.holdR; P.armR.rotation.z = r.rz + (RIDER_AIM.z - r.rz) * r.holdR;
+    P.armL.rotation.x = r.rx + (RIDER_AIM.x - r.rx) * r.holdR; P.armL.rotation.z = r.rz + (RIDER_AIM.z - r.rz) * r.holdR;
     // The legs and head undo the body's lean past the seat's, and the head most of the beast's pitch.
     const bent = sit - seat.lean;
-    P.legL.rotation.x = -seat.reach - bent + kick; P.legR.rotation.x = -seat.reach - bent - kick;
+    P.legR.rotation.x = -seat.reach - bent + kick; P.legL.rotation.x = -seat.reach - bent - kick;
     P.head.rotation.x = r.head - (bent + R.rotation.x) * 0.8; P.head.rotation.y = r.look;
   };
   // A rider's arm at `side` (-1 its left) aimed from its shoulder at its grip (`gy`, `gz` from the hip, see
@@ -828,13 +828,13 @@
     // fist, in its own units.
     rider = null;
     if (play.rocker && visitor) {
-      const seat = AM.RIDE_SEATS[slot], cave = models.caveman(BL.contributors.traitsFor(visitor)), P = cave.parts, k = seat.scale, a = P.armR.position;
+      const seat = AM.RIDE_SEATS[slot], cave = models.caveman(BL.contributors.traitsFor(visitor)), P = cave.parts, k = seat.scale, a = P.armL.position;
       for (const held of [P.club, P.gun, P.lion, P.board]) if (held) held.visible = false;
       Object.assign(cave.root.position, { x: 0, y: seat.y, z: seat.z });
       Object.assign(cave.root.scale, { x: k, y: k, z: k });
-      P.legL.rotation.z = -seat.splay; P.legR.rotation.z = seat.splay;
+      P.legR.rotation.z = -seat.splay; P.legL.rotation.z = seat.splay;
       addChild(play.rocker, cave.root);
-      rider = { cave, seat, k, ax: a.x, ay: a.y, az: a.z, reach: -P.fingersR.position.y, mood: 0, moodT: 0, lean: seat.lean, roll: 0, head: 0, look: 0, holdL: 1, holdR: 1, lx: 0, lz: 0, rx: 0, rz: 0 };
+      rider = { cave, seat, k, ax: a.x, ay: a.y, az: a.z, reach: -P.fingersL.position.y, mood: 0, moodT: 0, lean: seat.lean, roll: 0, head: 0, look: 0, holdL: 1, holdR: 1, lx: 0, lz: 0, rx: 0, rz: 0 };
     }
     // The room's big pieces behind the machine: the stage, the mezzanine with its dark cabinets, every other game's
     // machines as they stand in the hall, and the lights.
@@ -898,7 +898,7 @@
       cave.root.position.x = at[0]; cave.root.position.y = P.y || 0; cave.root.position.z = at[1];
       cave.root.rotation.y = at[2];
       addChild(root, cave.root);
-      watchers.push({ cave, at, t: i * 2.1 + 0.7, mood: 0, moodT: 0, delay: 0, lean: 0, armL: -0.12, armR: -0.12, spread: 0.1, head: 0, look: 0, sway: 0 });
+      watchers.push({ cave, at, t: i * 2.1 + 0.7, mood: 0, moodT: 0, delay: 0, lean: 0, armR: -0.12, armL: -0.12, spread: 0.1, head: 0, look: 0, sway: 0 });
     }
     // The cracking coconuts' halves and flecks, sized to the game's view, and which way is across it.
     bits = flecks(K.coconut || 1);
@@ -1077,9 +1077,9 @@
       // Following its mallet, or for a moment after a goal cheering its own or clutching its head at yours.
       T.rivalT = Math.max(0, T.rivalT - dt);
       const cheer = T.rivalT > 0 && rivalMood === CHEER, clutch = T.rivalT > 0 && rivalMood === FLOP;
-      P.armR.rotation.x = cheer ? -2.55 - Math.abs(Math.sin(T.elapsed * 11)) * 0.35 : clutch ? -2.8 : -1 - play.rivalArm * 2.5;
-      P.armL.rotation.x = cheer ? -2.55 - Math.abs(Math.sin(T.elapsed * 11 + 1)) * 0.35 : clutch ? -2.8 : -0.4;
-      P.armL.rotation.z = clutch ? 0.55 : -0.1; P.armR.rotation.z = clutch ? -0.55 : 0.1;
+      P.armL.rotation.x = cheer ? -2.55 - Math.abs(Math.sin(T.elapsed * 11)) * 0.35 : clutch ? -2.8 : -1 - play.rivalArm * 2.5;
+      P.armR.rotation.x = cheer ? -2.55 - Math.abs(Math.sin(T.elapsed * 11 + 1)) * 0.35 : clutch ? -2.8 : -0.4;
+      P.armR.rotation.z = clutch ? 0.55 : -0.1; P.armL.rotation.z = clutch ? -0.55 : 0.1;
       P.head.rotation.x = clutch ? 0.3 : cheer ? -0.3 : 0;
     }
     if (phase === "done") { T.doneT -= dt; if (T.doneT <= 0) showResults(); }

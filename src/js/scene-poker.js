@@ -58,8 +58,8 @@
         actor.root.rotation.y = slot.yaw; actor.root.scale.x = actor.root.scale.y = actor.root.scale.z = 0.82;
         if (actor.parts.club) actor.parts.club.visible = false;
         if (actor.parts.gun) actor.parts.gun.visible = false;
-        if (actor.parts.legL) actor.parts.legL.rotation.x = -1.35;
         if (actor.parts.legR) actor.parts.legR.rotation.x = -1.35;
+        if (actor.parts.legL) actor.parts.legL.rotation.x = -1.35;
         view.actors[j] = actor; S.addChild(view.root, actor.root);
       }
       if (view.actors[j]) view.actors[j].root.visible = visibleActor;
@@ -227,7 +227,7 @@
     if (seatTable >= 0 && !pendingStand) sit(session.tables[seatTable].snapshot().seats.findIndex(s => s?.id === HERO));
     panel = BL.pokerHud.create(action, select); setTheme(theme.id); refresh(); setView(seatTable >= 0 && !pendingStand);
     scene.root = root; scene.camera = camera; scene.input = input;
-    scene.debug = { pilot, hud, crew: people, cavemen: people.cavemen, controls: pilot.controls, poker: { session, room, action, select, snapshots } };
+    scene.debug = { camera, pilot, hud, crew: people, cavemen: people.cavemen, controls: pilot.controls, poker: { session, room, action, select, snapshots } };
     if (new URLSearchParams(location.search).get("pokerLive") === "1") action("connect");
   };
   const update = (dt, elapsed) => {
@@ -244,8 +244,8 @@
       lights[o] = p.x; lights[o + 1] = 5.1; lights[o + 2] = p.z; lights[o + 3] = 14;
       lights[o + 4] = theme.tableLight[0]; lights[o + 5] = theme.tableLight[1]; lights[o + 6] = theme.tableLight[2];
       const v = room.tables[i]; v.pulse = Math.max(0, v.pulse - dt);
-      v.agent.parts.armR.rotation.x = -0.5 - Math.sin(v.pulse / 0.7 * Math.PI) * 0.75;
-      v.agent.parts.armL.rotation.x = -0.45;
+      v.agent.parts.armL.rotation.x = -0.5 - Math.sin(v.pulse / 0.7 * Math.PI) * 0.75;
+      v.agent.parts.armR.rotation.x = -0.45;
       v.dealCard.visible = v.pulse > 0 && snapshots[i].phase !== "waiting";
       v.dealCard.position.z = -2.4 + (1 - v.pulse / 0.7) * 2.1;
     }

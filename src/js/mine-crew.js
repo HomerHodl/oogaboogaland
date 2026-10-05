@@ -68,9 +68,9 @@
       // Carried in the right hand, out of sight until he swings it; the Fire Stopper takes the club's
       // place in the left while he carries one.
       const pick = createNode({ geometry: BL.mineModels.pickaxe(), position: { x: 0, y: cave.parts.club.position.y, z: cave.parts.club.position.z }, visible: false });
-      addChild(cave.parts.armR, pick);
+      addChild(cave.parts.armL, pick);
       const tool = createNode({ geometry: BL.mineModels.extinguisher(), position: { x: 0, y: cave.parts.club.position.y - 0.1, z: cave.parts.club.position.z + 0.05 }, rotation: { x: 0.3, y: 0, z: 0 }, visible: false });
-      addChild(cave.parts.armL, tool);
+      addChild(cave.parts.armR, tool);
       crew.push({
         index: i, name: roster[i].name, cave, node, home, baseY: cave.root.position.y, heading: Math.PI, phase: 0, active: i === 0, think: i * 0.07,
         idle: 0, seed: (i + 1) * 7919,
@@ -231,10 +231,10 @@
       const p = op.cave.parts;
       op.phase += dt * (moving ? 10.8 : working ? 6 : 0);
       const swing = moving ? Math.sin(op.phase) * 0.6 : 0;
-      p.legL.rotation.x = swing;
-      p.legR.rotation.x = -swing;
-      p.armL.rotation.x = working ? -0.9 + Math.sin(op.phase * 0.7) * 0.3 : -swing * 0.8;
-      p.armR.rotation.x = working ? -1.2 + Math.sin(op.phase) * 0.5 : swing * 0.8;
+      p.legR.rotation.x = swing;
+      p.legL.rotation.x = -swing;
+      p.armR.rotation.x = working ? -0.9 + Math.sin(op.phase * 0.7) * 0.3 : -swing * 0.8;
+      p.armL.rotation.x = working ? -1.2 + Math.sin(op.phase) * 0.5 : swing * 0.8;
       op.cave.root.position.y = op.baseY + (moving ? Math.abs(Math.sin(op.phase)) * 0.05 : 0);
     };
     // Strikes alternate hands: the pickaxe in the right, the club he always carries in the left. The
@@ -243,12 +243,12 @@
       const p = op.cave.parts, t = op.swingT / SWING;
       const a = t < WIND ? -0.2 - 2.7 * Math.sin(t / WIND * Math.PI / 2) : t < STRIKE ? -2.9 + 2.35 * (t - WIND) / (STRIKE - WIND) : -0.55;
       const club = op.swings % 2 === 0;
-      p.armL.rotation.x = club ? a : -0.2;
-      p.armR.rotation.x = club ? -0.2 : a;
+      p.armR.rotation.x = club ? a : -0.2;
+      p.armL.rotation.x = club ? -0.2 : a;
       // Struck with, the club takes crew.js's raised melee grip: a quarter turn that lines an axe's blade,
       // a can or a nunchaku handle up with the swing; the plain club is round and looked right either way.
       if (club) clubPose(op, true);
-      p.legL.rotation.x = p.legR.rotation.x = 0;
+      p.legR.rotation.x = p.legL.rotation.x = 0;
       op.cave.root.position.y = op.baseY;
     };
     const clubPose = (op, raised) => {

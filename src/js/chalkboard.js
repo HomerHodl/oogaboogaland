@@ -88,7 +88,7 @@
   };
   const create = ({ renderer, onOpen, onClose }) => {
     const dialog = document.getElementById("chalk-modal"), frame = document.getElementById("chalk-frame");
-    const canvas = document.getElementById("chalk-canvas"), ctx = canvas.getContext("2d", { alpha: false });
+    const canvas = document.getElementById("chalk-canvas"), ctx = canvas.getContext("2d", { alpha: false, willReadFrequently: true });
     const pointer = document.getElementById("chalk-pointer"), caret = document.getElementById("chalk-caret"), typeInput = document.getElementById("chalk-type-input"), hint = document.getElementById("chalk-hint");
     const eraser = document.getElementById("chalk-eraser"), chalk = document.getElementById("chalk-chalk");
     const keyboard = document.getElementById("chalk-keyboard"), clean = document.getElementById("chalk-clean"), reset = document.getElementById("chalk-reset");

@@ -45,8 +45,8 @@
 
   // ---- his pose --------------------------------------------------------------------------------------
 
-  // His arms at rest, in the angles models.buildCaveman's arms take (z outward on either side). The engine's `armR`
-  // hangs at +x, his left as he faces +z, by Gjallarhorn at his hip; `armL` at -x, his right, reaches forward to hold
+  // His arms at rest, in the angles models.buildCaveman's arms take (z outward on either side). The engine's `armL`
+  // hangs at +x, his left as he faces +z, by Gjallarhorn at his hip; `armR` at -x, his right, reaches forward to hold
   // the staff upright on the step's rim, the staff leaning out by `lean`. `GRIP` is the fist's middle down the arm.
   const REST = { x: -0.2, z: 0.2 };
   const STAFF = { x: -0.74, z: 0, lean: 0.05 };
@@ -348,12 +348,12 @@
       arm.fill(-2, 4, 8, 10, -1, 3, (x, y, z) => y === 8 ? T.gold : cloth(x, y, z));
       arm.fill(-1, 3, 11, 11, 0, 2, cloth);
       arm.set(1, 11, 1, T.goldLt);
-      k.parts.armL.geometry = k.parts.armR.geometry = k.vg(arm, { x: -1.5 * u, y: -11 * u, z: -1.5 * u });
+      k.parts.armR.geometry = k.parts.armL.geometry = k.vg(arm, { x: -1.5 * u, y: -11 * u, z: -1.5 * u });
       leg.fill(0, 3, 2, 4, 0, 3, T.navyDk);
       leg.fill(0, 3, 0, 1, 0, 4, T.boot);
       leg.fill(0, 3, 0, 1, 5, 5, (x, y) => y === 0 ? T.gold : T.goldDk);
       leg.fill(0, 3, 0, 0, 6, 6, T.gold);
-      k.parts.legL.geometry = k.parts.legR.geometry = k.vg(leg, { x: -2 * u, y: -5 * u, z: -2.5 * u });
+      k.parts.legR.geometry = k.parts.legL.geometry = k.vg(leg, { x: -2 * u, y: -5 * u, z: -2.5 * u });
     },
     // A navy great helm over the whole head, a block wider than it all round, its upright corners cut: gold bands at the
     // rim and the brow, a gold ridge from nape to brow with a crest along the crown, and below the visor a gold face
@@ -395,11 +395,11 @@
       const h = k.h, u = k.u, P = k.parts, T = tones(k), scale = () => ({ x: h, y: h, z: h }), gjallar = horn();
       P.club.visible = false;
       P.staff = createNode({ position: { x: 0, y: -GRIP * h, z: 0 }, scale: scale(), quaternion: quat.create(), geometry: staff() });
-      addChild(P.armL, P.staff);
+      addChild(P.armR, P.staff);
       P.horn = createNode({ position: { x: 0, y: -0.62 * h, z: 0.08 * h }, scale: scale(), quaternion: quat.create(), geometry: gjallar.geometry });
       P.bell = createNode({ position: { ...gjallar.bell } });
       addChild(P.horn, P.bell);
-      addChild(P.armR, P.horn);
+      addChild(P.armL, P.horn);
       P.cape = createNode({ position: { x: 0, y: CAPE.y * h, z: CAPE.z * h }, rotation: { x: CAPE.rest, y: 0, z: 0 }, geometry: k.vg(capeVox(T), { x: -0.5 * u, y: 0, z: -u }) });
       addChild(k.root, P.cape, createNode({ geometry: k.vg(skirtVox(T), { x: -5.5 * u, y: 0, z: -4 * u }) }), createNode({ scale: scale(), geometry: medallion() }));
     }
@@ -629,11 +629,11 @@
       body.rotation.y = s.look * BODY_SHARE * keep;
       parts.head.rotation.y = s.look * (1 - BODY_SHARE) * keep;
       parts.head.rotation.x = clamp(s.pitch + nod, PITCH[0], PITCH[1]) * keep + BLOW.pitch * lift;
-      parts.armR.rotation.x = (REST.x + breath * 0.015) * keep + BLOW.x * lift;
-      parts.armR.rotation.z = REST.z * keep + BLOW.z * lift;
-      parts.armL.rotation.x = STAFF.x + (HAIL.x - STAFF.x) * s.hail;
-      parts.armL.rotation.z = -(STAFF.z + (HAIL.z - STAFF.z + Math.sin(s.t * 6.5) * 0.09) * s.hail);
-      upright(parts.staff.quaternion, parts.armL);
+      parts.armL.rotation.x = (REST.x + breath * 0.015) * keep + BLOW.x * lift;
+      parts.armL.rotation.z = REST.z * keep + BLOW.z * lift;
+      parts.armR.rotation.x = STAFF.x + (HAIL.x - STAFF.x) * s.hail;
+      parts.armR.rotation.z = -(STAFF.z + (HAIL.z - STAFF.z + Math.sin(s.t * 6.5) * 0.09) * s.hail);
+      upright(parts.staff.quaternion, parts.armR);
       for (let i = 0; i < 4; i++) q[i] = HANG[i] * keep + BLOW.q[i] * lift;
       quat.normalize(q);
       s.gust = damp(s.gust, 0, 1.4, dt);

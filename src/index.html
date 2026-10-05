@@ -155,7 +155,6 @@
         <h1><a class="home-link" href="./" title="Back to the island"><span data-sign>Ooga Booga Land</span></a></h1>
         <p data-scene="hub" id="subtitle">an island of caves</p>
         <p data-scene="lab" hidden>EntropyLab cave</p>
-        <p data-scene="pool" hidden>Mempool cave</p>
         <p data-scene="factory" hidden>Lightning Factory</p>
         <p data-scene="bifrost" hidden>₿IFRÖST</p>
         <p data-scene="arcade" hidden>Ooga Arcade</p>
@@ -194,13 +193,6 @@
         <button type="button" data-preset="bunks">Bunks</button>
         <button type="button" data-preset="bench">Bench</button>
         <button type="button" class="leave" data-action="leave" data-scene="lab" hidden>Leave<span> cave</span></button>
-      </nav>
-      <nav class="presets" aria-label="Mempool cave" data-scene="pool" hidden>
-        <button type="button" data-preset="ladder">Ladder</button>
-        <button type="button" data-preset="tiers">Tiers</button>
-        <button type="button" data-preset="chain">Chain</button>
-        <button type="button" data-preset="epoch">Epoch</button>
-        <button type="button" class="leave" data-action="leave">Leave<span> cave</span></button>
       </nav>
       <nav class="presets" aria-label="Lightning Factory" data-scene="factory" hidden>
         <button type="button" data-preset="core">Core</button>
@@ -381,6 +373,14 @@
       </section>
       <footer class="sheet-foot">
         <span class="quality" id="quality" aria-live="polite"></span>
+        <span class="account" id="account" hidden>
+          <span class="account-name" id="account-name" hidden></span>
+          <button type="button" class="link" data-action="account-login" id="account-login">Sign in with GitHub</button>
+          <span class="account-room" id="account-room" hidden></span>
+          <button type="button" class="link" data-action="account-rejoin" id="account-rejoin" hidden>Play here</button>
+          <button type="button" class="link" data-action="account-voice" id="account-voice" aria-pressed="false" hidden>Join voice</button>
+          <button type="button" class="link" data-action="account-logout" id="account-logout" hidden>Sign out</button>
+        </span>
         <button type="button" class="link" data-action="reset">Reset demo</button>
       </footer>
     </aside>
@@ -403,8 +403,14 @@
           <span class="detached-dot" data-detached-preset="mirror" title="Mirror"></span>
           <span class="detached-dot" data-detached-preset="underground" title="HQ"></span>
           <span class="detached-dot" data-detached-preset="basement" title="Basement"></span>
+          <span class="detached-dot" data-detached-preset="mempool" title="Mempool"></span>
         </span>
         <span class="detached-destination-name" id="detached-destination-name" aria-live="polite"></span>
+      </button>
+      <button type="button" class="mode-hud" id="own-ooga-hud" data-action="mode-retake" data-selected="true"
+        aria-label="Return to your Ooga" title="Return to your Ooga" hidden>
+        <canvas class="mode-face-icon" id="own-ooga-face-icon" width="48" height="48" aria-hidden="true"></canvas>
+        <span class="mode-health" id="own-ooga-health" role="progressbar" aria-label="Your Ooga's health" aria-valuemin="0" aria-valuemax="25" aria-valuenow="25"><span id="own-ooga-health-fill"></span></span>
       </button>
       <button type="button" class="mode-hud" id="mode-hud" data-action="mode-toggle" data-selected="false" data-shooter="false"
         aria-label="Character controls" title="Character controls" hidden>
@@ -436,7 +442,8 @@
         </div>
       </button>
       <button type="button" class="gorilla-hud" id="gorilla-smash-hud" data-action="gorilla-smash"
-        aria-label="Ground smash" title="Ground smash (1)" hidden>
+        aria-label="Ground smash; hold for double damage" title="Ground smash · hold for double damage (1)" hidden>
+        <span class="weapon-toggle">
         <svg class="gorilla-action-icon" viewBox="0 0 32 32" shape-rendering="crispEdges" aria-hidden="true">
           <path fill="#1d1a18" d="M2 9h8v16H2z" />
           <path fill="#393634" d="M3 11h6v12H3z" />
@@ -453,6 +460,13 @@
           <path fill="#403b36" d="M23 11h2v2h-2v1h-1v-2h1z" />
           <path fill="#24211e" d="M4 14h2v3H4zM6 19h3v2H6zM9 10h2v3H9z" />
         </svg>
+        </span>
+        <span class="equipment-compact primary-readout">
+          <span class="primary-strength" id="gorilla-strength" role="meter" aria-label="Ground smash power"
+            aria-valuemin="0" aria-valuemax="200" aria-valuenow="100" aria-valuetext="100% of normal smash damage">
+            <span class="primary-strength-fill" id="gorilla-strength-fill"></span>
+          </span>
+        </span>
       </button>
       <button type="button" class="primary-hud" id="primary-hud" data-action="weapon-primary" data-equipped="false" data-charging="false"
         aria-label="Equip primary melee weapon" aria-pressed="false" title="Equip primary melee weapon (1)" hidden>
@@ -1569,6 +1583,8 @@ Then run npm run build and ONLY=characters node test/run.mjs.</pre>
   <script src="js/dressing-mediterranean.js"></script>
   <script src="js/chalkboard.js"></script>
   <script src="js/lifehash.js"></script>
+  <script src="js/contributor-identities.js"></script>
+  <script src="js/activity-repos.js"></script>
   <script src="js/jumbotron-data.js"></script>
   <script src="js/jumbotron.js"></script>
   <script src="js/headquarters-models.js"></script>
@@ -1597,6 +1613,8 @@ Then run npm run build and ONLY=characters node test/run.mjs.</pre>
   <script src="js/mine-rigs.js"></script>
   <script src="js/game.js"></script>
   <script src="js/hud.js"></script>
+  <script src="js/net.js"></script>
+  <script src="js/voice.js"></script>
   <script src="js/fx.js"></script>
   <script src="js/camera-cover.js"></script>
   <script src="js/crew.js"></script>
@@ -1612,7 +1630,10 @@ Then run npm run build and ONLY=characters node test/run.mjs.</pre>
   <script src="js/drop-models.js"></script>
   <script src="js/rocket.js"></script>
   <script src="js/rocket-models.js"></script>
-    <script src="js/pool-models.js"></script>
+  <script src="js/pool-layout.js"></script>
+  <script src="js/pool-models.js"></script>
+  <script src="js/pool-water.js"></script>
+  <script src="js/pool-paintings.js"></script>
   <script src="js/pool-wildlife.js"></script>
   <script src="js/timechain-models.js"></script>
   <script src="js/timechain-beer.js"></script>
@@ -1621,6 +1642,8 @@ Then run npm run build and ONLY=characters node test/run.mjs.</pre>
   <script src="js/solid-props.js"></script>
   <script src="js/breakables.js"></script>
   <script src="js/agent.js"></script>
+  <script src="js/remote-players.js"></script>
+  <script src="js/npc-sync.js"></script>
   <script src="js/ooga-portal-models.js"></script>
   <script src="js/ooga-portal.js"></script>
   <script src="js/lab-phase.js"></script>
@@ -1629,11 +1652,11 @@ Then run npm run build and ONLY=characters node test/run.mjs.</pre>
   <script src="js/clanker-play.js"></script>
   <script src="js/scene-hub.js"></script>
   <script src="js/scene-lab.js"></script>
-    <script src="js/scene-pool.js"></script>
   <script src="js/factory-feed.js"></script>
   <script src="js/factory-mock.js"></script>
   <script src="js/factory-models.js"></script>
   <script src="js/factory-window.js"></script>
+  <script src="js/factory-greeter.js"></script>
   <script src="js/scene-factory.js"></script>
   <script src="js/arcade-models.js"></script>
   <script src="js/arcade-games.js"></script>

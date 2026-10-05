@@ -26,14 +26,14 @@
   const MELEE_READY_HOLD = 0.5, MELEE_CARRY_BLEND = 0.25;
   const GUN_BASH_TIME = 0.28, GUN_BASH_IMPACT = 0.13, GUN_BASH_POWER = 1;
   const clearMeleeThrust = (cave) => {
-    const w = cave.weapon, p = cave.parts.armL.position;
+    const w = cave.weapon, p = cave.parts.armR.position;
     p.x -= w.meleeOffsetX; p.y -= w.meleeOffsetY; p.z -= w.meleeOffsetZ;
     w.meleeOffsetX = w.meleeOffsetY = w.meleeOffsetZ = 0;
   };
   const clearGunBashThrust = (cave) => {
     const offset = cave.weapon.bashOffset;
-    cave.parts.armL.position.z -= offset;
     cave.parts.armR.position.z -= offset;
+    cave.parts.armL.position.z -= offset;
     cave.weapon.bashOffset = 0;
   };
   const AXE_STICK_DELAY = 1, AXE_STICK_BLEND = 0.3, AXE_STICK_ARM = -1.5;
@@ -85,7 +85,7 @@
     models.box({ w: 0.12, h: 0.035, d: 0.045, color: "#f2b83b", emissive: 0.6, offset: { x: -0.085, y: 0.035 } }),
     models.box({ w: 0.12, h: 0.035, d: 0.045, color: "#f2b83b", emissive: 0.6, offset: { x: 0.085, y: 0.035 } })
   );
-  const BODY_PARTS = ["torso", "head", "legL", "legR", "armL", "armR"];
+  const BODY_PARTS = ["torso", "head", "legR", "legL", "armR", "armL"];
   const SWAG_ANCHORS = ["hat", "face"];
   const FAN_STANDOFF = 1.1;
   const FAN_ARC = 2.2;
@@ -116,7 +116,7 @@
   const WANDER_SPEED = 1.3, RUSH_SPEED = 2.8, PLAYER_SPEED = WALK.speed;
   const PLAYER_STEP = 0.125;
   const LADDER_SPEED = 2.4;
-  const SHOULDER_GAP = 0.68, SHOULDER_REACH = 1.3, SHOULDER_TWIST = 1.05;
+  const SHOULDER_GAP = 0.68, SHOULDER_TOUCH = 1.1, SHOULDER_REACH = 1.3, SHOULDER_TWIST = 1.05;
   // A body the scene owns rather than the roster can be bigger than an Ooga, so
   // the gap kept from it is wider than the one walkers keep from each other.
   const OUTSIDE_GAP = 0.86;
@@ -320,7 +320,7 @@
     clipHeadToPillow(cave.parts.head);
     return frame.minimum;
   };
-  const measureSleeper = (node, head, headNode, feet = false, legL, legR) => {
+  const measureSleeper = (node, head, headNode, feet = false, legR, legL) => {
     if (!node.visible) return;
     if (node.geometry) {
       const verts = node.geometry.verts, m = node.world;
@@ -334,7 +334,7 @@
         }
       }
     }
-    for (const child of node.children) measureSleeper(child, head || child === headNode, headNode, feet || child === legL || child === legR, legL, legR);
+    for (const child of node.children) measureSleeper(child, head || child === headNode, headNode, feet || child === legR || child === legL, legR, legL);
   };
   const measureSleepPitch = (cave, pitch) => {
     const scale = cave.parts.torso.scale.y;
@@ -344,7 +344,7 @@
     cave.root.quaternion = cave.sleepTargetRotation;
     BL.scene.updateWorld(cave.root);
     SLEEP_BOUNDS.min = SLEEP_BOUNDS.headMin = SLEEP_BOUNDS.coreMin = SLEEP_BOUNDS.feetMin = Infinity;
-    measureSleeper(cave.root, false, cave.parts.head, false, cave.parts.legL, cave.parts.legR);
+    measureSleeper(cave.root, false, cave.parts.head, false, cave.parts.legR, cave.parts.legL);
     // Fit both ends of the breathing cycle once so it cannot deepen settled mattress compression later.
     cave.parts.torso.scale.y = 1.015;
     BL.scene.updateWorld(cave.parts.torso, cave.root.world);
@@ -423,15 +423,19 @@
     const workSites = ctx.workSites?.length ? ctx.workSites : ctx.workRoute ? [{ repo: "oogaboogax/entropylab", route: ctx.workRoute, position: ctx.workPosition, target: ctx.workTarget }] : null;
     const workBodyTarget = ctx.workSites?.length ? ctx.workTarget : null;
     const workCompanionTarget = ctx.workCompanionTarget;
-    // A site is eligible when the worker is fresh in its repo, or when it is
+    // A site is eligible when the worker is fresh in either of its repos, or when it is
     // the fallback (namesake) cave and the worker's fresh repo has no cave of
     // its own. An override or maintainer may visit every work cave.
     const siteRepos = new Set();
-    if (workSites) for (const site of workSites) siteRepos.add(site.repo);
+    if (workSites) for (const site of workSites) {
+      siteRepos.add(site.repo);
+      if (site.additionalRepo) siteRepos.add(site.additionalRepo);
+    }
     const siteActive = (cave, site) => {
       if (contributors.debugRoster) return contributors.hasRecentActivity(cave.contributor, site.repo);
       if (cave.override === "working" || cave.traits.maintainer || !contributors.hasRecentActivity) return true;
-      if (contributors.hasRecentActivity(cave.contributor, site.repo)) return true;
+      if (contributors.hasRecentActivity(cave.contributor, site.repo)
+        || site.additionalRepo && contributors.hasRecentActivity(cave.contributor, site.additionalRepo)) return true;
       if (!site.fallback) return false;
       for (const repo of cave.contributor.activity.keys()) {
         if (!siteRepos.has(repo) && contributors.hasRecentActivity(cave.contributor, repo)) return true;
@@ -471,7 +475,7 @@
       cave.parts.gunFlash = createNode({ geometry: GUN_FLASH, position: { x: 0, y: GUN_MUZZLE_Y * h, z: 0.695 * h },
         scale: { x: h, y: h, z: h }, visible: false });
       addChild(cave.parts.gun, cave.parts.gunFlash);
-      cave.gunViewNodes = [cave.parts.armL, cave.parts.fingersL, cave.parts.gunBody, cave.parts.gunFlash, ...cave.parts.gunBananas];
+      cave.gunViewNodes = [cave.parts.armR, cave.parts.fingersR, cave.parts.gunBody, cave.parts.gunFlash, ...cave.parts.gunBananas];
       let weapon = world.weapons.get(contributor.name);
       if (!weapon) { weapon = { equipped: false, ammo: AMMO_MAX }; world.weapons.set(contributor.name, weapon); }
       if (weapon.primaryOwned === undefined) weapon.primaryOwned = true;
@@ -552,12 +556,12 @@
         pileApproach: false,
         index: i,
         bedroll: null,
-        bedTravel: { mode: "", route: null, plan: null, index: 0, toBed: false, bed: null, manual: false, pose: "left", roll: 1, phase: 0, blocked: 0, retry: 0, fromX: 0, fromY: 0, fromZ: 0, fromYaw: 0, fromHeadX: 0, fromHeadY: 0, fromHeadZ: 0, fromArmLX: 0, fromArmRX: 0, fromArmLZ: 0, fromArmRZ: 0, armLX: 0, armRX: 0, armLZ: 0, armRZ: 0, compression: SLEEP_COMPRESSION, fromCompression: SLEEP_COMPRESSION, restY: 0, restZ: 0, pitch: 0, headDrop: 0, headDropX: 0, headDropY: 0, headDropZ: 0 },
+        bedTravel: { mode: "", route: null, plan: null, index: 0, toBed: false, bed: null, manual: false, pose: "left", roll: 1, phase: 0, blocked: 0, retry: 0, fromX: 0, fromY: 0, fromZ: 0, fromYaw: 0, fromHeadX: 0, fromHeadY: 0, fromHeadZ: 0, fromArmRX: 0, fromArmLX: 0, fromArmRZ: 0, fromArmLZ: 0, armRX: 0, armLX: 0, armRZ: 0, armLZ: 0, compression: SLEEP_COMPRESSION, fromCompression: SLEEP_COMPRESSION, restY: 0, restZ: 0, pitch: 0, headDrop: 0, headDropX: 0, headDropY: 0, headDropZ: 0 },
         sleepHead: { x: 0, y: 0, z: 0 },
         sleepWeapons: createNode({ visible: false }),
         headLookRotation: math.quat.create(), headLookPosition: { x: 0, y: 0, z: 0 },
         sleepRotation: math.quat.create(), sleepFromRotation: math.quat.create(), sleepTargetRotation: math.quat.create(),
-        sleepParts: { armLX: cave.parts.armL.position.x, armRX: cave.parts.armR.position.x, headX: cave.parts.head.position.x, headY: cave.parts.head.position.y, headZ: cave.parts.head.position.z, equipment: cave.root.children.filter((node) => !BODY_PARTS.some((key) => cave.parts[key] === node)) },
+        sleepParts: { armRX: cave.parts.armR.position.x, armLX: cave.parts.armL.position.x, headX: cave.parts.head.position.x, headY: cave.parts.head.position.y, headZ: cave.parts.head.position.z, equipment: cave.root.children.filter((node) => !BODY_PARTS.some((key) => cave.parts[key] === node)) },
         phase: i * 1.37,
         baseY: cave.root.position.y,
         restLower: 0,
@@ -602,7 +606,7 @@
         catchT: 0,
         yawn: 0,
         yawnAt: 12 + i * 4.3 + Math.random() * 20,
-        leap: { vx: 0, vz: 0, land: 0 },
+        leap: { vx: 0, vz: 0, land: 0, thrown: false },
         highlightTarget: 0,
         highlight: 0,
         nextBuildAt: 8 + i * 2.5 + Math.random() * 6,
@@ -614,6 +618,7 @@
         jetRecovering: false,
         cloudSupport: null,
         riding: { support: null, x: 0, y: 0, z: 0, vy: 0, updated: false, continuous: false },
+        grabbedBy: null,
         viewLift: 0,
         peek: 0,
         act: { kind: "eat", until: 0, trips: 0, sayAt: 0, said: true, phase: 0, spot: { x: 0, z: 0, ry: NaN, sit: false } },
@@ -651,7 +656,10 @@
       cavemen.set(contributor.name, cave);
       crewList.push(cave);
     });
-    const stateOf = (cave) => cave.override || contributors.stateFor(cave.contributor);
+    const stateOf = (cave) => {
+      const activity = contributors.stateFor(cave.contributor);
+      return activity === "away" && !ctx.playerName ? "away" : cave.override || activity;
+    };
     const groundY = (cave) => {
       const p = cave.root.position;
       const feet = p.y - cave.baseY + cave.restLower;
@@ -659,15 +667,26 @@
     };
     const grounded = (cave) => cave.bedTravel.mode === "rest" || cave.hop === 0 && cave.hopV <= 0 && Math.abs(cave.root.position.y + cave.restLower - groundY(cave)) < 1e-6;
     const atPile = (cave) => cave.act.kind === "eat" || cave.act.kind === "rush";
+    const sleepPriority = (a, b) => (b.contributor.lastContributionAt || b.contributor.lastCommitAt) -
+      (a.contributor.lastContributionAt || a.contributor.lastCommitAt) || a.index - b.index;
     // Rooms are reserved only for this nap; the lab keeps its existing bedrolls.
     const claimBedroll = (cave) => {
-      if (cave.bedroll) return true;
+      if (cave.bedroll && !cave.bedroll.outdoor) return true;
       if (ctx.bedRoute) {
         let available = 0;
         for (const bed of bedrolls) if (!bed.sleeper) available++;
-        if (!available) return false;
-        let chosen = randomInt(available);
-        for (const bed of bedrolls) if (!bed.sleeper && chosen-- === 0) { cave.bedroll = bed; bed.sleeper = cave; return true; }
+        // Reserve vacancies for more recent sleepers even when their update
+        // comes later in stable roster order. Never evict an occupied bed.
+        if (available) for (const other of crewList) {
+          if (other !== cave && other !== player && (!other.bedroll || other.bedroll.outdoor) && !other.camp.burning && !other.camp.panic.active
+            && stateOf(other) === "sleeping" && sleepPriority(other, cave) < 0) available--;
+        }
+        if (available > 0) for (const bed of bedrolls) if (!bed.sleeper) {
+          releaseBedroll(cave); cave.bedroll = bed; bed.sleeper = cave; return true;
+        }
+        if (cave.bedroll) return true;
+        for (const bed of ctx.outdoorBedrolls || []) if (!bed.sleeper) { cave.bedroll = bed; bed.sleeper = cave; return true; }
+        return false;
       }
       cave.bedroll = bedrolls.find((bed) => !bed.sleeper) || bedrolls[cave.index % bedrolls.length];
       if (!cave.bedroll.sleeper) cave.bedroll.sleeper = cave;
@@ -680,7 +699,7 @@
       cave.bedroll = null;
     };
     const stateCounts = () => {
-      const counts = { working: 0, chilling: 0, sleeping: 0 };
+      const counts = { working: 0, chilling: 0, sleeping: 0, away: 0 };
       for (let i = 0; i < crewList.length; i++) counts[crewList[i].state]++;
       return counts;
     };
@@ -727,7 +746,7 @@
     const takeBedWeapons = (cave) => {
       const rest = cave.sleepWeapons, parts = cave.parts;
       if (parts.gun.parent !== rest) return;
-      removeChild(rest, parts.club); addChild(parts.armL, parts.club);
+      removeChild(rest, parts.club); addChild(parts.armR, parts.club);
       removeChild(rest, parts.gun); addChild(cave.root, parts.gun);
       if (cave.jet && !builtInJetpack(cave) && cave.jet.node.parent === rest) {
         removeChild(rest, cave.jet.node);
@@ -757,7 +776,7 @@
       removeChild(parts.gun.parent, parts.gun); addChild(rest, parts.gun);
       setVec(rest.position, bed.x, bed.y === undefined ? 0 : bed.y, bed.z);
       setVec(rest.rotation, 0, bed.node ? bed.node.rotation.y : (bed.ry || 0) - Math.PI / 2, 0);
-      rest.visible = cave.root.visible;
+      rest.visible = cave.root.visible && !bed.outdoor;
       rest.matrixLiving = !!cave.root.matrixLiving;
       parts.club.visible = cave.weapon.primaryOwned;
       parts.gun.visible = cave.weapon.secondaryOwned;
@@ -792,29 +811,34 @@
       Object.assign(cave.root.rotation, { x: 0, y: 0, z: 0 });
       cave.root.quaternion = null;
       Object.assign(cave.root.scale, { x: 1, y: 1, z: 1 });
-      Object.assign(cave.parts.armL.rotation, { x: -0.2, y: 0, z: -0.12 });
-      Object.assign(cave.parts.armR.rotation, { x: -0.2, y: 0, z: 0.12 });
-      cave.parts.armR.quaternion = cave.parts.armL.quaternion = null;
-      cave.parts.legL.rotation.x = 0;
+      Object.assign(cave.parts.armR.rotation, { x: -0.2, y: 0, z: -0.12 });
+      Object.assign(cave.parts.armL.rotation, { x: -0.2, y: 0, z: 0.12 });
+      cave.parts.armL.quaternion = cave.parts.armR.quaternion = null;
       cave.parts.legR.rotation.x = 0;
-      cave.parts.legL.rotation.z = cave.parts.legR.rotation.z = 0;
+      cave.parts.legL.rotation.x = 0;
+      cave.parts.legR.rotation.z = cave.parts.legL.rotation.z = 0;
       cave.parts.head.rotation.x = 0;
       cave.parts.head.rotation.y = 0;
       cave.parts.head.position.x = cave.sleepParts.headX;
       cave.parts.head.position.y = cave.sleepParts.headY + cave.viewLift;
       cave.parts.head.position.z = cave.sleepParts.headZ;
-      cave.parts.armL.position.x = cave.sleepParts.armLX;
       cave.parts.armR.position.x = cave.sleepParts.armRX;
+      cave.parts.armL.position.x = cave.sleepParts.armLX;
       cave.parts.torso.scale.y = 1;
       cave.parts.club.visible = cave.weapon.primaryOwned;
       for (const node of cave.sleepParts.equipment) node.visible = true;
+      for (const node of cave.swagNodes) node.visible = true;
       if (builtInJetpack(cave)) cave.parts.jetpack.visible = !!cave.jet || cave.rocketJumpTime > 0;
       cave.parts.snack.visible = false;
       cave.parts.gun.visible = false;
       cave.yawn = 0;
     };
+    // Online (the green dot) is a player driving this Ooga: a signed-in player elsewhere (`remoteControlled`,
+    // set by the hub's remote-player pool while it shows them), or this visitor, when the scene's
+    // `localOnline` says this page counts (signed in, on a page with accounts); without it, any driver does.
     const refreshRosterRow = (cave) => {
-      hud.setRosterRow(cave.traits.name, cave.state, contributors.ageLabel(cave.contributor), cave.humanControlled);
+      const local = cave.humanControlled && (!ctx.localOnline || ctx.localOnline());
+      hud.setRosterRow(cave.traits.name, cave.state, contributors.ageLabel(cave.contributor), local || !!cave.remoteControlled);
     };
     let player = null;
     const magazineCount = (cave = player) => cave ? cave.weapon.spareAmmo.length : 0;
@@ -855,8 +879,9 @@
       const magazineHandRotation = magazineModel.handRotation, magazineArmRotation = magazineModel.armRotation;
       const magazineArmStart = magazineModel.armStart, magazineArmRest = magazineModel.armRest;
       const node = magazineModel.node, loading = reloadingSpare(holder) && holder.weapon.reloadMagazine === index;
+      node.visible = !(holder.state === "sleeping" && holder.bedroll?.outdoor);
       const swapping = holder.weapon.swapTime > 0 && holder.weapon.swapMagazine === index;
-      const parent = swapping ? holder.root : loading ? holder.parts.armL : holder.parts.torso;
+      const parent = swapping ? holder.root : loading ? holder.parts.armR : holder.parts.torso;
       const attached = !node.parent;
       if (node.parent !== parent) {
         if (node.parent) removeChild(node.parent, node);
@@ -864,12 +889,12 @@
       }
       const h = holder.traits.height;
       const hip = holder.clubTorsoBounds.max[0];
-      const beltZ = holder.parts.legR.position.z + (holder.weapon.spareAmmo.length === 2 ? index === fullestMagazine(holder) ? 0.095 : -0.085 : 0) * h;
+      const beltZ = holder.parts.legL.position.z + (holder.weapon.spareAmmo.length === 2 ? index === fullestMagazine(holder) ? 0.095 : -0.085 : 0) * h;
       node.poseYaw = swapping ? holder.parts.torso.poseYaw : 0;
       if (swapping) {
         // The left hand brings the spare from its hip to the lowered rifle,
         // then returns the old magazine to its ranked place on the left hip.
-        const parts = holder.parts, torso = parts.torso, gun = parts.gun, arm = parts.armR;
+        const parts = holder.parts, torso = parts.torso, gun = parts.gun, arm = parts.armL;
         const progress = 1 - holder.weapon.swapTime / MAGAZINE_SWAP_TIME;
         const blend = ease.inOutQuad(1 - Math.abs(progress * 2 - 1));
         if (arm.quaternion) magazineArmRest.set(arm.quaternion);
@@ -1018,6 +1043,9 @@
         if (step.done) { planQueue.shift(); finishBedRoute(cave, step.value); }
       }
     };
+    // Feet below the home island's surface mean its headquarters only over the home island itself: a scene with
+    // ground lower than that elsewhere (the Mempool island's chamber) says where through `ctx.underHome`.
+    const underHome = (x, z) => !ctx.underHome || ctx.underHome(x, z);
     const startBedRoute = (cave, bed, toBed) => {
       const travel = cave.bedTravel;
       cave.avoidance.tx = NaN;
@@ -1082,7 +1110,7 @@
       r.visible = true;
       if (!visible && !settle) setVec(r.position, walkIn.x, cave.baseY + groundAt(walkIn.x, walkIn.z, Infinity, Infinity, cave), walkIn.z);
       if (claimBedroll(cave)) {
-        if (settle) {
+        if (settle || cave.bedroll.outdoor) {
           // An existing sleeper is already in bed on entry. Reuse the final
           // lie-down pose without planning or animating a trip from the pile.
           cave.walk = null;
@@ -1094,7 +1122,19 @@
           runBed(cave, 0);
         } else startBedRoute(cave, cave.bedroll, true);
       }
-      else { cave.bedTravel.mode = "waiting"; cave.bedTravel.toBed = true; cave.bedTravel.retry = 1; }
+      else {
+        // A full HQ must not leave new sleepers at the model origin inside the pile.
+        // Reuse the scene's collision- and occupancy-checked recovery spots; if all
+        // are occupied, remain hidden and retry instead of stacking at a fallback.
+        cave.walk = null;
+        cave.act.kind = "bed";
+        if (!visible || settle) {
+          r.visible = !!ctx.npcRecoverySpot && ctx.npcRecoverySpot(cave, NPC_RECOVERY_SPOT);
+          if (r.visible) setVec(r.position, NPC_RECOVERY_SPOT.x, cave.baseY + NPC_RECOVERY_SPOT.y, NPC_RECOVERY_SPOT.z);
+          cave.hop = cave.hopV = 0;
+        }
+        cave.bedTravel.mode = "waiting"; cave.bedTravel.toBed = true; cave.bedTravel.retry = 1;
+      }
       refreshRosterRow(cave);
     };
     const applyState = (cave, state, settle = false) => {
@@ -1141,8 +1181,8 @@
         r.visible = !cave.bedroll.hidden;
         Object.assign(r.position, { x: cave.bedroll.x, y: cave.bedroll.y === undefined ? 0.42 : cave.bedroll.y, z: cave.bedroll.z });
         Object.assign(r.rotation, { x: cave.bedroll.rx || 0, y: cave.bedroll.ry || 0, z: cave.bedroll.rz === undefined ? -Math.PI / 2 : cave.bedroll.rz });
-        cave.parts.armL.rotation.x = -1.5;
         cave.parts.armR.rotation.x = -1.5;
+        cave.parts.armL.rotation.x = -1.5;
         putBedWeapons(cave);
         if (r.visible) popNode(r);
       } else {
@@ -1152,7 +1192,14 @@
     };
     const beginWalk = (cave, state = "working") => {
       if (cave === player && cave.bedTravel.manual && cave.state === "sleeping") { wakePlayer(); return; }
+      if (cave.state === "away") { applyState(cave, state, true); return; }
       if (ctx.bedRoute && cave.state === "sleeping") {
+        // An overflow sleeper may have neither a bed nor a visible waiting spot.
+        // Settle a newly active Ooga normally instead of routing from an absent bed.
+        if (!cave.bedroll || cave.bedroll.outdoor) {
+          standFromBed(cave); releaseBedroll(cave);
+          cave.state = "away"; applyState(cave, state, true); return;
+        }
         const bed = cave.bedroll;
         standFromBed(cave);
         releaseBedroll(cave);
@@ -1289,8 +1336,12 @@
       const next = new Map(entries.map((cave) => [cave, stateOf(cave)]));
       fanRadius = wantedFanRadius();
       assignFanSlots(entries, (cave) => next.get(cave) === "working");
+      // Waking/away actors release beds first; sleepers then claim newest-first.
+      entries.sort((a, b) => Number(next.get(a) === "sleeping") - Number(next.get(b) === "sleeping") ||
+        (next.get(a) === "sleeping" ? sleepPriority(a, b) : a.index - b.index));
       for (const cave of entries) {
         const target = next.get(cave);
+        if (target === "away") { applyState(cave, target, settle); refreshRosterRow(cave); continue; }
         if (cave === player) {
           if (target !== "sleeping" && !cave.bedTravel.manual) cave.state = target;
           refreshRosterRow(cave);
@@ -1350,7 +1401,7 @@
     const weaponStart = { x: 0, y: 0, z: 0 };
     const weaponOrigin = (out, cave = player, melee = false) => {
       BL.scene.updateWorld(cave.root);
-      const node = melee ? cave.parts.armL : cave.parts.gun, h = cave.traits.height;
+      const node = melee ? cave.parts.armR : cave.parts.gun, h = cave.traits.height;
       math.mat4.transformPoint(MUZZLE, node.world, 0, melee ? 0 : GUN_MUZZLE_Y * h, melee ? 0 : GUN_MUZZLE_Z * h);
       return setVec(out, MUZZLE[0], MUZZLE[1], MUZZLE[2]);
     };
@@ -1425,7 +1476,7 @@
       }
       const distance = Math.sqrt(nearest), scale = distance > 0 ? Math.min(1, 0.45 * cave.traits.height / distance) : 0;
       dx *= scale; dy *= scale; dz *= scale;
-      const arm = cave.parts.armL, inverse = meleeContactInverse;
+      const arm = cave.parts.armR, inverse = meleeContactInverse;
       math.mat4.invert(inverse, arm.parent.world);
       const x = inverse[0] * dx + inverse[4] * dy + inverse[8] * dz;
       const y = inverse[1] * dx + inverse[5] * dy + inverse[9] * dz;
@@ -1461,7 +1512,7 @@
     const bulletPool = Array.from({ length: Math.max(32, workBodyTarget ? crewList.length * BURST_ROUNDS : 0) }, () => {
       const node = createNode({ geometry: models.bananaGeometry(), scale: { x: models.BANANA_AMMO_SCALE, y: models.BANANA_AMMO_SCALE, z: models.BANANA_AMMO_SCALE }, visible: false, matrixLiving: !!ctx.matrixLivingPile });
       addChild(root, node);
-      return { node, life: 0, duration: .22, arc: 0, tomato: false, source: null, feedback: false, workShot: false, site: -1, aimSample: 0, from: { x: 0, y: 0, z: 0 }, to: { x: 0, y: 0, z: 0 } };
+      return { node, life: 0, duration: .22, arc: 0, tomato: false, source: null, feedback: false, workShot: false, visual: false, site: -1, aimSample: 0, from: { x: 0, y: 0, z: 0 }, to: { x: 0, y: 0, z: 0 } };
     });
     let bulletIdx = 0, tomatoesThrown = 0, throwCooldown = 0, tomatoGeometry = null;
     const clearProjectiles = () => { for (const b of bulletPool) { b.life=0; b.node.visible=false; b.source=null; } throwCooldown=0; };
@@ -1476,7 +1527,7 @@
       setVec(b.to,b.from.x+dx*k,b.from.y+dy*k-1.4,b.from.z+dz*k);
       if(ctx.clipProjectileTarget)ctx.clipProjectileTarget(b.from,b.to);
       b.node.geometry=tomatoGeometry;setVec(b.node.scale,1,1,1);setVec(b.node.position,b.from.x,b.from.y,b.from.z);
-      b.node.visible=true;b.duration=b.life=.8;b.arc=1.8;b.tomato=true;b.source=cave;b.feedback=b.workShot=false;
+      b.node.visible=true;b.duration=b.life=.8;b.arc=1.8;b.tomato=true;b.source=cave;b.feedback=b.workShot=b.visual=false;
       throwCooldown=.45;tomatoesThrown++;ctx.onTomatoThrow?.(b.from);return true;
     };
     const fireBullet = (cave, spot) => {
@@ -1520,7 +1571,23 @@
       setVec(node.position, from.x, from.y, from.z);
       node.visible = true;
       bullet.life = 0.22;
-      bullet.source = cave; bullet.feedback = false;
+      bullet.source = cave; bullet.feedback = false; bullet.visual = false;
+      // The room's NPC host records each shot for the pages following it (npc-sync.js).
+      if (ctx.onShot) ctx.onShot(cave, from, to);
+    };
+    // A shot replayed from the NPC host: the same flight, with no hits, no mirror crossing and no gorilla
+    // impact (the host's events carry those).
+    const showShot = (cave, fx, fy, fz, tx, ty, tz) => {
+      const bullet = bulletPool[bulletIdx++ % bulletPool.length], node = bullet.node;
+      node.geometry=models.bananaGeometry();setVec(node.scale,models.BANANA_AMMO_SCALE,models.BANANA_AMMO_SCALE,models.BANANA_AMMO_SCALE);
+      bullet.duration=.22;bullet.arc=0;bullet.tomato=false;
+      setVec(bullet.from, fx, fy, fz);
+      setVec(bullet.to, tx, ty, tz);
+      setVec(node.rotation, 0, Math.atan2(tx - fx, tz - fz), 0.6);
+      setVec(node.position, fx, fy, fz);
+      node.visible = true;
+      bullet.life = 0.22;
+      bullet.source = cave; bullet.feedback = true; bullet.workShot = false; bullet.visual = true;
     };
     const updateBullets = (dt) => {
       throwCooldown=Math.max(0,throwCooldown-dt);
@@ -1530,6 +1597,12 @@
         const remaining = bullet.life, step = Math.min(dt, remaining), p = bullet.node.position, x = p.x, y = p.y, z = p.z;
         bullet.life = Math.max(0, bullet.life - dt);
         const k = 1 - bullet.life / bullet.duration, from = bullet.from, to = bullet.to;
+        if (bullet.visual) {
+          setVec(p, lerp(from.x, to.x, k), lerp(from.y, to.y, k), lerp(from.z, to.z, k));
+          bullet.node.rotation.x += dt * 24;
+          if (!bullet.life) bullet.node.visible = bullet.visual = false;
+          continue;
+        }
         if (bullet.workShot) {
           // Each round follows its own body anchor as the gorilla runs. Later
           // shots may aim at a different limb without redirecting this one.
@@ -1670,7 +1743,7 @@
       cave.weapon.meleePower = 1;
       cave.weapon.bashTime = 0;
       cave.weapon.axeIdle = slot === 1 && cave.traits.stoneAxe ? AXE_STICK_DELAY + AXE_STICK_BLEND : 0;
-      cave.parts.armL.rotation.y = cave.parts.armR.rotation.y = 0;
+      cave.parts.armR.rotation.y = cave.parts.armL.rotation.y = 0;
       poseWeapon(cave);
       return true;
     };
@@ -1691,7 +1764,7 @@
     };
     const swingWeapon = (cave = player, held = false, focused = false) => {
       if (!cave || cave.health.stunned || !cave.weapon.primaryOwned || !cave.weapon.primaryEquipped || cave !== player && (cave.camp.burning || cave.camp.rolling) || cave.camp.seat || cave.bedTravel.mode) return false;
-      const w = cave.weapon, arm = cave.parts.armL, club = cave.parts.club;
+      const w = cave.weapon, arm = cave.parts.armR, club = cave.parts.club;
       if (w.meleeHeld) return false;
       w.meleeSide = w.meleeComboTime > 0 ? -w.meleeSide : 1;
       w.meleeEntryX = arm.rotation.x; w.meleeEntryY = arm.rotation.y; w.meleeEntryZ = arm.rotation.z;
@@ -1779,7 +1852,7 @@
     // Two states only, so nothing can wind up out of step: folded against the
     // handle while the weapon is stowed, out in line with it while it is in hand.
     const poseNunchaku = (cave, dt) => {
-      const out = cave.parts.club.parent === cave.parts.armL && (cave.weapon.primaryEquipped || meleeDrawn(cave));
+      const out = cave.parts.club.parent === cave.parts.armR && (cave.weapon.primaryEquipped || meleeDrawn(cave));
       cave.chukAngle = damp(cave.chukAngle, out ? 0 : CHUK_FOLD, 12, dt);
       cave.parts.chuk.rotation.x = cave.chukAngle;
     };
@@ -1819,15 +1892,15 @@
     };
     const poseHands = (cave, leftSupportsGun = false) => {
       const parts = cave.parts, drawn = cave.weapon.carry === "hands";
-      const leftHeld = parts.club.visible && parts.club.parent === parts.armL || drawn || reloadingSpare(cave);
-      const rightHeld = parts.snack.visible || cave.traits.cigarette || leftSupportsGun
-        || parts.club.visible && parts.club.parent === parts.armR;
-      poseFingers(parts.armL, parts.fingersL, leftHeld, 1);
-      poseFingers(parts.armR, parts.fingersR, rightHeld, -1);
+      const rightHeld = parts.club.visible && parts.club.parent === parts.armR || drawn || reloadingSpare(cave);
+      const leftHeld = parts.snack.visible || cave.traits.cigarette || leftSupportsGun
+        || parts.club.visible && parts.club.parent === parts.armL;
+      poseFingers(parts.armR, parts.fingersR, rightHeld, 1);
+      poseFingers(parts.armL, parts.fingersL, leftHeld, -1);
     };
     const reloadHandoffBlend = (w) => ease.inOutQuad(1 - Math.abs(1 - 2 * Math.min(RELOAD_HANDOFF_TIME, w.reloadHandoffTime) / RELOAD_HANDOFF_TIME));
     const poseWorkAim = (cave) => {
-      const arm = cave.parts.armL, gun = cave.parts.gun, p = cave.root.position, target = cave.work.target, h = cave.traits.height;
+      const arm = cave.parts.armR, gun = cave.parts.gun, p = cave.root.position, target = cave.work.target, h = cave.traits.height;
       const turn = cave.root.rotation.y + arm.poseYaw, sr = Math.sin(turn), cr = Math.cos(turn);
       const wx = target.x - p.x, wz = target.z - p.z;
       const dx = cr * wx - sr * wz - arm.position.x, dy = target.y - p.y - arm.position.y, dz = sr * wx + cr * wz - arm.position.z;
@@ -1856,12 +1929,12 @@
       clearGunBashThrust(cave);
       clearMeleeThrust(cave);
       const sightArmOffset = cave.gunSightArmOffset;
-      parts.armL.position.x -= sightArmOffset.x; parts.armL.position.y -= sightArmOffset.y; parts.armL.position.z -= sightArmOffset.z;
+      parts.armR.position.x -= sightArmOffset.x; parts.armR.position.y -= sightArmOffset.y; parts.armR.position.z -= sightArmOffset.z;
       sightArmOffset.x = sightArmOffset.y = sightArmOffset.z = 0;
       if (sightCamera && cave === player) { cave.gunSightCamera = sightCamera; cave.gunSightMix = sightMix; }
       if (cave === player || hasMagazine(cave)) syncMagazine(cave);
       let leftSupportsGun = false;
-      parts.armR.quaternion = parts.armL.quaternion = null;
+      parts.armL.quaternion = parts.armR.quaternion = null;
       for (let i = 0; i < parts.gunBananas.length; i++) {
         const banana = parts.gunBananas[i], visible = w.ammo > (i + 1) * BURST_ROUNDS;
         if (visible && !banana.visible && (w.reloading || gun.ammoReloading)) banana.ammoPopAt = elapsed;
@@ -1871,7 +1944,8 @@
       }
       gun.ammoReloading = w.reloading;
       if (cave.sleepWeapons.visible || gun.parent === cave.sleepWeapons) {
-        cave.sleepWeapons.visible = cave.root.visible;
+        cave.sleepWeapons.visible = cave.root.visible && !cave.bedroll?.outdoor;
+        if (cave.bedroll?.outdoor) for (const node of cave.swagNodes) node.visible = false;
         parts.gunFlash.visible = false;
         w.carry = "bed";
         return;
@@ -1897,7 +1971,7 @@
       // A pack takes the centre of the back, and the nunchaku rides the hip either way.
       const sideSling = slungClub && (cave.traits.nunchaku || cave.traits.stoneAxe && backPack(cave));
       const twirling = !slungClub && !primaryReady && cave.traits.nunchaku && meleeDrawn(cave);
-      const clubParent = slungClub ? cave.root : twirling && cave.twirlHand ? parts.armR : parts.armL;
+      const clubParent = slungClub ? cave.root : twirling && cave.twirlHand ? parts.armL : parts.armR;
       if (parts.club.parent !== clubParent) {
         removeChild(parts.club.parent, parts.club);
         addChild(clubParent, parts.club);
@@ -1917,14 +1991,14 @@
         // While walking, local +Y points straight ahead. Once still, raise
         // the arm and rotate that axis upright while the grip slides from the
         // haft midpoint to just beneath the stone head.
-        parts.armL.rotation.x = lerp(parts.armL.rotation.x, AXE_STICK_ARM, stick);
-        parts.armL.rotation.y = parts.armL.rotation.z = 0;
+        parts.armR.rotation.x = lerp(parts.armR.rotation.x, AXE_STICK_ARM, stick);
+        parts.armR.rotation.y = parts.armR.rotation.z = 0;
         const hockeyStick = cave.traits.name === "MrHodlX";
         const grip = (hockeyStick ? lerp(10 / 16, 13 / 16, stick) : lerp(7 / 16, 11 / 16, stick)) * h;
         const gripX = lerp(0.075, 0.025, stick) * h;
         cave.axeRotation.set(AXE_FORWARD_ROTATION);
         math.quat.slerpTo(cave.axeRotation, AXE_UPRIGHT_ROTATION, stick);
-        math.quat.fromEuler(AXE_ARM_INVERSE, -parts.armL.rotation.x, 0, 0);
+        math.quat.fromEuler(AXE_ARM_INVERSE, -parts.armR.rotation.x, 0, 0);
         math.quat.multiply(cave.axeRotation, AXE_ARM_INVERSE, cave.axeRotation);
         math.quat.rotateVec(MUZZLE, cave.axeRotation, 0, grip, 0);
         setVec(parts.club.position, gripX - MUZZLE[0], -0.625 * h - MUZZLE[1], 0.15 * h - MUZZLE[2]);
@@ -1945,7 +2019,7 @@
         // Held, it spins flat over a raised arm. With x at a quarter turn the
         // stick lies in the horizontal plane and y sweeps it round the hand.
         // Either hand takes it, the whole pose mirroring with the side.
-        const side = cave.twirlHand ? 1 : -1, arm = side < 0 ? parts.armL : parts.armR;
+        const side = cave.twirlHand ? 1 : -1, arm = side < 0 ? parts.armR : parts.armL;
         arm.rotation.x = CHUK_ARM;
         arm.rotation.y = 0;
         arm.rotation.z = side < 0 ? CHUK_ARM_OUT : -CHUK_ARM_OUT;
@@ -1987,7 +2061,7 @@
       parts.club.visible = w.primaryOwned && (slungClub || !drawn);
       if (primaryReady) {
         if (returningPrimary) {
-          math.quat.fromEuler(MELEE_REST_ARM, parts.armL.rotation.x, parts.armL.rotation.y, parts.armL.rotation.z);
+          math.quat.fromEuler(MELEE_REST_ARM, parts.armR.rotation.x, parts.armR.rotation.y, parts.armR.rotation.z);
           if (parts.club.quaternion) MELEE_REST_CLUB.set(parts.club.quaternion);
           else math.quat.fromEuler(MELEE_REST_CLUB, parts.club.rotation.x, parts.club.rotation.y, parts.club.rotation.z);
           MELEE_REST_GRIP[0] = parts.club.position.x; MELEE_REST_GRIP[1] = parts.club.position.y; MELEE_REST_GRIP[2] = parts.club.position.z;
@@ -2014,25 +2088,25 @@
         const startX = -2.05 - 0.25 * w.meleeCharge, endX = -0.22;
         const recovering = !w.meleeHeld && w.meleeTime <= MELEE_RECOVER;
         const closeHold = w.aiming ? primaryViewMix * (1 - wind) : 0;
-        parts.armL.rotation.x = lerp(recovering ? neutral : w.meleeEntryX,
+        parts.armR.rotation.x = lerp(recovering ? neutral : w.meleeEntryX,
           backCut ? startX : lerp(startX, endX, stroke), wind);
         const strikeYaw = backCut ? -1.1 : lerp(-0.22, 0.15, stroke);
-        parts.armL.rotation.y = lerp(recovering ? (w.aiming ? w.aimYaw : 0) : w.meleeEntryY,
-          (w.aiming ? w.aimYaw : 0) + strikeYaw - parts.armL.poseYaw, wind);
+        parts.armR.rotation.y = lerp(recovering ? (w.aiming ? w.aimYaw : 0) : w.meleeEntryY,
+          (w.aiming ? w.aimYaw : 0) + strikeYaw - parts.armR.poseYaw, wind);
         // Hold the return cut's shoulder angle; turn the whole rigid arm in
         // one plane about that fixed shoulder pivot below.
         const strikeRoll = backCut ? 1.2 : lerp(-0.55, 0.4, stroke);
-        parts.armL.rotation.z = lerp(recovering ? -0.12 : w.meleeEntryZ,
+        parts.armR.rotation.z = lerp(recovering ? -0.12 : w.meleeEntryZ,
           strikeRoll, wind);
         // The close hold draws the weapon inward and up. The camera's view
         // blend carries the hand back to its shoulder hold without a pose jump.
-        math.quat.fromEuler(GUN_ARM, parts.armL.rotation.x - 0.14 * closeHold,
-          parts.armL.rotation.y - 0.1 * closeHold, parts.armL.rotation.z + 0.22 * closeHold);
+        math.quat.fromEuler(GUN_ARM, parts.armR.rotation.x - 0.14 * closeHold,
+          parts.armR.rotation.y - 0.1 * closeHold, parts.armR.rotation.z + 0.22 * closeHold);
         math.quat.fromEuler(GUN_GRIP, 0, Math.PI / 2, 0);
         math.quat.multiply(cave.gunHandRotation, GUN_ARM, GUN_GRIP);
         if (backCut && stroke > 0 && wind > 0) {
           math.quat.rotateVec(MUZZLE, cave.gunHandRotation, 0, -1, 0);
-          const yaw = (w.aiming ? w.aimYaw : 0) - parts.armL.poseYaw;
+          const yaw = (w.aiming ? w.aimYaw : 0) - parts.armR.poseYaw;
           const cy = Math.cos(yaw), sy = Math.sin(yaw);
           const tx = (0.07 * cy + 0.96 * sy) * MELEE_DOWN_INV;
           const ty = -0.27 * MELEE_DOWN_INV;
@@ -2064,13 +2138,13 @@
         const axeGrip = cave.traits.stoneAxe && (w.meleeHeld || w.meleeQuick && w.meleeTime > release) ? 1 - wind : 0;
         if (axeGrip > 0) {
           if (w.meleeHeld) {
-            math.quat.fromEuler(GUN_ARM, 0, -parts.armL.poseYaw, 0);
+            math.quat.fromEuler(GUN_ARM, 0, -parts.armR.poseYaw, 0);
             math.quat.multiply(GUN_ARM, GUN_ARM, w.meleeAxeArm);
             math.quat.slerpTo(cave.gunHandRotation, GUN_ARM, axeGrip);
-            parts.armL.rotation.x = lerp(parts.armL.rotation.x, w.meleeAxeArmX, axeGrip);
+            parts.armR.rotation.x = lerp(parts.armR.rotation.x, w.meleeAxeArmX, axeGrip);
           }
           // Preserve the axe's resting grip while the arm starts its wind-up.
-          math.quat.fromEuler(GUN_ARM, 0, parts.armL.poseYaw, 0);
+          math.quat.fromEuler(GUN_ARM, 0, parts.armR.poseYaw, 0);
           math.quat.multiply(GUN_ARM, GUN_ARM, cave.gunHandRotation);
           FINGER_INVERSE[0] = -GUN_ARM[0]; FINGER_INVERSE[1] = -GUN_ARM[1]; FINGER_INVERSE[2] = -GUN_ARM[2]; FINGER_INVERSE[3] = GUN_ARM[3];
           math.quat.multiply(GUN_ARM, FINGER_INVERSE, w.meleeAxeClub);
@@ -2092,12 +2166,12 @@
         if (towardTarget > 0) {
           const dx = w.meleeAimX * towardTarget, dy = w.meleeAimY * towardTarget, dz = w.meleeAimZ * towardTarget;
           w.meleeOffsetX += dx; w.meleeOffsetY += dy; w.meleeOffsetZ += dz;
-          parts.armL.position.x += dx; parts.armL.position.y += dy; parts.armL.position.z += dz;
+          parts.armR.position.x += dx; parts.armR.position.y += dy; parts.armR.position.z += dz;
         }
-        parts.armL.quaternion = cave.gunHandRotation;
+        parts.armR.quaternion = cave.gunHandRotation;
       } else if (primaryCarry) {
         // The pose above preserves the anatomical right arm's walking sway.
-      } else if (primaryHeld) parts.armL.rotation.y = 0;
+      } else if (primaryHeld) parts.armR.rotation.y = 0;
       w.carry = primaryCarry ? "hands" : !ready ? "hidden" : drawn ? "hands" : "back";
       if (!ready) { if (cave === player) posePeek(cave, 0); poseHands(cave, leftSupportsGun); return; }
       if (drawn) {
@@ -2108,10 +2182,10 @@
           && (cave.work.phase !== "shoot" || workBodyTarget && !cave.work.targetReady) && !cave.build)
           && !w.burstRemaining && w.recoil <= 0;
         leftSupportsGun = lowCarry;
-        // Facing +Z, the character's right hand is armL (-X), and their
-        // left hand is armR (+X). Keep the left hand high and the right low.
+        // Facing +Z, the character's right hand is armR (-X), and their
+        // left hand is armL (+X). Keep the left hand high and the right low.
         const gripRight = w.reloading || !lowCarry && (cave === player || working);
-        const arm = gripRight ? parts.armL : parts.armR;
+        const arm = gripRight ? parts.armR : parts.armL;
         const steadyAim = cave === player && w.aiming && !w.reloading && !w.reloadHandoff;
         if (!gripRight) leftSupportsGun = true;
         if (w.reloading) {
@@ -2123,7 +2197,7 @@
           const kick = clamp((w.recoil - GUN_HOLD + GUN_KICK) / GUN_KICK, 0, 1);
           arm.rotation.x = (steadyAim ? -Math.PI / 2 : -1.55) + (cave === player ? w.aimPitch : 0) - 0.11 * kick * kick;
           if (cave === player) arm.rotation.y = w.aimYaw - (steadyAim ? arm.poseYaw : 0);
-          if (!gripRight && !cave.build) parts.armL.rotation.x = -1.2;
+          if (!gripRight && !cave.build) parts.armR.rotation.x = -1.2;
         }
         // The shoulder pivot still follows the twisting torso, but the arm
         // counterturns to keep its rifle aligned with the crosshair direction.
@@ -2151,7 +2225,7 @@
         setVec(gun.position, palmX - MUZZLE[0], palmY - MUZZLE[1], palmZ - MUZZLE[2]);
         if (lowCarry) {
           // Lower the character's right arm without stretching it.
-          const rightArm = parts.armL, reach = Math.hypot(0.625, 0.15);
+          const rightArm = parts.armR, reach = Math.hypot(0.625, 0.15);
           math.quat.rotateVec(MUZZLE, gun.quaternion, 0, -0.08 * h, 0.27 * h);
           const dx = gun.position.x + MUZZLE[0] - rightArm.position.x;
           const dy = gun.position.y + MUZZLE[1] - rightArm.position.y;
@@ -2171,7 +2245,7 @@
           setVec(gun.position, rightX - MUZZLE[0], rightY - MUZZLE[1], rightZ - MUZZLE[2]);
           // Turn the whole left arm around its long axis toward the wood.
           // Its palm stays in place and the nubs stay on the hand's edge.
-          const leftArm = parts.armR, q = leftArm.quaternion;
+          const leftArm = parts.armL, q = leftArm.quaternion;
           math.quat.rotateVec(MUZZLE, q, 0, -0.625 * h, 0);
           const leftX = leftArm.position.x + MUZZLE[0], leftY = leftArm.position.y + MUZZLE[1], leftZ = leftArm.position.z + MUZZLE[2];
           math.quat.rotateVec(MUZZLE, gun.quaternion, 0, -0.0475 * h, 0.27 * h);
@@ -2206,7 +2280,7 @@
           // Blend from the current carry/aim pose and keep the grip attached.
           const progress = 1 - w.swapTime / MAGAZINE_SWAP_TIME;
           const blend = w.reloadHandoff ? reloadHandoffBlend(w) : ease.inOutQuad(1 - Math.abs(progress * 2 - 1));
-          const right = parts.armL;
+          const right = parts.armR;
           math.quat.fromEuler(GUN_ARM, w.reloadHandoff ? -0.25 : -0.2, 0, w.reloadHandoff ? 0.9 : 0.64);
           math.quat.fromEuler(GUN_GRIP, 0, Math.PI / 2, 0);
           math.quat.multiply(GUN_SWAP_TARGET, GUN_ARM, GUN_GRIP);
@@ -2237,7 +2311,7 @@
         math.quat.fromEuler(GUN_GRIP, -Math.PI / 2, Math.PI, -Math.PI / 2);
         math.quat.multiply(gun.quaternion, GUN_ARM, GUN_GRIP);
         if (spareLoading) {
-          const arm = parts.armL;
+          const arm = parts.armR;
           // Raise the hand to the height of the magazine in the upright AK.
           arm.rotation.x = -1.976; arm.rotation.y = 0;
           math.quat.fromEuler(GUN_ARM, arm.rotation.x, 0, arm.rotation.z);
@@ -2277,7 +2351,7 @@
         gun.poseLean *= 1 - sightMix;
         // The gun moves to the eye in this pose; carry the gripping hand with
         // it instead of leaving the arm at its pre-sight position.
-        const arm = parts.armL;
+        const arm = parts.armR;
         math.quat.rotateVec(MUZZLE, gun.quaternion, 0, -0.14 * h, -0.184 * h);
         const tx = gun.position.x + MUZZLE[0] - arm.position.x;
         const ty = gun.position.y + MUZZLE[1] - arm.position.y;
@@ -2298,8 +2372,8 @@
       if (cave === player && drawn && w.bashTime > 0) {
         const lunge = 0.16 * h * Math.sin(Math.PI * (1 - w.bashTime / GUN_BASH_TIME));
         gun.position.z += lunge;
-        parts.armL.position.z += lunge;
         parts.armR.position.z += lunge;
+        parts.armL.position.z += lunge;
         w.bashOffset = lunge;
       }
       poseHands(cave, leftSupportsGun);
@@ -2326,7 +2400,7 @@
       if (index < 0 || index >= w.spareAmmo.length) return false;
       stopBurst(cave);
       const magazineArmStart = cave.magazineModels[index].armStart;
-      const left = cave.parts.armR;
+      const left = cave.parts.armL;
       if (left.quaternion) magazineArmStart.set(left.quaternion);
       else math.quat.fromEuler(magazineArmStart, left.rotation.x, left.rotation.y, left.rotation.z);
       w.swapTime = MAGAZINE_SWAP_TIME;
@@ -2534,7 +2608,7 @@
       }
       if (!missing || (ctx.reloadPolicy ? !ctx.reloadPolicy.available(cave, reloadBite(cave)) : world.level < reloadBite(cave) / AMMO_PER_BANANA)) { stopReload(cave); return true; }
       const chew = w.reloadTime / RELOAD_PERIOD + w.reloadStep * 0.5;
-      parts.armR.rotation.x = chew < 0.55 ? lerp(-0.2, -2.3, chew / 0.55) : lerp(-2.3, -0.2, (chew - 0.55) / 0.45);
+      parts.armL.rotation.x = chew < 0.55 ? lerp(-0.2, -2.3, chew / 0.55) : lerp(-2.3, -0.2, (chew - 0.55) / 0.45);
       parts.head.rotation.x = Math.sin(chew * Math.PI) * 0.15;
       parts.snack.visible = chew < 0.6;
       parts.snack.scale.x = parts.snack.scale.y = parts.snack.scale.z = models.BANANA_AMMO_SCALE;
@@ -2595,8 +2669,8 @@
       if (b.phase === "turn") {
         const k = Math.min(1, b.t / 0.35);
         cave.root.rotation.y = lerp(b.startYaw, b.targetYaw, k);
-        parts.armR.rotation.x = lerp(-0.2, -1.55, k);
-        parts.armL.rotation.x = lerp(-0.2, -1.1, k);
+        parts.armL.rotation.x = lerp(-0.2, -1.55, k);
+        parts.armR.rotation.x = lerp(-0.2, -1.1, k);
         parts.gun.visible = true;
         parts.snack.visible = false;
         if (k >= 1) {
@@ -2604,7 +2678,7 @@
           b.t = 0;
         }
       } else if (b.phase === "shoot") {
-        parts.armR.rotation.x = -1.55;
+        parts.armL.rotation.x = -1.55;
         b.shotTimer -= dt;
         if (b.shotTimer <= 0 && b.shots < 5) {
           b.shotTimer = 0.16;
@@ -2627,8 +2701,8 @@
       } else if (b.phase === "return") {
         const k = Math.min(1, b.t / 0.35);
         cave.root.rotation.y = lerp(b.targetYaw, Math.atan2(-cave.slot.x, -cave.slot.z), k);
-        parts.armR.rotation.x = lerp(-1.55, -0.2, k);
-        parts.armL.rotation.x = lerp(-1.1, -0.2, k);
+        parts.armL.rotation.x = lerp(-1.55, -0.2, k);
+        parts.armR.rotation.x = lerp(-1.1, -0.2, k);
         if (k >= 1) {
           parts.gun.visible = false;
           cave.build = null;
@@ -2639,20 +2713,28 @@
     const walkPose = (cave, phase) => {
       const parts = cave.parts;
       const swing = Math.sin(phase);
-      parts.legL.rotation.x = swing * 0.55;
-      parts.legR.rotation.x = -swing * 0.55;
-      parts.armL.rotation.x = -0.2 - swing * 0.3;
-      parts.armR.rotation.x = -0.2 + swing * 0.3;
+      parts.legR.rotation.x = swing * 0.55;
+      parts.legL.rotation.x = -swing * 0.55;
+      parts.armR.rotation.x = -0.2 - swing * 0.3;
+      parts.armL.rotation.x = -0.2 + swing * 0.3;
       cave.root.position.y = groundY(cave) + Math.abs(Math.sin(phase)) * 0.04;
     };
     const standPose = (cave) => {
       cave.root.position.y += cave.restLower; cave.restLower = 0;
       const parts = cave.parts;
-      parts.armR.quaternion = null;
-      parts.legL.rotation.x = parts.legR.rotation.x = 0;
-      parts.legL.rotation.z = parts.legR.rotation.z = 0;
-      parts.armL.rotation.x = parts.armR.rotation.x = -0.2;
+      parts.armL.quaternion = null;
+      parts.legR.rotation.x = parts.legL.rotation.x = 0;
+      parts.legR.rotation.z = parts.legL.rotation.z = 0;
+      parts.armR.rotation.x = parts.armL.rotation.x = -0.2;
       parts.torso.rotation.x = parts.torso.rotation.z = 0;
+    };
+    const recoverDragged = (cave) => {
+      clearHeadLook(cave);
+      cave.root.rotation.x = cave.root.rotation.z = 0;
+      standPose(cave);
+      cave.parts.head.rotation.x = 0;
+      cave.parts.armR.rotation.z = -0.12;
+      cave.parts.armL.rotation.z = 0.12;
     };
     const standPlayer = (cave = player) => {
       if (!cave || !cave.camp.seat) return false;
@@ -2744,7 +2826,7 @@
       cave.act.until = elapsed + (cave.state === "chilling" ? chillPause(cave) : 1.5);
       cave.act.said = true;
       const p = cave.root.position, feet = p.y - cave.baseY;
-      if (ctx.bedRoute && feet < -0.5 && (!ctx.abyssAt || !ctx.abyssAt(p.x, p.z, feet, cave))) startBedRoute(cave, null, false);
+      if (ctx.bedRoute && feet < -0.5 && underHome(p.x, p.z) && (!ctx.abyssAt || !ctx.abyssAt(p.x, p.z, feet, cave))) startBedRoute(cave, null, false);
       else if (resumeWalk) {
         cave.walk = resumeWalk;
         cave.act.kind = resumeWalk.to === "spot" ? "wander" : "rush";
@@ -2851,8 +2933,8 @@
         if (c.burning && !panic.threat && cave.avoidance.active) panic.heading = cave.root.rotation.y;
       } else standPose(cave);
       if (c.burning) {
-        cave.parts.armL.rotation.x = -1.8 + Math.sin(panic.phase) * 0.3;
-        cave.parts.armR.rotation.x = -1.8 - Math.sin(panic.phase) * 0.3;
+        cave.parts.armR.rotation.x = -1.8 + Math.sin(panic.phase) * 0.3;
+        cave.parts.armL.rotation.x = -1.8 - Math.sin(panic.phase) * 0.3;
       }
       cave.parts.snack.visible = cave.parts.gun.visible = false;
     };
@@ -2903,8 +2985,8 @@
       if (c.seat) {
         if (cave === player && !c.seat.lockMovement && Math.hypot(steer.x, steer.z) > 0.05 && standPlayer(cave)) return false;
         standPose(cave);
-        parts.legL.rotation.x = parts.legR.rotation.x = -Math.PI / 2;
-        parts.armL.rotation.x = parts.armR.rotation.x = -0.75;
+        parts.legR.rotation.x = parts.legL.rotation.x = -Math.PI / 2;
+        parts.armR.rotation.x = parts.armL.rotation.x = -0.75;
         parts.snack.visible = false;
         return true;
       }
@@ -2919,8 +3001,8 @@
       p.y = c.floor + cave.traits.height * 0.26;
       math.quat.fromEuler(c.turn, 0, angle, 0);
       math.quat.multiply(c.rotation, c.base, c.turn);
-      parts.legL.rotation.x = parts.legR.rotation.x = -0.65;
-      parts.armL.rotation.x = parts.armR.rotation.x = -1.5;
+      parts.legR.rotation.x = parts.legL.rotation.x = -0.65;
+      parts.armR.rotation.x = parts.armL.rotation.x = -1.5;
       parts.snack.visible = false;
       // Plant the lowest part of the rotating body so wide shoulders do not sink into the floor mid-roll.
       BL.scene.updateWorld(cave.root, cave.root.parent ? cave.root.parent.world : undefined);
@@ -3002,7 +3084,7 @@
           child.ember = part.ember;
           child.scorch = part.scorch;
         }
-        const fingers = part === cave.parts.armL ? cave.parts.fingersL : part === cave.parts.armR ? cave.parts.fingersR : null;
+        const fingers = part === cave.parts.armR ? cave.parts.fingersR : part === cave.parts.armL ? cave.parts.fingersL : null;
         if (fingers) { fingers.ember = part.ember; fingers.scorch = part.scorch; }
         c.soot = Math.max(c.soot, c.scorch[i]);
       }
@@ -3082,16 +3164,16 @@
     const sleepParts = (cave, k) => {
       clearHeadLook(cave);
       const parts = cave.parts, travel = cave.bedTravel;
-      parts.armL.quaternion = parts.armR.quaternion = null;
-      parts.armL.rotation.y = parts.armR.rotation.y = 0;
-      math.quat.fromEuler(parts.fingersL.quaternion, 0, Math.PI, 0);
+      parts.armR.quaternion = parts.armL.quaternion = null;
+      parts.armR.rotation.y = parts.armL.rotation.y = 0;
       math.quat.fromEuler(parts.fingersR.quaternion, 0, Math.PI, 0);
-      parts.armL.position.x = lerp(cave.sleepParts.armLX, travel.armLX, k);
+      math.quat.fromEuler(parts.fingersL.quaternion, 0, Math.PI, 0);
       parts.armR.position.x = lerp(cave.sleepParts.armRX, travel.armRX, k);
-      parts.armL.rotation.x = parts.armR.rotation.x = lerp(-0.2, 0, k);
-      parts.armL.rotation.z = lerp(-0.12, travel.armLZ, k);
-      parts.armR.rotation.z = lerp(0.12, travel.armRZ, k);
-      parts.legL.rotation.x = parts.legL.rotation.z = parts.legR.rotation.x = parts.legR.rotation.z = 0;
+      parts.armL.position.x = lerp(cave.sleepParts.armLX, travel.armLX, k);
+      parts.armR.rotation.x = parts.armL.rotation.x = lerp(-0.2, 0, k);
+      parts.armR.rotation.z = lerp(-0.12, travel.armRZ, k);
+      parts.armL.rotation.z = lerp(0.12, travel.armLZ, k);
+      parts.legR.rotation.x = parts.legR.rotation.z = parts.legL.rotation.x = parts.legL.rotation.z = 0;
       parts.head.position.x = cave.sleepParts.headX + travel.headDropX * k;
       parts.head.position.y = cave.sleepParts.headY + travel.headDropY * k;
       parts.head.position.z = cave.sleepParts.headZ + travel.headDropZ * k;
@@ -3105,11 +3187,11 @@
     const fitSleepPose = (cave, pose) => {
       clearHeadLook(cave);
       const travel = cave.bedTravel, bed = cave.bedroll, r = cave.root;
-      const px = r.position.x, py = r.position.y, pz = r.position.z, hx = cave.parts.head.position.x, hy = cave.parts.head.position.y, hz = cave.parts.head.position.z, ax = cave.parts.armL.position.x, bx = cave.parts.armR.position.x;
-      const az = cave.parts.armL.rotation.z, bz = cave.parts.armR.rotation.z, side = pose === "left" || pose === "right";
+      const px = r.position.x, py = r.position.y, pz = r.position.z, hx = cave.parts.head.position.x, hy = cave.parts.head.position.y, hz = cave.parts.head.position.z, ax = cave.parts.armR.position.x, bx = cave.parts.armL.position.x;
+      const az = cave.parts.armR.rotation.z, bz = cave.parts.armL.rotation.z, side = pose === "left" || pose === "right";
       travel.headDrop = travel.headDropX = travel.headDropY = travel.headDropZ = 0;
-      travel.armLX = cave.sleepParts.armLX; travel.armRX = cave.sleepParts.armRX;
-      travel.armLZ = side ? 0.35 : 0; travel.armRZ = -travel.armLZ;
+      travel.armRX = cave.sleepParts.armRX; travel.armLX = cave.sleepParts.armLX;
+      travel.armRZ = side ? 0.35 : 0; travel.armLZ = -travel.armRZ;
       sleepParts(cave, 1);
       r.quaternion = null;
       setVec(r.position, 0, 0, 0);
@@ -3119,6 +3201,20 @@
       else setVec(r.rotation, -Math.PI / 2, 0, 0);
       math.quat.fromEuler(SLEEP_BASE, r.rotation.x, r.rotation.y, r.rotation.z);
       measureSleepPitch(cave, 0);
+      if (bed.outdoor) {
+        // Bare rock supports the whole body: no mattress compression or pillow.
+        travel.pitch = travel.restZ = travel.compression = 0;
+        travel.restY = 0.03 - Math.min(SLEEP_BOUNDS.min, SLEEP_BOUNDS.headMin);
+        math.quat.fromAxisAngle(SLEEP_TILT, 0, 1, 0, bed.node.rotation.y);
+        math.quat.multiply(cave.sleepTargetRotation, SLEEP_TILT, cave.sleepTargetRotation);
+        setVec(r.position, px, py, pz);
+        cave.parts.head.position.x = hx; cave.parts.head.position.y = hy; cave.parts.head.position.z = hz;
+        cave.parts.armR.position.x = ax; cave.parts.armL.position.x = bx;
+        cave.parts.armR.rotation.z = az; cave.parts.armL.rotation.z = bz;
+        r.quaternion = cave.sleepRotation;
+        travel.pose = pose;
+        return;
+      }
       let pitch = 0;
       if (side) {
         // Neck and legs share one rigid body transform; solve pitch from the real pillow face and supporting foot.
@@ -3154,13 +3250,13 @@
       travel.restZ = bed.sleep.pillowZ - MUZZLE[2];
       travel.compression = SLEEP_COMPRESSION;
       if (side) {
-        // Left pose rests armR: the lower arm hugs the torso instead of driving its shoulder through the mattress.
-        const arm = pose === "left" ? cave.parts.armR : cave.parts.armL;
+        // Left pose rests armL: the lower arm hugs the torso instead of driving its shoulder through the mattress.
+        const arm = pose === "left" ? cave.parts.armL : cave.parts.armR;
         SLEEP_BOUNDS.min = Infinity;
         measureSleeper(arm, false, cave.parts.head);
         const tuck = Math.max(0, bed.sleep.surface - SLEEP_SIDE_COMPRESSION - travel.restY - SLEEP_BOUNDS.min) / Math.cos(pitch);
-        if (pose === "left") arm.position.x = travel.armRX -= tuck;
-        else arm.position.x = travel.armLX += tuck;
+        if (pose === "left") arm.position.x = travel.armLX -= tuck;
+        else arm.position.x = travel.armRX += tuck;
         measureSleepPitch(cave, pitch);
         travel.compression = Math.max(SLEEP_COMPRESSION, bed.sleep.surface - travel.restY - Math.min(SLEEP_BOUNDS.min, SLEEP_BOUNDS.headMin));
       } else {
@@ -3173,8 +3269,8 @@
       math.quat.multiply(q, SLEEP_TILT, q);
       setVec(r.position, px, py, pz);
       cave.parts.head.position.x = hx; cave.parts.head.position.y = hy; cave.parts.head.position.z = hz;
-      cave.parts.armL.position.x = ax; cave.parts.armR.position.x = bx;
-      cave.parts.armL.rotation.z = az; cave.parts.armR.rotation.z = bz;
+      cave.parts.armR.position.x = ax; cave.parts.armL.position.x = bx;
+      cave.parts.armR.rotation.z = az; cave.parts.armL.rotation.z = bz;
       r.quaternion = cave.sleepRotation;
       travel.pose = pose;
     };
@@ -3184,6 +3280,10 @@
       resetPose(cave);
       cave.parts.club.visible = false;
       for (const node of cave.sleepParts.equipment) node.visible = false;
+      if (cave.bedroll.outdoor) {
+        for (const node of cave.swagNodes) node.visible = false;
+        for (const model of cave.magazineModels) if (model) model.node.visible = false;
+      }
       stopBurst(cave);
       stopReload(cave, true);
       putBedWeapons(cave);
@@ -3203,8 +3303,8 @@
       if (travel.pose === pose) return;
       travel.fromX = cave.root.position.x; travel.fromY = cave.root.position.y; travel.fromZ = cave.root.position.z;
       travel.fromHeadX = cave.parts.head.position.x; travel.fromHeadY = cave.parts.head.position.y; travel.fromHeadZ = cave.parts.head.position.z;
-      travel.fromArmLX = cave.parts.armL.position.x; travel.fromArmRX = cave.parts.armR.position.x; travel.fromCompression = travel.compression;
-      travel.fromArmLZ = cave.parts.armL.rotation.z; travel.fromArmRZ = cave.parts.armR.rotation.z;
+      travel.fromArmRX = cave.parts.armR.position.x; travel.fromArmLX = cave.parts.armL.position.x; travel.fromCompression = travel.compression;
+      travel.fromArmRZ = cave.parts.armR.rotation.z; travel.fromArmLZ = cave.parts.armL.rotation.z;
       math.quat.copy(cave.sleepFromRotation, cave.sleepRotation);
       fitSleepPose(cave, pose);
       travel.roll = 0;
@@ -3217,7 +3317,7 @@
     const snapshotTraffic = (cave) => {
       const traffic = cave.traffic, travel = cave.bedTravel, work = cave.work, p = cave.root.position;
       traffic.moving = false;
-      if (cave === player || !cave.root.visible || cave.camp.seat || cave.camp.panic.active || cave.hop > 0 || cave.hopV > 0) return;
+      if (cave === player || !cave.root.visible || cave.grabbedBy || cave.camp.seat || cave.camp.panic.active || cave.hop > 0 || cave.hopV > 0) return;
       let target = null;
       if (cave.roofEscape.active) { traffic.tx = traffic.tz = 0; traffic.moving = true; }
       else if (travel.mode === "walk") target = travel.route[travel.index];
@@ -3376,7 +3476,7 @@
           if (npc && following(cave, other, NPC_PASS_REACH)) continue;
           const dx = other.shoulder.snapX - s.snapX, dz = other.shoulder.snapZ - s.snapZ;
           const along = dx * fx + dz * fz, side = dx * fz - dz * fx;
-          if (Math.abs(along) >= nearest || Math.abs(side) >= SHOULDER_GAP || dx * dx + dz * dz < SHOULDER_GAP * SHOULDER_GAP - 1e-6) continue;
+          if (Math.abs(along) >= nearest || Math.abs(side) >= SHOULDER_TOUCH || dx * dx + dz * dz < SHOULDER_GAP * SHOULDER_GAP - 1e-6) continue;
           // A moving leader yields only to a faster walker closing from behind, not to standing or receding neighbours.
           if (along <= 0 && (along < -0.95 || (other.shoulder.snapVX - s.snapVX) * fx + (other.shoulder.snapVZ - s.snapVZ) * fz < 0.08)) continue;
           nearest = Math.abs(along); found = other; across = side; rear = along <= 0;
@@ -3394,7 +3494,7 @@
         const side = dx * Math.cos(s.heading) - dz * Math.sin(s.heading);
         s.side = Math.abs(side) < 0.02 ? 1 : Math.sign(side);
         s.dodge = Math.abs(across) < 0.02 ? (s.rear ? -1 : 1) : Math.sign(across);
-        s.amount = prop ? clamp(1 - Math.max(hit.minContactAcross, -hit.maxContactAcross, 0) / 0.3, 0, 1) : clamp(1 - Math.abs(across) / SHOULDER_GAP, 0, 1);
+        s.amount = prop ? clamp(1 - Math.max(hit.minContactAcross, -hit.maxContactAcross, 0) / 0.3, 0, 1) : clamp(1 - Math.abs(across) / SHOULDER_TOUCH, 0, 1);
         if (prop) s.propOffset = s.dodge > 0 ? hit.minAcross - 0.315 : hit.maxAcross + 0.315;
       }
       fx = s.forwardX; fz = s.forwardZ;
@@ -3474,7 +3574,8 @@
       // Bodies the scene owns are obstacles like any other: the walker's own
       // avoidance steers around them rather than through them.
       if (!outsideClear(p.x, p.z, x, z, feet, cave.bodyHeight)) return false;
-      return npcWalkable(p.x, p.z, x, z, feet, cave.bodyHeight, cave) && groundAt(x, z, feet, feet, cave) >= feet - STEP - 1e-7;
+      return shoulderClear(cave, x, z) && npcWalkable(p.x, p.z, x, z, feet, cave.bodyHeight, cave)
+        && groundAt(x, z, feet, feet, cave) >= feet - STEP - 1e-7;
     };
     const resetWalkerRoute = (cave) => {
       const a = cave.avoidance;
@@ -3761,6 +3862,11 @@
     };
     const runBed = (cave, dt) => {
       const travel = cave.bedTravel, p = cave.root.position;
+      if (travel.mode === "rest" && cave.bedroll?.outdoor && cave !== player && (travel.retry -= dt) <= 0) {
+        travel.retry = 1;
+        const previous = cave.bedroll;
+        if (claimBedroll(cave) && cave.bedroll !== previous) { startSleep(cave, true); return; }
+      }
       if (travel.mode === "landing") {
         runPlayer(cave, dt, false);
         if (ctx.abyssAt && ctx.abyssAt(p.x, p.z, p.y - cave.baseY, cave) && p.y - cave.baseY < ctx.abyssRespawnY) {
@@ -3772,6 +3878,15 @@
         return;
       }
       if (travel.mode === "waiting") {
+        if (travel.toBed && !cave.bedroll) {
+          travel.retry -= dt;
+          if (travel.retry <= 0) {
+            if (!cave.root.visible) startSleep(cave, true);
+            else if (claimBedroll(cave)) startSleep(cave, !!cave.bedroll.outdoor);
+            else travel.retry = 1;
+          }
+          return;
+        }
         if (!grounded(cave)) { startBedRoute(cave, travel.toBed ? cave.bedroll : travel.bed, travel.toBed); return; }
         if (travel.plan) return;
         travel.retry -= dt;
@@ -3853,10 +3968,10 @@
           cave.parts.head.position.x = lerp(travel.fromHeadX, cave.sleepParts.headX + travel.headDropX, k);
           cave.parts.head.position.y = lerp(travel.fromHeadY, cave.sleepParts.headY + travel.headDropY, k);
           cave.parts.head.position.z = lerp(travel.fromHeadZ, cave.sleepParts.headZ + travel.headDropZ, k);
-          cave.parts.armL.position.x = lerp(travel.fromArmLX, travel.armLX, k);
           cave.parts.armR.position.x = lerp(travel.fromArmRX, travel.armRX, k);
-          cave.parts.armL.rotation.z = lerp(travel.fromArmLZ, travel.armLZ, k);
+          cave.parts.armL.position.x = lerp(travel.fromArmLX, travel.armLX, k);
           cave.parts.armR.rotation.z = lerp(travel.fromArmRZ, travel.armRZ, k);
+          cave.parts.armL.rotation.z = lerp(travel.fromArmLZ, travel.armLZ, k);
           // A side-to-back roll is taller than either end pose: lift from the real meshes while turning, then settle.
           BL.scene.updateWorld(cave.root);
           SLEEP_BOUNDS.min = SLEEP_BOUNDS.headMin = Infinity;
@@ -3879,7 +3994,7 @@
       const side = steer.strafe, backward = steer.forward < -0.05;
       parts.torso.rotation.x = backward ? 0.07 : 0;
       parts.torso.rotation.z = -side * 0.08;
-      parts.legL.rotation.z = parts.legR.rotation.z = side * 0.1;
+      parts.legR.rotation.z = parts.legL.rotation.z = side * 0.1;
     };
     const setPeekPart = (node, lean, pivot) => {
       if (!node) return;
@@ -3894,8 +4009,8 @@
       if (Math.abs(cave.peek) < 1e-4 && !steer.peek) cave.peek = 0;
       const parts = cave.parts, lean = cave.peek * 0.5, pivot = 0;
       setPeekPart(parts.torso, lean, pivot);
-      setPeekPart(parts.armL, lean, pivot);
       setPeekPart(parts.armR, lean, pivot);
+      setPeekPart(parts.armL, lean, pivot);
       setPeekPart(parts.head, lean, pivot);
       setPeekPart(parts.gun, parts.gun.parent === cave.root ? lean : 0, pivot);
       setPeekPart(parts.club, parts.club.parent === cave.root ? lean : 0, pivot);
@@ -3906,7 +4021,7 @@
       }
     };
     const aimPeek = (cave) => {
-      const w = cave.weapon, arm = cave.parts.armL, gun = cave.parts.gun, lean = arm.poseLean;
+      const w = cave.weapon, arm = cave.parts.armR, gun = cave.parts.gun, lean = arm.poseLean;
       if (lean && w.equipped && w.aiming && !w.reloading && !w.reloadHandoff && !w.swapTime) {
         // The shoulder follows the body, but the held rifle keeps pointing
         // along the aim line even when aiming uphill or downhill while leaning.
@@ -3925,9 +4040,9 @@
     // Flying pose, legs trailing and arms out
     const flyPose = (cave) => {
       const parts = cave.parts;
-      parts.legL.rotation.x = -0.5;
-      parts.legR.rotation.x = -0.3;
-      parts.armL.rotation.x = parts.armR.rotation.x = -1.1;
+      parts.legR.rotation.x = -0.5;
+      parts.legL.rotation.x = -0.3;
+      parts.armR.rotation.x = parts.armL.rotation.x = -1.1;
     };
     const runWalk = (cave, dt) => {
       // A growing pile or new fire can cover a chosen destination; pick a safe spot instead of circling it.
@@ -4012,6 +4127,9 @@
       cave.act.kind = "work";
       cave.weapon.equipped = true;
       cave.avoidance.tx = NaN;
+      // Publish an outbound trip with its surface route already planned.
+      // Reload can start this phase after the frame's walking update.
+      if (ctx.npcPaths && cave.pathing) ctx.npcPaths.target(cave, site.route[0].x, site.route[0].z);
       return true;
     };
     const walkWorkTo = (cave, target, dt, followPath = true) => {
@@ -4188,7 +4306,7 @@
       if (cave.yawn <= 0) return false;
       const parts = cave.parts;
       const k = Math.sin((1 - cave.yawn / YAWN_DUR) * Math.PI);
-      parts.armL.rotation.x = parts.armR.rotation.x = -0.2 - 2.2 * k;
+      parts.armR.rotation.x = parts.armL.rotation.x = -0.2 - 2.2 * k;
       parts.head.rotation.x = -0.25 * k;
       parts.snack.visible = false;
       return true;
@@ -4197,7 +4315,7 @@
       const parts = cave.parts, a = cave.act;
       cave.root.position.y = groundY(cave) + cave.hop;
       const sitting = cave.state === "chilling" && a.spot.sit && cave.hop === 0;
-      parts.legL.rotation.x = parts.legR.rotation.x = sitting ? -Math.PI / 2 : 0;
+      parts.legR.rotation.x = parts.legL.rotation.x = sitting ? -Math.PI / 2 : 0;
       if (sitting) {
         // Only the resting pose is lowered; support and hops still use standing feet.
         cave.restLower = Math.max(0, cave.baseY - cave.traits.height * 0.08);
@@ -4206,15 +4324,15 @@
       parts.torso.scale.y = 1 + Math.sin(elapsed * 2.2 + cave.phase) * 0.015;
       if (cave.cheer > 0) {
         const wave = Math.sin(elapsed * 14 + cave.phase) * 0.35;
-        parts.armL.rotation.x = -2.6 + wave;
-        parts.armR.rotation.x = -2.6 - wave;
+        parts.armR.rotation.x = -2.6 + wave;
+        parts.armL.rotation.x = -2.6 - wave;
         parts.head.rotation.x = -0.15;
         return;
       }
       if (cave.catchT > 0) {
         const k = cave.catchT;
-        parts.armL.rotation.x = -0.2 - k * 1.6;
         parts.armR.rotation.x = -0.2 - k * 1.6;
+        parts.armL.rotation.x = -0.2 - k * 1.6;
         parts.head.rotation.x = -k * 0.2;
         return;
       }
@@ -4222,8 +4340,8 @@
       parts.head.rotation.y = Math.sin(elapsed * 0.9 + cave.phase) * 0.55;
       parts.head.rotation.x = 0.08 + Math.sin(elapsed * 0.5 + cave.phase) * 0.1;
       const arm = sitting ? -0.75 : -0.2;
-      parts.armR.rotation.x = damp(parts.armR.rotation.x, arm, 10, dt);
       parts.armL.rotation.x = damp(parts.armL.rotation.x, arm, 10, dt);
+      parts.armR.rotation.x = damp(parts.armR.rotation.x, arm, 10, dt);
       if (!a.said && elapsed > a.sayAt) {
         a.said = true;
         if (Math.random() < 0.6) idleSay(cave);
@@ -4299,7 +4417,8 @@
       const y = cave.root.position.y - cave.baseY;
       const height = cave.bodyHeight + Math.max(0, cave.viewLift);
       // On foot, the scene's own walkers are bodies to walk round, not through.
-      if (!flying && cave.hop <= 0 && !outsideClear(fromX, fromZ, toX, toZ, y, height)) return false;
+      if (!flying && cave.hop <= 0 && (!shoulderClear(cave, toX, toZ)
+        || !outsideClear(fromX, fromZ, toX, toZ, y, height))) return false;
       return flying || cave.hop > 0
         ? flyable(fromX, fromZ, toX, toZ, y, height, cave) && groundAt(toX, toZ, y, y, cave) <= y
         : walkable(fromX, fromZ, toX, toZ, y, height, cave);
@@ -4339,10 +4458,10 @@
       const l = cave.ladder, parts = cave.parts, wave = Math.sin(cave.act.phase), mix = l.mix;
       standPose(cave);
       parts.torso.rotation.x = -0.12 * mix;
-      parts.armL.rotation.x = lerp(-0.2, -2.2 + wave * 0.2, mix);
-      parts.armR.rotation.x = lerp(-0.2, -2.2 - wave * 0.2, mix);
-      parts.legL.rotation.x = wave * 0.35 * mix;
-      parts.legR.rotation.x = -wave * 0.35 * mix;
+      parts.armR.rotation.x = lerp(-0.2, -2.2 + wave * 0.2, mix);
+      parts.armL.rotation.x = lerp(-0.2, -2.2 - wave * 0.2, mix);
+      parts.legR.rotation.x = wave * 0.35 * mix;
+      parts.legL.rotation.x = -wave * 0.35 * mix;
       parts.head.rotation.x = -0.1 * mix;
       parts.snack.visible = false;
     };
@@ -4414,6 +4533,7 @@
       const p = cave.root.position, leap = cave.leap;
       const fromX = p.x, fromZ = p.z;
       const wasGround = groundY(cave);
+      const onGorilla = ctx.standingOnGorilla && ctx.standingOnGorilla(cave, wasGround);
       if (cave.jet) runJet(cave, dt);
       else if (cave.traits.footRockets) runRocketJump(cave, dt);
       clampPlayerCeiling(cave, wasGround);
@@ -4442,14 +4562,16 @@
       if (cave.hop > 0 && (leap.vx || leap.vz)) {
         const dx = leap.vx * dt, dz = leap.vz * dt;
         movePlayer(cave, flying, dx, dz);
-        leap.vx = damp(leap.vx, 0, WALK.ledgeDrag, dt);
-        leap.vz = damp(leap.vz, 0, WALK.ledgeDrag, dt);
+        if (!leap.thrown) {
+          leap.vx = damp(leap.vx, 0, WALK.ledgeDrag, dt);
+          leap.vz = damp(leap.vz, 0, WALK.ledgeDrag, dt);
+        }
         flyPose(cave);
       }
       if (flying) flyPose(cave);
       else if (cave.hop > 0 && ctx.abyssAt && ctx.abyssAt(p.x, p.z, p.y - cave.baseY, cave)) {
         flyPose(cave);
-        cave.parts.armL.rotation.x = cave.parts.armR.rotation.x = -2.1;
+        cave.parts.armR.rotation.x = cave.parts.armL.rotation.x = -2.1;
       }
       // Airborne he holds a world height, so ground steps never lift him.
       if (flying || cave.hop > 0) cave.hop = Math.max(0, cave.hop + wasGround - groundY(cave));
@@ -4459,7 +4581,7 @@
         const drop = wasGround - groundY(cave);
         if (drop > STEP) {
           cave.hop += drop;
-          if (!cave.cloudSupport && !inBananas(cave)) {
+          if (!onGorilla && !cave.cloudSupport && !inBananas(cave)) {
             cave.hopV = Math.max(cave.hopV, WALK.ledgeRise);
             // Aim may face away from travel. Leaving the same ledge must
             // carry the same motion in combat and carry views.
@@ -4478,8 +4600,9 @@
       if (ctx.cloudAt) cave.cloudSupport = ctx.cloudAt(p.x, p.z, p.y - cave.baseY);
       if (grounded(cave)) cave.jumps = 0;
       else cave.jumps = Math.max(1, cave.jumps);
-      if (cave.hop === 0 && (leap.vx || leap.vz)) {
+      if (cave.hop === 0 && (leap.vx || leap.vz || leap.thrown)) {
         leap.vx = leap.vz = 0;
+        leap.thrown = false;
         leap.land = 0.25;
         ctx.fx.burst(p.x, p.y + 0.05, p.z, 6, LAND_DUST, 1.2);
       }
@@ -4489,8 +4612,8 @@
       }
       if (cave.catchT > 0) {
         const k = cave.catchT;
-        cave.parts.armL.rotation.x = -0.2 - k * 1.6;
         cave.parts.armR.rotation.x = -0.2 - k * 1.6;
+        cave.parts.armL.rotation.x = -0.2 - k * 1.6;
         cave.parts.head.rotation.x = -k * 0.2;
       } else cave.parts.head.rotation.x = 0;
     };
@@ -4561,6 +4684,12 @@
       cave.headClosed = tint.get(cave.headClosed) || cave.headClosed;
       cave.portraitHead = tint.get(cave.portraitHead) || cave.portraitHead;
       cave.parts.head.geometry = cave.state === "sleeping" ? cave.headClosed : cave.headOpen;
+    };
+    // The NPC host's colourway, on a page following it.
+    const setTint = (cave, state) => {
+      if (!cave.tint || cave.tintState === state) return;
+      swapTint(cave);
+      cave.tintState = state;
     };
     // A hand toggle restarts the timer too, so it does not flip again seconds later.
     const toggleTint = (cave) => {
@@ -4642,7 +4771,7 @@
       }
       if (cave.bedTravel.mode) { runBed(cave, dt); return; }
       if (cave.state !== "working" && cave.state !== "chilling") {
-        if (cave.state === "sleeping" && !cave.bedroll.hidden) {
+        if (cave.state === "sleeping" && cave.bedroll && !cave.bedroll.hidden) {
           parts.torso.scale.y = 1 + Math.sin(elapsed * 1.4 + cave.phase) * 0.03;
           cave.zzzTimer -= dt;
           if (cave.zzzTimer <= 0) {
@@ -4660,17 +4789,24 @@
         return;
       }
       if (ctx.abyssAt && ctx.abyssAt(cave.root.position.x, cave.root.position.z, cave.root.position.y - cave.baseY, cave)) {
-        // Releasing possession must not strand an Ooga beneath the world.
-        cave.root.position.y = groundY(cave) + cave.hop;
-        flyPose(cave);
-        cave.parts.armL.rotation.x = cave.parts.armR.rotation.x = -2.1;
-        if (cave.root.position.y - cave.baseY < ctx.abyssRespawnY) {
-          if (ctx.onAbyssRespawn) ctx.onAbyssRespawn(cave);
-          cave.hop = cave.hopV = cave.jumps = 0;
-          standPose(cave);
-          standAtSlot(cave);
-          startMeal(cave);
+        if (cave.leap.thrown) {
+          // A thrown Ooga keeps the launch velocity over open water.
+          runPlayer(cave, dt, false);
+          if (cave.root.position.y - cave.baseY >= (ctx.seaY ?? ctx.abyssRespawnY)) return;
+          cave.leap.thrown = false;
+        } else {
+          // Releasing possession must not strand an Ooga beneath the world.
+          cave.root.position.y = groundY(cave) + cave.hop;
+          flyPose(cave);
+          cave.parts.armR.rotation.x = cave.parts.armL.rotation.x = -2.1;
+          if (cave.root.position.y - cave.baseY >= ctx.abyssRespawnY) return;
         }
+        if (ctx.onAbyssRespawn) ctx.onAbyssRespawn(cave);
+        cave.hop = cave.hopV = cave.jumps = 0;
+        cave.leap.vx = cave.leap.vz = 0;
+        standPose(cave);
+        standAtSlot(cave);
+        startMeal(cave);
         return;
       }
       if (runRoofEscape(cave, dt)) return;
@@ -4708,21 +4844,21 @@
       const fed = world.level >= 1;
       if (cave.cheer > 0) {
         const wave = Math.sin(elapsed * 14 + cave.phase) * 0.35;
-        parts.armL.rotation.x = -2.6 + wave;
-        parts.armR.rotation.x = -2.6 - wave;
+        parts.armR.rotation.x = -2.6 + wave;
+        parts.armL.rotation.x = -2.6 - wave;
         parts.head.rotation.x = -0.15;
         parts.snack.visible = false;
         return;
       }
       if (cave.catchT > 0) {
         const k = cave.catchT;
-        parts.armL.rotation.x = -0.2 - k * 1.6;
         parts.armR.rotation.x = -0.2 - k * 1.6;
+        parts.armL.rotation.x = -0.2 - k * 1.6;
         parts.head.rotation.x = -k * 0.2;
         return;
       }
       if (runYawn(cave)) return;
-      parts.armL.rotation.x = damp(parts.armL.rotation.x, -0.2, 10, dt);
+      parts.armR.rotation.x = damp(parts.armR.rotation.x, -0.2, 10, dt);
       if (wanderSpot) {
         if (!fed && cave.act.until > elapsed + HUNGRY_LINGER) cave.act.until = elapsed + HUNGRY_LINGER;
         if (elapsed > cave.act.until) {
@@ -4737,15 +4873,15 @@
         }
         world.level = Math.max(0, world.level - EAT_RATE * dt);
         const chew = (elapsed + cave.phase) % CHEW_PERIOD / CHEW_PERIOD;
-        if (chew < 0.18) parts.armR.rotation.x = lerp(-0.2, -1.05, chew / 0.18);
-        else if (chew < 0.42) parts.armR.rotation.x = lerp(-1.05, -2.3, (chew - 0.18) / 0.24);
-        else if (chew < 0.58) parts.armR.rotation.x = lerp(-2.3, -0.2, (chew - 0.42) / 0.16);
-        else parts.armR.rotation.x = -0.2;
+        if (chew < 0.18) parts.armL.rotation.x = lerp(-0.2, -1.05, chew / 0.18);
+        else if (chew < 0.42) parts.armL.rotation.x = lerp(-1.05, -2.3, (chew - 0.18) / 0.24);
+        else if (chew < 0.58) parts.armL.rotation.x = lerp(-2.3, -0.2, (chew - 0.42) / 0.16);
+        else parts.armL.rotation.x = -0.2;
         parts.head.rotation.x = chew > 0.34 && chew < 0.54 ? Math.sin((chew - 0.34) / 0.2 * Math.PI) * 0.22 : 0;
         parts.snack.visible = chew >= 0.18 && chew < 0.42;
         parts.snack.scale.x = parts.snack.scale.y = parts.snack.scale.z = models.BANANA_AMMO_SCALE;
       } else {
-        parts.armR.rotation.x = -0.1;
+        parts.armL.rotation.x = -0.1;
         parts.snack.visible = false;
         parts.head.rotation.x = 0.35;
       }
@@ -4907,9 +5043,9 @@
       }
       clearHeadLook(cave);
       standPose(cave);
-      cave.parts.armL.quaternion = cave.parts.armR.quaternion = null;
-      setVec(cave.parts.armL.rotation, 0.05, 0, -0.04);
-      setVec(cave.parts.armR.rotation, 0.05, 0, 0.04);
+      cave.parts.armR.quaternion = cave.parts.armL.quaternion = null;
+      setVec(cave.parts.armR.rotation, 0.05, 0, -0.04);
+      setVec(cave.parts.armL.rotation, 0.05, 0, 0.04);
       setVec(cave.parts.head.rotation, Math.sin(elapsed * 3.1) * 0.08, Math.sin(elapsed * 4.8) * 0.72, Math.sin(elapsed * 2.4) * 0.1);
       cave.parts.club.visible = cave.parts.gun.visible = cave.parts.gunFlash.visible = cave.parts.snack.visible = false;
       if (cave.parts.chukTrail) for (const trail of cave.parts.chukTrail) trail.visible = false;
@@ -5170,7 +5306,7 @@
       cave.act.until = elapsed + (cave.state === "chilling" ? chillPause(cave) : 1.5);
       cave.act.said = true;
       cave.act.trips = 0;
-      if (!cave.camp.burning && ctx.bedRoute && cave.root.position.y - cave.baseY < -0.5 && (!ctx.abyssAt || !ctx.abyssAt(cave.root.position.x, cave.root.position.z, cave.root.position.y - cave.baseY, cave))) startBedRoute(cave, null, false);
+      if (!cave.camp.burning && ctx.bedRoute && cave.root.position.y - cave.baseY < -0.5 && underHome(cave.root.position.x, cave.root.position.z) && (!ctx.abyssAt || !ctx.abyssAt(cave.root.position.x, cave.root.position.z, cave.root.position.y - cave.baseY, cave))) startBedRoute(cave, null, false);
       cave.override = cave.controlOverride;
       if (ctx.playerName) return;
       applyState(cave, stateOf(cave));
@@ -5286,16 +5422,16 @@
       }
       const delta = lift - cave.viewLift;
       if (!delta) return;
-      parts.legL.position.y += delta;
       parts.legR.position.y += delta;
+      parts.legL.position.y += delta;
       parts.torso.position.y += delta;
-      parts.armL.position.y += delta;
       parts.armR.position.y += delta;
+      parts.armL.position.y += delta;
       parts.head.position.y += delta;
       if (parts.lion) parts.lion.position.y += delta;
       if (cave.jet) cave.jet.node.position.y += delta;
       cave.viewLift = lift;
-      parts.legL.scale.y = parts.legR.scale.y = (cave.baseY + lift) / cave.baseY;
+      parts.legR.scale.y = parts.legL.scale.y = (cave.baseY + lift) / cave.baseY;
     };
     const jumpPlayer = () => {
       if (!player || player.health.stunned || player.bedTravel.manual || player.camp.seat || player.camp.rolling || player.jet && !player.jetRecovering) return false;
@@ -5739,7 +5875,7 @@
         weaponOrigin(weaponStart, cave, true);
         hitMeleeTarget(cave, GUN_BASH_POWER);
       }
-      if (striking && w.meleeTime > 0 && club.visible && club.parent === cave.parts.armL && !cave.bedTravel.mode) {
+      if (striking && w.meleeTime > 0 && club.visible && club.parent === cave.parts.armR && !cave.bedTravel.mode) {
         // Contact time determines strength, including strikes whose arc lands
         // after release. A weighted flail retains its normal damage multiplier.
         BL.scene.updateWorld(cave.root);
@@ -5855,14 +5991,16 @@
         s.attempted = false; s.targetYaw = 0;
         snapshotTraffic(cave);
       }
-      for (let i = 0; i < crewList.length; i++) spaceWalker(crewList[i]);
+      // A puppet (`cave.puppet`, set by npc-sync.js on a page following the room's NPC host) is posed from the
+      // network: no spacing and no AI of its own; everything else about it stays as it is.
+      for (let i = 0; i < crewList.length; i++) if (!crewList[i].puppet) spaceWalker(crewList[i]);
       if (dt > 0 && ctx.characterSupportAt) for (let i = 0; i < crewList.length; i++) {
         const cave = crewList[i];
         cave.riding.support = ctx.characterSupportAt(cave);
       }
       if (dt > 0) updateFireContacts();
       updateFireThreats();
-      for (let i = 0; i < crewList.length; i++) updateMember(crewList[i], dt);
+      for (let i = 0; i < crewList.length; i++) if (!crewList[i].puppet) updateMember(crewList[i], dt);
       updateStunGear(dt);
       syncMagazine();
       if (dt > 0) updateFireContacts();
@@ -5914,8 +6052,9 @@
     }
     const stats = () => ({ built: builtEquipment.length, tomatoesThrown, projectiles: bulletPool.reduce((n,b)=>n+(b.life>0?1:0),0) });
     return {
+      showShot, setTint,
       cavemen, list: crewList, fanSlots, stateOf, stateCounts, workingCavemen, eatingCavemen, workingCount, eatingCount, feedableCavemen, refreshStates, refreshRosterRow, updateFan, rush, headWorldOf, applyAllSwag, wornBy, renderLocker, pokeCave, idleSay, drawQuotes,
-      throwTomato, clearProjectiles, control, release, relocatePlayer, sleepPlayer, wakePlayer, sitPlayer, standPlayer, ignite, dropRoll, damage, fireView, steer: steerPlayer, look: lookPlayer, elevate: elevatePlayer, playerAction, jumpPlayer, poseWeapon, wearJetpack, removeJetpack, setJetpackOwnership, thrust, holdRocketJump, update, dispose, stats,
+      throwTomato, clearProjectiles, control, release, relocatePlayer, sleepPlayer, wakePlayer, sitPlayer, standPlayer, clearHeadLook, recoverDragged, ignite, dropRoll, damage, fireView, steer: steerPlayer, look: lookPlayer, elevate: elevatePlayer, playerAction, jumpPlayer, poseWeapon, wearJetpack, removeJetpack, setJetpackOwnership, thrust, holdRocketJump, update, dispose, stats,
       actorClear, builtInJetpack, toggleTint, twirl, toggleWeapon, selectWeapon, configureWeapon, swingWeapon, bashWeapon, releaseSwing, fireWeapon, setWeaponTrigger, canFire, weaponOrigin, meleeReach, meleePower, nearReload, canReload, startReload, stopReload, stopBurst, canSwapMagazine, swapMagazine, collectMagazine, collectGroundMagazine, collectAmmo, removeMagazines, hasMagazine, magazineCount, magazineAmmo, totalAmmo, workSites,
       get sleeping() { return !!(player && player.bedTravel.manual && player.state === "sleeping"); },
       get player() {
@@ -5923,5 +6062,5 @@
       }
     };
   };
-  BL.crew = { create, EAT_RATE, AMMO_MAX, AMMO_PER_BANANA, RELOAD_PERIOD, BURST_ROUNDS, BURST_STEP, MELEE_TAP_TIME, MELEE_CHARGE_DELAY, HEALTH_MAX, HEALTH_REGEN_DELAY, HEALTH_REGEN_RATE, JUMP_SPEED, JET_SPEED, JET_RISE, JET_FUEL_SECONDS, JET_MOVE_SECONDS, JET_REFILL_SECONDS, JET_LAUNCH_FUEL };
+  BL.crew = { create, LAND_DUST, JET_SPARKS, EAT_RATE, AMMO_MAX, AMMO_PER_BANANA, RELOAD_PERIOD, BURST_ROUNDS, BURST_STEP, MELEE_TAP_TIME, MELEE_CHARGE_DELAY, HEALTH_MAX, HEALTH_REGEN_DELAY, HEALTH_REGEN_RATE, JUMP_SPEED, JET_SPEED, JET_RISE, JET_FUEL_SECONDS, JET_MOVE_SECONDS, JET_REFILL_SECONDS, JET_LAUNCH_FUEL };
 })();

@@ -2,6 +2,25 @@
   "use strict";
   const BL = window.BL = window.BL || {};
   const { mulberry32, hexToRgb, clamp } = BL.math;
+  // Compact completed terrain positions without rounding collision or sight boundaries.
+  // Faces and lines retain their order and metadata; the first exact position owns each index.
+  const compactVertices = (geometry) => {
+    const source = geometry.verts, vertices = [], indices = new Uint32Array(source.length / 3), shared = new Map();
+    for (let i = 0; i < source.length; i += 3) {
+      const x = source[i], y = source[i + 1], z = source[i + 2];
+      const key = (Object.is(x, -0) ? "-0" : x) + "," + (Object.is(y, -0) ? "-0" : y) + "," + (Object.is(z, -0) ? "-0" : z);
+      let index = shared.get(key);
+      if (index === undefined) {
+        index = vertices.length / 3;
+        shared.set(key, index);
+        vertices.push(x, y, z);
+      }
+      indices[i / 3] = index;
+    }
+    for (const face of geometry.faces) for (let i = 0; i < face.i.length; i++) face.i[i] = indices[face.i[i]];
+    for (const line of geometry.lines) for (let i = 0; i < line.i.length; i++) line.i[i] = indices[line.i[i]];
+    geometry.verts = new Float64Array(vertices);
+  };
   // Dense voxel grid; value 0 and out-of-bounds are both empty.
   const makeGrid = (sx, sy, sz) => {
     const data = new Uint8Array(sx * sy * sz);
@@ -1918,6 +1937,21 @@
       return poolAlong + radius >= POOL_APPROACH.from - 1 && poolAlong - radius <= POOL_APPROACH.to + 0.5
         && Math.abs(x * POOL_Z - z * POOL_X) <= POOL_APPROACH.halfWidth + POOL_APPROACH.blend + radius;
     };
+    const stairAt = (x, y, z) => {
+      const i = column(x, z);
+      if (i < 0) return false;
+      if (rampCells[i] && Math.abs(rampFloorAt(x, z) - y) <= UNIT + 0.05) return true;
+      if (Math.abs(surfaceAt(x, z) - y) > UNIT + 0.05) return false;
+      if (Math.abs(x) < PASS_HALF && z < -MEADOW && z > -RADIUS) return true;
+      if (z >= STAIR_TERRACE.from - 1 && z <= STAIR_TERRACE.from + STAIR_TERRACE.top * 2 + 1
+        && Math.abs(x) < STAIR_TERRACE.halfWidth + STAIR_TERRACE.blend) return true;
+      const timechainAlong = x * TIMECHAIN_X + z * TIMECHAIN_Z;
+      if (timechainAlong >= TIMECHAIN.from - 1 && timechainAlong <= TIMECHAIN.from + TIMECHAIN.top * 2 + 1
+        && Math.abs(x * TIMECHAIN_Z - z * TIMECHAIN_X) < TIMECHAIN.halfWidth + TIMECHAIN.blend) return true;
+      const poolAlong = x * POOL_X + z * POOL_Z;
+      return poolAlong >= POOL_APPROACH.from - 1 && poolAlong <= POOL_APPROACH.to + 0.5
+        && Math.abs(x * POOL_Z - z * POOL_X) < POOL_APPROACH.halfWidth + POOL_APPROACH.blend;
+    };
     // Walking centerlines reuse the rendered path mask's bends; master curves stay fixed and navigation clips
     // them to the growing ring.
     const centerlines = spokes.map((s) => {
@@ -2081,6 +2115,8 @@
         cutawayPathKey: pathKey, cutawayPathBottom: pathKey ? cutawayPathBottoms[cutawayColumn] : undefined,
         cutawayWindowMask: birdseyeWindowMask[cutawayColumn], cutawayWindowColumn: birdseyeWindowMask[cutawayColumn] ? cutawayColumn : -1 });
     }
+    // Every ramp and window is appended before indices are compacted for the consumers below.
+    compactVertices(geometry);
     const rockCaves = compactCaveLabels(matrixCaves, geometry, grid, UNIT, ORIGIN);
     matrixCaves = null;
     // Four half-spaces give each continuous ramp's triangular footprint and sloping top; its column supplies the
@@ -2371,6 +2407,7 @@
       windowPiecesAt: (x, z) => windowColumns[column(x, z)],
       isPath,
       overlapsStairs,
+      stairAt,
       isGrassAt,
       onLand,
       mouths,
@@ -2387,5 +2424,5 @@
     ISLANDS.set(seed, built);
     return built;
   };
-  BL.terrain = { makeGrid, gridGeometry, island, segmentBoxClear, cutawaySourceFromVox, PALETTE, MAX_HEIGHT, TIMECHAIN, POOL_APPROACH };
+  BL.terrain = { makeGrid, gridGeometry, compactVertices, island, segmentBoxClear, cutawaySourceFromVox, PALETTE, MAX_HEIGHT, TIMECHAIN, POOL_APPROACH };
 })();

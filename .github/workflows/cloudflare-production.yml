@@ -1,0 +1,46 @@
+name: Deploy Cloudflare production
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cloudflare-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    if: github.ref == 'refs/heads/rock'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+          package-manager-cache: false
+      - name: Refresh Oogatron activity snapshot
+        run: node scripts/jumbotron-data.mjs "$OOGATRON_STATS_URL"
+        env:
+          OOGATRON_STATS_URL: https://oogatron.wickedsmartbitcoin.workers.dev/v2/stats
+      - name: Build and stage site
+        run: npm run build:site
+      - name: Worker checks
+        run: node --test "worker/test/*.test.mjs"
+      - name: Apply D1 migrations
+        uses: cloudflare/wrangler-action@v4
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: 1e5c1e8f7c343bf6cabced151b1ae2c6
+          wranglerVersion: '4.147.0'
+          command: d1 migrations apply DB --remote --config wrangler.production.jsonc
+      - name: Deploy production Worker
+        uses: cloudflare/wrangler-action@v4
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: 1e5c1e8f7c343bf6cabced151b1ae2c6
+          wranglerVersion: '4.147.0'
+          command: deploy --config wrangler.production.jsonc

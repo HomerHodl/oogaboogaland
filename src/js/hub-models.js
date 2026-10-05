@@ -617,7 +617,7 @@
       for (let i = 0; i < 3; i++) {
         const offset = (i - 1) * 0.9, front = -0.03;
         const home = { x: bench.position.x + Math.cos(facing) * offset + Math.sin(facing) * front,
-          y: 1.14, z: i === 2 ? -1.08 : side < 0 ? -2.3 - i * 0.8 : -2.5 - i * 0.68 };
+          y: 1.14, z: i === 2 ? side > 0 ? -1.38 : -1.68 : side < 0 ? -2.3 - i * 0.8 : -2.5 - i * 0.68 };
         const kind = i === 2 ? side > 0 ? "die" : "beaker" : i === 1 ? "beaker" : "flask";
         const geometry = kind === "die" ? labDie() : kind === "beaker" ? labBeaker(side > 0 ? 1 : 0) : BL.agent.labFlaskGeometry(side > 0 ? 1 : 0);
         if (kind === "beaker") geometry.labGripY = 0.3;
@@ -631,12 +631,12 @@
           // Keep every roll in the front play area, away from the glassware
           // and the touchscreen worker farther along this same bench.
           table: { minX: bench.position.x - 0.4, maxX: bench.position.x + 0.4,
-            minZ: kind === "die" ? -1.5 : sideZ - 1.3, maxZ: sideZ + 1.3, y: 1.13 },
+            minZ: kind === "die" ? -1.95 : sideZ - 1.3, maxZ: sideZ + 1.3, y: 1.13 },
           pickup: { x: home.x, y: home.y + geometry.labGripY, z: home.z } });
       }
       stations.push({ x: side * (half - 1.78), y: 0, z: -3.1, heading: side * Math.PI / 2, kind: "touch", side, contact: screen });
     }
-    for (const side of [-1, 1]) stations.push({ x: side * (half - 0.44 - 1.213094), y: 0, z: -1.08 + side * 0.272893, heading: side * Math.PI / 2, kind: "carry", side });
+    for (const side of [-1, 1]) stations.push({ x: side * (half - 0.44 - 1.213094), y: 0, z: (side > 0 ? -1.38 : -1.68) + side * 0.572893, heading: side * Math.PI / 2, kind: "carry", side });
     const updateScreens = (dt, activeMask, claimedMask = activeMask) => {
       let changed = false;
       for (let i = 0; i < displays.length; i++) {
@@ -740,8 +740,9 @@
       geo.verts.push(ox + ax * v * length + wx * u * width + nx * bulge, oy + ay * v * length + wy * u * width + ny * bulge, oz + az * v * length + wz * u * width + nz * bulge);
       geo.normals.push(nx, ny, nz);
     }
+    // Cupped cards need the same fan anchor on both sides, otherwise the reversed fan draws a different surface.
     const front = outline.map((_, k) => base + k);
-    geo.faces.push({ i: front, color, emissive: 0 }, { i: front.slice().reverse(), color, emissive: 0 });
+    geo.faces.push({ i: front, color, emissive: 0 }, { i: [front[0], ...front.slice(1).reverse()], color, emissive: 0 });
   };
   // A pointed leaf in two painted halves split down its midrib (the lit half a shade lighter), two-sided.
   const LEAF_HALF = [[0, 0], [0.34, 0.22], [0.4, 0.5], [0.24, 0.8], [0, 1]];
@@ -754,7 +755,7 @@
         geo.normals.push(nx, ny, nz);
       }
       const ids = LEAF_HALF.map((_, k) => base + k);
-      geo.faces.push({ i: ids, color, emissive: 0 }, { i: ids.slice().reverse(), color, emissive: 0 });
+      geo.faces.push({ i: ids, color, emissive: 0 }, { i: [ids[0], ...ids.slice(1).reverse()], color, emissive: 0 });
     }
   };
   // Foliage as the hand-painted bushes do it: a dark core dome, then rosettes of five or six pointed leaves

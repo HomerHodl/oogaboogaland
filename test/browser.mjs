@@ -220,9 +220,11 @@ export const launch = async ({ w = 1440, h = 900, mobile = false, perf = false, 
   };
   const click = async (x, y) => {
     await mouse("mouseMoved", x, y, { button: "none" });
-    await mouse("mousePressed", x, y, { buttons: 1 });
+    // Queue both physical events on time, even while the page is painting a slow frame.
+    const pressed = mouse("mousePressed", x, y, { buttons: 1, timestamp: Date.now() / 1000 });
     await sleep(40);
-    await mouse("mouseReleased", x, y);
+    const released = mouse("mouseReleased", x, y, { timestamp: Date.now() / 1000 });
+    await Promise.all([pressed, released]);
   };
   const key = async (k, modifiers = 0) => {
     await send("Input.dispatchKeyEvent", { type: "keyDown", key: k, text: k.length === 1 ? k : undefined, modifiers });
@@ -235,6 +237,7 @@ export const launch = async ({ w = 1440, h = 900, mobile = false, perf = false, 
   };
   const open = async (url) => {
     await send("Page.navigate", { url });
+    await send("Page.bringToFront");
   };
   const destroy = (now = false) => {
     state.alive = false;

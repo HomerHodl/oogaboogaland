@@ -409,7 +409,7 @@
       const base = pose === "sit" ? SEAT_Y : cave.root.position.y + feet;
       Object.assign(cave.root.position, { x, y: base, z });
       cave.root.rotation.y = facing;
-      if (pose === "sit") cave.parts.legL.rotation.x = cave.parts.legR.rotation.x = -1.45;
+      if (pose === "sit") cave.parts.legR.rotation.x = cave.parts.legL.rotation.x = -1.45;
       addChild(root, cave.root);
       crowd.push({ cave, pose, facing, t: i * 1.37, x, z, y: base, wave: 0, greet: 0, swing: 0, cheer: 0 });
       // Each is in the way as far as its hanging arms reach, a sitter by its stool's side of the table.
@@ -648,9 +648,9 @@
       r.position.x = w.x; r.position.z = w.z; r.position.y = w.base;
       const moving = w.pause <= 0, stride = moving ? Math.sin(elapsed * 7 + w.leg) * 0.55 : 0;
       r.rotation.y = Math.atan2((b[0] - a[0]) * w.dir, (b[1] - a[1]) * w.dir);
-      P.legL.rotation.x = stride; P.legR.rotation.x = -stride;
-      P.armL.rotation.x = -stride * 0.6;
-      P.armR.rotation.x = w.wave > 0 || w.cheer > 0 || cheerT > 0 ? -2.6 + Math.sin(elapsed * 12) * 0.3 : stride * 0.6;
+      P.legR.rotation.x = stride; P.legL.rotation.x = -stride;
+      P.armR.rotation.x = -stride * 0.6;
+      P.armL.rotation.x = w.wave > 0 || w.cheer > 0 || cheerT > 0 ? -2.6 + Math.sin(elapsed * 12) * 0.3 : stride * 0.6;
       w.wave = Math.max(0, w.wave - dt);
       w.cheer = Math.max(0, w.cheer - dt);
     }
@@ -996,17 +996,17 @@
   // on its knuckles, whether it keeps to the deck, its jobs (one listed twice comes up twice as often), its greeting
   // for the visitor and its words with an Ooga.
   const ROLES = [
-    { id: "gamemaster", hat: 0, vest: 0, prop: 0, hand: "armL", upright: true, deck: false, start: "host", jobs: ["host", "host", "wheel", "fame", "welcome", "call", "call"],
+    { id: "gamemaster", hat: 0, vest: 0, prop: 0, hand: "armR", upright: true, deck: false, start: "host", jobs: ["host", "host", "wheel", "fame", "welcome", "call", "call"],
       hello: "Welcome, welcome! Step right up!", chat: ["You play good, Ooga!", "Big score coming. Me feel it!", "Spin wheel! Jackpot waiting!"] },
-    { id: "attendant", hat: 1, vest: 1, prop: -1, hand: "armR", upright: false, deck: false, start: "totem", jobs: ["totem", "muncher", "tokens", "tokens", "whistle"],
+    { id: "attendant", hat: 1, vest: 1, prop: -1, hand: "armL", upright: false, deck: false, start: "totem", jobs: ["totem", "muncher", "tokens", "tokens", "whistle"],
       hello: "Need tokens? Me got tokens!", chat: ["More tokens? Me got!", "No bite tokens, Ooga.", "Play fair. Have fun!"] },
-    { id: "mechanic", hat: 2, vest: 2, prop: 1, hand: "armR", upright: false, deck: false, start: "fix", jobs: ["fix", "fix", "fix", "tap"],
+    { id: "mechanic", hat: 2, vest: 2, prop: 1, hand: "armL", upright: false, deck: false, start: "fix", jobs: ["fix", "fix", "fix", "tap"],
       hello: "All machines fixed. Go play!", chat: ["Machine sound funny? Tell me.", "No kick machine, Ooga!", "Me fix. Me smart."] },
-    { id: "runner", hat: 3, vest: 3, prop: 2, hand: "armR", upright: true, deck: false, start: "fill", jobs: ["fill", "serve"],
+    { id: "runner", hat: 3, vest: 3, prop: 2, hand: "armL", upright: true, deck: false, start: "fill", jobs: ["fill", "serve"],
       hello: "Coconut? Fresh off tree!", chat: ["Thirsty? Coconut coming!", "Slurp slurp, good!", "Grub on stick later!"] },
-    { id: "clerk", hat: 1, vest: 4, prop: 3, hand: "armR", upright: false, deck: false, start: "stock", jobs: ["stock", "stock", "claw", "tickets", "tickets", "muncher", "bucket"],
+    { id: "clerk", hat: 1, vest: 4, prop: 3, hand: "armL", upright: false, deck: false, start: "stock", jobs: ["stock", "stock", "claw", "tickets", "tickets", "muncher", "bucket"],
       hello: "Tickets buy prizes! Come see!", chat: ["Many tickets! Prize soon!", "Crown prize shiny. You want?", "Count tickets. Me count good."] },
-    { id: "keeper", hat: 1, vest: 4, prop: 4, hand: "armR", upright: false, deck: true, start: "dust", jobs: ["dust", "dust", "fan", "rail"],
+    { id: "keeper", hat: 1, vest: 4, prop: 4, hand: "armL", upright: false, deck: true, start: "dust", jobs: ["dust", "dust", "fan", "rail"],
       hello: "Hoo! Old games up here! Come play!", chat: ["Dust gone. Games shiny.", "Fire up here warm!", "Coconut Invaders! Me love."] }
   ];
   // Each job: the pose it is worked in, how long (s), whether the role's prop comes out, how often it speaks up and
@@ -1519,22 +1519,22 @@
     if (k > 0.001) {
       posture(g, i);
       const Z = POSE, pitch = a.chest.rotation.x = mix(a.chest.rotation.x, Z.pitch, k);
-      P.legL.rotation.x = mix(P.legL.rotation.x, Z.legs, k);
       P.legR.rotation.x = mix(P.legR.rotation.x, Z.legs, k);
+      P.legL.rotation.x = mix(P.legL.rotation.x, Z.legs, k);
       a.hips.position.y -= a.hips.position.y * (1 - Math.cos(Z.legs)) * k;
-      P.armL.rotation.x = mix(P.armL.rotation.x, -pitch - Z.lx, k);
-      P.armR.rotation.x = mix(P.armR.rotation.x, -pitch - Z.rx, k);
-      P.armL.rotation.z = mix(P.armL.rotation.z, Z.lz, k);
-      P.armR.rotation.z = mix(P.armR.rotation.z, Z.rz, k);
+      P.armR.rotation.x = mix(P.armR.rotation.x, -pitch - Z.lx, k);
+      P.armL.rotation.x = mix(P.armL.rotation.x, -pitch - Z.rx, k);
+      P.armR.rotation.z = mix(P.armR.rotation.z, Z.lz, k);
+      P.armL.rotation.z = mix(P.armL.rotation.z, Z.rz, k);
       P.head.rotation.x = mix(P.head.rotation.x, -pitch + Z.hx, k);
     }
-    P.armR.rotation.y = k > 0.001 ? POSE.ry * k : 0;
+    P.armL.rotation.y = k > 0.001 ? POSE.ry * k : 0;
     P.head.rotation.y = k > 0.001 ? POSE.hy * k : 0;
     const c = g.carry;
     if (c > 0.001) {
       const pitch = a.chest.rotation.x, tray = g.role.id === "runner";
       P[g.role.hand].rotation.x = mix(P[g.role.hand].rotation.x, -pitch - (tray ? 1.35 : 0.55), c);
-      if (tray) { P.armL.rotation.x = mix(P.armL.rotation.x, -pitch - 1.35, c); P.armL.rotation.z = mix(P.armL.rotation.z, 0.1, c); P.armR.rotation.z = mix(P.armR.rotation.z, -0.1, c); }
+      if (tray) { P.armR.rotation.x = mix(P.armR.rotation.x, -pitch - 1.35, c); P.armR.rotation.z = mix(P.armR.rotation.z, 0.1, c); P.armL.rotation.z = mix(P.armL.rotation.z, -0.1, c); }
     }
     if (g.prop) {
       const id = g.role.id, show = id === "gamemaster" || (id === "runner" ? g.carrying : g.phase === "work" && g.job.prop && g.blend > 0.5);
@@ -1673,6 +1673,7 @@
     hud.onAction((action) => {
       if (action === "leave") leaveCave();
       else if (action === "reset-view") pilot.goPreset("entrance");
+      else if (action === "mode-retake") pilot.modeAction(action);
       else if (action === "arcade-mute") toggleMute();
     });
     fx = fxMod.create({ root, input, hooks, hud, game, world, renderer, camera, overlay: ctx.overlay, tickerAt: { x: 0, y: 5, z: -6 } });
@@ -1765,45 +1766,45 @@
   const animateCrowd = (dt, elapsed) => {
     for (let i = 0; i < crowd.length; i++) {
       const m = crowd[i], P = m.cave.parts, t = (m.t += dt);
-      let armL = 0, armR = 0, head = 0, sway = 0;
+      let armR = 0, armL = 0, head = 0, sway = 0;
       if (m.pose === "claw" || m.pose === "pinball") {
-        armL = -1.05 + Math.sin(t * 8) * 0.07;
-        armR = m.pose === "pinball" ? -1.05 - Math.max(0, Math.sin(t * 6.5)) * 0.25 : -1.1 + Math.sin(t * 5 + 1) * 0.12;
+        armR = -1.05 + Math.sin(t * 8) * 0.07;
+        armL = m.pose === "pinball" ? -1.05 - Math.max(0, Math.sin(t * 6.5)) * 0.25 : -1.1 + Math.sin(t * 5 + 1) * 0.12;
         head = 0.25 + Math.sin(t * 1.3) * 0.05;
       } else if (m.pose === "hockey") {
-        armR = -0.85 + Math.sin(t * 4.6) * 0.3;
-        armL = -0.3;
+        armL = -0.85 + Math.sin(t * 4.6) * 0.3;
+        armR = -0.3;
         head = 0.35;
         sway = Math.sin(t * 2.3) * 0.2;
       } else if (m.pose === "skee") {
         // Swung by its game: back, then through to the release, when the machine takes its roll.
         const k = m.swing;
-        armR = k > 0.6 ? (1 - k) / 0.4 * 0.8 : k > 0 ? 0.8 - (0.6 - k) / 0.6 * 2.2 : -0.1;
-        armL = -0.3;
+        armL = k > 0.6 ? (1 - k) / 0.4 * 0.8 : k > 0 ? 0.8 - (0.6 - k) / 0.6 * 2.2 : -0.1;
+        armR = -0.3;
         head = 0.1;
       } else if (m.pose === "shoot") {
         const up = m.swing > 0 ? Math.sin(m.swing * Math.PI) : 0;
-        armL = armR = -0.6 - up * 2.1;
+        armR = armL = -0.6 - up * 2.1;
         head = -0.25 * up;
       } else if (m.pose === "sit") {
-        armR = -1.2 - Math.max(0, Math.sin(t * 1.8)) * 0.9;
-        armL = -0.9;
+        armL = -1.2 - Math.max(0, Math.sin(t * 1.8)) * 0.9;
+        armR = -0.9;
         head = 0.1 + Math.sin(t * 1.8) * 0.08;
       } else if (m.pose === "queue") {
         P.head.rotation.y = Math.sin(t * 0.6) * 0.5;
-        armL = armR = Math.sin(t * 1.1) * 0.1;
+        armR = armL = Math.sin(t * 1.1) * 0.1;
       } else {
         const up = Math.max(0, Math.sin(t * 1.6)) ** 3;
-        armL = armR = -2.8 * up;
+        armR = armL = -2.8 * up;
         head = -0.3;
       }
       m.swing = Math.max(0, m.swing - dt * 1.6);
       m.wave = Math.max(0, m.wave - dt);
       m.cheer = Math.max(0, m.cheer - dt);
-      if ((cheerT > 0 || m.cheer > 0) && m.pose !== "sit") armL = armR = -2.4 - Math.abs(Math.sin(t * 7)) * 0.4;
-      else if (m.wave > 0) armR = -2.6 + Math.sin(t * 12) * 0.3;
-      P.armL.rotation.x = armL;
+      if ((cheerT > 0 || m.cheer > 0) && m.pose !== "sit") armR = armL = -2.4 - Math.abs(Math.sin(t * 7)) * 0.4;
+      else if (m.wave > 0) armL = -2.6 + Math.sin(t * 12) * 0.3;
       P.armR.rotation.x = armR;
+      P.armL.rotation.x = armL;
       P.head.rotation.x = head;
       m.cave.root.rotation.y = m.facing + sway;
     }

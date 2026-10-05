@@ -150,6 +150,7 @@
     if (!json.meta || json.meta.schema_version !== 3) throw new Error("unsupported stats schema_version");
     if (!Array.isArray(json.repos)) throw new Error("stats repos is not an array");
     if (!Array.isArray(json.contributors)) throw new Error("stats contributors is not an array");
+    json = BL.activityRepos.normalizeStats(json);
     const contributors = json.contributors.map((c) => ({ login: String(c.login) }));
     const byLogin = new Map(contributors.map((c) => [c.login, c]));
     const repos = json.repos.map((r) => {
@@ -729,12 +730,22 @@
       if (v.name === "repo") return `${v.params.name} totals`;
       return `${v.params.repo || (v.params.scope === "multi" ? "multi" : "org")} · ${v.params.type}`;
     };
+    const viewParams = (params) => {
+      if (!params) return params;
+      const normalized = { ...params };
+      if (typeof normalized.name === "string") normalized.name = BL.activityRepos.nameOf(normalized.name);
+      if (typeof normalized.repo === "string") normalized.repo = BL.activityRepos.nameOf(normalized.repo);
+      return normalized;
+    };
+    const repoFilters = (values) => values === null ? null : [...new Set(values.map(BL.activityRepos.nameOf))];
+    const userFilters = (values) => values === null ? null : [...new Set(values.map(BL.contributorIdentities.ownerOf))];
     const indexOfView = (selected, pages = cycle()) => {
+      const params = viewParams(selected.params);
       for (let i = 0; i < pages.length; i++) {
         const page = pages[i];
-        if (page.name === selected.name && page.params?.name === selected.params?.name
-          && page.params?.repo === selected.params?.repo && page.params?.type === selected.params?.type
-          && page.params?.scope === selected.params?.scope) return i;
+        if (page.name === selected.name && page.params?.name === params?.name
+          && page.params?.repo === params?.repo && page.params?.type === params?.type
+          && page.params?.scope === params?.scope) return i;
       }
       return 0;
     };
@@ -752,8 +763,8 @@
       createReader(state = null) {
         const canvas = document.createElement("canvas");
         canvas.width = BOARD_W; canvas.height = BOARD_H;
-        const context = canvas.getContext("2d", { alpha: false });
-        let filters = { repos: state?.filters?.repos ?? null, users: state?.filters?.users ?? null, types: state?.filters?.types ?? null };
+        const context = canvas.getContext("2d", { alpha: false, willReadFrequently: true });
+        let filters = { repos: repoFilters(state?.filters?.repos ?? null), users: userFilters(state?.filters?.users ?? null), types: state?.filters?.types ?? null };
         let rollup = state?.rollup === true;
         let source = filteredModel(model, filters), pages = buildCycle(source, source !== model, filters.repos);
         const recentParams = { rows: [] };
@@ -782,7 +793,7 @@
           get users() { return model ? model.contributors : []; },
           get types() { return RECENT_TYPES; },
           setFilter(kind, values) {
-            filters = { ...filters, [kind]: values };
+            filters = { ...filters, [kind]: kind === "repos" ? repoFilters(values) : kind === "users" ? userFilters(values) : values };
             source = filteredModel(model, filters);
             refreshRecent();
             pages = buildCycle(source, source !== model, filters.repos);
@@ -833,7 +844,7 @@
       },
       setView(name, params) {
         if (!VIEWS[name]) return;
-        view = { name, params };
+        view = { name, params: viewParams(params) };
         resetRotation = dirty = true;
       },
       nextView() {

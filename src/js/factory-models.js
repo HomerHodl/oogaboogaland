@@ -70,7 +70,8 @@
     treasury: { x: 13.5, y: LEVEL.low, z: 20, w: 7, d: 5 },
     // In front of the core's stone foot, whose face is at z 0.2 there.
     forge: { x: 0, z: 0.7 },
-    lookout: { x: -16, y: LEVEL.top, z: -14, w: 6, d: 6, tower: 5.5 },
+    // The rear landing leaves a full body clear of both the tower and the deck posts.
+    lookout: { x: -16, y: LEVEL.top, z: -14, w: 6, d: 8, tower: 5.5 },
     lookoutDeck: { x: -16, y: LEVEL.top + 5.65, z: -14, w: 5, d: 5 },
     lookoutApproach: { x: -16, y: LEVEL.top, z: -10.8, w: 2, d: 1.5 },
     // Vertical climbing planes; normals point out from the upper landing.

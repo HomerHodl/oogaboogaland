@@ -763,7 +763,7 @@
     contexts.push(BL.holeGuides.create({ island }));
     for (const context of contexts) {
       context.surfacePerception = -1;
-      for (const wall of context.walls) wall.cameraReady = false;
+      for (const wall of context.walls) { wall.cameraReady = false; wall.surfaceWitness = -1; }
     }
     // The observer can see through a doorway into a second space.
     // Keep one deduplicated world set for sight filtering, independent of the orbit eye.
@@ -875,7 +875,19 @@
           const at = group * 3, wall = walls[wallGroups[group]], distance = Math.hypot(centers[at] - px, centers[at + 1] - py, centers[at + 2] - pz);
           wall.distance = Math.min(wall.distance, distance);
         }
-        if (eyeMoved) for (const wall of walls) if (wall.distance <= RADIUS) perceiveBranch(context, wall, wall.surfaceTree, ex, ey, ez);
+        // Recheck a previously reached original sample before searching a whole
+        // section again. Every changed view or prop state still runs both rays;
+        // a lost witness falls through to the complete search below.
+        if (wholeSection) for (const wall of walls) {
+          const group = wall.surfaceWitness, at = group * 3;
+          if (group < 0 || wall.distance > RADIUS) continue;
+          if ((centers[at] - px) ** 2 + (centers[at + 1] - py) ** 2 + (centers[at + 2] - pz) ** 2 <= RADIUS * RADIUS
+            && perceives(context, group, ex, ey, ez, actor, objectClear)) {
+            wall.perceived = true;
+            wall.visibleMin = wall.visibleMax = context.surfaceStations[group];
+          } else wall.surfaceWitness = -1;
+        }
+        if (eyeMoved) for (const wall of walls) if (wall.distance <= RADIUS && !wall.perceived) perceiveBranch(context, wall, wall.surfaceTree, ex, ey, ez);
         // Stations matter only at a wall's first and last perceived sample: scan inward from both ends, never trace all.
         if (context.kind === "room" || context.kind === "ramp" || context.kind === "common") for (const wall of walls) {
           if (!(wall.distance <= RADIUS)) continue;
@@ -895,6 +907,10 @@
           const at = group * 3, wall = walls[wallGroups[group]];
           if (wholeSection && wall.perceived) continue;
           if (wall.distance <= RADIUS) {
+            // A whole section needs a witness within the perception radius;
+            // its endpoints never clip the section. Do not trace farther
+            // samples on a long wall while searching for that witness.
+            if (wholeSection && (centers[at] - px) ** 2 + (centers[at + 1] - py) ** 2 + (centers[at + 2] - pz) ** 2 > RADIUS * RADIUS) continue;
             const samples = context.surfaceSamples, x = samples[at], y = samples[at + 1], z = samples[at + 2];
             if (context.surfaceTerrainSeen[group] === 2) context.surfaceTerrainSeen[group] = island.sightClearAt(ex, ey, ez, x, y, z) ? 1 : 0;
             if (context.surfaceTerrainSeen[group] && (!objectClear || objectClear(ex, ey, ez, x, y, z, actor, null))) {
@@ -903,7 +919,10 @@
                 const target = Math.max(0, Math.min(1, (RADIUS - distance) / (RADIUS - FADE_START)));
                 context.surfacePerceived[group] = target; wall.target = Math.max(wall.target, target); wall.perceived = true;
               } else if (!outdoor) {
-                if (distance <= RADIUS) wall.perceived = true;
+                if (distance <= RADIUS) {
+                  wall.perceived = true;
+                  if (wholeSection) wall.surfaceWitness = group;
+                }
                 wall.visibleMin = Math.min(wall.visibleMin, context.surfaceStations[group]);
                 wall.visibleMax = Math.max(wall.visibleMax, context.surfaceStations[group]);
               }
@@ -1034,7 +1053,7 @@
         context.surfaceActive = context.surfaceWholeActive = 0;
         context.surfaceEye.fill(NaN); context.surfaceCamera.fill(NaN);
         context.surfaceOcclusion = context.surfacePerception = -1;
-        for (const wall of context.walls) wall.phase = wall.target = 0;
+        for (const wall of context.walls) { wall.phase = wall.target = 0; wall.surfaceWitness = -1; }
       }
     };
     const dispose = () => { contexts.length = 0; all.count = stats.contexts = stats.surfaceContexts = stats.frontageContexts = stats.caveContexts = stats.lines = stats.uniqueLines = stats.surfaces = stats.surfacePatches = stats.windowReveals = 0; };

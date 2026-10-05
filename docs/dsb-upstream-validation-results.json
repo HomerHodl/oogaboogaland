@@ -1,0 +1,980 @@
+{
+  "startingHead": "bd033e04ac1e4ac3c815c2c0e36ce0908339e38f",
+  "upstreamHead": "822addee5f3971c9a47da228e4935e57fb576ab7",
+  "mergeBase": "dab6e36bea482f2d712b65f3e2d559348400b527",
+  "functional": {
+    "build": {
+      "exit": 0,
+      "summary": []
+    },
+    "whitespace": {
+      "exit": 0,
+      "summary": []
+    },
+    "integration": {
+      "exit": 0,
+      "summary": [
+        "64/64 checks passed in 1.7 min"
+      ]
+    },
+    "worker": {
+      "exit": 0,
+      "summary": [
+        "39/39 tests passed"
+      ]
+    },
+    "upstream-baseline": {
+      "exit": 1,
+      "summary": [
+        "128/130 checks passed in 0.3 min"
+      ]
+    },
+    "merged-unit": {
+      "exit": 1,
+      "summary": [
+        "176/178 checks passed in 0.4 min"
+      ]
+    },
+    "studio": {
+      "exit": 0,
+      "summary": [
+        "115/115 checks passed in 2.1 min"
+      ]
+    },
+    "svrn-functional": {
+      "exit": 0,
+      "summary": [
+        "35/35 checks passed in 0.4 min"
+      ]
+    },
+    "svrn-semantics": {
+      "exit": 0,
+      "summary": [
+        "39/39 checks passed in 0.8 min"
+      ]
+    },
+    "vacancy": {
+      "exit": 0,
+      "summary": [
+        "25/25 checks passed in 0.7 min"
+      ]
+    },
+    "venue-menus": {
+      "exit": 0,
+      "summary": [
+        "142/142 checks passed in 1.4 min"
+      ]
+    },
+    "radio-tv": {
+      "exit": 0,
+      "summary": [
+        "91/91 checks passed in 1.9 min"
+      ]
+    },
+    "interior": {
+      "exit": 0,
+      "summary": [
+        "75/75 checks passed in 3.6 min"
+      ]
+    },
+    "portara": {
+      "exit": 0,
+      "summary": [
+        "31/31 checks passed in 1.1 min"
+      ]
+    },
+    "shoreline": {
+      "exit": 0,
+      "summary": [
+        "58/58 checks passed in 1.5 min"
+      ]
+    },
+    "exterior": {
+      "exit": 0,
+      "summary": [
+        "7/7 checks passed in 0.0 min"
+      ]
+    },
+    "syntax": {
+      "exit": 0,
+      "files": 265
+    }
+  },
+  "captureUnavailable": [
+    {
+      "path": "svrn-collections.png",
+      "status": "software-GPU capture timeout",
+      "ms": 6809,
+      "before": {
+        "scene": "dsb",
+        "room": "svrn-society",
+        "frames": 192,
+        "curtain": false,
+        "kind": "webgl2",
+        "ready": true,
+        "failure": "",
+        "lost": false,
+        "errors": [],
+        "gpu": "ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero) (0x0000C0DE)), SwiftShader driver)",
+        "records": 410
+      },
+      "after": {
+        "scene": "dsb",
+        "room": "svrn-society",
+        "frames": 204,
+        "curtain": false,
+        "kind": "webgl2",
+        "ready": true,
+        "failure": "",
+        "lost": false,
+        "errors": [],
+        "gpu": "ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero) (0x0000C0DE)), SwiftShader driver)",
+        "records": 408
+      }
+    },
+    {
+      "path": "svrn-door.png",
+      "status": "software-GPU capture timeout",
+      "ms": 7398,
+      "before": {
+        "scene": "dsb",
+        "room": null,
+        "frames": 36,
+        "curtain": false,
+        "kind": "webgl2",
+        "ready": true,
+        "failure": "",
+        "lost": false,
+        "errors": [],
+        "gpu": "ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero) (0x0000C0DE)), SwiftShader driver)",
+        "records": 360
+      },
+      "after": {
+        "scene": "dsb",
+        "room": null,
+        "frames": 43,
+        "curtain": false,
+        "kind": "webgl2",
+        "ready": true,
+        "failure": "",
+        "lost": false,
+        "errors": [],
+        "gpu": "ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero) (0x0000C0DE)), SwiftShader driver)",
+        "records": 360
+      }
+    },
+    {
+      "path": "svrn-entrance.png",
+      "status": "software-GPU capture timeout",
+      "ms": 7287,
+      "before": {
+        "scene": "dsb",
+        "room": "svrn-society",
+        "frames": 126,
+        "curtain": false,
+        "kind": "webgl2",
+        "ready": true,
+        "failure": "",
+        "lost": false,
+        "errors": [],
+        "gpu": "ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero) (0x0000C0DE)), SwiftShader driver)",
+        "records": 410
+      },
+      "after": {
+        "scene": "dsb",
+        "room": "svrn-society",
+        "frames": 133,
+        "curtain": false,
+        "kind": "webgl2",
+        "ready": true,
+        "failure": "",
+        "lost": false,
+        "errors": [],
+        "gpu": "ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero) (0x0000C0DE)), SwiftShader driver)",
+        "records": 410
+      }
+    },
+    {
+      "path": "svrn-faith.png",
+      "status": "software-GPU capture timeout",
+      "ms": 8753,
+      "before": {
+        "scene": "dsb",
+        "room": "svrn-society",
+        "frames": 228,
+        "curtain": false,
+        "kind": "webgl2",
+        "ready": true,
+        "failure": "",
+        "lost": false,
+        "errors": [],
+        "gpu": "ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero) (0x0000C0DE)), SwiftShader driver)",
+        "records": 408
+      },
+      "after": {
+        "scene": "dsb",
+        "room": "svrn-society",
+        "frames": 237,
+        "curtain": false,
+        "kind": "webgl2",
+        "ready": true,
+        "failure": "",
+        "lost": false,
+        "errors": [],
+        "gpu": "ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero) (0x0000C0DE)), SwiftShader driver)",
+        "records": 408
+      }
+    },
+    {
+      "path": "svrn-hats.png",
+      "status": "software-GPU capture timeout",
+      "ms": 5765,
+      "before": {
+        "scene": "dsb",
+        "room": "svrn-society",
+        "frames": 260,
+        "curtain": false,
+        "kind": "webgl2",
+        "ready": true,
+        "failure": "",
+        "lost": false,
+        "errors": [],
+        "gpu": "ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero) (0x0000C0DE)), SwiftShader driver)",
+        "records": 408
+      },
+      "after": {
+        "scene": "dsb",
+        "room": "svrn-society",
+        "frames": 272,
+        "curtain": false,
+        "kind": "webgl2",
+        "ready": true,
+        "failure": "",
+        "lost": false,
+        "errors": [],
+        "gpu": "ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero) (0x0000C0DE)), SwiftShader driver)",
+        "records": 408
+      }
+    },
+    {
+      "path": "svrn-kiosk.png",
+      "status": "software-GPU capture timeout",
+      "ms": 6529,
+      "before": {
+        "scene": "dsb",
+        "room": "svrn-society",
+        "frames": 297,
+        "curtain": false,
+        "kind": "webgl2",
+        "ready": true,
+        "failure": "",
+        "lost": false,
+        "errors": [],
+        "gpu": "ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero) (0x0000C0DE)), SwiftShader driver)",
+        "records": 408
+      },
+      "after": {
+        "scene": "dsb",
+        "room": "svrn-society",
+        "frames": 311,
+        "curtain": false,
+        "kind": "webgl2",
+        "ready": true,
+        "failure": "",
+        "lost": false,
+        "errors": [],
+        "gpu": "ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero) (0x0000C0DE)), SwiftShader driver)",
+        "records": 408
+      }
+    },
+    {
+      "path": "svrn-lounge.png",
+      "status": "software-GPU capture timeout",
+      "ms": 5863,
+      "before": {
+        "scene": "dsb",
+        "room": "svrn-society",
+        "frames": 334,
+        "curtain": false,
+        "kind": "webgl2",
+        "ready": true,
+        "failure": "",
+        "lost": false,
+        "errors": [],
+        "gpu": "ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero) (0x0000C0DE)), SwiftShader driver)",
+        "records": 408
+      },
+      "after": {
+        "scene": "dsb",
+        "room": "svrn-society",
+        "frames": 346,
+        "curtain": false,
+        "kind": "webgl2",
+        "ready": true,
+        "failure": "",
+        "lost": false,
+        "errors": [],
+        "gpu": "ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero) (0x0000C0DE)), SwiftShader driver)",
+        "records": 408
+      }
+    },
+    {
+      "path": "svrn-retail.png",
+      "status": "software-GPU capture timeout",
+      "ms": 5743,
+      "before": {
+        "scene": "dsb",
+        "room": "svrn-society",
+        "frames": 158,
+        "curtain": false,
+        "kind": "webgl2",
+        "ready": true,
+        "failure": "",
+        "lost": false,
+        "errors": [],
+        "gpu": "ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero) (0x0000C0DE)), SwiftShader driver)",
+        "records": 410
+      },
+      "after": {
+        "scene": "dsb",
+        "room": "svrn-society",
+        "frames": 168,
+        "curtain": false,
+        "kind": "webgl2",
+        "ready": true,
+        "failure": "",
+        "lost": false,
+        "errors": [],
+        "gpu": "ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero) (0x0000C0DE)), SwiftShader driver)",
+        "records": 410
+      }
+    },
+    {
+      "path": "svrn-wide.png",
+      "status": "software-GPU capture timeout",
+      "ms": 6157,
+      "before": {
+        "scene": "dsb",
+        "room": "svrn-society",
+        "frames": 369,
+        "curtain": false,
+        "kind": "webgl2",
+        "ready": true,
+        "failure": "",
+        "lost": false,
+        "errors": [],
+        "gpu": "ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero) (0x0000C0DE)), SwiftShader driver)",
+        "records": 408
+      },
+      "after": {
+        "scene": "dsb",
+        "room": "svrn-society",
+        "frames": 381,
+        "curtain": false,
+        "kind": "webgl2",
+        "ready": true,
+        "failure": "",
+        "lost": false,
+        "errors": [],
+        "gpu": "ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero) (0x0000C0DE)), SwiftShader driver)",
+        "records": 408
+      }
+    },
+    {
+      "path": "vac-central.png",
+      "status": "software-GPU capture timeout",
+      "ms": 6940,
+      "healthMs": 1935,
+      "before": {
+        "scene": "dsb",
+        "room": null,
+        "frames": 95,
+        "curtain": false,
+        "kind": "webgl2",
+        "ready": true,
+        "failure": "",
+        "lost": false,
+        "errors": [],
+        "gpu": "ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero) (0x0000C0DE)), SwiftShader driver)",
+        "records": 360
+      },
+      "after": {
+        "scene": "dsb",
+        "room": null,
+        "frames": 102,
+        "curtain": false,
+        "kind": "webgl2",
+        "ready": true,
+        "failure": "",
+        "lost": false,
+        "errors": [],
+        "gpu": "ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero) (0x0000C0DE)), SwiftShader driver)",
+        "records": 360
+      }
+    },
+    {
+      "path": "vac-lower.png",
+      "status": "software-GPU capture timeout",
+      "ms": 7955,
+      "healthMs": 2952,
+      "before": {
+        "scene": "dsb",
+        "room": null,
+        "frames": 66,
+        "curtain": false,
+        "kind": "webgl2",
+        "ready": true,
+        "failure": "",
+        "lost": false,
+        "errors": [],
+        "gpu": "ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero) (0x0000C0DE)), SwiftShader driver)",
+        "records": 360
+      },
+      "after": {
+        "scene": "dsb",
+        "room": null,
+        "frames": 72,
+        "curtain": false,
+        "kind": "webgl2",
+        "ready": true,
+        "failure": "",
+        "lost": false,
+        "errors": [],
+        "gpu": "ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero) (0x0000C0DE)), SwiftShader driver)",
+        "records": 360
+      }
+    },
+    {
+      "path": "vac-overview.png",
+      "status": "software-GPU capture timeout",
+      "ms": 8168,
+      "healthMs": 3160,
+      "before": {
+        "scene": "dsb",
+        "room": null,
+        "frames": 37,
+        "curtain": false,
+        "kind": "webgl2",
+        "ready": true,
+        "failure": "",
+        "lost": false,
+        "errors": [],
+        "gpu": "ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero) (0x0000C0DE)), SwiftShader driver)",
+        "records": 360
+      },
+      "after": {
+        "scene": "dsb",
+        "room": null,
+        "frames": 43,
+        "curtain": false,
+        "kind": "webgl2",
+        "ready": true,
+        "failure": "",
+        "lost": false,
+        "errors": [],
+        "gpu": "ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero) (0x0000C0DE)), SwiftShader driver)",
+        "records": 360
+      }
+    },
+    {
+      "path": "vac-upper.png",
+      "status": "software-GPU capture timeout",
+      "ms": 7196,
+      "healthMs": 2193,
+      "before": {
+        "scene": "dsb",
+        "room": null,
+        "frames": 125,
+        "curtain": false,
+        "kind": "webgl2",
+        "ready": true,
+        "failure": "",
+        "lost": false,
+        "errors": [],
+        "gpu": "ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero) (0x0000C0DE)), SwiftShader driver)",
+        "records": 360
+      },
+      "after": {
+        "scene": "dsb",
+        "room": null,
+        "frames": 132,
+        "curtain": false,
+        "kind": "webgl2",
+        "ready": true,
+        "failure": "",
+        "lost": false,
+        "errors": [],
+        "gpu": "ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero) (0x0000C0DE)), SwiftShader driver)",
+        "records": 358
+      }
+    },
+    {
+      "path": "vac-windmills.png",
+      "status": "software-GPU capture timeout",
+      "ms": 8215,
+      "healthMs": 3189,
+      "before": {
+        "scene": "dsb",
+        "room": null,
+        "frames": 155,
+        "curtain": false,
+        "kind": "webgl2",
+        "ready": true,
+        "failure": "",
+        "lost": false,
+        "errors": [],
+        "gpu": "ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero) (0x0000C0DE)), SwiftShader driver)",
+        "records": 358
+      },
+      "after": {
+        "scene": "dsb",
+        "room": null,
+        "frames": 160,
+        "curtain": false,
+        "kind": "webgl2",
+        "ready": true,
+        "failure": "",
+        "lost": false,
+        "errors": [],
+        "gpu": "ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero) (0x0000C0DE)), SwiftShader driver)",
+        "records": 358
+      }
+    },
+    {
+      "path": "coast-beach.png",
+      "status": "software-GPU capture timeout",
+      "ms": 7920,
+      "before": {
+        "scene": "dsb",
+        "room": null,
+        "frames": 32,
+        "curtain": false,
+        "kind": "webgl2",
+        "ready": true,
+        "failure": "",
+        "lost": false,
+        "errors": [],
+        "gpu": "ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero) (0x0000C0DE)), SwiftShader driver)",
+        "records": 360
+      },
+      "after": {
+        "scene": "dsb",
+        "room": null,
+        "frames": 38,
+        "curtain": false,
+        "kind": "webgl2",
+        "ready": true,
+        "failure": "",
+        "lost": false,
+        "errors": [],
+        "gpu": "ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero) (0x0000C0DE)), SwiftShader driver)",
+        "records": 360
+      }
+    },
+    {
+      "path": "coast-harbor-night-rain.png",
+      "status": "software-GPU capture timeout",
+      "ms": 7352,
+      "before": {
+        "scene": "dsb",
+        "room": null,
+        "frames": 173,
+        "curtain": false,
+        "kind": "webgl2",
+        "ready": true,
+        "failure": "",
+        "lost": false,
+        "errors": [],
+        "gpu": "ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero) (0x0000C0DE)), SwiftShader driver)",
+        "records": 361
+      },
+      "after": {
+        "scene": "dsb",
+        "room": null,
+        "frames": 182,
+        "curtain": false,
+        "kind": "webgl2",
+        "ready": true,
+        "failure": "",
+        "lost": false,
+        "errors": [],
+        "gpu": "ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero) (0x0000C0DE)), SwiftShader driver)",
+        "records": 359
+      }
+    },
+    {
+      "path": "coast-harbor.png",
+      "status": "software-GPU capture timeout",
+      "ms": 6382,
+      "before": {
+        "scene": "dsb",
+        "room": null,
+        "frames": 83,
+        "curtain": false,
+        "kind": "webgl2",
+        "ready": true,
+        "failure": "",
+        "lost": false,
+        "errors": [],
+        "gpu": "ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero) (0x0000C0DE)), SwiftShader driver)",
+        "records": 360
+      },
+      "after": {
+        "scene": "dsb",
+        "room": null,
+        "frames": 91,
+        "curtain": false,
+        "kind": "webgl2",
+        "ready": true,
+        "failure": "",
+        "lost": false,
+        "errors": [],
+        "gpu": "ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero) (0x0000C0DE)), SwiftShader driver)",
+        "records": 360
+      }
+    },
+    {
+      "path": "coast-pier-east.png",
+      "status": "software-GPU capture timeout",
+      "ms": 6239,
+      "before": {
+        "scene": "dsb",
+        "room": null,
+        "frames": 142,
+        "curtain": false,
+        "kind": "webgl2",
+        "ready": true,
+        "failure": "",
+        "lost": false,
+        "errors": [],
+        "gpu": "ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero) (0x0000C0DE)), SwiftShader driver)",
+        "records": 360
+      },
+      "after": {
+        "scene": "dsb",
+        "room": null,
+        "frames": 153,
+        "curtain": false,
+        "kind": "webgl2",
+        "ready": true,
+        "failure": "",
+        "lost": false,
+        "errors": [],
+        "gpu": "ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero) (0x0000C0DE)), SwiftShader driver)",
+        "records": 360
+      }
+    },
+    {
+      "path": "coast-pier-west.png",
+      "status": "software-GPU capture timeout",
+      "ms": 5718,
+      "before": {
+        "scene": "dsb",
+        "room": null,
+        "frames": 113,
+        "curtain": false,
+        "kind": "webgl2",
+        "ready": true,
+        "failure": "",
+        "lost": false,
+        "errors": [],
+        "gpu": "ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero) (0x0000C0DE)), SwiftShader driver)",
+        "records": 360
+      },
+      "after": {
+        "scene": "dsb",
+        "room": null,
+        "frames": 122,
+        "curtain": false,
+        "kind": "webgl2",
+        "ready": true,
+        "failure": "",
+        "lost": false,
+        "errors": [],
+        "gpu": "ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero) (0x0000C0DE)), SwiftShader driver)",
+        "records": 360
+      }
+    },
+    {
+      "path": "coast-rocks.png",
+      "status": "software-GPU capture timeout",
+      "ms": 8010,
+      "before": {
+        "scene": "dsb",
+        "room": null,
+        "frames": 58,
+        "curtain": false,
+        "kind": "webgl2",
+        "ready": true,
+        "failure": "",
+        "lost": false,
+        "errors": [],
+        "gpu": "ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero) (0x0000C0DE)), SwiftShader driver)",
+        "records": 360
+      },
+      "after": {
+        "scene": "dsb",
+        "room": null,
+        "frames": 63,
+        "curtain": false,
+        "kind": "webgl2",
+        "ready": true,
+        "failure": "",
+        "lost": false,
+        "errors": [],
+        "gpu": "ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero) (0x0000C0DE)), SwiftShader driver)",
+        "records": 360
+      }
+    },
+    {
+      "path": "portara-webgl-active.png",
+      "status": "software-GPU capture timeout",
+      "ms": 6155,
+      "before": {
+        "scene": "dsb",
+        "room": null,
+        "frames": 58,
+        "curtain": false,
+        "kind": "webgl2",
+        "ready": true,
+        "failure": "",
+        "lost": false,
+        "errors": [],
+        "gpu": "ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero) (0x0000C0DE)), SwiftShader driver)",
+        "records": 362
+      },
+      "after": {
+        "scene": "dsb",
+        "room": null,
+        "frames": 67,
+        "curtain": false,
+        "kind": "webgl2",
+        "ready": true,
+        "failure": "",
+        "lost": false,
+        "errors": [],
+        "gpu": "ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero) (0x0000C0DE)), SwiftShader driver)",
+        "records": 362
+      }
+    },
+    {
+      "path": "portara-webgl-off.png",
+      "status": "software-GPU capture timeout",
+      "ms": 6286,
+      "before": {
+        "scene": "dsb",
+        "room": null,
+        "frames": 22,
+        "curtain": false,
+        "kind": "webgl2",
+        "ready": true,
+        "failure": "",
+        "lost": false,
+        "errors": [],
+        "gpu": "ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero) (0x0000C0DE)), SwiftShader driver)",
+        "records": 360
+      },
+      "after": {
+        "scene": "dsb",
+        "room": null,
+        "frames": 30,
+        "curtain": false,
+        "kind": "webgl2",
+        "ready": true,
+        "failure": "",
+        "lost": false,
+        "errors": [],
+        "gpu": "ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero) (0x0000C0DE)), SwiftShader driver)",
+        "records": 360
+      }
+    },
+    {
+      "path": "portara-webgl-surge.png",
+      "status": "software-GPU capture timeout",
+      "ms": 8776,
+      "before": {
+        "scene": "dsb",
+        "room": null,
+        "frames": 41,
+        "curtain": false,
+        "kind": "webgl2",
+        "ready": true,
+        "failure": "",
+        "lost": false,
+        "errors": [],
+        "gpu": "ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero) (0x0000C0DE)), SwiftShader driver)",
+        "records": 362
+      },
+      "after": {
+        "scene": "dsb",
+        "room": null,
+        "frames": 49,
+        "curtain": false,
+        "kind": "webgl2",
+        "ready": true,
+        "failure": "",
+        "lost": false,
+        "errors": [],
+        "gpu": "ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero) (0x0000C0DE)), SwiftShader driver)",
+        "records": 362
+      }
+    },
+    {
+      "path": "waterfall-golden.png",
+      "status": "software-GPU capture timeout",
+      "ms": 8247,
+      "before": {
+        "scene": "dsb",
+        "room": null,
+        "frames": 62,
+        "curtain": false,
+        "kind": "webgl2",
+        "ready": true,
+        "failure": "",
+        "lost": false,
+        "errors": [],
+        "gpu": "ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero) (0x0000C0DE)), SwiftShader driver)",
+        "records": 360
+      },
+      "after": {
+        "scene": "dsb",
+        "room": null,
+        "frames": 70,
+        "curtain": false,
+        "kind": "webgl2",
+        "ready": true,
+        "failure": "",
+        "lost": false,
+        "errors": [],
+        "gpu": "ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero) (0x0000C0DE)), SwiftShader driver)",
+        "records": 360
+      }
+    },
+    {
+      "path": "waterfall-night.png",
+      "status": "software-GPU capture timeout",
+      "ms": 9377,
+      "before": {
+        "scene": "dsb",
+        "room": null,
+        "frames": 90,
+        "curtain": false,
+        "kind": "webgl2",
+        "ready": true,
+        "failure": "",
+        "lost": false,
+        "errors": [],
+        "gpu": "ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero) (0x0000C0DE)), SwiftShader driver)",
+        "records": 360
+      },
+      "after": {
+        "scene": "dsb",
+        "room": null,
+        "frames": 93,
+        "curtain": false,
+        "kind": "webgl2",
+        "ready": true,
+        "failure": "",
+        "lost": false,
+        "errors": [],
+        "gpu": "ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero) (0x0000C0DE)), SwiftShader driver)",
+        "records": 360
+      }
+    },
+    {
+      "path": "waterfall-noon.png",
+      "status": "software-GPU capture timeout",
+      "ms": 8034,
+      "before": {
+        "scene": "dsb",
+        "room": null,
+        "frames": 29,
+        "curtain": false,
+        "kind": "webgl2",
+        "ready": true,
+        "failure": "",
+        "lost": false,
+        "errors": [],
+        "gpu": "ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero) (0x0000C0DE)), SwiftShader driver)",
+        "records": 360
+      },
+      "after": {
+        "scene": "dsb",
+        "room": null,
+        "frames": 41,
+        "curtain": false,
+        "kind": "webgl2",
+        "ready": true,
+        "failure": "",
+        "lost": false,
+        "errors": [],
+        "gpu": "ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero) (0x0000C0DE)), SwiftShader driver)",
+        "records": 360
+      }
+    },
+    {
+      "path": "waterfall-rain.png",
+      "status": "software-GPU capture timeout",
+      "ms": 6231,
+      "before": {
+        "scene": "dsb",
+        "room": null,
+        "frames": 113,
+        "curtain": false,
+        "kind": "webgl2",
+        "ready": true,
+        "failure": "",
+        "lost": false,
+        "errors": [],
+        "gpu": "ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero) (0x0000C0DE)), SwiftShader driver)",
+        "records": 361
+      },
+      "after": {
+        "scene": "dsb",
+        "room": null,
+        "frames": 118,
+        "curtain": false,
+        "kind": "webgl2",
+        "ready": true,
+        "failure": "",
+        "lost": false,
+        "errors": [],
+        "gpu": "ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero) (0x0000C0DE)), SwiftShader driver)",
+        "records": 359
+      }
+    },
+    {
+      "path": "waterfall-storm.png",
+      "status": "software-GPU capture timeout",
+      "ms": 7546,
+      "before": {
+        "scene": "dsb",
+        "room": null,
+        "frames": 138,
+        "curtain": false,
+        "kind": "webgl2",
+        "ready": true,
+        "failure": "",
+        "lost": false,
+        "errors": [],
+        "gpu": "ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero) (0x0000C0DE)), SwiftShader driver)",
+        "records": 359
+      },
+      "after": {
+        "scene": "dsb",
+        "room": null,
+        "frames": 146,
+        "curtain": false,
+        "kind": "webgl2",
+        "ready": true,
+        "failure": "",
+        "lost": false,
+        "errors": [],
+        "gpu": "ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero) (0x0000C0DE)), SwiftShader driver)",
+        "records": 359
+      }
+    }
+  ],
+  "canvasImages": 36,
+  "baselineFailureComparison": "Identical complete FAIL lines and payloads: two failures, zero new."
+}

@@ -27,6 +27,11 @@
     : 100;
   const FADE = 0.25;
   const COARSE = window.matchMedia("(pointer: coarse)").matches;
+  // Choose before renderer creation so a memory-limited device never allocates high-tier targets.
+  // The signal is approximate and optional; absent or invalid values leave the boot-time probe in charge.
+  const DEVICE_MEMORY = navigator.deviceMemory;
+  const MEMORY_LIMITED = Number.isFinite(DEVICE_MEMORY) && DEVICE_MEMORY > 0 && DEVICE_MEMORY <= 8;
+  const INITIAL_QUALITY = COARSE || MEMORY_LIMITED ? "medium" : "high";
   const $ = (id) => document.getElementById(id);
   const mark = (name) => performance.mark(`ooga:${name}`);
   mark("boot");
@@ -47,7 +52,7 @@
   let renderer = null;
   if (!params.has("canvas2d")) {
     try {
-      renderer = glRenderer.createRenderer(sceneCanvas, { quality: COARSE ? "medium" : "high" });
+      renderer = glRenderer.createRenderer(sceneCanvas, { quality: INITIAL_QUALITY });
     } catch (err) {
       console.warn("WebGL2 renderer failed, using Canvas 2D fallback", err);
       // A canvas that has held a WebGL context can never return a 2D one: replace the element.
@@ -163,6 +168,8 @@
     for (const el of intros) el.hidden = el.dataset.intro !== next.id;
     // The page styles by scene too: the games hide the island's sheet, see style.css.
     document.body.dataset.activeScene = next.id;
+    window.BL.net.setBody(null);
+    window.BL.net.setZone(next.id === "hub" ? "outside" : next.id === "dsb" ? "dsb-outside" : `scene-${next.id}`);
     next.enter(ctx);
     active = next;
     sceneTime = 0;
@@ -265,7 +272,7 @@
   const BOOT_MEDIUM = 3600, BOOT_LOW = 5400;
   const tierFromBoot = (ms) => {
     if (renderer.kind !== "webgl2") return;
-    const wanted = ms > BOOT_LOW ? "low" : ms > BOOT_MEDIUM ? "medium" : null;
+    const wanted = ms > BOOT_LOW ? "low" : ms > BOOT_MEDIUM || MEMORY_LIMITED ? "medium" : null;
     if (!wanted || QUALITY_ORDER.indexOf(wanted) <= QUALITY_ORDER.indexOf(renderer.quality)) return;
     renderer.setQuality(wanted);
     showQuality();
@@ -285,7 +292,7 @@
   };
   const frameInterval = () => (elapsed > WARMUP && !document.hasFocus() && !active.inMotion ? UNFOCUSED_INTERVAL : 0);
 
-  const housekeep = () => renderer.releaseUnused(liveGeometry());
+  const housekeep = () => { if (active) renderer.releaseUnused(liveGeometry()); };
 
   let elapsed = 0;
   let lastTime = performance.now();
@@ -337,10 +344,11 @@
     if (e.type === "blur" || e.key === "Shift" && (e.code === "ShiftRight" || e.location === 2)) rightShift = false;
   };
   const onKeyDown = (e) => {
+    if (!active) return;
     if (e.key === "Shift" && (e.code === "ShiftRight" || e.location === 2)) rightShift = true;
     if (e.repeat) return;
     const typing = e.target && (e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA");
-    if (typing || (e.target && e.target.closest && e.target.closest("dialog"))) return;
+    if (typing || (e.target && e.target.closest && e.target.closest("dialog, #sheet"))) return;
     const intro = openIntro();
     if (intro) {
       // Registered at boot, before any scene's controls, so this keeps the key from them too.
@@ -421,12 +429,17 @@
   // `?chain=esplora` or `?chain=https://host/api` pins the provider; otherwise mempool.space leads
   // and three consecutive failures hand the session to Esplora on its own.
   if (!params.has("nosim") && params.get("chain") !== "0") chain.start({ source: params.get("chain") });
+  // The account needs the Worker: without one /api/me finds nothing and the sheet shows no sign-in.
+  const net = window.BL.net;
+  const unsubscribeAccount = net.subscribe(window.BL.hud.showAccount);
+  const unsubscribeVoice = window.BL.voice.subscribe(() => window.BL.hud.showAccount(net.state));
+  const accountReady = !params.has("nosim") && params.get("net") !== "0" ? net.start() : Promise.resolve();
   // A tab opened in the background waits for its first look before it holds any socket.
   if (document.hidden) {
     mempool.setHidden(true);
     chain.setHidden(true);
   }
-  const unsubscribeDonations = donations.subscribe((donation) => active.onDonation(donation), { identity: () => game.state });
+  const unsubscribeDonations = donations.subscribe((donation) => { if (active) active.onDonation(donation); }, { identity: () => game.state });
   // The feed panel: the Konami code toggles a page-wide readout of the socket, its counters and its last events.
   // It subscribes and ticks only while open, and its text nodes change only with their value.
   const KONAMI = ["ArrowUp", "ArrowUp", "ArrowDown", "ArrowDown", "ArrowLeft", "ArrowRight", "ArrowLeft", "ArrowRight", "b", "a"];
@@ -452,7 +465,7 @@
       const d = active && active.debug && active.debug.weather, w = d && d.state ? d : null, s = mempool.state, c = chain.snapshot;
       const link = !s.enabled ? "off (nosim or mempool=0)" : s.connected ? `connected · attempt ${s.attempts}` : `reconnecting · attempt ${s.attempts}`;
       const age = s.lastAt ? `${((Date.now() - s.lastAt) / 1000).toFixed(1)} s ago` : "none yet";
-      const text = `socket    ${link}\nlast msg  ${age}${s.lastKeys ? ` · ${s.lastKeys}` : ""}\nmessages  ${s.messages} · ${(s.bytes / 1024).toFixed(0)} KB\nchain     height ${s.height} · next block ${s.nextFee.toFixed(2)} sat/vB · ${s.projectedBlocks} projected\nevents    ${s.stats} stats · ${s.blocks} blocks · inflow ${s.inflow} vB/s\npool      ${c.count} tx · ${c.deep.toFixed(1)} blocks deep · paying ${c.paying.toFixed(2)} MvB (avg ${c.payEma.toFixed(2)}) · floor ${c.floor.toFixed(2)} sat/vB · via ${c.source}${c.degraded ? " (fallback)" : ""}\nprice     ${c.priceUsd ? c.priceUsd.toFixed(2) : "-"} · via ${c.priceSource || "-"}\naxes      soak ${c.soak.toFixed(2)} · gale ${c.gale.toFixed(2)} · pace ${(c.pace / 60).toFixed(1)} min\nweather   ${w ? `${w.state.name} · ${w.state.drops}/${w.state.capacity} drops · wind ${w.state.wind.toFixed(1)} · cloud ${w.state.cloud.toFixed(2)} · ${w.state.strikes} strikes` : "no weather in this scene"}`;
+      const text = `socket    ${link}\nlast msg  ${age}${s.lastKeys ? ` · ${s.lastKeys}` : ""}\nmessages  ${s.messages} · ${(s.bytes / 1024).toFixed(0)} KB\nchain     height ${s.height} · next block ${s.nextFee.toFixed(2)} sat/vB · ${s.projectedBlocks} projected\nevents    ${s.stats} stats · ${s.blocks} blocks · inflow ${s.inflow} vB/s\npool      ${c.count} tx · ${c.deep.toFixed(1)} blocks deep · paying ${c.paying.toFixed(2)} MvB (avg ${c.payEma.toFixed(2)}) · floor ${c.floor.toFixed(2)} sat/vB · via ${c.source}${c.degraded ? " (fallback)" : ""}\nprice     ${c.priceUsd ? c.priceUsd.toFixed(2) : "-"} · via ${c.priceSource || "-"}\naxes      arriving ${c.gale.toFixed(2)} (weather) · paying ${c.soak.toFixed(2)} (data) · pace ${(c.pace / 60).toFixed(1)} min\nweather   ${w ? `${w.state.name} · arrivals ${w.state.arrivals} · storm ${w.state.storm.toFixed(2)} · ${w.state.drops}/${w.state.capacity} drops · wind ${w.state.wind.toFixed(1)} · cloud ${w.state.cloud.toFixed(2)} · ${w.state.strikes} strikes` : "no weather in this scene"}`;
       if (stateEl.textContent !== text) stateEl.textContent = text;
       if (!dirty) return;
       dirty = false;
@@ -485,7 +498,12 @@
   const sceneId = requestedScene === "lab" && !DEBUG ? null : requestedScene;
   // Building the first scene holds the main thread with nothing painted yet.
   // Run boot from a task after the first frame so the leaf curtain is on screen, not the previous page.
-  const boot = () => {
+  let destroyed = false;
+  const boot = async () => {
+    // A signed-in newcomer must join before crew construction, including direct routes.
+    // net.start is bounded; an unavailable backend leaves the static island usable.
+    await accountReady;
+    if (destroyed) return;
     const built = performance.now();
     enter(Object.hasOwn(scenes, sceneId) ? scenes[sceneId] : scenes[Object.keys(scenes)[0]], routed && routed.place);
     mark("ready");
@@ -539,12 +557,13 @@
         return world.level;
       }
     };
-    for (const key of ["slots", "drops", "core", "shell", "delivery", "spillEffect", "cavemen", "crates", "lab", "headquarters", "hud", "applyAllSwag", "renderLocker", "demoTip", "setPileLevel", "refreshStates", "trimPool", "shown", "island", "mouths", "labels", "camera", "cameraCave", "crew", "fx", "controls", "props", "altar", "path", "scenery", "jetpack", "magazine", "mirrorCave", "matrixCave", "matrixGate", "pilot", "renderOpts", "lamps", "entranceLights", "lighting", "fireSeats", "critters", "storm", "daylight", "setHour", "track", "racers", "items", "race", "audio", "weather", "drop", "diver", "plane", "course", "jumbotron", "fireworks", "fireworksPending", "orbit", "flight", "site", "agent", "poolIsland", "mine", "dsb", "clankers", "clankerPlay", "factory", "bifrost", "arcade", "carnival"]) {
+    for (const key of ["slots", "drops", "core", "shell", "delivery", "spillEffect", "cavemen", "crates", "lab", "headquarters", "hud", "applyAllSwag", "renderLocker", "demoTip", "setPileLevel", "refreshStates", "trimPool", "shown", "island", "mouths", "labels", "camera", "cameraCave", "crew", "fx", "controls", "props", "altar", "path", "scenery", "jetpack", "magazine", "mirrorCave", "matrixCave", "matrixGate", "pilot", "renderOpts", "lamps", "entranceLights", "lighting", "fireSeats", "critters", "storm", "daylight", "setHour", "track", "racers", "items", "race", "audio", "weather", "drop", "diver", "plane", "course", "jumbotron", "fireworks", "fireworksPending", "orbit", "flight", "site", "agent", "poolIsland", "mine", "dsb", "clankers", "clankerPlay", "factory", "bifrost", "arcade", "carnival", "npcSync", "cloudFloorAt"]) {
       Object.defineProperty(ooga, key, { get: () => active.debug && active.debug[key], enumerable: true });
     }
     window.__ooga = ooga;
   }
   const destroy = () => {
+    destroyed = true;
     window.cancelAnimationFrame(raf);
     window.clearInterval(housekeepTimer);
     unsubscribeDonations();
@@ -555,11 +574,15 @@
     mempool.dispose();
     chain.dispose();
     window.BL.oogatronLive.dispose();
+    unsubscribeAccount();
+    unsubscribeVoice();
+    window.BL.voice.dispose();
+    net.dispose();
     window.removeEventListener("keydown", onKeyDown);
     window.removeEventListener("keyup", clearRightShift);
     window.removeEventListener("blur", clearRightShift);
     document.removeEventListener("visibilitychange", onVisibility);
-    active.leave();
+    if (active) active.leave();
     renderer.dispose();
   };
   window.addEventListener("pagehide", (e) => {

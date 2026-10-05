@@ -3,25 +3,32 @@
   const BL = window.BL = window.BL || {};
   const { clamp, damp, mat4 } = BL.math;
   const SHOULDER_DISTANCE = 3.8, SHOULDER_SIDE = 1.05, POUND_CHARGE_TIME = 1;
+  const THROW_CHARGE_TIME = 1, THROW_MIN_POWER = 1 / 3, THROW_RESULT_TIME = 0.35;
   const PITCH_LIMIT = Math.PI / 2 - 0.0001, ZOOM_PAUSE = 180;
   const create = ({ canvas, camera, renderer, pilot, hud, clankers, input = null, constrainCamera = null,
-    reticleTarget = null, sightClear = null, aimCeiling = null, birdsEyeMin = 5, maxDistance = 32 }) => {
+    reticleTarget = null, sightClear = null, aimCeiling = null, grabOoga = null, releaseOoga = null, birdsEyeMin = 5, maxDistance = 32 }) => {
     const orbit = pilot.orbit, target = { x: 0, y: 0, z: 0 };
+    const smashMin = clankers.smashPower(0, true), smashBase = clankers.smashPower(0, false);
+    const smashMax = clankers.smashPower(1, false), smashRate = (smashMax - smashBase) / POUND_CHARGE_TIME;
     const command = { x: 0, z: 0, climbAxis: 0, climbSide: 0, heading: NaN, jumpHeld: false, jumpPressed: false, run: false };
     const followOffset = { x: 0, y: 0, z: 0 };
     const previousEye = { x: 0, y: 0, z: 0 };
     const eye = new Float64Array(3), rayView = mat4.create(), cameraUp = { x: 0, y: 1, z: 0 };
     const ray = { ox: 0, oy: 0, oz: 0, dx: 0, dy: 0, dz: 0 };
     const hit = { node: null, owner: null, x: 0, y: 0, z: 0, distance: 0, type: "object" };
-    const reticle = document.getElementById("weapon-reticle"), savedNear = camera.near;
+    const reticle = document.getElementById("weapon-reticle");
+    let savedNear = camera.near;
     const listeners = [];
     let player = null, view = "orbit", combat = false, disposed = false, jumpKey = false, jumpTap = false, run = false;
-    let actPointer = -1, smashPointer = -1, smashCharge = 0, shownCharge = -1, mouseButtons = 0, blockedButtons = 0, shoulder = 0;
+    let actPointer = -1, smashPointer = -1, smashFromButton = false, smashCharge = 0, smashCombo = false, smashMeter = smashBase, shownPower = -1, mouseButtons = 0, blockedButtons = 0, shoulder = 0;
+    let grabHeld = false, grabActive = false, grabSpent = false;
+    let throwPointer = -1, throwFromButton = false, throwCharge = 0, throwMeter = THROW_MIN_POWER, throwResult = 0, shownThrow = false;
     let focused = false, lockPending = false, wasLocked = false, unlockedAt = -Infinity, focusVersion = 0;
     let actMode = -1;
     let handoffBefore = false, holdingFollow = false, pinnedFollow = false, viewChanged = false, moving = false;
     let shoulderSide = SHOULDER_SIDE, peek = 0, orbitPitch = 0.42, overheadHeight = 14, headHidden = null, savedHeadHidden = false;
     let pointerX = 0.5, pointerY = 0.5, targetWait = 0, rightAt = -Infinity, rightDownAt = -Infinity, rightTravel = 0;
+    let combatTooltipEntry = null, combatTooltipText = "";
     let zoomAt = -Infinity, zoomDirection = 0, zoomStopped = false, stoppedGesture = null;
     let canvasLeft = 0, canvasTop = 0, canvasWidth = 1, canvasHeight = 1;
     const measureCanvas = () => {
@@ -35,7 +42,15 @@
       if (headHidden) headHidden.cameraHidden = savedHeadHidden;
       headHidden = null;
     };
+    const setCombatTooltip = (entry) => {
+      if (entry !== combatTooltipEntry) combatTooltipText = entry ? `🦍 ${entry.owner.traits.display}` : "";
+      else if (!entry || !hud.el.tooltip.hidden && hud.el.tooltipText.textContent === combatTooltipText) return;
+      combatTooltipEntry = entry;
+      if (entry) hud.tooltip.show(combatTooltipText, 0, 0, entry, true);
+      else hud.tooltip.hide();
+    };
     const resetReticle = () => {
+      setCombatTooltip(null);
       reticle.hidden = true;
       reticle.dataset.target = reticle.dataset.hit = "none";
       reticle.dataset.ads = reticle.dataset.sight = reticle.dataset.close = reticle.dataset.occluded = "false";
@@ -44,7 +59,7 @@
       targetWait = 0;
     };
     const syncCursor = () => {
-      if (focused && !combat) {
+      if (focused && !combat && !grabHeld) {
         measureCanvas();
         if (cursor.active) {
           pointerX = clamp((cursor.x - canvasLeft) / canvasWidth, 0, 1);
@@ -53,7 +68,7 @@
         cursor.start(canvasLeft + pointerX * canvasWidth, canvasTop + pointerY * canvasHeight, true);
       } else cursor.stop();
       document.body.classList.toggle("aim-cursor-focused", focused && combat);
-      reticle.hidden = !player || !combat;
+      reticle.hidden = !player || !(combat || grabHeld);
     };
     const setView = (next) => {
       if (next === view) return;
@@ -81,21 +96,24 @@
     };
     const acceptTarget = (owner) => owner.entry !== player;
     const updateReticle = (dt) => {
-      if (!combat) return;
+      if (!combat && !grabHeld) { setCombatTooltip(null); return; }
       reticle.hidden = false;
       targetWait -= dt;
       if (targetWait > 0) return;
       targetWait = 0.05;
       viewRay();
       let type = "none";
+      let tooltipEntry = null;
       if (input && input.weaponTargets.ray(hit, ray.ox, ray.oy, ray.oz, ray.dx, ray.dy, ray.dz, 60, null, acceptTarget, true)) {
         const near = Math.max(0, hit.distance - 0.035);
         if (!sightClear || sightClear(ray.ox, ray.oy, ray.oz, ray.ox + ray.dx * near, ray.oy + ray.dy * near, ray.oz + ray.dz * near, hit.node, true)) {
           const kind = hit.owner.kind;
           type = kind === "clanker" || kind === "agent" ? "friendly" : kind === "caveman" ? hit.type
             : kind === "crate" ? "object" : reticleTarget ? reticleTarget(hit) : "none";
+          if (combat && kind === "clanker") tooltipEntry = hit.owner.entry;
         }
       }
+      setCombatTooltip(tooltipEntry);
       if (reticle.dataset.target !== type) reticle.dataset.target = type;
     };
     const climbHandoff = () => {
@@ -130,6 +148,13 @@
     const consume = (event) => { event.preventDefault(); event.stopImmediatePropagation(); };
     const typing = (event) => event.target && (event.target.isContentEditable
       || event.target.closest && event.target.closest("input, textarea, select, dialog"));
+    const updateSmashGauge = () => {
+      const percent = grabHeld ? Math.round(throwMeter * 100) : Math.round(smashMeter * 40);
+      if (percent === shownPower && shownThrow === grabHeld) return;
+      shownPower = percent;
+      shownThrow = grabHeld;
+      hud.setGorillaSmashPower(grabHeld ? throwMeter : smashMeter, false, grabHeld);
+    };
     // The pilot owns private first-person transitions. Reset those through its
     // public preset API, then restore the displayed camera's exact orbit.
     const rebasePilot = () => {
@@ -147,18 +172,24 @@
       camera.up = null;
     };
     const cancelInput = () => {
-      jumpKey = jumpTap = run = false;
+      jumpKey = jumpTap = run = grabHeld = grabSpent = false;
       mouseButtons = 0;
       blockedButtons = 0;
       const pointer = actPointer;
       actPointer = -1;
       if (pointer >= 0 && hud.el.act.hasPointerCapture(pointer)) hud.el.act.releasePointerCapture(pointer);
       const smash = smashPointer;
-      smashPointer = -1; smashCharge = 0;
+      const throwing = throwPointer;
+      if (grabActive && releaseOoga) releaseOoga(player, false);
+      grabActive = false;
+      smashPointer = -1; smashFromButton = false; smashCharge = 0; smashCombo = false;
+      throwPointer = -1; throwFromButton = false; throwCharge = throwResult = 0; throwMeter = THROW_MIN_POWER;
+      smashMeter = Math.min(smashMeter, smashBase);
       if (player) player.motion.poundCharge = 0;
       if (smash >= 0 && hud.el.gorillaSmash.hasPointerCapture(smash)) hud.el.gorillaSmash.releasePointerCapture(smash);
-      hud.el.gorillaSmash.style.setProperty("--pound-charge", "0");
-      shownCharge = -1;
+      if (throwing >= 0 && hud.el.gorillaSmash.hasPointerCapture(throwing)) hud.el.gorillaSmash.releasePointerCapture(throwing);
+      shownPower = -1;
+      updateSmashGauge();
       if (input) input.reset();
       pilot.controls.clearPointer();
       clankers.cancelInput();
@@ -238,11 +269,13 @@
     const possess = (entry, atBoot = false) => {
       if (disposed || !entry || !entry.active || !entry.root.visible) return false;
       if (entry === player) return true;
+      if (!player) savedNear = camera.near;
       if (player) { blurCombat(); restoreHead(); }
       if (!clankers.possess(entry)) return false;
       pilot.release(true);
       rebasePilot();
       player = entry;
+      smashMeter = smashBase;
       pilot.setExternalControl(true, isCombat);
       combat = true; focused = wasLocked = false;
       view = "shoulder"; shoulder = 0; shoulderSide = SHOULDER_SIDE; peek = 0; actMode = -1;
@@ -273,11 +306,18 @@
     };
     const action = (name) => {
       if (!player) return false;
-      if (name === "gorilla-smash") clankers.smash();
-      else if (name === "gorilla-beat") clankers.chestBeat();
+      if (name === "gorilla-smash") {
+        if (grabHeld) return true;
+        if (clankers.smash(0, clankers.quickSmash(player), smashMeter)) {
+          smashMeter = smashMin;
+          updateSmashGauge();
+        }
+      } else if (name === "gorilla-beat") clankers.chestBeat();
       else if (name === "mode-release") release();
       else if (name === "mode-toggle") {
         combat = !combat;
+        if (!combat) setCombatTooltip(null);
+        targetWait = 0;
         cancelInput();
         if (view === "orbit" && combat) setView("birds-eye");
         else if (view === "birds-eye" && !combat) {
@@ -292,8 +332,9 @@
     };
     const onKeyDown = (event) => {
       if (!player || event.metaKey || event.ctrlKey || event.altKey || typing(event)) return;
+      const space = event.code === "Space" || event.key === " " || event.key === "Spacebar";
       const key = event.key.toLowerCase();
-      if (key === " ") {
+      if (space) {
         consume(event);
         if (!jumpKey && !event.repeat) { jumpKey = true; beginJump(); }
       } else if (key === "escape" || key === "tab") {
@@ -302,6 +343,15 @@
         else if (key === "escape") release();
       }
       else if (key === "shift" && event.code !== "ShiftRight" && event.location !== 2) { run = true; consume(event); }
+      else if (key === "g") {
+        consume(event);
+        if (!grabHeld && !event.repeat) {
+          grabHeld = true; grabSpent = false;
+          throwCharge = throwResult = 0; throwMeter = THROW_MIN_POWER;
+          syncCursor(); updateSmashGauge();
+          if (smashPointer < 0) grabActive = !!(grabOoga && grabOoga(player));
+        }
+      }
       else if (key === "1") {
         consume(event);
         if (!event.repeat) action("gorilla-smash");
@@ -314,14 +364,26 @@
       } else if (key === "c") {
         consume(event);
         if (!event.repeat) action("gorilla-beat");
-      } else if (key === "g" || key === "v" || key === "j" || key.length === 1 && key >= "3" && key <= "9") consume(event);
+      } else if (key === "v" || key === "j" || key.length === 1 && key >= "3" && key <= "9") consume(event);
     };
     const onKeyUp = (event) => {
       if (!player) return;
       // Shared controls may have seen the press before possession. Let their
       // keyup listener clear it as well; releasing a key triggers no action.
-      if (event.key === " ") { jumpKey = false; event.preventDefault(); }
+      if (event.code === "Space" || event.key === " " || event.key === "Spacebar") {
+        jumpKey = false; event.preventDefault();
+      }
       else if (event.key === "Shift" && event.code !== "ShiftRight" && event.location !== 2) { run = false; event.preventDefault(); }
+      else if (event.key.toLowerCase() === "g") {
+        consume(event);
+        grabHeld = grabSpent = false;
+        const throwing = throwPointer;
+        throwPointer = -1; throwFromButton = false; throwCharge = throwResult = 0; throwMeter = THROW_MIN_POWER;
+        if (grabActive && releaseOoga) releaseOoga(player, false);
+        grabActive = false;
+        if (throwing >= 0 && hud.el.gorillaSmash.hasPointerCapture(throwing)) hud.el.gorillaSmash.releasePointerCapture(throwing);
+        syncCursor(); updateSmashGauge();
+      }
     };
     on(window, "keydown", onKeyDown, true);
     on(window, "keyup", onKeyUp, true);
@@ -337,6 +399,25 @@
         } else { rightDownAt = now; rightTravel = 0; }
       }
     };
+    const beginSmash = (event, fromButton) => {
+      if (smashPointer >= 0 || throwPointer >= 0) return;
+      if (grabHeld) {
+        if (grabActive) {
+          throwPointer = event.pointerId;
+          throwFromButton = fromButton;
+          throwCharge = 0; throwMeter = THROW_MIN_POWER; throwResult = 0;
+          updateSmashGauge();
+          if (fromButton && event.isTrusted) hud.el.gorillaSmash.setPointerCapture(event.pointerId);
+        }
+        return;
+      }
+      smashPointer = event.pointerId;
+      smashFromButton = fromButton;
+      smashCharge = 0;
+      smashCombo = clankers.quickSmash(player);
+      updateSmashGauge();
+      if (fromButton && event.isTrusted) hud.el.gorillaSmash.setPointerCapture(event.pointerId);
+    };
     const onDown = (event) => {
       if (!player) return;
       if (event.target === hud.el.act) {
@@ -348,17 +429,16 @@
       } else if (event.target === hud.el.gorillaSmash || hud.el.gorillaSmash.contains(event.target)) {
         if (event.button !== 0 || smashPointer >= 0) return;
         consume(event);
-        smashPointer = event.pointerId;
-        smashCharge = 0;
-        if (event.isTrusted) hud.el.gorillaSmash.setPointerCapture(event.pointerId);
+        beginSmash(event, true);
       } else if (event.target === canvas && event.button === 2 && event.pointerType !== "touch") {
         consume(event); mouseButtons = event.buttons;
         rightPress();
-      } else if (event.target === canvas && combat && event.pointerType !== "touch") {
+      } else if (event.target === canvas && (combat || grabHeld) && event.pointerType !== "touch") {
         consume(event);
         mouseButtons = event.buttons;
+        if (event.button === 0 && grabHeld) { beginSmash(event, false); return; }
         if (!focused) { blockedButtons |= event.buttons; focusCombat(); return; }
-        if (event.button === 0 && !(blockedButtons & 1)) clankers.smash();
+        if (event.button === 0 && !(blockedButtons & 1)) beginSmash(event, false);
       }
     };
     const moveView = (dx, dy) => {
@@ -402,7 +482,7 @@
       if (!player || !combat || !focused || event.target !== canvas || event.pointerType === "touch") return;
       consume(event);
       const pressed = event.buttons & ~mouseButtons & ~blockedButtons;
-      if (pressed & 1) clankers.smash();
+      if (pressed & 1) beginSmash(event, false);
       if (pressed & 2) rightPress();
       mouseButtons = event.buttons;
       blockedButtons &= event.buttons;
@@ -418,14 +498,35 @@
         actPointer = -1;
         if (hud.el.act.hasPointerCapture(event.pointerId)) hud.el.act.releasePointerCapture(event.pointerId);
         hud.el.act.blur();
+      } else if (event.pointerId === throwPointer) {
+        consume(event);
+        const charge = throwCharge, fromButton = throwFromButton;
+        throwPointer = -1; throwFromButton = false; throwCharge = 0;
+        if (fromButton) {
+          if (hud.el.gorillaSmash.hasPointerCapture(event.pointerId)) hud.el.gorillaSmash.releasePointerCapture(event.pointerId);
+          hud.el.gorillaSmash.blur();
+        }
+        if (grabHeld && grabActive) {
+          viewRay();
+          releaseOoga(player, true, charge, ray);
+          grabActive = false; grabSpent = true;
+          throwResult = THROW_RESULT_TIME;
+        }
+        updateSmashGauge();
       } else if (event.pointerId === smashPointer) {
         consume(event);
         const charge = smashCharge;
-        smashPointer = -1; smashCharge = 0; player.motion.poundCharge = 0;
-        hud.el.gorillaSmash.style.setProperty("--pound-charge", "0"); shownCharge = -1;
-        if (hud.el.gorillaSmash.hasPointerCapture(event.pointerId)) hud.el.gorillaSmash.releasePointerCapture(event.pointerId);
-        hud.el.gorillaSmash.blur();
-        clankers.smash(charge);
+        const combo = smashCombo;
+        const power = smashMeter;
+        const fromButton = smashFromButton;
+        smashPointer = -1; smashFromButton = false; smashCharge = 0; smashCombo = false; player.motion.poundCharge = 0;
+        if (fromButton) {
+          if (hud.el.gorillaSmash.hasPointerCapture(event.pointerId)) hud.el.gorillaSmash.releasePointerCapture(event.pointerId);
+          hud.el.gorillaSmash.blur();
+        }
+        if (!grabHeld && clankers.smash(charge, combo, power)) smashMeter = smashMin;
+        else smashMeter = Math.min(smashMeter, smashBase);
+        updateSmashGauge();
       } else if (event.target === canvas && combat && event.pointerType !== "touch") {
         consume(event);
         mouseButtons = event.buttons;
@@ -443,7 +544,8 @@
       }
     }, true);
     const cancelPointer = (event) => {
-      if (player && (event.pointerId === actPointer || event.pointerId === smashPointer || combat && event.target === canvas)) {
+      if (player && (event.pointerId === actPointer || event.pointerId === smashPointer || event.pointerId === throwPointer
+        || event.type === "pointercancel" && combat && event.target === canvas)) {
         consume(event);
         const blocked = blockedButtons | mouseButtons;
         cancelInput();
@@ -455,7 +557,7 @@
     on(hud.el.act, "lostpointercapture", cancelPointer);
     on(hud.el.gorillaSmash, "lostpointercapture", cancelPointer);
     on(window, "click", (event) => {
-      if (player && (combat && event.target === canvas || event.target === hud.el.act && event.detail > 0
+      if (player && ((combat || grabHeld) && event.target === canvas || event.target === hud.el.act && event.detail > 0
         || (event.target === hud.el.gorillaSmash || hud.el.gorillaSmash.contains(event.target)) && event.detail > 0)) consume(event);
     }, true);
     on(canvas, "contextmenu", (event) => { if (player) consume(event); }, true);
@@ -470,12 +572,19 @@
     const readInput = (dt) => {
       if (!player) return;
       handoffBefore = climbHandoff();
+      if (grabActive && !player.motion.dragging) grabActive = false;
+      if (grabHeld && !grabActive && !grabSpent && smashPointer < 0) grabActive = !!(grabOoga && grabOoga(player));
+      if (throwPointer >= 0) {
+        throwCharge = Math.min(1, throwCharge + dt / THROW_CHARGE_TIME);
+        throwMeter = THROW_MIN_POWER + (1 - THROW_MIN_POWER) * throwCharge;
+      } else if (throwResult > 0) throwResult = Math.max(0, throwResult - dt);
+      else throwMeter = Math.max(THROW_MIN_POWER, throwMeter - (1 - THROW_MIN_POWER) * dt / THROW_RESULT_TIME);
       if (smashPointer >= 0) {
         smashCharge = Math.min(1, smashCharge + dt / POUND_CHARGE_TIME);
+        smashMeter = Math.min(smashMax, smashMeter + smashRate * dt);
         player.motion.poundCharge = smashCharge;
-        const charge = Math.round(smashCharge * 100);
-        if (charge !== shownCharge) { shownCharge = charge; hud.el.gorillaSmash.style.setProperty("--pound-charge", String(charge / 100)); }
-      }
+      } else smashMeter = Math.min(smashBase, smashMeter + smashRate * dt);
+      updateSmashGauge();
       const axes = pilot.controls.read();
       const shoulderCombat = combat && view === "shoulder";
       if (shoulderCombat && axes.shiftTap) { shoulderSide = -shoulderSide; viewChanged = true; }
@@ -491,7 +600,8 @@
         const delta = Math.atan2(Math.sin(orbit.tYaw - orbit.yaw), Math.cos(orbit.tYaw - orbit.yaw));
         orbit.tYaw = orbit.yaw + delta;
         // Match the gorilla's turning rate so it keeps facing the fixed reticle.
-        orbit.yaw += clamp(delta, -7 * dt, 7 * dt);
+        const turnRate = player.drive.climbTurnTimer > 0 && !player.climb.active ? 14 : 7;
+        orbit.yaw += clamp(delta, -turnRate * dt, turnRate * dt);
       } else orbit.tPitch = clamp(orbit.tPitch + axes.pitch * 1.1 * dt, -PITCH_LIMIT, PITCH_LIMIT);
       const movementYaw = orbit.yaw;
       const sy = Math.sin(movementYaw), cy = Math.cos(movementYaw);
@@ -510,6 +620,7 @@
     const update = (dt) => {
       if (!player) return;
       if (clankers.player !== player || !player.active || !player.root.visible) { release(); return; }
+      updateSmashGauge();
       const p = player.root.position;
       const first = view === "first-person", overhead = view === "birds-eye";
       const hold = handoffBefore || climbHandoff();
@@ -543,7 +654,7 @@
           // Follow the actual stance, from knuckle walking to standing, while
           // keeping the centered aim line above both the head and shoulders.
           target.y = Math.max(top + 0.16,
-            Math.max(player.gorilla.parts.armL.world[13], player.gorilla.parts.armR.world[13]) + 0.38);
+            Math.max(player.gorilla.parts.armR.world[13], player.gorilla.parts.armL.world[13]) + 0.38);
         }
       }
       if (anchored) {
@@ -561,7 +672,7 @@
         updateReticle(dt); hud.setGorilla(player, view, combat); showAct();
         return;
       }
-      if (!overhead) orbit.yaw = damp(orbit.yaw, orbit.tYaw, 14, dt);
+      if (!overhead) orbit.yaw = damp(orbit.yaw, orbit.tYaw, player.drive.climbTurnTimer > 0 && !player.climb.active ? 28 : 14, dt);
       orbit.pitch = damp(orbit.pitch, orbit.tPitch, 14, dt);
       orbit.dist = damp(orbit.dist, orbit.tDist, 9, dt);
       if (!anchored) {

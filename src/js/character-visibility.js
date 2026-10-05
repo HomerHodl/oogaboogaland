@@ -161,8 +161,10 @@
     const visit = (node) => {
       if (!node.visible || node.cameraHidden) return;
       const geometry = node.geometry;
-      // Smoke is translucent; guide lines and glyph effects do not cover UI.
-      if (geometry && geometry.faces && geometry.faces.length && !geometry.matrixGlyph && !node.mirrorPortal && !(node.smokeOpacity < 1) && !(renderOpts?.birdsEyeCutaway && geometry.cutawayHide)) {
+      // Smoke and phase fields are translucent; their effects do not cover UI.
+      if (geometry && geometry.faces && geometry.faces.length && !geometry.matrixGlyph
+        && !geometry.mirrorRippleOnly && !node.mirrorRippleOnly && !node.mirrorPortal
+        && !(node.smokeOpacity < 1) && !(renderOpts?.birdsEyeCutaway && geometry.cutawayHide)) {
         if (node.instanceData) {
           const data = node.instanceData, count = node.drawInstanceCount === undefined ? node.instanceCount : Math.min(node.instanceCount, node.drawInstanceCount);
           for (let i = 0; i < count; i++) if (data[i * 20 + 18] >= -1) add(node, data, i * 20, i);
@@ -432,16 +434,17 @@
       result.x = Math.max(0, Math.min(width, result.x)); result.y = Math.max(0, Math.min(height, result.y));
       return result;
     };
-    // Builds every blocker's mesh ahead in idle slices, so a view that brings many into play at once never builds them
-    // all in one frame: the same meshes `meshOf` would build then, shared across visits. A slice builds only what the
-    // idle time left can hold at the rate measured so far on this device.
-    let warming = 0, msPerTriangle = 0;
+    // Warm small meshes within the idle budget. A large synchronous BVH build
+    // cannot be interrupted, so leave it to the exact on-demand path rather than
+    // starting seconds of work in an idle callback between scene frames.
+    let warming = 0, msPerTriangle = 0.01;
     const warm = () => {
       if (warming || typeof requestIdleCallback === "undefined") return;
       const pending = [];
       const collect = (node) => {
         const geometry = node.geometry;
-        if (geometry && geometry.faces && geometry.faces.length && !geometry.matrixGlyph && !node.mirrorPortal && !meshes.has(geometry)) pending.push(geometry);
+        if (geometry && geometry.faces && geometry.faces.length && !geometry.matrixGlyph
+          && !geometry.mirrorRippleOnly && !node.mirrorRippleOnly && !node.mirrorPortal && !meshes.has(geometry)) pending.push(geometry);
         for (const child of node.children) collect(child);
       };
       collect(root);
@@ -452,7 +455,9 @@
           if (meshes.has(geometry)) { pending.pop(); continue; }
           let triangles = 0;
           for (const face of geometry.faces) if (face.i.length > 2) triangles += face.i.length - 2;
-          if (triangles * msPerTriangle + 1 > deadline.timeRemaining()) break;
+          const estimated = triangles * msPerTriangle + 1;
+          if (estimated > 8) { pending.pop(); continue; }
+          if (estimated > deadline.timeRemaining()) break;
           const start = performance.now();
           meshOf(geometry);
           pending.pop();

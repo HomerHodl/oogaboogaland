@@ -997,6 +997,11 @@ body[data-active-scene="arcade"] .magazine-hud {
   box-shadow: none;
 }
 
+.roster-away button {
+  grid-column: 1 / -1;
+  width: 100%;
+}
+
 .roster-presence {
   width: 8px;
   height: 8px;
@@ -1038,14 +1043,14 @@ body[data-active-scene="arcade"] .magazine-hud {
   background: rgba(255, 216, 74, 0.08);
 }
 
-.roster-state[data-state="sleeping"] {
+.roster-state[data-state="sleeping"],
+.roster-state[data-state="away"] {
   color: var(--muted);
   border-color: rgba(166, 166, 162, 0.4);
   background: rgba(166, 166, 162, 0.08);
 }
 
-.roster-state[data-state="chilling"],
-.roster-state[data-state="away"] {
+.roster-state[data-state="chilling"] {
   color: var(--accent-text);
   border-color: rgba(216, 137, 43, 0.4);
   background: rgba(216, 137, 43, 0.08);
@@ -1267,6 +1272,29 @@ body[data-active-scene="arcade"] .magazine-hud {
   padding: 8px 16px;
   border-top: 2px solid var(--wood-edge);
   flex: none;
+}
+
+.account {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  min-width: 0;
+}
+
+.account-name {
+  color: var(--paper);
+  font-size: 9.5px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  overflow-wrap: anywhere;
+}
+
+.account-room {
+  color: var(--accent-text);
+  font-size: 9.5px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
 }
 
 .quality {
@@ -1642,10 +1670,10 @@ body[data-active-scene="arcade"] .magazine-hud {
 
 .gorilla-hud {
   flex: none;
-  justify-content: center;
+  justify-content: flex-start;
   padding: 0;
   cursor: pointer;
-  touch-action: manipulation;
+  touch-action: none;
   user-select: none;
 }
 
@@ -1654,19 +1682,6 @@ body[data-active-scene="arcade"] .magazine-hud {
   height: 40px;
   transform: translateY(-2px);
   filter: drop-shadow(0 2px 0 rgba(0, 0, 0, 0.45));
-}
-
-#gorilla-smash-hud::after {
-  content: "";
-  position: absolute;
-  left: 0;
-  bottom: 0;
-  height: 4px;
-  width: 100%;
-  background: #ffd84a;
-  transform: scaleX(var(--pound-charge, 0));
-  transform-origin: left;
-  pointer-events: none;
 }
 
 .mode-health {
@@ -1826,6 +1841,14 @@ body[data-active-scene="arcade"] .magazine-hud {
   background: #ffd84a;
   transform: scaleY(0.5);
   transform-origin: bottom;
+}
+
+.gorilla-hud[data-returning="true"] .primary-strength-fill {
+  transition: transform 0.25s ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .gorilla-hud[data-returning="true"] .primary-strength-fill { transition: none; }
 }
 
 .jetpack-compact-fuel {
@@ -2230,6 +2253,74 @@ body[data-active-scene="arcade"] .magazine-hud {
 .act:focus-visible {
   background: linear-gradient(#f0b05a, #e2a04a);
   outline: none;
+}
+
+/* The factory foreman's on-screen tour menu and its End tour button, in the HUD's wood. */
+.greeter-menu {
+  position: fixed;
+  z-index: 13;
+  left: 50%;
+  bottom: calc(122px + var(--safe-bottom));
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 210px;
+  padding: 10px 12px;
+  background: linear-gradient(var(--plank), var(--wood));
+  border: 2px solid var(--wood-edge);
+  border-radius: 6px;
+  box-shadow: 0 3px 0 var(--nail);
+  text-align: center;
+}
+
+.greeter-menu-title,
+.greeter-menu-help {
+  margin: 0;
+  color: var(--ink);
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.greeter-menu-help {
+  opacity: 0.7;
+  letter-spacing: 0.04em;
+  text-transform: none;
+}
+
+.greeter-choice,
+.greeter-stop {
+  min-height: 36px;
+  padding: 0 14px;
+  border: 2px solid var(--wood-edge);
+  border-radius: 6px;
+  background: linear-gradient(#e2a04a, var(--accent));
+  color: var(--ink);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  box-shadow: 0 2px 0 var(--nail);
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.greeter-choice.sel,
+.greeter-choice:hover,
+.greeter-choice:focus-visible,
+.greeter-stop:hover,
+.greeter-stop:focus-visible {
+  background: linear-gradient(#f0b05a, #e2a04a);
+  outline: none;
+}
+
+.greeter-stop {
+  position: fixed;
+  z-index: 13;
+  left: 50%;
+  bottom: calc(122px + var(--safe-bottom));
+  transform: translateX(-50%);
 }
 
 .race {
@@ -5059,7 +5150,7 @@ body.orbit-dragging #tooltip {
 #dsb-feed { white-space: pre-line; font-size: 11px; color: #57e1dc; }
 .dsb-intro, .dsb-stop { display: none; }
 .dsb-panel[data-phase="boat"] .dsb-stop, .dsb-panel[data-phase="coaster"] .dsb-stop { display: inline-block; }
-.dsb-entry .topbar, .dsb-entry .sheet, .dsb-entry .world-clock, .dsb-entry #joy-look { visibility: hidden; }
+.dsb-entry .world-clock, .dsb-entry #joy-look { visibility: hidden; }
 .dsb-entry .dsb-panel { background: transparent; border: 0; box-shadow: none; right: 50%; transform: translateX(50%); top: auto; bottom: 20px; width: min(460px, 75vw); text-align: center; max-height: 44%; }
 .dsb-entry .dsb-intro { display: block; }
 .dsb-entry .dsb-world { display: none; }
@@ -5966,7 +6057,9 @@ body.orbit-dragging #tooltip {
 
 /* While a game's title card is up its board and panels wait behind it, and come back when it closes. */
 .race:has(> [data-intro]:not([hidden])) .garage,
-.race:has(> [data-intro]:not([hidden])) .panel-edge {
+.race:has(> [data-intro]:not([hidden])) .panel-edge,
+#poker:has(> [data-intro]:not([hidden])) .poker-panel,
+#poker:has(> [data-intro]:not([hidden])) .poker-focus {
   visibility: hidden;
 }
 

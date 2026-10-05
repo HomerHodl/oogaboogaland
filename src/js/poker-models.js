@@ -183,7 +183,7 @@
       const agent = BL.agent.create({ groundAt: () => 0, x: 0, z: -3.6, managed: true, scale: 1.16 });
       agent.poseManaged(1, 0, 0, -3.6, 0, 0, false, true);
       S.addChild(agent.parts.torso, node(g.jacket));
-      for (const arm of [agent.parts.armL, agent.parts.armR]) S.addChild(arm, node(g.sleeve), node(g.cuff));
+      for (const arm of [agent.parts.armR, agent.parts.armL]) S.addChild(arm, node(g.sleeve), node(g.cuff));
       S.addChild(group, agent.root);
       const dealCard = node(g.back, 0, 1.5, -2.4); dealCard.visible = false; S.addChild(group, dealCard);
       S.addChild(root, group);

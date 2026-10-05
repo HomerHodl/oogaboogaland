@@ -4,9 +4,15 @@ on:
   push:
     branches: [feature/dsb-land-master]
   workflow_dispatch:
+    inputs:
+      merge_sha:
+        description: 'Merged character bundle SHA (the bot explicitly dispatches after its merge)'
+        type: string
+        required: false
 
 permissions:
   contents: read
+  pull-requests: read
   pages: write
   id-token: write
 
@@ -33,6 +39,7 @@ jobs:
         with:
           path: preview-src
           persist-credentials: false
+          ref: ${{ github.sha }}
       - uses: actions/setup-node@v6
         with:
           node-version: '22'
@@ -49,6 +56,12 @@ jobs:
           mkdir -p ../_site/dsb-preview/src/js
           cp -R src/maxis-player ../_site/dsb-preview/src/maxis-player
           cp src/js/maxis-media-data.js ../_site/dsb-preview/src/js/maxis-media-data.js
+      - name: Validate shared DSB presence, menus and voice contracts
+        working-directory: preview-src
+        run: |
+          node --test worker/test/*.test.mjs
+          export CHROME="$(command -v google-chrome)"
+          TEST_CANVAS2D=1 LANES=1 ONLY="integration checkpoint" node test/run.mjs integration-unit dsb
       - name: Validate shoreline, Olympus and preserved exterior
         working-directory: preview-src
         run: |
@@ -56,12 +69,12 @@ jobs:
           node test/run.mjs vacancy-unit
           node test/run.mjs exterior-unit
           LANES=1 VERBOSE=1 ONLY="shoreline checkpoint" node test/run.mjs water-unit dsb
-      - name: Validate and capture Chora vacancy addresses
+      - name: Validate Chora vacancy addresses and renderer
         working-directory: preview-src
         run: |
           export CHROME="$(command -v google-chrome)"
           LANES=1 VERBOSE=1 ONLY="vacancy checkpoint" node test/run.mjs vacancy-unit dsb
-      - name: Validate SVRN Society interior and capture review
+      - name: Validate SVRN Society interior and review semantics
         working-directory: preview-src
         run: |
           export CHROME="$(command -v google-chrome)"
@@ -80,20 +93,20 @@ jobs:
         run: |
           export CHROME="$(command -v google-chrome)"
           LANES=1 VERBOSE=1 ONLY="Portara aperture" node test/run.mjs portal-unit dsb
-      - name: Capture Portara aperture review
+      # Capture has its own bounded operation clock. Only a healthy software-GPU
+      # timeout reproduced on the approved checkpoint is advisory in the runner;
+      # renderer, runtime, semantic and other capture errors still fail this job.
+      - name: Capture DSB review evidence after all functional gates
         working-directory: preview-src
-        continue-on-error: true
-        timeout-minutes: 2
         run: |
           export CHROME="$(command -v google-chrome)"
-          LANES=1 ONLY="Portara visual evidence" node test/run.mjs portal-unit dsb
-      - name: Capture optional shoreline visual evidence after functional validation
-        working-directory: preview-src
-        continue-on-error: true
-        timeout-minutes: 2
-        run: |
-          export CHROME="$(command -v google-chrome)"
-          LANES=1 ONLY="shoreline visual evidence" node test/run.mjs water-unit dsb
+          export DSB_REVIEW=1 DSB_CAPTURE_BASELINE=1 LANES=1
+          ONLY="SVRN visual review" node test/run.mjs svrn-unit dsb
+          ONLY="vacancy checkpoint" node test/run.mjs vacancy-unit dsb
+          ONLY="Portara visual evidence" node test/run.mjs portal-unit dsb
+          ONLY="shoreline visual evidence" node test/run.mjs water-unit dsb
+          TEST_CANVAS2D=1 ONLY="venue menus checkpoint" node test/run.mjs dsb-menus-unit dsb
+          TEST_CANVAS2D=1 ONLY="SVRN checkpoint" node test/run.mjs svrn-unit dsb
       - name: Save menu and interior review screenshots
         if: always()
         uses: actions/upload-artifact@v4

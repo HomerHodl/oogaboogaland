@@ -265,6 +265,9 @@
     let eye = { x: 0, y: 0, z: 0 }, near = 0.2, cutawayMaxY = Infinity;
     const lightDir = new Float32Array([0, 1, 0]);
     let directStrength = 1, ambientFloor = 0.3, diffuseFloor = 0, skyLuma = 0.5, groundLuma = 0.2;
+    let waterTime = 0;
+    const waterWave = new Float64Array(3), waterBodyPoint = new Float64Array(3);
+    let pointLights = null, pointLightCount = 0;
     let spotLight = null;
     const spotEnergy = (x, y, z, nx, ny, nz) => {
       if (!spotLight || spotLight[3] <= 0) return 0;
@@ -356,6 +359,7 @@
       const portalFace = !!node.mirrorPortal || !!node.mirrorWalkThrough && mirrorDebug.portal;
       const localMatrixGlyph = !!node.geometry.matrixGlyph;
       const liquid = !!node.geometry.portalSurface, rectangular = !!node.geometry.portalRect, projective = !!node.geometry.projective;
+      const waterBody = node.geometry.lakeBody;
       // Every voxel face in a glyph shares this instance plane and basis.
       const glyphLength = localMatrixGlyph ? Math.hypot(w[8], w[9], w[10]) : 1;
       const glyphNx = w[8] / glyphLength, glyphNy = w[9] / glyphLength, glyphNz = w[10] / glyphLength;
@@ -390,15 +394,23 @@
           let centerX = 0, centerY = 0, centerZ = 0, liquidX = 0, liquidZ = 0;
           for (let k = 0; k < count; k++) {
             const b = idx[k] * 3;
-            let x = verts[b], z = verts[b + 2];
+            let x = verts[b], y = verts[b + 1], z = verts[b + 2];
+            if (waterBody && waterBody[2] > 0) {
+              BL.poolWater.sampleBody(waterBodyPoint, x, y, z, waterBody);
+              x = waterBodyPoint[0]; y = waterBodyPoint[1]; z = waterBodyPoint[2];
+            }
             if (liquid) {
               const radius = rectangular?Math.max(Math.abs(x),Math.abs(z)):Math.hypot(x, z);
               if (radius > node.portalReveal) { const clip = node.portalReveal / radius; x *= clip; z *= clip; }
               liquidX += x / count; liquidZ += z / count;
             }
             const displacement = liquid ? BL.oogaPortalModels.liquidHeight(x, z, node.portalTime, node.portalSurge, rectangular) : 0;
-            mat4.transformPoint(V[k], w, x, verts[b + 1] + displacement, z);
-            if (projective) divideW(V[k], w, x, verts[b + 1] + displacement, z);
+            mat4.transformPoint(V[k], w, x, y + displacement, z);
+            if (face.lake && node.geometry.lakeWaves) {
+              BL.poolWater.sampleWaves(waterWave, V[k][0], V[k][2], node.geometry.lakeWaves, node.geometry.lakeWaveEnd);
+              V[k][1] += waterWave[0];
+            }
+            if (projective) divideW(V[k], w, x, y + displacement, z);
             centerX += V[k][0];
             centerY += V[k][1];
             centerZ += V[k][2];
@@ -422,7 +434,10 @@
           nx /= nlen;
           ny /= nlen;
           nz /= nlen;
-          if (!portalFace && perspectiveWeight * (nx * (V[0][0] - eye.x) + ny * (V[0][1] - eye.y) + nz * (V[0][2] - eye.z)) - orthographicDepth * (nx * view[2] + ny * view[6] + nz * view[10]) >= 0) continue;
+          if (!portalFace && perspectiveWeight * (nx * (V[0][0] - eye.x) + ny * (V[0][1] - eye.y) + nz * (V[0][2] - eye.z)) - orthographicDepth * (nx * view[2] + ny * view[6] + nz * view[10]) >= 0) {
+            if (!node.geometry.twoSided) continue;
+            nx = -nx; ny = -ny; nz = -nz;
+          }
           centerX /= count;
           centerY /= count;
           centerZ /= count;
@@ -652,9 +667,55 @@
               const tip = node.tip > 1.5 ? 0 : node.tip || 0;
               const fog = localMatrixGlyph ? smooth((glyphDistance - fogNear) / (fogFar - fogNear)) : Math.min(1, Math.max(0, (-rec.depth - fogNear) / (fogFar - fogNear)));
               const beam = localMatrixGlyph ? 0 : spotEnergy(centerX, centerY, centerZ, nx, ny, nz) * (1 - Math.min(1, emissive));
-              let red = lerp(lerp(cr * (k + (beam ? beam * spotLight[8] : 0)), 214, tip * 0.88), fogRgb[0], fog);
-              let green = lerp(lerp(cg * (k + (beam ? beam * spotLight[9] : 0)), 255, tip * 0.88), fogRgb[1], fog);
-              let blue = lerp(lerp(cb * (k + (beam ? beam * spotLight[10] : 0)), 227, tip * 0.88), fogRgb[2], fog);
+              let pointR = 0, pointG = 0, pointB = 0;
+              if (!localMatrixGlyph) for (let i = 0; i < pointLightCount; i++) {
+                const o = i * 8, dx = pointLights[o] - centerX, dy = pointLights[o + 1] - centerY, dz = pointLights[o + 2] - centerZ;
+                const radius = pointLights[o + 3], distance2 = dx * dx + dy * dy + dz * dz;
+                if (distance2 >= radius * radius || distance2 < 1e-8) continue;
+                const distance = Math.sqrt(distance2), facing = Math.max(0, (nx * dx + ny * dy + nz * dz) / distance);
+                const falloff = 1 - distance / radius;
+                const strength = (pointLights[o + 7] > 0.5 ? 0.72 * (1 - smooth((distance / radius - 0.2) / 0.8)) : falloff * falloff) * facing * (1 - Math.min(1, emissive));
+                pointR += pointLights[o + 4] * strength;
+                pointG += pointLights[o + 5] * strength;
+                pointB += pointLights[o + 6] * strength;
+              }
+              let red = lerp(lerp(cr * (k + pointR + (beam ? beam * spotLight[8] : 0)), 214, tip * 0.88), fogRgb[0], fog);
+              let green = lerp(lerp(cg * (k + pointG + (beam ? beam * spotLight[9] : 0)), 255, tip * 0.88), fogRgb[1], fog);
+              let blue = lerp(lerp(cb * (k + pointB + (beam ? beam * spotLight[10] : 0)), 227, tip * 0.88), fogRgb[2], fog);
+              if (face.lake) {
+                // Match the WebGL waterfall palette and rectangular cells, including displaced wave lighting.
+                const flow = node.geometry.lakeFlow, curve = node.geometry.lakeFlowCurve;
+                let coordX = flow ? centerX * flow[0] + centerY * flow[1] + centerZ * flow[2] + flow[3] : centerX;
+                let coordZ = flow ? centerX * flow[4] + centerY * flow[5] + centerZ * flow[6] + flow[7] : centerZ;
+                if (curve) {
+                  const dx = centerX - curve[0], dz = centerZ - curve[1], tau = Math.PI * 2;
+                  coordX = Math.hypot(dx, dz);
+                  coordZ = ((Math.atan2(dx, dz) - curve[2]) % tau + tau) % tau * curve[3];
+                }
+                const flowX = coordX + 0.12 * Math.sin(coordZ * 0.35 + waterTime * 0.4) - waterTime * 0.08, flowZ = coordZ - waterTime * 0.3;
+                let h = (Math.imul(Math.floor(flowX / 0.25), 73856093) ^ Math.imul(Math.floor(flowZ / 0.75), 19349663)) >>> 0;
+                h = Math.imul(h ^ (h >>> 13), 1274126177) >>> 0;
+                const band = h % 3, foam = h % 13 === 0 && flowZ / 0.75 - Math.floor(flowZ / 0.75) < 1 / 3;
+                waterWave.fill(0);
+                if (node.geometry.lakeWaves) BL.poolWater.sampleWaves(waterWave, centerX, centerZ, node.geometry.lakeWaves, node.geometry.lakeWaveEnd);
+                // The hanging water uses its curved face normal; the free surface uses the wave gradient.
+                const side = ny < 0 ? -1 : 1, waving = !!node.geometry.lakeWaves;
+                const waterNx = waving ? -waterWave[1] : nx * side, waterNy = waving ? 1 : ny * side, waterNz = waving ? -waterWave[2] : nz * side;
+                const length = Math.hypot(waterNx, waterNy, waterNz);
+                const shade = 0.88 + 0.22 * Math.max(0, (-waterNx * 0.4 + waterNy + waterNz * 0.3) / length / Math.sqrt(1.25));
+                const pulse = 0.96 + 0.08 * Math.sin(coordZ * 1.04719755 - waterTime * Math.PI);
+                const grain = 0.94 + 0.06 * Math.sin(flowX * 43) * Math.sin(flowZ * 31);
+                const sheen = (0.5 + 0.5 * Math.sin(flowX * 6 + Math.sin(flowZ * 4))) ** 12;
+                const glow = shade * pulse * grain * Math.max(0.35, materialGlow) * 1.08;
+                const dx = perspectiveWeight * (eye.x - centerX) + orthographicDepth * view[2];
+                const dy = perspectiveWeight * (eye.y - centerY) + orthographicDepth * view[6];
+                const dz = perspectiveWeight * (eye.z - centerZ) + orthographicDepth * view[10];
+                const grazing = 1 - Math.min(1, Math.abs((waterNx * dx + waterNy * dy + waterNz * dz) / length / (Math.hypot(dx, dy, dz) || 1)));
+                rec.smokeOpacity = Math.min(0.95, opacity + (foam ? 0.12 : 0) + grazing * grazing * 0.06);
+                red = lerp((foam ? 226 : band === 0 ? 45 : band === 1 ? 74 : 124) * glow + 25.5 * sheen, fogRgb[0], fog);
+                green = lerp((foam ? 245 : band === 0 ? 125 : band === 1 ? 166 : 200) * glow + 40.8 * sheen, fogRgb[1], fog);
+                blue = lerp(255 * glow + 45.9 * sheen, fogRgb[2], fog);
+              }
               if (liquid) {
                 const time = node.portalTime, radius = rectangular?Math.max(Math.abs(liquidX),Math.abs(liquidZ)):Math.hypot(liquidX, liquidZ);
                 const interference = Math.sin(Math.hypot(liquidX - 0.22, liquidZ + 0.17) * 32 - time * 4)
@@ -1474,8 +1535,11 @@
       directStrength = strength;
       ambientFloor = ambient;
       diffuseFloor = diffuse;
+      pointLights = opts.lights || null;
+      pointLightCount = pointLights ? Math.min(6, opts.lightCount || 0) : 0;
       skyLuma = sky[0] * 0.2126 + sky[1] * 0.7152 + sky[2] * 0.0722;
       groundLuma = ground[0] * 0.2126 + ground[1] * 0.7152 + ground[2] * 0.0722;
+      waterTime = performance.now() * 0.001 % 3600;
       poolUsed = 0;
       suppressed = rippleSurfaces = rippleWaves = 0;
       mirrorDebug.active = false;
@@ -1556,6 +1620,34 @@
         ctx.translate(0, hazeShift);
         ctx.fillRect(0, -hazeShift, width, height);
         ctx.translate(0, -hazeShift);
+        const moon = opts.moon, moonSun = opts.moonSun || opts.sunDirection;
+        if (gradientSky && moon && moonSun && moon.y > 0) {
+          const mx = view[0] * moon.x + view[4] * moon.y + view[8] * moon.z;
+          const my = view[1] * moon.x + view[5] * moon.y + view[9] * moon.z;
+          const mz = view[2] * moon.x + view[6] * moon.y + view[10] * moon.z;
+          if (mz < -0.05) {
+            const radius = lastF * 0.05477 / -mz;
+            const cx = width * 0.5 + mx * lastF / -mz, cy = height * 0.5 - my * lastF / -mz;
+            if (cx + radius > 0 && cx - radius < width && cy + radius > 0 && cy - radius < height) {
+              const facing = Math.max(-1, Math.min(1, moon.x * moonSun.x + moon.y * moonSun.y + moon.z * moonSun.z));
+              const tx = moonSun.x - moon.x * facing, ty = moonSun.y - moon.y * facing, tz = moonSun.z - moon.z * facing;
+              const sx = view[0] * tx + view[4] * ty + view[8] * tz;
+              const sy = view[1] * tx + view[5] * ty + view[9] * tz;
+              const k = -facing;
+              ctx.save();
+              ctx.translate(cx, cy);
+              ctx.rotate(Math.atan2(-sy, sx));
+              ctx.globalAlpha = 0.3 + 0.7 * (opts.stars || 0);
+              ctx.fillStyle = "#d1dff6";
+              ctx.beginPath();
+              ctx.arc(0, 0, radius, -Math.PI / 2, Math.PI / 2);
+              ctx.ellipse(0, 0, Math.max(0.001, Math.abs(k) * radius), radius, 0, Math.PI / 2, k >= 0 ? Math.PI * 1.5 : -Math.PI / 2, k < 0);
+              ctx.closePath();
+              ctx.fill();
+              ctx.restore();
+            }
+          }
+        }
       }
       ctx.lineJoin = "round";
       let glyphBlend = false, glyphComposite = "";

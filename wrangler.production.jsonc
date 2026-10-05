@@ -1,0 +1,53 @@
+{
+  "name": "oogaboogaland-production",
+  "main": "worker/src/index.js",
+  "compatibility_date": "2026-10-02",
+  "account_id": "1e5c1e8f7c343bf6cabced151b1ae2c6",
+  "workers_dev": true,
+  "preview_urls": false,
+  // oogabooga.land is the site. www is a proxied DNS record that a Redirect Rule in the zone sends to the
+  // apex, so it never reaches the Worker. Sign-in works only on SITE_ORIGIN; workers.dev serves the page signed out.
+  "routes": [{ "pattern": "oogabooga.land", "custom_domain": true }],
+  "observability": { "enabled": true },
+  "assets": {
+    // `npm run build:site` stages the pages here, with worker/_headers.
+    "directory": "./_site",
+    "binding": "ASSETS",
+    "html_handling": "drop-trailing-slash",
+    "not_found_handling": "404-page",
+    // Only these paths run the Worker (worker/src/index.js); every other path is served straight from _site.
+    "run_worker_first": ["/auth/*", "/api/*", "/room"]
+  },
+  "vars": {
+    // Redirects, cookies and the Origin check all use this origin.
+    "SITE_ORIGIN": "https://oogabooga.land",
+    // The production GitHub OAuth App (callback <SITE_ORIGIN>/auth/callback).
+    "GITHUB_CLIENT_ID": "Ov23livdIME2GaBaPdAg",
+    // The production Realtime SFU app, for voice. Without it voice says unavailable.
+    "REALTIME_APP_ID": "c7ad1d5bf43116572f082ebe18011061"
+    // Secrets, never here: `wrangler secret put GITHUB_CLIENT_SECRET --config wrangler.production.jsonc`, and REALTIME_SECRET.
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "oogaboogaland-production",
+      "database_id": "6312c56f-7dd3-43ad-a494-9869b714c1d4",
+      "migrations_dir": "worker/migrations"
+    }
+  ],
+  "durable_objects": {
+    "bindings": [{ "name": "ROOM", "class_name": "Room" }]
+  },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["Room"] }],
+  // Namespaces are per account: production counts in 1001-1003, staging in 2001-2003.
+  "ratelimits": [
+    // Sign-in starts per IP.
+    { "name": "AUTH_LIMITER", "namespace_id": "1001", "simple": { "limit": 10, "period": 60 } },
+    // Room connections per player: reconnect backoff stays far under it.
+    { "name": "ROOM_LIMITER", "namespace_id": "1002", "simple": { "limit": 20, "period": 60 } },
+    // Voice signalling per player: a join is four calls, each change of who is near one or two more.
+    { "name": "VOICE_LIMITER", "namespace_id": "1003", "simple": { "limit": 120, "period": 60 } }
+  ],
+  // Daily: purge expired sessions.
+  "triggers": { "crons": ["0 4 * * *"] }
+}

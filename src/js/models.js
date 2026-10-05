@@ -473,11 +473,8 @@
     const setAmmo = (ammo) => {
       if (ammo === shown) return;
       shown = ammo;
-      for (let i = 0; i < bananas.length; i++) {
-        const fill = Math.max(0, Math.min(1, (ammo - i * 3) / 3));
-        bananas[i].visible = fill > 0;
-        bananas[i].scale.y = 0.175 * fill;
-      }
+      const filled = Math.round(ammo / 3);
+      for (let i = 0; i < bananas.length; i++) bananas[i].visible = i < filled;
     };
     return { node, bananas, setAmmo };
   };
@@ -681,8 +678,9 @@
       return v;
     };
     const leg = (side) => createNode({ position: { x: side * 2.5 * u, y: 0, z: 0 }, geometry: vg(legVox(side), { x: -2 * u, y: -5 * u, z: -2.5 * u }) });
-    parts.legL = leg(-1);
-    parts.legR = leg(1);
+    // Facing +Z, local -X is anatomical right and +X is anatomical left.
+    parts.legR = leg(-1);
+    parts.legL = leg(1);
     const torsoVox = () => {
       const v = makeVox();
       if (traits.slim) {
@@ -733,12 +731,12 @@
       });
       const fingers = createNode({ position: { x: 0, y: -10 * u, z: 0 }, geometry: fingerGeometry, quaternion: BL.math.quat.create() });
       BL.math.quat.fromEuler(fingers.quaternion, 0, -side * Math.PI / 2, 0);
-      parts[side < 0 ? "fingersL" : "fingersR"] = fingers;
+      parts[side < 0 ? "fingersR" : "fingersL"] = fingers;
       addChild(node, fingers);
       return node;
     };
-    parts.armL = arm(-1);
-    parts.armR = arm(1);
+    parts.armR = arm(-1);
+    parts.armL = arm(1);
     // club(k) returns { voxels, palette, goldPalette } for a voxel item, or { default, gold }
     // geometry, plus optional rest and carry angles.
     const club = dress.club ? dress.club(k) : {};
@@ -755,7 +753,7 @@
       rotation: { x: clubRest.x, y: 0, z: clubRest.z },
       geometry: skins.club.default
     });
-    addChild(parts.armL, parts.club);
+    addChild(parts.armR, parts.club);
     parts.snack = createNode({
       position: { x: 0, y: -0.62 * h, z: 0.18 * h },
       scale: { x: BANANA_AMMO_SCALE, y: BANANA_AMMO_SCALE, z: BANANA_AMMO_SCALE },
@@ -763,7 +761,7 @@
       geometry: bananaGeometry(),
       visible: false
     });
-    addChild(parts.armR, parts.snack);
+    addChild(parts.armL, parts.snack);
     parts.gun = createNode({ quaternion: BL.math.quat.create(), visible: false });
     parts.gun.ammoReloading = false;
     parts.gunBody = createNode({ geometry: skins.gun.default });
@@ -865,7 +863,7 @@
     parts.face = createNode({ position: { x: 0, y: 0, z: 0 }, scale: { x: h, y: h, z: h }, visible: false });
     addChild(parts.head, parts.hat, parts.face);
     if (dress.headgear) dress.headgear(k);
-    addChild(root, parts.legL, parts.legR, parts.torso, parts.armL, parts.armR, parts.head);
+    addChild(root, parts.legR, parts.legL, parts.torso, parts.armR, parts.armL, parts.head);
     if (dress.extras) dress.extras(k);
     // A second colourway bakes every voxel part still in use under the alternate
     // palette and pairs each geometry with its twin both ways, so swapping a

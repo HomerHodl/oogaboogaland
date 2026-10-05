@@ -1,0 +1,18 @@
+name: Character submission push
+
+on:
+  push:
+    branches-ignore: ['automation/characters-**', 'automation/site-artifact-**']
+    paths: ['src/characters/**']
+  pull_request_review:
+    types: [submitted, dismissed]
+
+# This signal runs without checkout, secrets, artifacts or write permissions.
+# The trusted default-branch workflow_run consumer re-reads everything via API.
+permissions: {}
+
+jobs:
+  signal:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo 'Character commit submitted for trusted-base inspection.'

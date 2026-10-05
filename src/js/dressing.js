@@ -790,8 +790,8 @@
       figure.rotation.y = seated ? -0.12 : 0.12;
       passenger.parts.club.visible = false;
       if (seated) {
-        passenger.parts.legL.rotation.x = passenger.parts.legR.rotation.x = -1.15;
-        passenger.parts.armL.rotation.x = passenger.parts.armR.rotation.x = -0.65;
+        passenger.parts.legR.rotation.x = passenger.parts.legL.rotation.x = -1.15;
+        passenger.parts.armR.rotation.x = passenger.parts.armL.rotation.x = -0.65;
       }
       figure.sightHidden = true;
       BL.scene.addChild(node, figure);

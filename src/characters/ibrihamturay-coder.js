@@ -212,16 +212,16 @@
       // than painted over the caveman underneath. k.vg keeps them in the tint.
       gear(k) {
         const C = colors(k), u = k.u, glow = glowOf(C);
-        k.parts.legL.geometry = k.vg(legVox(C, -1), { x: -2 * u, y: -5 * u, z: -2.5 * u }, glow);
-        k.parts.legR.geometry = k.vg(legVox(C, 1), { x: -2 * u, y: -5 * u, z: -2.5 * u }, glow);
+        k.parts.legR.geometry = k.vg(legVox(C, -1), { x: -2 * u, y: -5 * u, z: -2.5 * u }, glow);
+        k.parts.legL.geometry = k.vg(legVox(C, 1), { x: -2 * u, y: -5 * u, z: -2.5 * u }, glow);
         const torso = torsoVox(C);
         k.loin = [C.loin, C.loinSpot];
         k.loinFlaps(torso);
         k.parts.torso.geometry = k.vg(torso, { x: -4.5 * u, y: 0, z: -3 * u }, glow);
         const arm = k.vg(armVox(C), { x: -1.5 * u, y: -11 * u, z: -1.5 * u }, glow);
-        k.parts.armL.geometry = k.parts.armR.geometry = arm;
+        k.parts.armR.geometry = k.parts.armL.geometry = arm;
         const fingers = k.vg(fingerVox(C), { x: -1.5 * u, y: -u, z: -1.5 * u });
-        k.parts.fingersL.geometry = k.parts.fingersR.geometry = fingers;
+        k.parts.fingersR.geometry = k.parts.fingersL.geometry = fingers;
       },
       club: (k) => ({ voxels: handleVox(), palette: CHUK_PALETTE, goldPalette: GOLD_CHUK_PALETTE, rest: { x: 0.24, z: 0 }, carry: { x: 0.95, z: 0 } }),
       skull(k, v) {
@@ -253,7 +253,7 @@
         for (let i = 0; i < CHUK_TRAIL; i++) {
           const ghost = createNode({ geometry: trail, visible: false });
           k.parts.chukTrail.push(ghost);
-          addChild(k.parts.armL, ghost);
+          addChild(k.parts.armR, ghost);
         }
         // Both the held jump and an equipped jetpack use the same sole thrusters.
         k.parts.jetpack = createNode({ position: { x: 0, y: -5 * u, z: 0 }, visible: false });

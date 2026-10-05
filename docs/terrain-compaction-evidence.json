@@ -1,0 +1,214 @@
+{
+  "beforeVertices": 652486,
+  "afterVertices": 180056,
+  "beforeNumericBytes": 15659664,
+  "afterNumericBytes": 4321344,
+  "coordinates": 1984266,
+  "rays": 10000,
+  "faces": "cdc680af3864bf0f0b067c5dd39240163cb9c3ba421b42ca43c7e0d095dbd2df",
+  "lines": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "cacheIdentity": true,
+  "recovery": [
+    {
+      "canvas": false,
+      "initial": {
+        "kind": "webgl2",
+        "vertices": 180037,
+        "bytes": 4320888,
+        "frames": 9,
+        "ready": true,
+        "records": 709
+      },
+      "trips": [
+        {
+          "kind": "webgl2",
+          "vertices": 180037,
+          "bytes": 4320888,
+          "frames": 35,
+          "ready": true,
+          "records": 714
+        },
+        {
+          "kind": "webgl2",
+          "vertices": 180037,
+          "bytes": 4320888,
+          "frames": 61,
+          "ready": true,
+          "records": 714
+        }
+      ],
+      "restored": {
+        "kind": "webgl2",
+        "vertices": 180037,
+        "bytes": 4320888,
+        "frames": 149,
+        "ready": true,
+        "records": 710
+      },
+      "console": [
+        "[log.warning] Canvas2D: Multiple readback operations using getImageData are faster with the willReadFrequently attribute set to true. See: https://html.spec.whatwg.org/multipage/canvas.html#concept-canvas-will-read-frequently"
+      ]
+    },
+    {
+      "canvas": true,
+      "initial": {
+        "kind": "canvas2d",
+        "vertices": 180037,
+        "bytes": 4320888,
+        "frames": 3,
+        "ready": true,
+        "records": 0
+      },
+      "trips": [
+        {
+          "kind": "canvas2d",
+          "vertices": 180037,
+          "bytes": 4320888,
+          "frames": 29,
+          "ready": true,
+          "records": 0
+        },
+        {
+          "kind": "canvas2d",
+          "vertices": 180037,
+          "bytes": 4320888,
+          "frames": 55,
+          "ready": true,
+          "records": 0
+        }
+      ],
+      "restored": null,
+      "console": [
+        "[log.warning] Canvas2D: Multiple readback operations using getImageData are faster with the willReadFrequently attribute set to true. See: https://html.spec.whatwg.org/multipage/canvas.html#concept-canvas-will-read-frequently"
+      ]
+    }
+  ],
+  "baselineRecovery": [
+    {
+      "canvas": false,
+      "initial": {
+        "scene": "hub",
+        "kind": "webgl2",
+        "vertices": 652486,
+        "bytes": 15659664,
+        "frames": 8,
+        "ready": true,
+        "records": 709
+      },
+      "trips": [
+        {
+          "scene": "hub",
+          "kind": "webgl2",
+          "vertices": 652486,
+          "bytes": 15659664,
+          "frames": 34,
+          "ready": true,
+          "records": 714
+        },
+        {
+          "scene": "hub",
+          "kind": "webgl2",
+          "vertices": 652486,
+          "bytes": 15659664,
+          "frames": 60,
+          "ready": true,
+          "records": 714
+        }
+      ],
+      "restored": {
+        "scene": "hub",
+        "kind": "webgl2",
+        "vertices": 652486,
+        "bytes": 15659664,
+        "frames": 146,
+        "ready": true,
+        "records": 710
+      },
+      "console": [
+        "[log.warning] Canvas2D: Multiple readback operations using getImageData are faster with the willReadFrequently attribute set to true. See: https://html.spec.whatwg.org/multipage/canvas.html#concept-canvas-will-read-frequently"
+      ]
+    },
+    {
+      "canvas": true,
+      "initial": {
+        "scene": "hub",
+        "kind": "canvas2d",
+        "vertices": 652486,
+        "bytes": 15659664,
+        "frames": 3,
+        "ready": true,
+        "records": 0
+      },
+      "trips": [
+        {
+          "scene": "hub",
+          "kind": "canvas2d",
+          "vertices": 652486,
+          "bytes": 15659664,
+          "frames": 29,
+          "ready": true,
+          "records": 0
+        },
+        {
+          "scene": "hub",
+          "kind": "canvas2d",
+          "vertices": 652486,
+          "bytes": 15659664,
+          "frames": 55,
+          "ready": true,
+          "records": 0
+        }
+      ],
+      "restored": null,
+      "console": [
+        "[log.warning] Canvas2D: Multiple readback operations using getImageData are faster with the willReadFrequently attribute set to true. See: https://html.spec.whatwg.org/multipage/canvas.html#concept-canvas-will-read-frequently"
+      ]
+    }
+  ],
+  "performance": [
+    {
+      "check": "FAIL wall movement performance: ordinary movement stays responsive at a high-density desktop size",
+      "result": {
+        "fps": 59.75816928164533,
+        "p95": 16.799999999999272,
+        "max": 50,
+        "worst": {
+          "gap": 43.599999994039536,
+          "at": -13.000000011920747,
+          "updateMs": 18.900000005960464,
+          "renderMs": 5.800000011920929,
+          "overlayMs": 17,
+          "donated": false
+        },
+        "outlined": 0,
+        "samples": 299,
+        "travel": 2.5846250000000026,
+        "donated": false,
+        "particles": 0,
+        "quality": "high"
+      }
+    },
+    {
+      "check": "FAIL wall movement performance: moving behind cave walls during a donation stays responsive at a high-density desktop size",
+      "result": {
+        "fps": 33.74937593611594,
+        "p95": 50,
+        "max": 66.70000000000073,
+        "worst": {
+          "gap": 53.5,
+          "at": 1024.2999999970198,
+          "updateMs": 2.199999988079071,
+          "renderMs": 2.7000000029802322,
+          "overlayMs": 45.900000005960464,
+          "donated": true
+        },
+        "outlined": 169,
+        "samples": 169,
+        "travel": 3.61615000000001,
+        "donated": true,
+        "particles": 26,
+        "quality": "low"
+      }
+    }
+  ]
+}

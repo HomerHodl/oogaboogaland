@@ -58,8 +58,18 @@
     quat.normalize(out);
   };
   const create = (ctx) => {
-    const { renderer, canvas, camera, hud, presets, dist: [DIST_MIN, DIST_MAX], follow, fly, clampTarget, clampCamera, coarse, close = null, ceilingAt = null } = ctx;
+    const { renderer, canvas, camera, hud, presets, dist: [DIST_MIN, DIST_MAX], follow, fly, clampTarget, clampCamera, coarse, close = null, ceilingAt = null, mayPossess = null } = ctx;
     let crew = null, fx = null, input = null, reticleTarget = null, active = true;
+    let ownAccount = null, ownCrew = null, ownOoga = null;
+    const syncOwnOoga = () => {
+      const account = BL.net.state.me;
+      if (account === ownAccount && crew === ownCrew) return;
+      ownAccount = account; ownCrew = crew;
+      const character = BL.net.ownCharacter();
+      ownOoga = character && crew && crew.cavemen ? crew.cavemen.get(character.handle) || null : null;
+      if (hud.setOwnOoga) hud.setOwnOoga(ownOoga);
+    };
+    const unsubscribeOwnOoga = BL.net.subscribe(syncOwnOoga);
     let restoredPose = null;
     const freeTarget = { x: 0, y: 0, z: 0 };
     const followTarget = { x: 0, y: 0, z: 0 };
@@ -114,14 +124,15 @@
       systems.meleeTarget = meleeTarget;
       systems.onWeaponHit = weaponHit;
       fx = systems.fx;
+      syncOwnOoga();
     };
     const player = () => crew ? crew.player : null;
     const rememberControlMode = () => {
       const cave = player();
       if (cave && !crew.sleeping && controlModes.get(cave.traits.name) !== cave.weapon.aiming) controlModes.set(cave.traits.name, cave.weapon.aiming);
     };
-    // Carry still owns an orbit. Combat's overhead view owns only height and
-    // a screen-space pointer; neither mouse movement nor zoom rotates it.
+    // Carry still owns an orbit. Combat's overhead pointer stays on the upper
+    // centreline: vertical input sets its reach, horizontal input turns the view.
     const overheadMin = ctx.birdsEyeMin ?? OVERHEAD_MIN;
     // A scene with no follow (the mine) never carries an Ooga, so it never reads this.
     const carryOrbitMin = follow ? Math.max(DIST_MIN, clamp(close ? close.trailingDist : follow.min, follow.min, follow.max)) : DIST_MIN;
@@ -144,7 +155,7 @@
     const assistedTargetScreen = { x: 0, y: 0 }, aimProjection = new Float64Array(3), aimCenter = new Float64Array(3);
     const targetOrigin = { x: 0, y: 0, z: 0 };
     let targetWait = 0, targetPrimary = false, targetActive = false, hitRemaining = 0, hitStrength = 0;
-    let combatTooltipCave = null;
+    let combatTooltipCave = null, combatTooltipText = "";
     let assistedTargetActive = false, assistedTargetInRange = false, assistedTargetClose = false, assistedTargetDistance = Infinity, assistedTargetWait = 0, assistedReticleX = NaN, assistedReticleY = NaN;
     const targetFeedback = (type) => {
       if (reticle.dataset.target !== type) reticle.dataset.target = type;
@@ -157,11 +168,14 @@
       if (kind === "crate") return "object";
       return reticleTarget ? reticleTarget(hit) : hit.type;
     };
+    const visualTarget = (owner) => owner.cave !== player();
     const setCombatTooltip = (hit) => {
-      const cave = hit && hit.owner && hit.owner.kind === "caveman" ? hit.owner.cave : null;
-      if (cave === combatTooltipCave) return;
+      const owner = hit && hit.owner, gorilla = owner && owner.kind === "clanker";
+      const cave = owner && (gorilla || owner.kind === "caveman") ? owner.cave : null;
+      if (cave !== combatTooltipCave) combatTooltipText = cave ? gorilla ? `🦍 ${owner.entry.owner.traits.display}` : cave.traits.display : "";
+      else if (!cave || !hud.el.tooltip.hidden && hud.el.tooltipText.textContent === combatTooltipText) return;
       combatTooltipCave = cave;
-      if (cave) hud.tooltip.show(cave.traits.display, 0, 0, cave);
+      if (cave) hud.tooltip.show(combatTooltipText, 0, 0, cave, !!gorilla);
       else hud.tooltip.hide();
     };
     const clearFeedback = () => {
@@ -403,7 +417,7 @@
       if (combat && overhead && !coarse && cursorFocused && (!carryCursor.active || carryCursor.visible)) {
         const rect = canvas.getBoundingClientRect();
         carryCursor.start(rect.left + overheadX * rect.width / renderer.size.width,
-          rect.top + overheadY * rect.height / renderer.size.height, false);
+          rect.top + overheadY * rect.height / renderer.size.height, false, false);
       } else if (combat && !overhead && carryCursor.active) { carryCursor.stop(); resetPointer(); }
       if (!combat && (carryCursor.active || softAimFocused || document.pointerLockElement === canvas)) unlockAim();
       const cave = aimView() ? controlled : null;
@@ -608,7 +622,10 @@
       const eye = camera.position, dx = camera.target.x - eye.x, dy = camera.target.y - eye.y, dz = camera.target.z - eye.z;
       const length = Math.hypot(dx, dy, dz), reach = visual ? 60 : primary ? crew.meleeReach(cave) : 60;
       const eyeReach = reach + Math.hypot(eye.x - targetOrigin.x, eye.y - targetOrigin.y, eye.z - targetOrigin.z);
-      if (!input.weaponTargets.ray(out, eye.x, eye.y, eye.z, dx / length, dy / length, dz / length, Math.min(60, eyeReach), cave, null, visual)) return false;
+      // Visual inspection includes the Ooga's own companion; weapon contacts
+      // keep their existing friendly-fire exclusions.
+      if (!input.weaponTargets.ray(out, eye.x, eye.y, eye.z, dx / length, dy / length, dz / length, Math.min(60, eyeReach),
+        visual ? null : cave, visual ? visualTarget : null, visual)) return false;
       const mx = out.x - targetOrigin.x, my = out.y - targetOrigin.y, mz = out.z - targetOrigin.z;
       const distance = Math.hypot(mx, my, mz), near = Math.max(0, 1 - TARGET_MARGIN / Math.max(distance, TARGET_MARGIN));
       const cameraNear = Math.max(0, out.distance - TARGET_MARGIN) / length;
@@ -654,7 +671,7 @@
       targetPrimary = primary;
       if (assistedView()) {
         targetActive = !!(input && input.weaponTargets && input.weaponTargets.ray(targetHit,
-          cursorRay.ox, cursorRay.oy, cursorRay.oz, cursorRay.dx, cursorRay.dy, cursorRay.dz, 60, cave, null, true));
+          cursorRay.ox, cursorRay.oy, cursorRay.oz, cursorRay.dx, cursorRay.dy, cursorRay.dz, 60, null, visualTarget, true));
         if (targetActive) {
           const clear = sightClear || cursorClear, near = Math.max(0, 1 - TARGET_MARGIN / Math.max(targetHit.distance, TARGET_MARGIN));
           if (clear && !clear(cursorRay.ox, cursorRay.oy, cursorRay.oz,
@@ -769,8 +786,7 @@
       overheadX = renderer.size.width / 2; overheadY = renderer.size.height / 2;
       if (preserve) {
         const rect = canvas.getBoundingClientRect();
-        overheadX = (carryCursor.x - rect.left) * renderer.size.width / rect.width;
-        overheadY = (carryCursor.y - rect.top) * renderer.size.height / rect.height;
+        overheadY = clamp((carryCursor.y - rect.top) * renderer.size.height / rect.height, 0, renderer.size.height / 2);
         positionReticle(overheadX, overheadY);
       }
       const dx = camera.target.x - camera.position.x, dy = camera.target.y - camera.position.y, dz = camera.target.z - camera.position.z;
@@ -789,8 +805,16 @@
       // Resume from the visible edge, not the retained target's off-screen
       // projection, so a small inward movement immediately takes over.
       overheadPointerMoved = true;
-      overheadX = clamp(overheadX + dx, 0, renderer.size.width);
-      overheadY = clamp(overheadY + dy, 0, renderer.size.height);
+      const halfHeight = renderer.size.height / 2;
+      overheadX = renderer.size.width / 2;
+      overheadY = clamp(overheadY + dy, 0, halfHeight);
+      if (dx) {
+        // Turn toward the pixel the mouse would have reached. Keep a finite
+        // lever arm near the Ooga so crossing the centre cannot flip the view.
+        const reach = Math.max(AIM_RETICLE_RADIUS, halfHeight * 0.2, halfHeight - overheadY);
+        overheadTargetYaw -= Math.atan2(dx, reach);
+        overheadNorthUp = false;
+      }
       assistedTargetWait = 0;
     };
     const overheadRay = (cave, x, y) => {
@@ -822,27 +846,27 @@
     };
     const updateBirdsEyeAim = (cave, dt) => {
       const p = cave.root.position, feet = p.y - cave.baseY;
-      let rayX = overheadX, rayY = overheadY;
+      const halfWidth = renderer.size.width / 2, halfHeight = renderer.size.height / 2;
+      overheadX = halfWidth;
+      overheadY = clamp(overheadY, 0, halfHeight);
+      let rayY = overheadY;
       const projected = overheadPointerMoved || projectAim(overheadAim);
       if (!overheadPointerMoved) {
-        if (projected) { rayX = assistedTargetScreen.x; rayY = assistedTargetScreen.y; }
-        const halfWidth = renderer.size.width / 2, halfHeight = renderer.size.height / 2;
-        const margin = Math.min(AIM_RETICLE_RADIUS, halfWidth / 2, halfHeight / 2);
-        let dx = projected ? rayX - halfWidth : aimProjection[0], dy = projected ? rayY - halfHeight : -aimProjection[1];
-        if (!projected && Math.hypot(dx, dy) < 1e-7) { dx = 0; dy = -1; }
-        const scale = 1 / Math.max(projected ? 1 : 0, Math.abs(dx) / (halfWidth - margin), Math.abs(dy) / (halfHeight - margin));
-        // Clamp only the display along the target's direction. Picking keeps
-        // the full projection, so zooming back out finds the original point.
-        // A point behind the eye still has an edge bearing, but no forward ray.
-        overheadX = halfWidth + dx * scale; overheadY = halfHeight + dy * scale;
+        const margin = Math.min(AIM_RETICLE_RADIUS, halfHeight / 2);
+        rayY = projected ? Math.min(halfHeight, assistedTargetScreen.y) : 0;
+        // Zoom retains the full forward projection beyond the top edge, so
+        // zooming back out finds the same point. Neither display nor picking
+        // may drift sideways or behind the Ooga as it walks or the view turns.
+        overheadY = clamp(rayY, margin, halfHeight);
       }
       // Refresh the revealed floor even while an anchor has no forward ray;
       // the query below remains disabled until that anchor returns in front.
-      overheadRay(cave, rayX, rayY);
-      if (overheadPointerMoved && cursorRay.dy < -1e-5) {
-        const distance = Math.max(0, (feet - cursorRay.oy) / cursorRay.dy);
+      overheadRay(cave, overheadX, rayY);
+      if (projected && cursorRay.dy < -1e-5) {
+        const floor = overheadPointerMoved ? feet : overheadAim.y;
+        const distance = Math.max(0, (floor - cursorRay.oy) / cursorRay.dy);
         overheadAim.x = cursorRay.ox + cursorRay.dx * distance;
-        overheadAim.y = feet;
+        overheadAim.y = floor;
         overheadAim.z = cursorRay.oz + cursorRay.dz * distance;
       }
       assistedTargetWait -= dt;
@@ -1148,7 +1172,7 @@
       }
     };
     const aimKey = (e) => {
-      if (externalControl || e.metaKey || e.ctrlKey || e.altKey || e.target.closest && e.target.closest("input, textarea, dialog")) return;
+      if (externalControl || e.metaKey || e.ctrlKey || e.altKey || e.target.closest && e.target.closest("input, textarea, dialog, #sheet")) return;
       // R swaps magazines whenever the AK is drawn, aimed or not: V fires it unaimed, so it empties unaimed.
       // Otherwise R stays the free camera's pitch.
       const cave = player();
@@ -1163,6 +1187,8 @@
         if (e.repeat) return;
         resumePose();
         overheadNorthUp = true;
+        overheadPointerMoved = true;
+        assistedTargetWait = 0;
         overheadTargetYaw = overheadYaw + Math.atan2(Math.sin(-overheadYaw), Math.cos(-overheadYaw));
         return;
       }
@@ -1574,6 +1600,7 @@
       rightDownAt = rightTapAt = -Infinity;
       if (active) rightReturnFirstPerson = false;
       if (active && birdsEye() && !closeWanted) {
+        anchorOverheadPointer(cave);
         // The assisted hit may be centred on an object and refreshed on a
         // throttle. The cursor anchor is the exact rendered ray hit, including
         // its elevation, and is the only point that can cross modes unchanged.
@@ -1657,6 +1684,11 @@
     };
     const modeAction = (action) => {
       const cave = player();
+      if (action === "mode-retake") {
+        syncOwnOoga();
+        if (ownOoga && ownOoga !== cave) hooks.onDoubleTap({ owner: { kind: "caveman", cave: ownOoga } });
+        return !!ownOoga;
+      }
       if (action === "mode-release") {
         if (cave) release();
         return !!cave;
@@ -1695,6 +1727,12 @@
       return true;
     };
     const possess = (cave, preserveHeight = false) => {
+      // A scene may refuse an Ooga (whose it is, who is here): the refusal says why and nothing changes.
+      const refusal = mayPossess && mayPossess(cave);
+      if (refusal) {
+        hud.toast(refusal);
+        return;
+      }
       restoredPose = null;
       centeredCarry = false;
       rememberControlMode();
@@ -1833,6 +1871,7 @@
       zoomTilt = true;
     };
     const hooks = {
+      hoverIgnore: () => closeWanted || closeMix > 0 ? player() : null,
       onOrbit: (dx, dy) => {
         if (dx || dy) resumePose();
         if ((dx || dy) && hud.fadeDetachedName) hud.fadeDetachedName();
@@ -2062,9 +2101,13 @@
       }
       if (a.yaw || a.pitch) stopCarryExit();
       if (birdsEye()) {
-        if (a.orbitYaw) overheadNorthUp = false;
+        if (a.orbitYaw) {
+          overheadNorthUp = false;
+          overheadPointerMoved = true;
+          assistedTargetWait = 0;
+        }
         overheadTargetYaw += a.orbitYaw * YAW_RATE * dt;
-        if (a.yaw || a.pitch) moveOverheadPointer(a.yaw * 500 * dt, a.pitch * 500 * dt);
+        if (a.yaw || a.pitch) moveOverheadPointer(-a.yaw * 500 * dt, a.pitch * 500 * dt);
         return;
       }
       if (!aimView() && lying && (a.yaw || a.pitch)) {
@@ -2889,6 +2932,9 @@
       reticle.hidden = !value || !armed();
     };
     const dispose = () => {
+      unsubscribeOwnOoga();
+      ownAccount = ownCrew = ownOoga = null;
+      if (hud.setOwnOoga) hud.setOwnOoga(null);
       rememberControlMode();
       restoredPose = null;
       disposed = true;

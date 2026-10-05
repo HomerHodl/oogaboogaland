@@ -58,9 +58,8 @@
       const traits = contributors.traitsFor(contributor.name);
       const cave = models.caveman(traits);
       const node = createNode({ visible: false });
-      const body = createNode();
+      const body = node;
       const flame = createNode({ geometry: raceModels.boostFlame(), visible: false });
-      addChild(node, body);
       addChild(root, node);
       const seed = mulberry32(fnv1a(contributor.name + "/driver"));
       const racer = {
@@ -88,22 +87,28 @@
         racer.ride = null;
         setVec(cave.root.position, 0, racer.baseY, 0);
         setVec(racer.flame.position, 0, 0.35, -0.3);
-        parts.legL.rotation.x = parts.legR.rotation.x = 0;
-        parts.armL.rotation.x = parts.armR.rotation.x = -0.2;
+        parts.legR.rotation.x = parts.legL.rotation.x = 0;
+        parts.armR.rotation.x = parts.armL.rotation.x = -0.2;
         addChild(racer.body, cave.root);
         return;
       }
       const ride = m.id === "kart" ? raceModels.kart(racer.traits.fur) : raceModels.dino(racer.hide);
       racer.ride = ride;
-      addChild(racer.body, ride.node);
+      // The mount wrapper has an identity transform; keep its animated parts
+      // directly under the racer rather than traversing another empty node.
+      while (ride.node.children.length) {
+        const child = ride.node.children[0];
+        removeChild(ride.node, child);
+        addChild(racer.body, child);
+      }
       setVec(racer.flame.position, 0, m.id === "kart" ? 0.5 : 0.9, m.id === "kart" ? -1.05 : -0.95);
       setVec(cave.root.position, 0, ride.seatY + racer.baseY * (m.id === "kart" ? 0.45 : 0.7), ride.seatZ);
-      parts.legL.rotation.x = parts.legR.rotation.x = m.id === "kart" ? -1.45 : -0.55;
-      parts.legL.rotation.z = m.id === "dino" ? -0.95 : 0;
-      parts.legR.rotation.z = m.id === "dino" ? 0.95 : 0;
-      parts.armL.rotation.x = parts.armR.rotation.x = m.id === "kart" ? -1.05 : -1.25;
-      parts.armL.rotation.z = -0.25;
-      parts.armR.rotation.z = 0.25;
+      parts.legR.rotation.x = parts.legL.rotation.x = m.id === "kart" ? -1.45 : -0.55;
+      parts.legR.rotation.z = m.id === "dino" ? -0.95 : 0;
+      parts.legL.rotation.z = m.id === "dino" ? 0.95 : 0;
+      parts.armR.rotation.x = parts.armL.rotation.x = m.id === "kart" ? -1.05 : -1.25;
+      parts.armR.rotation.z = -0.25;
+      parts.armL.rotation.z = 0.25;
       addChild(racer.body, cave.root);
     };
     const setup = ({ track: nextTrack, playerName, playerMount, lapCount }) => {
@@ -580,10 +585,10 @@
         a.phase += Math.abs(r.speed) * dt * (m.id === "run" ? 1.4 : 1.1);
         if (m.id === "run") {
           const swing = r.airborne ? 0.6 : Math.sin(a.phase) * clamp(r.speed / 4, 0, 1);
-          parts.legL.rotation.x = swing * 0.9;
-          parts.legR.rotation.x = -swing * 0.9;
-          parts.armL.rotation.x = -0.4 - swing * 0.7;
-          parts.armR.rotation.x = -0.4 + swing * 0.7;
+          parts.legR.rotation.x = swing * 0.9;
+          parts.legL.rotation.x = -swing * 0.9;
+          parts.armR.rotation.x = -0.4 - swing * 0.7;
+          parts.armL.rotation.x = -0.4 + swing * 0.7;
           r.cave.root.position.y = r.baseY + (r.airborne ? 0.1 : Math.abs(Math.sin(a.phase)) * 0.06 * clamp(r.speed / 6, 0, 1));
           parts.torso.rotation.x = clamp(r.speed / m.top, 0, 1) * 0.28;
         } else if (m.id === "kart") {
@@ -593,8 +598,8 @@
             ride.wheels[w].rotation.x = a.wheel;
             if (w < 2) ride.wheels[w].rotation.y = -r.steer * 0.4;
           }
-          parts.armL.rotation.z = -0.25 + r.steer * 0.25;
-          parts.armR.rotation.z = 0.25 + r.steer * 0.25;
+          parts.armR.rotation.z = -0.25 + r.steer * 0.25;
+          parts.armL.rotation.z = 0.25 + r.steer * 0.25;
         } else {
           const ride = r.ride;
           const k = clamp(r.speed / 5, 0, 1);

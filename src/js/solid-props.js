@@ -365,7 +365,21 @@
               nz = (ux * vy - uy * vx) * entry.orientation, tolerance = EPS * Math.hypot(nx, ny, nz);
             const side = nx * (x - triangle[0]) + ny * (y + height / 2 - triangle[1]) + nz * (z - triangle[2]);
             const away = nx * (toX - x) + nz * (toZ - z);
-            if (side < -tolerance || away < -tolerance) return false;
+            if (away < -tolerance) return false;
+            if (side < -tolerance) {
+              // A cap can overlap the body's edge while its centre is outside the mesh. Horizontal
+              // travel separates that contact along the cap's boundary, rather than its vertical normal.
+              if (Math.hypot(nx, nz) > tolerance || Number.isFinite(triangleTop(x, z, 0, 1))) return false;
+              let nearest = Infinity, separating = 0;
+              for (let edge = 0; edge < 3; edge++) {
+                const a = edge * 3, b = (edge + 1) % 3 * 3;
+                const dx = triangle[b] - triangle[a], dz = triangle[b + 2] - triangle[a + 2], length2 = dx * dx + dz * dz;
+                const t = length2 ? Math.max(0, Math.min(1, ((x - triangle[a]) * dx + (z - triangle[a + 2]) * dz) / length2)) : 0;
+                const rx = x - triangle[a] - dx * t, rz = z - triangle[a + 2] - dz * t, distance2 = rx * rx + rz * rz;
+                if (distance2 < nearest) { nearest = distance2; separating = rx * (toX - x) + rz * (toZ - z); }
+              }
+              if (separating <= EPS) return false;
+            }
           }
         }
       }

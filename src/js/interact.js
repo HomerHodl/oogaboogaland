@@ -8,14 +8,16 @@
   const DOUBLE_MS = 380;
   const DOUBLE_PX = 24;
   const WHEEL_GAP_MS = 220;
-  const create = ({ canvas, renderer, camera, hooks = {} }) => {
+  const create = ({ canvas, renderer, camera, hooks = {}, preciseHover = false }) => {
     const targets = [];
     const weaponTargets = BL.weaponTargets.create(targets);
     const pointers = new Map();
     const ray = { ox: 0, oy: 0, oz: 0, dx: 0, dy: 0, dz: 0 };
+    const hoverHit = { node: null, owner: null, distance: Infinity };
     const C = new Float32Array(3);
     const aimView = BL.math.mat4.create(), aimInverse = BL.math.mat4.create(), aimUp = { x: 0, y: 1, z: 0 };
     let hoverX = -1, hoverY = -1, hoverDirty = false, hovered = null;
+    let hoverIgnored = null;
     let gesture = null;
     let pinchDist = 0;
     let zoomGesture = 0, wheelAt = -Infinity, wheelDirection = 0;
@@ -81,6 +83,13 @@
         }
       }
       return best ? { node: best.node, owner: best.owner, t: bestT } : null;
+    };
+    const acceptHover = owner => !hoverIgnored || owner.cave !== hoverIgnored;
+    const pickHover = (px, py) => {
+      if (!preciseHover) return pick(px, py, hoverIgnored);
+      renderer.ray(px, py, camera, ray);
+      return weaponTargets.ray(hoverHit, ray.ox, ray.oy, ray.oz, ray.dx, ray.dy, ray.dz,
+        camera.far, null, acceptHover, true) ? hoverHit : null;
     };
     const aimPoint = (px, py, out, ignoreCave = null) => {
       // A one-off aim entry must use the current eye, not the renderer's
@@ -190,7 +199,7 @@
       }
       if (e.button !== 0 && e.pointerType === "mouse") return;
       const hit = pick(p.x, p.y);
-      gesture = { mode: "pending", start: p, last: p, at: performance.now(), hit, pointerId: e.pointerId, moved: false };
+      gesture = { mode: "pending", start: p, last: p, at: e.timeStamp, hit, pointerId: e.pointerId, moved: false };
       if (hit && hit.owner.grab) {
         if (e.pointerType === "mouse") startGrab(hit, p);
         else {
@@ -264,9 +273,10 @@
       if (g.mode === "grab") {
         const dropHit = cancelled ? null : pick(p.x, p.y);
         call("onGrabEnd", g.hit, p, dropHit && dropHit.node !== g.hit.node ? dropHit : null, cancelled);
-      } else if (g.mode === "pending" && !cancelled && performance.now() - g.at < TAP_MS) {
+      } else if (g.mode === "pending" && !cancelled && e.timeStamp - g.at < TAP_MS) {
         const node = g.hit ? g.hit.node : null;
-        const now = performance.now();
+        // Input timestamps keep a quick tap quick even when a frame delays its handlers.
+        const now = e.timeStamp;
         if (now - lastTap.at < DOUBLE_MS && sameTarget(g.hit) && Math.hypot(p.x - lastTap.x, p.y - lastTap.y) < DOUBLE_PX) {
           lastTap.at = -Infinity;
           lastTap.node = null;
@@ -313,10 +323,13 @@
     canvas.addEventListener("wheel", onWheel, { passive: false });
     canvas.addEventListener("contextmenu", onContextMenu);
     const update = () => {
+      // A view change can hide our own name without any pointer movement.
+      const ignored = call("hoverIgnore") || null;
+      if (ignored !== hoverIgnored) { hoverIgnored = ignored; hoverDirty = true; }
       if (!hoverDirty) return;
       hoverDirty = false;
       const busy = gesture && gesture.mode !== "pending";
-      const hit = !busy && hoverX >= 0 ? pick(hoverX, hoverY) : null;
+      const hit = !busy && hoverX >= 0 ? pickHover(hoverX, hoverY) : null;
       const node = hit ? hit.node : null;
       if (node !== hovered) {
         hovered = node;
@@ -337,6 +350,7 @@
       lastTap.node = lastTap.owner = null;
       hoverX = hoverY = -1;
       hoverDirty = false;
+      hoverIgnored = null;
       if (hovered) call("onHover", null, { x: -1, y: -1 });
       hovered = null;
       canvas.style.cursor = "grab";

@@ -62,7 +62,7 @@
     const held = { forward: 0, back: 0, left: 0, right: 0, yawLeft: 0, yawRight: 0, pitchDown: 0, pitchUp: 0, up: 0, space: 0, down: 0, boost: 0, chord: 0, sprint: 0, peek: 0 };
     const axes = { x: 0, y: 0, up: 0, yaw: 0, pitch: 0, orbitYaw: 0, sprint: 0, peek: 0, shiftTap: 0 };
     let spaceDown = false, boostPointer = null, boostClick = false, shiftAt = 0, shiftUsed = false, shiftTap = 0;
-    const typing = (e) => e.target && (e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA" || (e.target.closest && e.target.closest("dialog")));
+    const typing = (e) => e.target && (e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA" || (e.target.closest && e.target.closest("dialog, #sheet")));
     const onKeyDown = (e) => {
       if (e.metaKey || e.ctrlKey || e.altKey || typing(e)) return;
       const name = pressActions && e.key === " " ? "space" : keyName(e);

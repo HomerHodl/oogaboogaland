@@ -41,7 +41,7 @@
       club: (k) => ({ default: energyCanGeometry(k.h), gold: energyCanGeometry(k.h, true), rest: { x: 0, z: 0 } }),
       gear(k) {
         const h = k.h;
-        addChild(k.parts.armR, createNode({ position: { x: 0, y: -0.62 * h, z: 0.16 * h }, geometry: cigaretteGeometry(h) }));
+        addChild(k.parts.armL, createNode({ position: { x: 0, y: -0.62 * h, z: 0.16 * h }, geometry: cigaretteGeometry(h) }));
       },
       // A simple black nose and a white muzzle
       mark(k, v) {

@@ -405,7 +405,6 @@
     camera = createCamera({ fov: 55, near: 0.3, far: 700 });
     root = createNode();
     hud = hudMod.create({ roster: contributors.activeRoster, catalog: models.SWAG, tierColors: models.TIER_COLORS, renderIcon: hudMod.renderIcon, lootEnabled: ctx.lootEnabled });
-    if (window.matchMedia("(max-width: 720px), (max-height: 500px)").matches) hud.el.sheet.dataset.open = "false";
     hooks = {};
     input = interactMod.create({ canvas, renderer, camera, hooks });
     const inTunnel = (p) => p.z > HALL.r - 1.5 && Math.abs(p.x) < ENTRY.halfW;
@@ -468,6 +467,7 @@
     hud.onAction((action) => {
       if (action === "leave") leaveChamber();
       else if (action === "reset-view") pilot.goPreset("entrance");
+      else if (action === "mode-retake") pilot.modeAction(action);
     });
     fx = fxMod.create({ root, input, hooks, hud, game, world, renderer, camera, overlay: ctx.overlay, tickerAt: { x: 0, y: 7, z: 0 } });
     dust = BL.dressing.motes({ count: 160, span: 14, low: 0.5, high: 9 });

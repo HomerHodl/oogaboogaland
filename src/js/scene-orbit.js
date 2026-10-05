@@ -38,7 +38,7 @@
   const daylenParam = DEBUG ? parseFloat(params.get("daylen")) : NaN;
   const dayParam = DEBUG ? parseFloat(params.get("day")) : NaN;
   const latitudeParam = DEBUG ? parseFloat(params.get("latitude")) : NaN;
-  const islandLatitude = Number.isFinite(latitudeParam) ? Math.max(-66, Math.min(66, latitudeParam)) : daylight.ISLAND_LATITUDE_DEG;
+  const islandLatitude = Number.isFinite(latitudeParam) ? Math.max(-90, Math.min(90, latitudeParam)) : daylight.ISLAND_LATITUDE_DEG;
   const SEED = 1;
   const METER_CAPACITY = 60;
   const FIXED = 1 / 120, MAX_SUBSTEPS = 4;
@@ -77,7 +77,7 @@
   const SPLASH_BITS = [SPRAY, SPRAY_DK];
   const RENDER_OPTS = {
     clear: new Float32Array(3), horizon: new Float32Array(3), zenith: new Float32Array(3), sky: new Float32Array(3), ground: new Float32Array(3), sun: new Float32Array(3), direct: new Float32Array(3),
-    light: { x: 0.55, y: 0.78, z: -0.25 }, sunDirection: { x: 0, y: 1, z: 0 }, moon: { x: 0, y: 1, z: 0 }, starMatrix: new Float32Array(9),
+    light: { x: 0.55, y: 0.78, z: -0.25 }, sunDirection: { x: 0, y: 1, z: 0 }, moon: { x: 0, y: 1, z: 0 }, moonSun: { x: 0, y: -1, z: 0 }, starMatrix: new Float32Array(9),
     stars: 0, torch: 0, day: 1, twilight: 0, lampFactor: 0, directStrength: 1, sunStrength: 1, moonStrength: 0, ambientFloor: 0.18, diffuseFloor: 0, shadowStrength: 1, shadowFloor: 0, shadowBias: 0.002,
     time: 0, bloomStrength: 0.55, lights: new Float32Array(80), lightCount: 0, shadowCenter: { x: 0, y: 0, z: 0 }, shadowExtent: 34, fog: null, fogNear: 260, fogFar: 900
   };
@@ -279,7 +279,7 @@
     astroStick = createNode({ position: { x: 0, y: -0.62 * h, z: 0.06 * h }, rotation: { x: Math.PI, y: 0, z: 0 }, scale: { x: 1, y: 0.01, z: 1 }, geometry: rocketModels.measureStick(), visible: false });
     astroLight = createNode({ position: { x: 0, y: 0.95, z: 0 }, geometry: rocketModels.readingLight() });
     addChild(astroStick, astroLight);
-    addChild(astro.parts.armR, astroStick);
+    addChild(astro.parts.armL, astroStick);
     astro.root.visible = false;
     addChild(root, astro.root);
   };
@@ -1292,7 +1292,7 @@
         spawnSmoke(bx - zx * 0.15, by - zy * 0.15, bz - zz * 0.15, flight.state.v.x - mx * 3, flight.state.v.y - my * 3, flight.state.v.z - mz * 3, 0.12, 0.5);
       }
     }
-    const arm = astro.parts.armR;
+    const arm = astro.parts.armL;
     if (eva.measuring > 0) {
       const k = 1 - eva.measuring / EVA.measure;
       eva.yaw = wrap(eva.yaw + wrap(Math.atan2(eva.rockE - eva.e, eva.rockF - eva.f) - eva.yaw) * (1 - Math.exp(-4 * dt)));
@@ -1579,7 +1579,7 @@
     phaseT += dt;
     agent.update(dt);
     const hour = clock.read();
-    daylight.sample(hour, RENDER_OPTS, clock.dayOfYear, islandLatitude, clock.continuousDay);
+    daylight.sample(hour, RENDER_OPTS, clock.dayOfYear, islandLatitude, clock.continuousDay, clock.utcMs);
     const a = readInput();
     if (phase === "count") {
       const left = Math.ceil(COUNT_T - phaseT);

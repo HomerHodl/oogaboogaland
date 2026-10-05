@@ -135,7 +135,7 @@
       element.hidden = true;
       document.body.classList.remove("carry-cursor-active");
     };
-    const start = (clientX = null, clientY = null, show = true) => {
+    const start = (clientX = null, clientY = null, show = true, capture = true) => {
       endAim();
       if (active) clearPresses();
       const rect = measureCanvas();
@@ -151,7 +151,7 @@
       if (locked()) {
         const e = { button: -1, buttons: 0 };
         pointer(hover(e), "pointermove", e, -1, 0);
-      } else requestLock();
+      } else if (capture) requestLock();
     };
     const placeCanvas = (localX, localY, width, height) => {
       x = canvasLeft + localX * canvasWidth / Math.max(1, width);
@@ -245,7 +245,9 @@
     const onMouseMove = (e) => {
       if (dispatching || !active || !locked() || e.sourceCapabilities?.firesTouchEvents) return;
       e.stopImmediatePropagation();
-      x += e.movementX; y += e.movementY;
+      // The hidden overhead cursor is positioned by the pilot's constrained
+      // reticle. Raw deltas must not send hover or the next click off that line.
+      if (visible) { x += e.movementX; y += e.movementY; }
       paint();
       const source = pendingMove || e;
       pendingMove = null;

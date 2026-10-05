@@ -135,12 +135,12 @@
         mount(shards, site.node, -1.7, 0.01, -0.2); shards.visible = state.broken;
         return;
       }
-      if (mode !== "fill" && mode !== "take") mount(mug, parts.armR, -0.27, -0.48 * h, 0.08 * h);
+      if (mode !== "fill" && mode !== "take") mount(mug, parts.armL, -0.27, -0.48 * h, 0.08 * h);
       if (mode === "sip" || mode === "chug") {
         const lift = smooth(t / 0.25) * (1 - smooth((t - 0.75) / 0.25));
-        parts.armR.rotation.x = -0.95 - lift * 0.75; parts.armR.rotation.z = -0.2 * lift;
+        parts.armL.rotation.x = -0.95 - lift * 0.75; parts.armL.rotation.z = -0.2 * lift;
         parts.head.rotation.x = 0.28 - lift * 0.4;
-        mug.rotation.x = -parts.armR.rotation.x + 0.23 - lift * (mode === "chug" ? 1.1 : 0.7);
+        mug.rotation.x = -parts.armL.rotation.x + 0.23 - lift * (mode === "chug" ? 1.1 : 0.7);
         return;
       }
       seat.speed = 0;
@@ -160,24 +160,24 @@
       cave.root.position.y = p.y + 0.88 * h * (1 - standing) + cave.baseY * standing;
       cave.root.rotation.x = mode === "clean" ? 0.65 : -0.23 * (1 - standing); cave.root.rotation.y = p.ry + heading;
       const stride = walking ? Math.sin(state.elapsed * 9) * 0.5 : 0;
-      parts.legL.rotation.x = -1.05 * (1 - standing) + stride; parts.legR.rotation.x = -1.05 * (1 - standing) - stride;
-      parts.head.rotation.x = 0.12; parts.armL.rotation.x = -0.2 - stride * 0.5;
-      parts.armR.rotation.x = -1.1; parts.armR.rotation.z = 0;
-      mug.rotation.x = -parts.armR.rotation.x - cave.root.rotation.x;
+      parts.legR.rotation.x = -1.05 * (1 - standing) + stride; parts.legL.rotation.x = -1.05 * (1 - standing) - stride;
+      parts.head.rotation.x = 0.12; parts.armR.rotation.x = -0.2 - stride * 0.5;
+      parts.armL.rotation.x = -1.1; parts.armL.rotation.z = 0;
+      mug.rotation.x = -parts.armL.rotation.x - cave.root.rotation.x;
       if (mode === "fill") {
         mount(mug, dispenser, 0, 1.11, 0.5);
         const bottom = 1.15 + fill * FILL_HEIGHT;
         stream.scale.y = Math.max(0.01, 1.5 - bottom);
         stream.position.y = (1.5 + bottom) / 2; stream.position.z = 0.5;
-        parts.armR.rotation.x = -2;
+        parts.armL.rotation.x = -2;
       }
       if (mode === "clean") {
         mount(pan, site.node, -1.7, 0.08, -0.2);
-        mount(brush, parts.armR, 0, -0.55 * h, 0);
-        parts.armR.rotation.x = -0.6; parts.armR.rotation.z = Math.sin(t * Math.PI * 8) * 0.35;
+        mount(brush, parts.armL, 0, -0.55 * h, 0);
+        parts.armL.rotation.x = -0.6; parts.armL.rotation.z = Math.sin(t * Math.PI * 8) * 0.35;
         mount(shards, site.node, -1.7, 0.02 + t * 0.08, -0.2); shards.scale.x = shards.scale.z = 1 - t * 0.65;
       } else if (mode === "trashwalk" || mode === "discard") {
-        mount(pan, parts.armL, 0, -0.56 * h, 0.1); parts.armL.rotation.x = -1.3;
+        mount(pan, parts.armR, 0, -0.56 * h, 0.1); parts.armR.rotation.x = -1.3;
         pan.rotation.x = 1.3;
         if (mode !== "discard") mount(shards, pan, 0, 0.03, 0);
         else {
@@ -185,7 +185,7 @@
           shards.visible = t < 0.9; pan.rotation.z = -t;
         }
       } else if (!state.broken || mode === "cabinetwalk" || mode === "take") shards.visible = false;
-      if (mode === "take") { parts.armR.rotation.x = -1.7; mug.visible = t > 0.6; mount(mug, cabinet, 0, 0.84, 0.05); stock[4].visible = t <= 0.6; }
+      if (mode === "take") { parts.armL.rotation.x = -1.7; mug.visible = t > 0.6; mount(mug, cabinet, 0, 0.84, 0.05); stock[4].visible = t <= 0.6; }
     };
     return { dispenser, cabinet, bin, mug, stream, shards, state, update, pause, act, get seated() { return seated(); }, dispose: pause };
   };

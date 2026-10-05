@@ -295,6 +295,15 @@
     const trimPool = () => {
       while (particlePool.length > POOL_KEEP) removeChild(root, particlePool.pop().node);
     };
+    // A replacement world must not retain dust or sparks from the one it removed.
+    const clearParticles = () => {
+      while (particles.length) {
+        const p = particles.pop();
+        p.node.visible = false;
+        particlePool.push(p);
+      }
+      trimPool();
+    };
     const dispose = () => {
       sizeObserver.disconnect();
       if (hud) hud.tooltip.setVisibility(null);
@@ -311,7 +320,7 @@
     };
     const stats = () => ({ particles: particles.length, pool: particlePool.length, bubbles: bubbles.length, zzz: zzz.length, damageNumbers: damageCount });
     return {
-      spawnParticle, burst, puff, say, sayAt, zzzAt, damageNumber, showTicker, drawOverlay, warmVisibility, warmBlockers: visibility.warm, update: stepParticles, trimPool, dispose, stats,
+      spawnParticle, burst, puff, clearParticles, say, sayAt, zzzAt, damageNumber, showTicker, drawOverlay, warmVisibility, warmBlockers: visibility.warm, update: stepParticles, trimPool, dispose, stats,
       get inMotion() {
         return particles.length > 0 || damageCount > 0;
       }

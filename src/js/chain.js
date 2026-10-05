@@ -16,7 +16,7 @@
 // Nothing here allocates per frame: the snapshot is one object mutated in place and the fee ladder is
 // a fixed typed array. Weather reads the two derived axes at the foot of the snapshot.
 //
-// The snapshot is the standing view behind the weather and the Mempool cave: backlog, the fee ladder
+// The snapshot is the standing view behind the weather, the lake and the Mempool chamber's paintings: backlog, the fee ladder
 // in fixed rungs, tip, block pace, difficulty epoch, hashrate and price. The socket's `stats` and
 // `fees` land in it (coalesced into one announce a tick later) and stamp `socketAt`, never
 // `succeeded`, so a REST provider's backoff and Retry-After stand; while they are fresh, REST
@@ -25,10 +25,12 @@
 // poll. Three consecutive failures swap the base URL to Esplora; the preferred provider is probed
 // every fifteen minutes.
 //
-// `derive` sets the weather axes. `soak` comes from the paying backlog: `paying` is the vsize at
-// 1 sat/vB or more (the fee ladder's first rung before normalizing), `payEma` its ten-minute average
-// by elapsed time, cached for reloads, and `paySoak` maps it on a log scale from PAY_DRY to PAY_FULL
-// MvB. `gale` comes from the socket's inflow and is zero once the socket is stale.
+// `derive` sets two derived readings. `gale` comes from the socket's inflow, the arriving volume, and is zero once
+// the socket is stale: it is what makes the Mempool island's weather (rain, cloud and wind; weather.js judges
+// its age for itself between derives). `soak` comes from the paying backlog and is kept as data: `paying` is the
+// vsize at 1 sat/vB or more (the fee ladder's first rung before normalizing), `payEma` its ten-minute average by
+// elapsed time, cached for reloads, and `paySoak` maps it on a log scale from PAY_DRY to PAY_FULL MvB. The whole
+// backlog, `vsize`, fills the island's lake (pool-water.js).
 //
 // The live price is Coinbase Exchange's public `ticker_batch` socket (`readTicker`: `type:
 // "ticker"`, strings parsed, `open_24h` as `priceOpenUsd`), subscribed in `onopen` because the feed
@@ -57,8 +59,8 @@
   // Socket readings count as live for as long as a REST backlog poll would.
   const FRESH_MS = BACKLOG_MS * 3;
   // Soak is the backlog that pays: vB waiting at 1 sat/vB or more, in MvB, smoothed over ten minutes
-  // so the block-by-block sawtooth does not flick the rain between steps, on a log scale from dry to
-  // downpour. The sub-sat pool beneath it sat at ~40 MvB for months and says nothing about pressure.
+  // so the block-by-block sawtooth does not flick it, on a log scale. It no longer makes the rain; it stays
+  // a reading. The sub-sat pool beneath it sat at ~40 MvB for months and says nothing about pressure.
   const PAY_DRY = 0.3, PAY_FULL = 4, PAY_TAU = 600000;
   // Gale is the socket's inflow in vB/s, calm below the first and full at the second.
   const INFLOW_CALM = 1000, INFLOW_FULL = 3500;

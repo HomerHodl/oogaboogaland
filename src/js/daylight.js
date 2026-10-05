@@ -80,8 +80,71 @@
     out[3] = cp * ct; out[4] = cp * st; out[5] = sp;
     out[6] = sp * ct; out[7] = sp * st; out[8] = -cp;
   };
-  const sample = (hour, out, dayOfYear = 172, latitudeDeg = ISLAND_LATITUDE_DEG, continuousDay = NaN) => {
-    latitudeDeg = clamp(Number.isFinite(latitudeDeg) ? latitudeDeg : ISLAND_LATITUDE_DEG, -66, 66);
+  // Low-precision lunar elements and the principal solar perturbations, at UTC days since 2000 Jan 0.
+  // Paul Schlyter, Computing planetary positions, sections 5-9.
+  const realMoon = (utcMs, latitude, hour, out) => {
+    const d = utcMs / 86400000 - 10956;
+    const sunPerihelion = (282.9404 + 4.70935e-5 * d) * DEG;
+    const sunAnomaly = wrap((356.0470 + 0.9856002585 * d) * DEG, TAU);
+    const sunEccentricity = 0.016709 - 1.151e-9 * d;
+    const sunE = sunAnomaly + sunEccentricity * Math.sin(sunAnomaly) * (1 + sunEccentricity * Math.cos(sunAnomaly));
+    const sunLongitude = Math.atan2(Math.sqrt(1 - sunEccentricity ** 2) * Math.sin(sunE), Math.cos(sunE) - sunEccentricity) + sunPerihelion;
+    const sunMeanLongitude = sunPerihelion + sunAnomaly;
+    const node = wrap((125.1228 - 0.0529538083 * d) * DEG, TAU);
+    const perigee = wrap((318.0634 + 0.1643573223 * d) * DEG, TAU);
+    const anomaly = wrap((115.3654 + 13.0649929509 * d) * DEG, TAU);
+    const eccentricity = 0.0549;
+    let E = anomaly + eccentricity * Math.sin(anomaly) * (1 + eccentricity * Math.cos(anomaly));
+    E -= (E - eccentricity * Math.sin(E) - anomaly) / (1 - eccentricity * Math.cos(E));
+    const orbitX = 60.2666 * (Math.cos(E) - eccentricity);
+    const orbitY = 60.2666 * Math.sqrt(1 - eccentricity ** 2) * Math.sin(E);
+    const argument = Math.atan2(orbitY, orbitX) + perigee;
+    const radius = Math.hypot(orbitX, orbitY);
+    const cosNode = Math.cos(node), sinNode = Math.sin(node), cosArg = Math.cos(argument), sinArg = Math.sin(argument);
+    const eclipticX = radius * (cosNode * cosArg - sinNode * sinArg * Math.cos(5.1454 * DEG));
+    const eclipticY = radius * (sinNode * cosArg + cosNode * sinArg * Math.cos(5.1454 * DEG));
+    const eclipticZ = radius * sinArg * Math.sin(5.1454 * DEG);
+    const meanLongitude = node + perigee + anomaly;
+    const elongation = meanLongitude - sunMeanLongitude;
+    const argumentLatitude = meanLongitude - node;
+    let moonLongitude = Math.atan2(eclipticY, eclipticX);
+    let moonLatitude = Math.atan2(eclipticZ, Math.hypot(eclipticX, eclipticY));
+    moonLongitude += DEG * (-1.274 * Math.sin(anomaly - 2 * elongation) + 0.658 * Math.sin(2 * elongation)
+      - 0.186 * Math.sin(sunAnomaly) - 0.059 * Math.sin(2 * anomaly - 2 * elongation)
+      - 0.057 * Math.sin(anomaly - 2 * elongation + sunAnomaly) + 0.053 * Math.sin(anomaly + 2 * elongation)
+      + 0.046 * Math.sin(2 * elongation - sunAnomaly) + 0.041 * Math.sin(anomaly - sunAnomaly)
+      - 0.035 * Math.sin(elongation) - 0.031 * Math.sin(anomaly + sunAnomaly)
+      - 0.015 * Math.sin(2 * argumentLatitude - 2 * elongation) + 0.011 * Math.sin(anomaly - 4 * elongation));
+    moonLatitude += DEG * (-0.173 * Math.sin(argumentLatitude - 2 * elongation)
+      - 0.055 * Math.sin(anomaly - argumentLatitude - 2 * elongation)
+      - 0.046 * Math.sin(anomaly + argumentLatitude - 2 * elongation)
+      + 0.033 * Math.sin(argumentLatitude + 2 * elongation)
+      + 0.017 * Math.sin(2 * anomaly + argumentLatitude));
+    const distance = radius - 0.58 * Math.cos(anomaly - 2 * elongation) - 0.46 * Math.cos(2 * elongation);
+    const obliquity = (23.4393 - 3.563e-7 * d) * DEG;
+    const sinLon = Math.sin(moonLongitude), cosLon = Math.cos(moonLongitude), sinLat = Math.sin(moonLatitude), cosLat = Math.cos(moonLatitude);
+    const moonY = sinLon * cosLat * Math.cos(obliquity) - sinLat * Math.sin(obliquity);
+    const moonZ = sinLon * cosLat * Math.sin(obliquity) + sinLat * Math.cos(obliquity);
+    const moonRA = Math.atan2(moonY, cosLon * cosLat);
+    const moonDeclination = Math.asin(clamp(moonZ, -1, 1));
+    // Like the sun above, use the island's clock: solar noon is on the meridian.
+    const sunRA = Math.atan2(Math.sin(sunLongitude) * Math.cos(obliquity), Math.cos(sunLongitude));
+    const sidereal = wrap(sunRA + (hour - 12) * 15 * DEG, TAU);
+    horizonDirection(out.moon, moonDeclination, sidereal - moonRA, latitude);
+    const altitude = Math.asin(clamp(out.moon.y, -1, 1));
+    const topocentricAltitude = altitude - Math.asin(1 / distance) * Math.cos(altitude);
+    const horizontal = Math.hypot(out.moon.x, out.moon.z);
+    const scale = Math.cos(topocentricAltitude) / Math.max(horizontal, 1e-8);
+    out.moon.x *= scale; out.moon.y = Math.sin(topocentricAltitude); out.moon.z *= scale;
+    const sunDeclination = Math.asin(Math.sin(sunLongitude) * Math.sin(obliquity));
+    if (out.moonSun) horizonDirection(out.moonSun, sunDeclination, sidereal - sunRA, latitude);
+    out.moonIllumination = (1 - Math.cos(moonLongitude - sunLongitude) * Math.cos(moonLatitude)) * 0.5;
+    out.moonPhase = wrap(moonLongitude - sunLongitude, TAU) / TAU;
+    moonAngles(out.moon, out);
+    return sidereal;
+  };
+  const sample = (hour, out, dayOfYear = 172, latitudeDeg = ISLAND_LATITUDE_DEG, continuousDay = NaN, utcMs = NaN) => {
+    latitudeDeg = clamp(Number.isFinite(latitudeDeg) ? latitudeDeg : ISLAND_LATITUDE_DEG, -90, 90);
     dayOfYear = clamp(Number.isFinite(dayOfYear) ? dayOfYear : 172, 1, 366);
     if (!Number.isFinite(continuousDay)) continuousDay = dayOfYear - 1 + hour / 24;
     const latitude = latitudeDeg * DEG;
@@ -93,16 +156,23 @@
     sunAngles(sunDirection, out);
 
     // Low-cost bounded lunar orbit: ecliptic longitude/latitude converted into equatorial space.
-    const moonLongitude = wrap(TAU * (continuousDay - 4.867) / 27.321661, TAU);
-    const moonLatitude = 5.145 * DEG * Math.sin(TAU * (continuousDay - 1.2) / 27.212221);
-    const ce = Math.cos(AXIAL_TILT_DEG * DEG), se = Math.sin(AXIAL_TILT_DEG * DEG);
-    const cl = Math.cos(moonLongitude), sl = Math.sin(moonLongitude), cb = Math.cos(moonLatitude), sb = Math.sin(moonLatitude);
-    const ex = cb * cl, ey = cb * sl * ce - sb * se, ez = cb * sl * se + sb * ce;
-    const moonDeclination = Math.asin(clamp(ez, -1, 1));
-    const moonRightAscension = Math.atan2(ey, ex);
-    const sidereal = wrap(TAU * (0.7790572733 + continuousDay * SIDEREAL_RATE), TAU);
-    horizonDirection(out.moon, moonDeclination, sidereal - moonRightAscension, latitude);
-    moonAngles(out.moon, out);
+    let sidereal;
+    if (Number.isFinite(utcMs)) sidereal = realMoon(utcMs, latitude, hour, out);
+    else {
+      const moonLongitude = wrap(TAU * (continuousDay - 4.867) / 27.321661, TAU);
+      const moonLatitude = 5.145 * DEG * Math.sin(TAU * (continuousDay - 1.2) / 27.212221);
+      const ce = Math.cos(AXIAL_TILT_DEG * DEG), se = Math.sin(AXIAL_TILT_DEG * DEG);
+      const cl = Math.cos(moonLongitude), sl = Math.sin(moonLongitude), cb = Math.cos(moonLatitude), sb = Math.sin(moonLatitude);
+      const ex = cb * cl, ey = cb * sl * ce - sb * se, ez = cb * sl * se + sb * ce;
+      const moonDeclination = Math.asin(clamp(ez, -1, 1));
+      const moonRightAscension = Math.atan2(ey, ex);
+      sidereal = wrap(TAU * (0.7790572733 + continuousDay * SIDEREAL_RATE), TAU);
+      horizonDirection(out.moon, moonDeclination, sidereal - moonRightAscension, latitude);
+      moonAngles(out.moon, out);
+      out.moonIllumination = 1;
+      out.moonPhase = 0.5;
+      if (out.moonSun) { out.moonSun.x = -out.moon.x; out.moonSun.y = -out.moon.y; out.moonSun.z = -out.moon.z; }
+    }
     starFrame(out.starMatrix, latitude, sidereal);
     if (out.celestialPole) {
       out.celestialPole.x = 0;
@@ -129,7 +199,7 @@
     tint3(out.sun, TWILIGHT_SUN, twilight * 0.72);
 
     const sunStrength = smooth(0, 8, altitude);
-    const moonStrength = stars * smooth(0, 10, out.moonAltitude) * 0.26;
+    const moonStrength = stars * smooth(0, 10, out.moonAltitude) * 0.26 * out.moonIllumination;
     let lx = sunDirection.x * sunStrength + out.moon.x * moonStrength;
     let ly = sunDirection.y * sunStrength + out.moon.y * moonStrength;
     let lz = sunDirection.z * sunStrength + out.moon.z * moonStrength;
@@ -195,12 +265,16 @@
     const running = !fixed && (daylen > 0 || !pinned);
     const rate = daylen > 0 ? 24 / daylen : 1 / 3600;
     const start = performance.now();
-    const state = { hour: baseHour, continuousDay: baseDay - 1 + baseHour / 24, dayOfYear: baseDay, read: null };
+    const baseMs = !fixed && !pinned && !Number.isFinite(day) ? now.getTime()
+      : new Date(now.getFullYear(), 0, baseDay).getTime() + baseHour * 3600000;
+    const state = { hour: baseHour, continuousDay: baseDay - 1 + baseHour / 24, dayOfYear: baseDay, utcMs: baseMs, read: null };
     state.read = () => {
-      const hours = baseHour + (running ? (performance.now() - start) * 0.001 * rate : 0);
+      const elapsed = running ? (performance.now() - start) * 0.001 * rate : 0;
+      const hours = baseHour + elapsed;
       state.hour = running ? wrap(hours, 24) : baseHour;
       state.continuousDay = baseDay - 1 + hours / 24;
       state.dayOfYear = Math.floor(wrap(state.continuousDay, 366)) + 1;
+      state.utcMs = baseMs + elapsed * 3600000;
       return state.hour;
     };
     return state;

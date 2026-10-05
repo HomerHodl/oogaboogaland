@@ -28,7 +28,7 @@
           }
         }
         const arm = k.vg(v, { x: -1.5 * k.u, y: -11 * k.u, z: -1.5 * k.u });
-        k.parts.armL.geometry = k.parts.armR.geometry = arm;
+        k.parts.armR.geometry = k.parts.armL.geometry = arm;
       }
     }
   });

@@ -176,15 +176,14 @@
   const dino = (hide) => {
     const g = dinoParts(hide), u = DINO_UNIT;
     const node = createNode();
-    const hips = createNode({ position: { x: 0, y: 8 * u, z: 0 } });
-    const body = createNode({ geometry: g.body });
+    const hips = createNode({ position: { x: 0, y: 8 * u, z: 0 }, geometry: g.body });
     const tail = createNode({ position: { x: 0, y: 2 * u, z: -5 * u }, geometry: g.tail });
     const neck = createNode({ position: { x: 0, y: 5 * u, z: 7 * u }, rotation: { x: -0.35, y: 0, z: 0 }, geometry: g.neck });
     const legL = createNode({ position: { x: -2.5 * u, y: 8 * u, z: -0.5 * u }, geometry: g.leg });
     const legR = createNode({ position: { x: 2.5 * u, y: 8 * u, z: -0.5 * u }, geometry: g.leg });
     const armL = createNode({ position: { x: -3 * u, y: 3 * u, z: 5 * u }, rotation: { x: 0.6, y: 0, z: 0 }, geometry: g.arm });
     const armR = createNode({ position: { x: 3 * u, y: 3 * u, z: 5 * u }, rotation: { x: 0.6, y: 0, z: 0 }, geometry: g.arm });
-    addChild(hips, body, tail, neck, armL, armR);
+    addChild(hips, tail, neck, armL, armR);
     addChild(node, hips, legL, legR);
     return { node, hips, tail, neck, legL, legR, seatY: 17 * u, seatZ: 0 };
   };

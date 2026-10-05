@@ -1,0 +1,217 @@
+{
+  "validatedRuntime": "6d3aff6a152a134a29dd7ccf036db36118551492",
+  "base": "dab6e36bea482f2d712b65f3e2d559348400b527",
+  "environment": {
+    "date": "2026-10-02",
+    "node": "24.12.0",
+    "machine": "M1 Pro, 32 GB, AC power",
+    "fullSuiteLanes": 2,
+    "otherChromeProcessesPresent": true
+  },
+  "nativeAllocation": {
+    "base": {
+      "buffers": [
+        {
+          "requested": 4,
+          "actual": 4,
+          "w": 2039,
+          "h": 1274,
+          "format": 32856
+        },
+        {
+          "requested": 4,
+          "actual": 4,
+          "w": 2039,
+          "h": 1274,
+          "format": 32856
+        },
+        {
+          "requested": 4,
+          "actual": 4,
+          "w": 2039,
+          "h": 1274,
+          "format": 33190
+        }
+      ],
+      "logs": []
+    },
+    "head": {
+      "buffers": [
+        {
+          "requested": 2,
+          "actual": 2,
+          "w": 2039,
+          "h": 1274,
+          "format": 32856
+        },
+        {
+          "requested": 2,
+          "actual": 2,
+          "w": 2039,
+          "h": 1274,
+          "format": 32856
+        },
+        {
+          "requested": 2,
+          "actual": 2,
+          "w": 2039,
+          "h": 1274,
+          "format": 33190
+        }
+      ],
+      "logs": []
+    },
+    "sameDimensions": true,
+    "estimatedBaseBytes": 124688928,
+    "estimatedHeadBytes": 62344464,
+    "estimatedSavingMiB": 59.45631408691406
+  },
+  "adaptiveQuality": {
+    "memoryBoot": true,
+    "healthy": true,
+    "gpuBound": true,
+    "reactsIn": 2125,
+    "reactsFast": true,
+    "ignoresSpikes": true,
+    "bounded": true,
+    "warmup": true,
+    "ignoresPauses": true,
+    "fallback": true,
+    "bootFast": true,
+    "bootMedium": true,
+    "bootLow": true,
+    "bootOneWay": true,
+    "bootKeepsCoarse": true,
+    "bootMemory": true
+  },
+  "highContextRestoration": [
+    {
+      "name": "base",
+      "before": {
+        "frames": 21,
+        "quality": "high",
+        "ready": true
+      },
+      "lost": {
+        "ready": true,
+        "events": [
+          "lost"
+        ]
+      },
+      "after": {
+        "frames": 139,
+        "quality": "high",
+        "ready": true,
+        "events": [
+          "lost",
+          "restored"
+        ],
+        "buffers": [
+          {
+            "samples": 4,
+            "w": 1440,
+            "h": 813
+          },
+          {
+            "samples": 4,
+            "w": 1440,
+            "h": 813
+          },
+          {
+            "samples": 4,
+            "w": 1440,
+            "h": 813
+          }
+        ]
+      },
+      "recovered": true,
+      "logs": []
+    },
+    {
+      "name": "head",
+      "before": {
+        "frames": 24,
+        "quality": "high",
+        "ready": true
+      },
+      "lost": {
+        "ready": true,
+        "events": [
+          "lost"
+        ]
+      },
+      "after": {
+        "frames": 86,
+        "quality": "high",
+        "ready": true,
+        "events": [
+          "lost",
+          "restored"
+        ],
+        "buffers": [
+          {
+            "samples": 2,
+            "w": 1440,
+            "h": 813
+          },
+          {
+            "samples": 2,
+            "w": 1440,
+            "h": 813
+          },
+          {
+            "samples": 2,
+            "w": 1440,
+            "h": 813
+          }
+        ]
+      },
+      "recovered": true,
+      "logs": []
+    }
+  ],
+  "fullSuite": {
+    "command": "LANES=2 npm run test:full",
+    "headFailLines": 81,
+    "baseFailLines": 80,
+    "headUniqueFailures": 79,
+    "baseUniqueFailures": 78,
+    "sharedFailureNames": 76,
+    "bothAbort": "breakables unit fixture: missing crew.player.root; reading position",
+    "completed": false,
+    "finalPassTotals": null
+  },
+  "controlledDSB": {
+    "control": "Existing PR 122 compositor-safe native click helper; original assertions unchanged; diagnostic copies only",
+    "baseAssertionsPassed": 54,
+    "headAssertionsPassed": 54,
+    "consoleClean": true,
+    "sixReturns": {
+      "control": "fixed low quality",
+      "bothBeforeAndAfter": {
+        "allNodes": 2775,
+        "targets": 622,
+        "tweens": 0,
+        "dom": 2831
+      },
+      "stable": true
+    },
+    "originalDifferences": "Shop click hits tomato on both; head throw hits DIV, base throw later aborts at null projection; original head soak changes medium to low."
+  },
+  "performance": {
+    "coveredBaseFPS": 32.615,
+    "coveredHeadFPS": 29.453,
+    "bothCoveredP95ms": 50,
+    "bothCoveredQuality": "low",
+    "ordinaryBaseFPS": 35.38,
+    "ordinaryHeadFPS": 59.79,
+    "bothOrdinaryFail": true,
+    "equivalenceOrImprovementEstablished": false
+  },
+  "limitations": [
+    "Renderbuffer estimate assumes four bytes per pixel per sample; excludes textures, geometry, driver padding and process overhead.",
+    "Base M1 total-tab 700\u2013750 MB target unverified.",
+    "Controlled DSB results are diagnostic comparisons, not full-suite passes.",
+    "Expanded scene-return run: seven cases hit inherited Canvas console warning; eighth used invalid ready-state loss probe and is excluded. Corrected native-event context probe passes separately."
+  ]
+}

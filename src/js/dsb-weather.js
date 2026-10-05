@@ -24,7 +24,7 @@
     const wind = { x: 0, z: 0, strength: 0 };
     const state = { mode: mode || "clear", precipitation: 0, cloud: 0, wind, quality: renderer.quality, exterior: true, audioEnabled: false };
     const environment = { waveEnergy: 1, roughness: 0, glint: 1, foam: 1 };
-    const apply = snapshot => shared.apply(mode ? PRESETS[mode] : snapshot);
+    const apply = snapshot => shared.apply(mode ? { ...PRESETS[mode], presentation: true } : snapshot);
     muted = shared.state.muted;
     apply(BL.chain.snapshot);
     const unsubscribe = BL.chain.subscribe(apply);
