@@ -829,7 +829,7 @@
         boardFilterRepos: "board-filter-repos", boardFilterUsers: "board-filter-users", boardFilterTypes: "board-filter-types"
       };
       for (const key in ids) el[key] = node.querySelector(`[id="${ids[key]}"]`);
-      const boardNav = node.querySelector(".board-nav");
+      const boardNav = node.querySelector(".board-nav"), boardCenter = node.querySelector(".board-center");
       if (floatingId) {
         node.id += `-${floatingId}`;
         for (const child of node.querySelectorAll("[id]")) child.id += `-${floatingId}`;
@@ -846,7 +846,7 @@
       };
       // Each window copies a readable board's canvas and owns its controls.
       // A board is any object with `title`, `help`, `canvas`, `count`, `index`, `caption`, `note`, `version` and
-      // `go(index)`, plus an optional `wide`, which widens the dialog on desktop. The dialog copies the canvas, captions the page, lays one dot per page and pages with the
+      // `go(index)`, plus optional `wide` and `captionAbove` layouts. The dialog copies the canvas, captions the page, lays one dot per page and pages with the
       // chevrons, the dots and the arrow keys; it never learns what a board shows, so a board can change freely.
       // `updateBoard` repaints whenever the open board's version moves.
       // A `floating` board also supplies `paused` and `setPaused`, and keeps island input available.
@@ -1055,8 +1055,17 @@
         letterSign(el.boardTitle, board.title);
         el.board.classList.toggle("board-wide", !!board.wide);
         el.board.classList.toggle("board-floating", !!board.floating);
-        if (board.floating) el.boardHead.insertBefore(el.boardDots, el.boardHead.lastElementChild);
-        else boardNav.after(el.boardDots);
+        el.board.classList.toggle("board-caption-above", !!board.captionAbove);
+        if (board.floating) {
+          boardCenter.prepend(el.boardCaption);
+          el.boardHead.insertBefore(el.boardDots, el.boardHead.lastElementChild);
+        } else if (board.captionAbove) {
+          el.boardScreen.before(el.boardCaption);
+          boardCenter.prepend(el.boardDots);
+        } else {
+          boardCenter.prepend(el.boardCaption);
+          boardNav.after(el.boardDots);
+        }
         el.boardCaption.hidden = !!board.floating;
         el.boardPause.hidden = el.boardResize.hidden = !board.floating;
         el.boardFilter.hidden = !board.floating;

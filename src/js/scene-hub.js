@@ -4907,7 +4907,7 @@
     const c2 = canvas.getContext("2d", { alpha: false, willReadFrequently: true });
     let nextRefresh = 0;
     const board = {
-      title, help: "Live Bitcoin data. Arrow keys flip the pages.", canvas, count: pages.length, index: 0, version: 0, caption: "", note: "",
+      title, help: "Use the arrows or dots to explore each reading.", captionAbove: true, canvas, count: pages.length, index: 0, version: 0, caption: "", note: "",
       go(i) {
         board.index = i;
         board.refresh();
@@ -4945,9 +4945,9 @@
   };
   const chainStatus = (s) => {
     const age = s.at ? Math.round((Date.now() - s.at) / 1000) : 0;
-    return !s.height ? "Waiting on the chain."
-      : s.live ? `Live. Block ${s.height}, ${gameMod.formatLarge(s.count)} transactions waiting, ${s.deep.toFixed(1)} blocks deep.`
-      : `Last heard ${age > 90 ? `${Math.round(age / 60)} min` : `${age}s`} ago from ${s.degraded ? "a fallback source" : "nobody"}; the board has gone grey until the chain answers.`;
+    return !s.height ? "Waiting for Bitcoin block data."
+      : s.live ? `The latest block is ${s.height}. About ${gameMod.formatLarge(s.count)} transactions are waiting, enough to fill roughly ${s.deep.toFixed(1)} blocks.`
+      : `Last updated ${age > 90 ? `${Math.round(age / 60)} minutes` : `${age} seconds`} ago. These numbers may be out of date until the feed responds again.`;
   };
   const rowPage = (i, caption, under, note) => ({
     caption,
@@ -4971,10 +4971,10 @@
       },
       note: chainStatus
     },
-    rowPage(0, "Block height", (s) => s.lastTxCount ? `${gameMod.formatLarge(s.lastTxCount)} TX IN IT` : "", "The newest block on the chain. Every block mined while you are here throws a bolt over the rainforest and drops a cube of the lake through the chamber under it."),
-    rowPage(1, "Price", () => "US DOLLARS", "Bitcoin's price from a live exchange feed."),
-    rowPage(2, "Mempool", (s) => s.count ? `${s.deep.toFixed(1)} BLOCKS DEEP` : "", "Transactions waiting for a block, and how many blocks of space they would fill."),
-    rowPage(3, "Next-block fee", (s) => s.hourFee ? `HOUR ${String(+s.hourFee.toFixed(s.hourFee >= 10 ? 0 : 2))} SAT/VB` : "", "The fee rate that gets a transaction into the next block, in sats per virtual byte, with the rate for within the hour under it.")
+    rowPage(0, "Block height", (s) => s.lastTxCount ? `${gameMod.formatLarge(s.lastTxCount)} TX IN IT` : "", "A block's height is its number in the Bitcoin chain. When a new block arrives, lightning strikes the rainforest and a water cube drops through the chamber below."),
+    rowPage(1, "Bitcoin price", () => "US DOLLARS", "The price of one bitcoin in US dollars, from an exchange feed. It does not change the lake or rain."),
+    rowPage(2, "Waiting transactions", (s) => s.count ? `${s.deep.toFixed(1)} BLOCKS DEEP` : "", "These transactions are waiting to be included in a block. The line below estimates how many blocks of space they would fill."),
+    rowPage(3, "Next-block fee", (s) => s.hourFee ? `HOUR ${String(+s.hourFee.toFixed(s.hourFee >= 10 ? 0 : 2))} SAT/VB` : "", "An estimated fee rate for a transaction aiming for the next block, measured in satoshis per virtual byte (sat/vB). The line below shows the estimate for confirmation within an hour. Neither time is guaranteed.")
   ]);
   // The key to the island: what arrives makes the weather, what waits fills the lake, and a block is a bolt and a
   // cube. A reading that has stopped being fed goes grey and says so; it is never drawn as a calm zero.
@@ -4985,11 +4985,11 @@
         const live = weather.state.arrivals === "live";
         reading(c2, "RAIN", live ? weatherMod.STEPS[weather.state.step].name.toUpperCase() : "UNAVAILABLE", live ? "#8fc3ff" : STALE_INK, live ? `${gameMod.formatLarge(Math.round(weather.state.inflow))} VB/S ARRIVING` : "NO ARRIVALS HEARD", live ? weather.state.storm : -1);
       },
-      note: () => "Transaction arrivals in virtual bytes per second (vB/s) drive the rain. The rate is smoothed over about 30 seconds, then shown as dry, drizzle, light rain, rain, heavy rain or downpour. Drops fall straight down. After 90 seconds without a socket reading, the storm eases off and this reads unavailable; that does not mean zero arrivals."
+      note: () => "Rain shows how quickly new transactions are arriving, measured in virtual bytes per second (vB/s). The game averages about 30 seconds of arrivals so the rain changes smoothly. If updates stop for 90 seconds, the rain fades and this reading becomes unavailable; that does not mean no transactions arrived."
     },
     {
       caption: "The lake",
-      draw: (c2, s) => {
+      draw: (c2) => {
         const water = mempoolIsland.water.state, W = BL.poolLayout.WATER, fill = water.debugFill;
         const value = fill !== null ? `DEBUG ${fill}/200` : water.status === "unavailable" ? "NO READING" : `${(water.vsize / 1e6).toFixed(1)} MVB`;
         const under = fill !== null ? "POOL HEIGHT OVERRIDE" : water.preview !== null ? "DEBUG BACKLOG"
@@ -4997,18 +4997,18 @@
         reading(c2, "LAKE", value, water.status === "live" ? "#7cc8ff" : STALE_INK, under,
           water.status === "unavailable" ? -1 : (water.level - W.low) / (W.flood - W.low), "#4aa6ff");
       },
-      note: (s) => {
+      note: () => {
         const water = mempoolIsland.water.state;
-        if (water.debugFill !== null) return `poolfill=${water.debugFill} controls the lake height for debugging. This is not the live Bitcoin backlog; remove the flag to follow the feed again.`;
-        const source = water.preview !== null ? "A debug backlog value" : "Everything waiting for a block";
-        return `${source}, in millions of virtual bytes (MvB), fills the lake. At about ${BL.poolWater.HYDRO.OVERFLOW_VB / 1e6} MvB it reaches its rim, floods the shore and the channels, and pours over the cliffs. That is this island's own scale, not a limit of Bitcoin. The part of the backlog paying 1 sat/vB or more${s.paying && water.preview === null ? ` (${s.paying.toFixed(1)} MvB now)` : ""} is still read, but it no longer makes the rain.`;
+        if (water.debugFill !== null) return `The poolfill=${water.debugFill} debug setting overrides the lake level. Remove it to use the live mempool again.`;
+        const source = water.preview !== null ? "A test backlog" : "The total backlog";
+        return `${source} fills the lake. MvB means millions of virtual bytes of transactions waiting for a block; every waiting transaction counts, regardless of its fee rate. Around ${BL.poolWater.HYDRO.OVERFLOW_VB / 1e6} MvB, the lake reaches the rim and spills into the channels and waterfalls. That is this island's visual scale, not a Bitcoin limit.`;
       }
     },
     {
       caption: "Lightning",
       draw: (c2, s) => reading(c2, "LAST BLOCK", s.height ? String(s.height) : "-",
         s.heightAt > 0 && Date.now() - s.heightAt < 180000 ? "#ffe066" : STALE_INK, "A BOLT AND A CUBE"),
-      note: () => `A new block throws a bolt over the island and sends a cube of lake water through the chamber. The cube is a visual marker; the next backlog reading says what remains.${DEBUG_POOL_BLOCK ? " In poolblock debug mode, P also triggers a test bolt and cube." : ""}`
+      note: () => `A newly mined block triggers lightning above the island and a water cube in the chamber below. The cube marks the block; it does not directly drain the lake. The next backlog reading sets the lake level.${DEBUG_POOL_BLOCK ? " With poolblock enabled, press P to trigger a test block." : ""}`
     }
   ]);
   const openPoolBoard = (board) => {

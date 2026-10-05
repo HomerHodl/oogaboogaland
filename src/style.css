@@ -2588,8 +2588,8 @@ body[data-active-scene="arcade"] .magazine-hud {
   overscroll-behavior: contain;
 }
 
-/* The board close-up, shared by every readable board: the board's own pixels blown up, the page's caption between
-   the chevrons, one dot a page, and the page's note on a tablet. */
+/* The board close-up shared by every readable board. Mempool readings place their page caption above the screen
+   and their dots between the chevrons; other boards keep their own layout. */
 .board-modal {
   width: 440px;
 }
@@ -2749,6 +2749,17 @@ body[data-active-scene="arcade"] .magazine-hud {
   text-transform: uppercase;
   overflow-wrap: anywhere;
 }
+
+.board-caption-above .board-caption {
+  display: block;
+  height: 18px;
+  margin: 8px 0 4px;
+  line-height: 18px;
+  white-space: nowrap;
+}
+
+.board-caption-above .board-screen { margin-top: 0; }
+.board-caption-above .board-dots { margin: 0; }
 
 .board-center {
   display: flex;
@@ -2943,6 +2954,13 @@ body[data-active-scene="arcade"] .magazine-hud {
 
 .board-note[hidden] {
   display: none;
+}
+
+.board-caption-above .board-note {
+  box-sizing: border-box;
+  height: clamp(112px, 22dvh, 168px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 
 /* A wide board (the Timechain Sphere, a tall page of rows) gets a wide dialog on desktop: the page on the left,
