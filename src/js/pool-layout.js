@@ -212,9 +212,9 @@
     for (const link of LINKS) if (a > link.from * RAMP.sweep - DOOR.half / 18 && a < link.to * RAMP.sweep + DOOR.half / 18) return link;
     return null;
   };
-  // Keep both the voxel shelf and its smooth floor out of the falling water's path.
+  // Keep the fall's opening clear while letting the shelf reach its banks on either side.
   const fallGap = (bearing, r = edgeAt(bearing), margin = 0) => {
-    for (const channel of CHANNELS) if (channel.falls && Math.abs(turn(bearing, channel.bearing)) * r < CHANNEL.low + UNIT + margin) return true;
+    for (const channel of CHANNELS) if (channel.falls && Math.abs(turn(bearing, channel.bearing)) * r < CHANNEL.low + margin) return true;
     return false;
   };
   const lipAt = (bearing, r = edgeAt(bearing)) => {
@@ -225,6 +225,12 @@
       // Continue the exterior shelf between the galleries without cutting another passage into the cliff.
       const from = LINKS[0].to * RAMP.sweep, to = LINKS[1].from * RAMP.sweep;
       if (a >= from && a <= to) lip = LINKS[0].lip + (LINKS[1].lip - LINKS[0].lip) * (a - from) / (to - from);
+      // Let the final gallery's outer shelf turn back into the cliff through its exit mouth.
+      const last = LINKS[LINKS.length - 1], end = last.to * RAMP.sweep, tail = DOOR.half / 18;
+      if (a >= end && a < end + tail) {
+        const t = 1 - (a - end) / tail;
+        lip = last.lip * t * t * (3 - 2 * t);
+      }
     }
     return lip && !fallGap(bearing, r) ? lip : 0;
   };

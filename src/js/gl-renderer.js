@@ -101,6 +101,9 @@ uniform int uLakeWaveCount;
 uniform vec4 uLakeWaves[32];
 uniform vec4 uLakeSurface;
 uniform vec4 uLakeWaveEnd;
+// Optional local water body: time, amplitude, stretch, pinch; bend x/z and shape kind.
+uniform vec4 uLakeBodyShape;
+uniform vec4 uLakeBodyBend;
 out vec3 vNormal;
 out vec4 vColor;
 out vec4 vParams;
@@ -116,9 +119,26 @@ out float vMatrixSurface;
 flat out float vMatrixCave;
 flat out float vMatrixPermanentFallback;
 flat out float vSmokeOpacity;
+// Keep this warp in step with pool-water.js sampleBody for the Canvas renderer.
+vec3 lakeBodyWarp(vec3 p) {
+  float time = uLakeBodyShape.x, amplitude = uLakeBodyShape.y;
+  if (uLakeBodyBend.z > 0.5) {
+    float t = clamp(-p.y, 0.0, 1.0), curve = sin(3.14159265359 * t);
+    float waist = 1.0 - uLakeBodyShape.w * curve * curve, flutter = amplitude * curve;
+    return vec3(p.x * waist + uLakeBodyBend.x * t + flutter * sin(time * 3.4 + t * 8.0), p.y,
+      p.z * waist + uLakeBodyBend.y * t + flutter * cos(time * 3.1 - t * 7.0));
+  }
+  float stretch = uLakeBodyShape.z, k = inversesqrt(stretch);
+  vec3 q = vec3(p.x * k, p.y * stretch, p.z * k);
+  q.x += uLakeBodyBend.x * p.y * p.y + amplitude * sin(p.y * 5.2 + p.z * 3.1 + time * 3.4);
+  q.y += amplitude * 0.55 * sin(p.x * 4.7 - p.z * 3.8 - time * 2.8);
+  q.z += uLakeBodyBend.y * p.y * p.y + amplitude * sin(p.y * 4.4 - p.x * 3.6 - time * 3.1);
+  return q;
+}
 void main() {
   mat4 m = mat4(aM0, aM1, aM2, aM3);
-  vec3 pos = aPos;
+  bool waterBody = uLakeBodyShape.z > 0.0;
+  vec3 pos = waterBody ? lakeBodyWarp(aPos) : aPos;
   vPortalUV = aPos.xz;
   vPortalView = vec4(0.0);
   if (aParams.z > 5.5) pos.y += portalHeight(aPos.xz, aParams.x, aParams.y);
@@ -143,6 +163,20 @@ void main() {
     w.y += abs(swing) * uSwing * 0.15;
   }
   vNormal = normalize(mat3(m) * aNormal);
+  if (waterBody) {
+    // Differentiate along the surface, then account for the model's nonuniform stretch.
+    // The original normal still carries the material marker into the fragment shader.
+    vec3 n = normalize(aNormal);
+    vec3 tangent = normalize(cross(abs(n.y) < 0.9 ? vec3(0.0, 1.0, 0.0) : vec3(1.0, 0.0, 0.0), n));
+    vec3 bitangent = cross(n, tangent);
+    vec3 du = lakeBodyWarp(aPos + tangent * 0.002) - lakeBodyWarp(aPos - tangent * 0.002);
+    vec3 dv = lakeBodyWarp(aPos + bitangent * 0.002) - lakeBodyWarp(aPos - bitangent * 0.002);
+    vec3 warped = cross(du, dv);
+    if (dot(warped, warped) > 1e-16) n = normalize(warped);
+    vec3 cx = cross(aM1.xyz, aM2.xyz), cy = cross(aM2.xyz, aM0.xyz), cz = cross(aM0.xyz, aM1.xyz);
+    float handedness = dot(aM0.xyz, cx) < 0.0 ? -1.0 : 1.0;
+    vNormal = normalize(cx * n.x + cy * n.y + cz * n.z) * handedness;
+  }
   if ((uLakeWaveCount > 0 || uLakeSurface.z > 0.0) && dot(aNormal, aNormal) > 30.0 && dot(aNormal, aNormal) < 42.0) {
     vec2 radial = w.xz - uLakeSurface.xy;
     float radialLength = length(radial), edge = clamp((uLakeSurface.z - radialLength) / 0.8, 0.0, 1.0);
@@ -191,7 +225,8 @@ void main() {
   vShadow = uLightViewProj * w;
   vWorldH = w;
   vLocal = aPos;
-  vLocalNormal = aNormal;
+  // Smooth body normals may oppose across a cap; interpolation must not change their material.
+  vLocalNormal = waterBody ? vec3(0.0, 6.0, 0.0) : aNormal;
   vInstanceFacing = normalize(aM2.xyz);
   gl_Position = uViewProj * w;
   if (aParams.w != 0.0 && aParams.z < 5.5) {
@@ -1509,7 +1544,7 @@ void main() {
       const meshFragment = matrixSampling ? MESH_FS.replace("#version 300 es", "#version 300 es\n#extension GL_OES_shader_multisample_interpolation : require\n#define MATRIX_SAMPLE_INTERPOLATION") : MESH_FS;
       res.programs = {
         image: compile(IMAGE_VS, IMAGE_FS, ["uViewProj", "uRect", "uImage", "uReady", "uClipMaxY"]),
-        mesh: compile(MESH_VS, meshFragment, ["uViewProj", "uLightViewProj", "uEye", "uViewDirection", "uLightDir", "uSky", "uGround", "uSun", "uDirectStrength", "uAmbientFloor", "uDiffuseFloor", "uShadowStrength", "uShadowFloor", "uShadowBias", "uShadow", "uShadowTexel", "uLights", "uLightCount", "uSpotLight", "uFog", "uFogRange", "uMatrixParams", "uMatrixOrigin", "uMatrixGlyph", "uMatrixCave", "uMatrixCaves", "uMatrixCaveBounds", "uMatrixCaveNear", "uMatrixPermanentCave", "uMatrixPermanentPlane", "uMatrixPermanentAperture", "uMatrixLivingGlobal", "uMatrixGlyphTex", "uMatrixSamples", "uClipMinY", "uClipMaxY", "uObjectClip", "uObjectSlab", "uProjective", "uMatrixGlyphOpacity", "uGlassOpacity", "uVoxel", "uWindTime", "uSway", "uSwing", "uGlass", "uLightBeam", "uLakeWaveCount", "uLakeWaves", "uLakeSurface", "uLakeFlowEnabled", "uLakeFlowU", "uLakeFlowV", "uLakeWaveEnd"]),
+        mesh: compile(MESH_VS, meshFragment, ["uViewProj", "uLightViewProj", "uEye", "uViewDirection", "uLightDir", "uSky", "uGround", "uSun", "uDirectStrength", "uAmbientFloor", "uDiffuseFloor", "uShadowStrength", "uShadowFloor", "uShadowBias", "uShadow", "uShadowTexel", "uLights", "uLightCount", "uSpotLight", "uFog", "uFogRange", "uMatrixParams", "uMatrixOrigin", "uMatrixGlyph", "uMatrixCave", "uMatrixCaves", "uMatrixCaveBounds", "uMatrixCaveNear", "uMatrixPermanentCave", "uMatrixPermanentPlane", "uMatrixPermanentAperture", "uMatrixLivingGlobal", "uMatrixGlyphTex", "uMatrixSamples", "uClipMinY", "uClipMaxY", "uObjectClip", "uObjectSlab", "uProjective", "uMatrixGlyphOpacity", "uGlassOpacity", "uVoxel", "uWindTime", "uSway", "uSwing", "uGlass", "uLightBeam", "uLakeWaveCount", "uLakeWaves", "uLakeSurface", "uLakeFlowEnabled", "uLakeFlowU", "uLakeFlowV", "uLakeWaveEnd", "uLakeBodyShape", "uLakeBodyBend"]),
         shadow: compile(SHADOW_VS, SHADOW_FS, ["uLightViewProj", "uClipMinY", "uClipMaxY", "uObjectClip"]),
         line: compile(LINE_VS, LINE_FS, ["uViewProj", "uViewport", "uWidth", "uClipMaxY", "uObjectClip"]),
         sky: compile(QUAD_VS, SKY_FS, ["uInvViewProj", "uHorizon", "uZenith", "uSun", "uSunDir", "uMoonDir", "uMoonSunDir", "uStarMatrix", "uStars", "uTime", "uHazeDrop", "uClouds", "uSea", "uSeaEye"]),
@@ -2558,6 +2593,16 @@ void main() {
         }
         if (kind === "mesh") {
           if (useProgram === "mesh") {
+            const body = rec.geometry.lakeBody;
+            if (body && body[2] > 0) {
+              gl.uniform4f(program.u.uLakeBodyShape, body[0], body[1], body[2], body[3]);
+              gl.uniform4f(program.u.uLakeBodyBend, body[4], body[5], body[6], body[7]);
+              program.lakeBody = body;
+            } else if (program.lakeBody !== null) {
+              gl.uniform4f(program.u.uLakeBodyShape, 0, 0, 0, 0);
+              gl.uniform4f(program.u.uLakeBodyBend, 0, 0, 0, 0);
+              program.lakeBody = null;
+            }
             const waveEnd = rec.geometry.lakeWaveEnd;
             if (waveEnd) gl.uniform4fv(program.u.uLakeWaveEnd, waveEnd);
             else gl.uniform4f(program.u.uLakeWaveEnd, 0, 0, 0, 1);
