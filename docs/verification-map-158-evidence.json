@@ -1,0 +1,90 @@
+{
+  "rows": [
+    {
+      "name": "hub map: native and locked-cursor Lab clicks remain usable, the map cycles through Mirror, HQ, Basement, Mempool and Pile in every view, and possession is retained",
+      "pass": true,
+      "detail": [
+        {
+          "mode": "detached",
+          "lab": true,
+          "cursorDot": true,
+          "mirror": true,
+          "cycle": [
+            true,
+            true,
+            true,
+            true
+          ],
+          "possession": true
+        },
+        {
+          "mode": "carry",
+          "lab": true,
+          "cursorDot": true,
+          "mirror": true,
+          "cycle": [
+            true,
+            true,
+            true,
+            true
+          ],
+          "possession": true
+        },
+        {
+          "mode": "combat",
+          "lab": true,
+          "cursorDot": true,
+          "mirror": true,
+          "cycle": [
+            true,
+            true,
+            true,
+            true
+          ],
+          "possession": true
+        },
+        {
+          "mode": "first-person",
+          "lab": true,
+          "cursorDot": true,
+          "mirror": true,
+          "cycle": [
+            true,
+            true,
+            true,
+            true
+          ],
+          "possession": true
+        }
+      ]
+    },
+    {
+      "name": "hub map: looking keeps the arrival label; actual travel clears its dot and shows HUB, and underground and sphere arrivals resolve to their broader areas",
+      "pass": true,
+      "detail": {
+        "looking": true,
+        "departed": {
+          "distance": 7.749636306080662,
+          "label": "HUB",
+          "selected": null,
+          "visible": true
+        },
+        "areas": [
+          {
+            "name": "underground",
+            "label": "HQ"
+          },
+          {
+            "name": "basement",
+            "label": "B1"
+          },
+          {
+            "name": "timechain",
+            "label": "SPHERE"
+          }
+        ]
+      }
+    }
+  ],
+  "logs": []
+}

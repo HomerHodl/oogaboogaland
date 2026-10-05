@@ -6,6 +6,8 @@ The activity check now compares org `last_seen_at` with `lastContributionAt`, wh
 
 The water fixture supplies actual ground, membrane and sign-post meshes because the current water module clips those meshes and builds residual waterfall streaks against the ground. It samples an exterior channel, rather than an inner feeder whose wet footprint can be offset by its voxel banks. The unavailable lake stays low and dim under the documented contract. Both overflow stages can feed all nine outlets; the full-flood assertion checks that exact count. Cube bursts fill the live sets with birth spacing before testing queue capacity and exactly two dropped events.
 
+The map-navigation fixture also includes the new Mempool destination between Basement and Pile, matching the six-place HUD cycle while retaining dot, locked-cursor, possession and departure checks.
+
 The existing monotonic scale, anchor levels, stage transitions, dry paths and nests, cliff/lip exclusion, stale hold and bounded queue requirements remain asserted. No production behavior changes.
 
-Validation: `npm run test:unit` passes 130/130 on this branch. This does not establish that the browser suite passes; covered movement and several interaction checks still fail in the earlier full run.
+Validation: `npm run test:unit` passes 130/130 on this branch. Both native map-navigation assertions pass in all four view modes, with a clean console; see [evidence](verification-map-158-evidence.json). This does not establish that the browser suite passes; covered movement and several interaction checks still fail in the earlier full run.
