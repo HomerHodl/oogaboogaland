@@ -2300,7 +2300,7 @@ const failure = (err) => String(err.message || err).slice(0, 1600);
 // Records are held until the session ends, so a session that could not run can be dropped and rerun.
 const session = (url, steps, opts, final) => output.run({ lines: [], results: [], retry: null }, async () => {
   const run = output.getStore(), { lines } = run;
-  const t0 = Date.now();
+  const t0 = Date.now(), sessionMs = opts.sessionMs ?? SESSION_MS;
   let b = null, started = t0, ready = t0, watchdog = null, overran = false, captureAt=0, captureMs=0;
   try {
     // Fresh Chrome per session; reuse is opt-in (POOL=1) because it measured slower and flakier than launching.
@@ -2310,10 +2310,10 @@ const session = (url, steps, opts, final) => output.run({ lines: [], results: []
     started = Date.now();
     // Watchdog kills Chrome so a wedged session never holds its lane; the longest healthy session is ~20 s.
     const browser = b;
-    watchdog = setTimeout(() => { overran = true; browser.close(); }, SESSION_MS);
+    watchdog = setTimeout(() => { overran = true; browser.close(); }, sessionMs);
     b.captureClock = paused => {
       if(paused){captureAt=Date.now();clearTimeout(watchdog);}
-      else {captureMs+=Date.now()-captureAt;watchdog=setTimeout(()=>{overran=true;browser.close();},Math.max(1,SESSION_MS-(Date.now()-started-captureMs)));}
+      else {captureMs+=Date.now()-captureAt;watchdog=setTimeout(()=>{overran=true;browser.close();},Math.max(1,sessionMs-(Date.now()-started-captureMs)));}
     };
     if(process.env.DSB_TRACE==="1") {
       const evaluate=b.evaluate;
@@ -2398,7 +2398,7 @@ const session = (url, steps, opts, final) => output.run({ lines: [], results: []
         const noise = observed.filter((l) => !l.includes("WebGL2 renderer failed")&&!notices.includes(l));
         record(`${name}: clean console`, noise.length === 0, `${((Date.now() - started) / 1000).toFixed(1)}s ${noise.join(" | ").slice(0, 1600)}`);
       } catch (err) {
-        if (overran) err = driverError(`the session passed ${SESSION_MS / 1000} s and its Chrome was killed`);
+        if (overran) err = driverError(`the session passed ${sessionMs / 1000} s and its Chrome was killed`);
         if (err.driver && !final && run.results.every((r) => r.ok)) {
           run.retry = `${name} · ${failure(err)}`;
           break;
@@ -2408,7 +2408,7 @@ const session = (url, steps, opts, final) => output.run({ lines: [], results: []
       }
     }
   } catch (err) {
-    if (overran) err = driverError(`the session passed ${SESSION_MS / 1000} s and its Chrome was killed`);
+    if (overran) err = driverError(`the session passed ${sessionMs / 1000} s and its Chrome was killed`);
     if (err.driver && !final && run.results.every((r) => r.ok)) run.retry = `${steps[0][0]} · ${failure(err)}`;
     else record(steps[0][0], false, failure(err));
   } finally {
@@ -10782,7 +10782,7 @@ const dsbShorelineCheckpoint={name:"dsb shoreline checkpoint",why:"playthrough: 
   const evidence=join(root,"untracked/water-review");mkdirSync(evidence,{recursive:true});
   writeFileSync(join(evidence,"webgl-state.json"),JSON.stringify({boot,live,stable,moving,deep,expired,visits,final,logs:b.logs},null,2));
 }};
-scene("dsb",{label:"shoreline checkpoint",query:"&view=water-dry&weather=clear&time=1200",opts:{w:480,h:320},steps:[dsbShorelineCheckpoint]});
+scene("dsb",{label:"shoreline checkpoint",query:"&view=water-dry&weather=clear&time=1200",opts:{w:480,h:320,sessionMs:240000},steps:[dsbShorelineCheckpoint]});
 
 scene("dsb",{label:"shoreline checkpoint piers",query:"&view=water-pier-west&weather=clear&time=1200",opts:{w:480,h:320},steps:[{name:"dsb shoreline pier access",why:"regression: visible harbor decks must support real keyboard walking without changing the seabed or permitting ocean-floor access",run:async b=>{
   const visits=[];
