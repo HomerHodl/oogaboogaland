@@ -2659,6 +2659,7 @@
     }
     // The water, and the paintings on the chamber's wall, each a pick target that opens the board behind it.
     const water = BL.poolWater.create({ site, renderer, seaY: SEA_Y - place.y });
+    for (const owner of water.picks) { owner.weaponType = "none"; addTarget(owner.node, owner); }
     const fillParam = DEBUG ? params.get("poolfill") : null;
     if (fillParam !== null && fillParam.trim() !== "" && Number.isFinite(Number(fillParam))) water.previewFill(Number(fillParam));
     // A debug visit can preview the existing cube sequence without a live block or a weather change.
@@ -4839,7 +4840,7 @@
       // Every block mined while the page is open strikes, whatever the weather is doing.
       weather.strike();
       // And a cube of the lake leaves through the chamber. It takes nothing with it: the backlog says what is left.
-      mempoolIsland.water.block();
+      mempoolIsland.water.block(event.height);
       hud.toast(`Block ${event.height} mined${event.txCount ? ` · ${event.txCount} transactions` : ""}`);
     }
   };
@@ -5060,6 +5061,50 @@
       pileTipText = `🍌 ${PILE_COUNT.format(count)}`;
     }
     hud.tooltip.show(pileTipText, screen.x, screen.y, null, false, true);
+  };
+  const POOL_BLOCK_SCREEN = { x: 0, y: 0, depth: 0 }, POOL_BLOCK_POINTER = { x: 0, y: 0 };
+  const POOL_BLOCK_RAY = { ox: 0, oy: 0, oz: 0, dx: 0, dy: 0, dz: 0 };
+  const POOL_BLOCK_HIT = { node: null, owner: null, distance: Infinity, x: 0, y: 0, z: 0 };
+  const POOL_BLOCK_VERTEX = new Float32Array(3);
+  let poolBlockHovered = null, poolBlockHoverIgnore = null;
+  const poolBlockHoverTarget = owner => !poolBlockHoverIgnore || owner.cave !== poolBlockHoverIgnore;
+  const showPoolBlockTooltip = () => {
+    const owner = poolBlockHovered, node = owner.node;
+    if (!owner.sequence.active || !node.visible || node.smokeOpacity === 0) {
+      poolBlockHovered = null; hud.tooltip.hide(); return;
+    }
+    // The suspended block moves even when the pointer does not. Keep the label only while its visible
+    // body is still under the pointer, with the same precise target ordering as ordinary hover.
+    renderer.ray(POOL_BLOCK_POINTER.x, POOL_BLOCK_POINTER.y, camera, POOL_BLOCK_RAY);
+    const ray = POOL_BLOCK_RAY, hit = POOL_BLOCK_HIT;
+    poolBlockHoverIgnore = hooks.hoverIgnore();
+    if (!input.weaponTargets.ray(hit, ray.ox, ray.oy, ray.oz, ray.dx, ray.dy, ray.dz,
+      camera.far, null, poolBlockHoverTarget, true) || hit.owner !== owner
+      || !guideSegmentClear(ray.ox, ray.oy, ray.oz, hit.x, hit.y, hit.z)
+      || !mempoolIsland.sightClear(ray.ox, ray.oy, ray.oz, hit.x, hit.y, hit.z)) {
+      poolBlockHovered = null; hud.tooltip.hide(); return;
+    }
+    const geometry = node.geometry, verts = geometry.verts, body = geometry.lakeBody, m = node.world;
+    let top = -Infinity;
+    // The last two vertices only bound every possible deformation; they are not part of the water.
+    // Follow the actual animated body's top rather than that deliberately oversized culling box.
+    for (let i = 0; i < verts.length - 6; i += 3) {
+      BL.poolWater.sampleBody(POOL_BLOCK_VERTEX, verts[i], verts[i + 1], verts[i + 2], body);
+      top = Math.max(top, m[1] * POOL_BLOCK_VERTEX[0] + m[5] * POOL_BLOCK_VERTEX[1] + m[9] * POOL_BLOCK_VERTEX[2] + m[13]);
+    }
+    const screen = renderer.project(m[12], top + 0.15, m[14], POOL_BLOCK_SCREEN);
+    if (!screen) { hud.tooltip.hide(); return; }
+    hud.tooltip.show(owner.sequence.label, screen.x, screen.y, null, false, true);
+  };
+  const showHoverTooltip = (hit, p) => {
+    pileHovered = hit?.owner.kind === "pile";
+    poolBlockHovered = hit?.owner.kind === "poolblock" ? hit.owner : null;
+    if (poolBlockHovered) {
+      POOL_BLOCK_POINTER.x = p.x; POOL_BLOCK_POINTER.y = p.y;
+      showPoolBlockTooltip();
+    } else if (pileHovered) showPileTooltip();
+    else if (hit) hud.tooltip.show(tooltipFor(hit), p.x, p.y, hit.owner.cave, hit.owner.kind === "clanker");
+    else hud.tooltip.hide();
   };
   const reticleTarget = (hit) => {
     const o = hit.owner;
@@ -8438,7 +8483,8 @@
   // frame of lag never shows, and it is the difference between 42 and 59 fps behind cave rock at 4K.
   const SIGHT_RECOMPUTE_HZ = 30;
   const overlay = (dt) => {
-    if (pileHovered) showPileTooltip();
+    if (poolBlockHovered) showPoolBlockTooltip();
+    else if (pileHovered) showPileTooltip();
     sleepSightFrame++;
     if (CAMERA_GLYPHS.radius !== MATRIX_WORLD.radius || CAMERA_GLYPHS.active !== MATRIX_WORLD.active || CAMERA_GLYPHS.permanentCave !== MATRIX_WORLD.permanentCave) {
       CAMERA_GLYPHS.radius = MATRIX_WORLD.radius; CAMERA_GLYPHS.active = MATRIX_WORLD.active; CAMERA_GLYPHS.permanentCave = MATRIX_WORLD.permanentCave;
@@ -8919,6 +8965,8 @@
     mark("rockGuides");
     pile = shared.pile = pileMod.create(shared);
     pileHovered = false;
+    poolBlockHovered = poolBlockHoverIgnore = null;
+    POOL_BLOCK_HIT.node = POOL_BLOCK_HIT.owner = null;
     pileTipCount = -1;
     pileTopY = BL.scene.boundsOf(pile.core.geometry).max[1];
     addTarget(pile.core, { kind: "pile", weaponType: "none" });
@@ -9199,16 +9247,8 @@
     });
 
     Object.assign(hooks, {
-      onHover: (hit, p) => {
-        pileHovered = hit?.owner.kind === "pile";
-        if (pileHovered) showPileTooltip();
-        else if (hit) hud.tooltip.show(tooltipFor(hit), p.x, p.y, hit.owner.cave, hit.owner.kind === "clanker");
-        else hud.tooltip.hide();
-      },
-      onHoverMove: (hit, p) => {
-        if (hit.owner.kind === "pile") showPileTooltip();
-        else hud.tooltip.show(tooltipFor(hit), p.x, p.y, hit.owner.cave, hit.owner.kind === "clanker");
-      },
+      onHover: showHoverTooltip,
+      onHoverMove: showHoverTooltip,
       onTap,
       ...pilot.hooks,
       hoverIgnore: () => clankerPlay.firstPerson ? clankerPlay.player : pilot.hooks.hoverIgnore(),
@@ -9580,6 +9620,8 @@
     if (factoryMouth && factoryMouth.snap) snapFactoryView();
     if (bifrostIsle && bifrostIsle.snap) snapBifrostView();
     glCanvas = null;
+    poolBlockHovered = poolBlockHoverIgnore = null;
+    POOL_BLOCK_HIT.node = POOL_BLOCK_HIT.owner = null;
     selectDebugGorilla(null);
     debugMovementTerrain = DEBUG_MOVE_HIT.node = DEBUG_MOVE_HIT.owner = null;
     DEBUG_GORILLA_HIT.node = DEBUG_GORILLA_HIT.owner = null;
