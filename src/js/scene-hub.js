@@ -2393,7 +2393,7 @@
     addChild(infoNode, infoLeg);
     site.infoLeg = infoLeg;
     addChild(site.node, infoNode);
-    atNode("weathersign", infoNode, 1);
+    atNode("weathersign", infoNode, 1).priority = 2;
     {
       const canvas = document.createElement("canvas");
       canvas.width = CHAIN_PANEL_W;
