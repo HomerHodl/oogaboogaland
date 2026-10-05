@@ -225,6 +225,12 @@
       // Continue the exterior shelf between the galleries without cutting another passage into the cliff.
       const from = LINKS[0].to * RAMP.sweep, to = LINKS[1].from * RAMP.sweep;
       if (a >= from && a <= to) lip = LINKS[0].lip + (LINKS[1].lip - LINKS[0].lip) * (a - from) / (to - from);
+      // Let the final gallery's outer shelf turn back into the cliff through its exit mouth.
+      const last = LINKS[LINKS.length - 1], end = last.to * RAMP.sweep, tail = DOOR.half / 18;
+      if (a >= end && a < end + tail) {
+        const t = 1 - (a - end) / tail;
+        lip = last.lip * t * t * (3 - 2 * t);
+      }
     }
     return lip && !fallGap(bearing, r) ? lip : 0;
   };
