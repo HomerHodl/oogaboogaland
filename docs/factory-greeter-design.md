@@ -46,11 +46,11 @@ Tess follows the existing tour paths using support and collision queries as a na
 
 ## Implementation boundary
 
-factory-greeter.js owns a visit's rig, fixed waypoints, the on-screen menu (DOM built per visit, styled in style.css, removed on leave), bounded state and one feed subscription. Lines are separately named data for future speech. It never fetches, emits node events, changes accounting, assigns player control or takes over the camera. The visit removes its pick, its keydown capture and unsubscribes on exit. Both renderers use the same procedural geometry. Both detail tiers are retained through the visit’s liveGeometry contract and released when the scene leaves.
+factory-greeter.js owns a visit's rig, fixed waypoints, the on-screen menu (DOM built per visit, styled in style.css, removed on leave), bounded state and one feed subscription. Lines are separately named data for future speech. It never fetches, emits node events, changes accounting, assigns player control or takes over the camera. The visit removes its pick, its keydown capture and unsubscribes on exit. Both renderers use the same procedural geometry. Prepared detail tiers are retained through the visit’s liveGeometry contract. Their GPU records are released when the scene leaves; bounded CPU mesh caches remain for the page lifetime.
 
 ## Validation and next review
 
-Build, the factory browser suite and the unit checks are the repository's validation. The factory suite now checks Talk, menu selection, Escape and End tour. Please play-test:
+Build, the factory browser suite and the unit checks are the repository's validation. The factory suite checks Talk, menu selection, Escape and End tour, all four tours completing every stop and returning along the stairs and bridges, menu bounds on phone, Canvas operation, detail hysteresis and immediate Low-quality downgrade. The guide-route fixture moves the visitor beside Tess; the existing widest-Ooga floor and control checks separately prove visitor traversal. Please play-test:
 
 - Arrival with an Ooga versus a direct /lightning arrival without one (the hint).
 - TALK TO TESS in reach, Space beyond it staying a jump; each of the four tours running start to finish hands-free, NEXT skipping, End tour, cancellation and repeat visits.
@@ -59,10 +59,26 @@ Build, the factory browser suite and the unit checks are the repository's valida
 - Public reports without routes, fees or private balances; demo, replay and no events; node stopped versus feed silence.
 - Tess's scale, ring motion and eye visibility; phone readability of the menu and Canvas 2D; route clearance, stair support, returning past the visitor and the scene leave contract.
 
-All four routes and their speech are implemented as proposals. Stair and bridge clearance, observation sightlines and mobile readability remain for maintainer play-test before the draft is ready to land.
+All four routes and their speech are implemented as proposals. Automated stair, bridge and menu checks complement maintainer play-test of observation sightlines and the overall experience. drneski’s requested play-test remains pending; review readiness does not imply approval to land.
 
 [PR #112](https://github.com/OogaBoogaX/oogaboogaland/pull/112) preserves the earlier explanations as reference material only. None of its rejected walkthrough implementation is carried over. The hotpixelgroup character landed independently in [PR #117](https://github.com/OogaBoogaX/oogaboogaland/pull/117).
 
 ## Close-up detail
 
-Within 6 m of the camera Tess switches to a cached close-up rig: the globe has 51,200 faces versus 10,368 (4.94×), using finer Natural Earth 50m outlines at 1.125 degrees. Ring rails use 480 segments versus 96, the optics and armor use denser curves, and each ring gains 192 fine etched ticks. Beyond 7 m the original tier returns; hysteresis prevents switching at the boundary. Scene pixel resolution remains unchanged. Both tiers are built once and retained only while the visit is live.
+Within 6 m of the camera Tess switches to a cached close-up rig: the globe has 51,200 faces versus 10,368 (4.94×), using finer Natural Earth 50m outlines at 1.125 degrees. Ring rails use 480 segments versus 96, the optics and armor use denser curves, and each ring gains 192 fine etched ticks. Beyond 7 m the original tier returns; hysteresis prevents switching at the boundary. Scene pixel resolution remains unchanged. Fine detail is prepared only when entering with a fine pointer and High or Medium quality. Touch, Canvas (whose quality is Low) and Low-entry visits prepare only the lighter rig. A drop to Low immediately restores that rig. Geometry preparation happens during scene entry, never in the frame update. A debug-only promotion after a Low-entry visit prepares fine detail on the next visit. Prepared CPU meshes are cached once for the page lifetime; GPU retention is limited to the visit.
+
+## Device-cost assessment
+
+The whole rig, including rings and optics, has 69,616 faces at the lighter tier and 449,680 at the fine tier (6.46×); globe-only counts understate device cost. Before the device gate, both tiers retained 518,528 faces through 24 geometry entries.
+
+Serial local Chrome samples at verified camera distances of 10 m and 3 m measured:
+
+| Before the gate | Far FPS | Near FPS | Near render p95 |
+|---|---:|---:|---:|
+| Desktop High | 59.54 | 60.14 | 0.50 ms |
+| Phone emulation, Low | 60.39 | 50.49 | 0.50 ms |
+| Canvas, Low | 8.29 | 2.20 | 506.40 ms |
+
+Phone emulation uses desktop hardware; these are not low-end hardware results. Camera exposure changes between views, so the comparison is observational. Actual cold guide construction took 91–92 ms behind scene entry. The first explicit far WebGL upload took about 31–32 ms; fine geometry had already warmed during the initial Factory draw (about 310 ms for the full scene), so its later near draw is a cached measurement. No frame-rate or resource threshold was lowered. The gate protects Canvas and touch devices from the additional fine-rig geometry and avoids constructing it during play.
+
+[Measurement data](tess-device-cost-evidence.json) retains the source revision, geometry counts, startup marks, first measured render and steady samples.

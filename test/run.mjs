@@ -5560,7 +5560,7 @@ const factoryWalking = { name: "factory walking", why: "regression: Factory move
   })()`);
   record("factory rebalancer: walk onto and off the low drum; a shallow console overlap allows walking out while deeper movement stays blocked", rebalancer.onto > 0.5 && Math.abs(rebalancer.peak - (rebalancer.height + 0.56)) < 1e-5 && Math.abs(rebalancer.off - rebalancer.height) < 1e-5 && rebalancer.overlapped && rebalancer.inwardBlocked && rebalancer.escaped > 0.5 && rebalancer.clear && rebalancer.grounded, JSON.stringify(rebalancer));
 } };
-const factoryGreeter = { name: "factory greeter", why: "rule: Talk opens the guide's tour menu, keyboard choices work, Escape dismisses it, and a tour can be ended without leaving the cave", run: async (b) => {
+const factoryGreeter = { name: "factory greeter", why: "rule: the guide's four tours complete and return, menu controls and cancellation work, and device detail respects quality and visit ownership", run: async (b) => {
   const near = await b.evaluate(`(() => {
     const B = __ooga, a = B.cavemen.get("portlandhodl");
     if (B.crew.player !== a) B.pilot.possess(a);
@@ -5622,17 +5622,23 @@ const factoryGreeter = { name: "factory greeter", why: "rule: Talk opens the gui
       && Math.hypot(row.position.x + 2, row.position.z - 23.6) < 0.025), JSON.stringify(tours));
   const detail = await b.evaluate(`(() => {
     const B = __ooga, g = B.factory.greeter, camera = B.camera, head = g.root.children[0].children[0];
-    const original = { ...camera.position }, set = new Set(); g.liveGeometry(set);
+    const original = { ...camera.position }, quality = B.renderer.quality, set = new Set(); g.liveGeometry(set);
+    const expectedDetail = set.size === 24 && quality !== "low";
+    const lighterDevice = matchMedia("(pointer: coarse)").matches || B.renderer.quality === "low" && set.size === 12;
     const at = distance => { camera.position.x = g.root.position.x; camera.position.y = g.root.position.y;
       camera.position.z = g.root.position.z + distance; g.update(0, 0); return head.geometry; };
     const far = at(8), near = at(5), heldNear = at(6.5), farAgain = at(8), heldFar = at(6.5);
+    B.renderer.setQuality("low"); const lowNear = at(5);
+    B.renderer.setQuality(quality); at(8); g.liveGeometry(set);
     const geometry = []; const collect = node => { if (node.geometry) geometry.push(node.geometry); for (const child of node.children) collect(child); }; collect(g.root);
     Object.assign(camera.position, original);
-    return { nearFaces: near.faces.length, farFaces: far.faces.length, switched: near !== far,
+    return { nearFaces: near.faces.length, farFaces: far.faces.length, switched: near !== far, expectedDetail,
+      lowCoarse: lowNear === far, lighterVisit: !lighterDevice || set.size === 12,
       stable: heldNear === near && farAgain === far && heldFar === far, retained: geometry.every(mesh => set.has(mesh) || mesh === BL.factoryModels.forgeWave().gold), count: set.size };
   })()`);
   record("factory greeter: close-up detail switches with hysteresis and every animated tier remains in the visit's live geometry set",
-    detail.switched && detail.stable && detail.retained && detail.nearFaces > detail.farFaces, JSON.stringify(detail));
+    detail.switched === detail.expectedDetail && detail.stable && detail.retained && detail.lowCoarse && detail.lighterVisit
+      && (detail.expectedDetail ? detail.nearFaces > detail.farFaces : detail.nearFaces === detail.farFaces), JSON.stringify(detail));
 } };
 const factoryLadders = { name: "factory ladders", why: "rule: Oogas must climb the rebalancer and lighthouse ladders through real controls, hold their height at rest, walk off both landings and jump away without snapping back", run: async (b) => {
   const r = await b.evaluate(`(() => {
@@ -8526,6 +8532,7 @@ scene("factory", { label: "lifecycle", url: hubPage(src), steps: [{ name: "facto
     await travel("factory");
     // One listener belongs to the hall and one to Tess; both leave with the scene.
     const hall = await b.evaluate('__factoryLife.subscriptions');
+    const lighter = await b.evaluate(`(() => { const set = new Set(); __ooga.factory.greeter.liveGeometry(set); return __ooga.renderer.quality === "low" && set.size === 12; })()`);
     await travel("lab");
     const away = await b.evaluate('__factoryLife.subscriptions');
     await travel("hub"); await settled(); await rendered(2);
@@ -8533,10 +8540,10 @@ scene("factory", { label: "lifecycle", url: hubPage(src), steps: [{ name: "facto
       const n = __ooga.factory.node;
       return { same: n === __factoryLife.node, subscriptions: __factoryLife.subscriptions, lines: n.placeOf.size, places: n.bays.length + n.stands.length };
     })()`);
-    visits.push({ ...visit, hall, away });
+    visits.push({ ...visit, hall, away, lighter });
   }
   const after = await snapshot(), same = (key) => before.stats[key] === after.stats[key];
-  record("soak: factory cycles: one bounded node survives six round trips, the hall's subscription released, without retaining scene nodes, targets or DOM", visits.every((v) => v.same && v.hall === 2 && v.away === 0 && v.subscriptions === 1 && v.lines <= v.places)
+  record("soak: factory cycles: one bounded node survives six round trips, the hall's subscription released, without retaining scene nodes, targets or DOM", visits.every((v) => v.same && v.hall === 2 && v.away === 0 && v.lighter && v.subscriptions === 1 && v.lines <= v.places)
     && same("allNodes") && same("targets") && same("dom") && after.stats.tweens === 0, JSON.stringify({ visits, before: before.stats, after: after.stats }));
   record("soak: factory cycles: GPU records, listeners and retained heap remain bounded", Math.abs(after.stats.gl.records - before.stats.gl.records) <= 3 && before.nodes === after.nodes && before.listeners === after.listeners && within(before, after, 0.1), heapDetail(before, after));
 } }] });

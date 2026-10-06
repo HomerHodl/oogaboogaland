@@ -450,8 +450,10 @@
       armor: shaded(caps, capDetails), irisMarks: shaded([], irisMarks), rings };
   };
   const MESHES = cached(() => buildMeshes(false)), FINE_MESHES = cached(() => buildMeshes(true));
-  const create = ({ parent, input, fx, feed, visitor, demoRunning, coarse, camera }) => {
-    const meshes = MESHES(), fineMeshes = FINE_MESHES(), detailTiers = [meshes, fineMeshes], detailNodes = [], detailKeys = [], body = createNode(), hover = createNode(), head = createNode({ geometry: meshes.core });
+  const create = ({ parent, input, fx, feed, visitor, demoRunning, coarse, camera, quality = () => "high" }) => {
+    // Prepare detail behind the scene transition, never in update. Touch and Low retain the lighter rig.
+    const meshes = MESHES(), fineMeshes = !coarse && quality() !== "low" ? FINE_MESHES() : null,
+      detailTiers = fineMeshes ? [meshes, fineMeshes] : [meshes], detailNodes = [], detailKeys = [], body = createNode(), hover = createNode(), head = createNode({ geometry: meshes.core });
     const iris = createNode({ geometry: meshes.iris }), pupil = createNode({ geometry: meshes.pupil });
     const optics = createNode(), blades = createNode({ geometry: meshes.blades });
     const figure = { root: body, parts: { head: hover } }, rings = [], pivots = [], orientations = [], orbit = quat.create();
@@ -653,7 +655,7 @@
       // Hysteresis avoids mesh churn around the cutoff. Both cached tiers stay in the visit's live set.
       const distance = camera ? Math.hypot(camera.position.x - position.x,
         camera.position.y - position.y, camera.position.z - position.z) : Infinity;
-      const fine = distance < (detailed ? 7 : 6);
+      const fine = !!fineMeshes && quality() !== "low" && distance < (detailed ? 7 : 6);
       if (fine !== detailed) {
         const tier = fine ? fineMeshes : meshes;
         for (let i = 0; i < detailNodes.length; i++) detailNodes[i].geometry = tier[detailKeys[i]];

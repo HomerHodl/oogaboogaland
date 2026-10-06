@@ -1,0 +1,303 @@
+{
+  "measuredAt": "2026-10-06T08:08:29.991Z",
+  "note": "Serial local Chrome; phone is emulation, not low-end hardware. Near/far views change scene exposure and are observational.",
+  "evidence": [
+    {
+      "mode": "desktop",
+      "requestedDistance": 10,
+      "first": {
+        "advanceMs": 32.19999998807907,
+        "firstRenderMax": 30.69999998807907,
+        "buildMs": 92,
+        "timing": {
+          "boot": 293,
+          "renderer": 306,
+          "ready": 662,
+          "frame1": 665,
+          "drawn": 981,
+          "frame2": 1233,
+          "frame3": 1369
+        }
+      },
+      "fps": 59.54376072104433,
+      "frameP95": 16.800000000000182,
+      "renderP95": 2,
+      "renderMean": 1.1692052984869243,
+      "quality": "high",
+      "cameraDistance": 10.000000000000002,
+      "coreFaces": 10752,
+      "frames": 302,
+      "resources": {
+        "records": 175,
+        "active": 154,
+        "mirrorResources": 13,
+        "imageTextures": 20,
+        "rippleBodyTextures": 0,
+        "shadowResources": 4,
+        "shadowSize": 2048,
+        "shadowPassCount": 310,
+        "shadowFinite": true,
+        "shadowDraws": 21,
+        "shadowStatic": 42,
+        "shadowStaticRebuilds": 6,
+        "culled": 190,
+        "drawn": 317,
+        "suppressed": 0,
+        "rippleSurfaces": 1,
+        "rippleWaves": 3
+      }
+    },
+    {
+      "mode": "desktop",
+      "requestedDistance": 3,
+      "first": {
+        "advanceMs": 0.9000000059604645,
+        "firstRenderMax": 0.4000000059604645,
+        "buildMs": 92,
+        "timing": {
+          "boot": 293,
+          "renderer": 306,
+          "ready": 662,
+          "frame1": 665,
+          "drawn": 981,
+          "frame2": 1233,
+          "frame3": 1369
+        }
+      },
+      "fps": 60.14466690666097,
+      "frameP95": 16.799999999999272,
+      "renderP95": 0.5,
+      "renderMean": 0.3953488373083134,
+      "quality": "high",
+      "cameraDistance": 3.0000000000000004,
+      "coreFaces": 55040,
+      "frames": 301,
+      "resources": {
+        "records": 177,
+        "active": 153,
+        "mirrorResources": 13,
+        "imageTextures": 20,
+        "rippleBodyTextures": 0,
+        "shadowResources": 4,
+        "shadowSize": 2048,
+        "shadowPassCount": 613,
+        "shadowFinite": true,
+        "shadowDraws": 21,
+        "shadowStatic": 42,
+        "shadowStaticRebuilds": 8,
+        "culled": 234,
+        "drawn": 271,
+        "suppressed": 0,
+        "rippleSurfaces": 0,
+        "rippleWaves": 0
+      }
+    },
+    {
+      "mode": "phone",
+      "requestedDistance": 10,
+      "first": {
+        "advanceMs": 37.5,
+        "firstRenderMax": 32,
+        "buildMs": 91.69999998807907,
+        "timing": {
+          "boot": 297,
+          "renderer": 309,
+          "ready": 670,
+          "frame1": 673,
+          "drawn": 983,
+          "frame2": 1115,
+          "frame3": 1130
+        }
+      },
+      "fps": 60.387922415588875,
+      "frameP95": 16.700000000000728,
+      "renderP95": 0.6000000238418579,
+      "renderMean": 0.4430463579514169,
+      "quality": "low",
+      "cameraDistance": 10.000000000000002,
+      "coreFaces": 10752,
+      "frames": 302,
+      "resources": {
+        "records": 175,
+        "active": 154,
+        "mirrorResources": 7,
+        "imageTextures": 15,
+        "rippleBodyTextures": 0,
+        "shadowResources": 4,
+        "shadowSize": 512,
+        "shadowPassCount": 317,
+        "shadowFinite": true,
+        "shadowDraws": 21,
+        "shadowStatic": 42,
+        "shadowStaticRebuilds": 7,
+        "culled": 218,
+        "drawn": 289,
+        "suppressed": 0,
+        "rippleSurfaces": 1,
+        "rippleWaves": 2
+      }
+    },
+    {
+      "mode": "phone",
+      "requestedDistance": 3,
+      "first": {
+        "advanceMs": 1,
+        "firstRenderMax": 0.4000000059604645,
+        "buildMs": 91.69999998807907,
+        "timing": {
+          "boot": 297,
+          "renderer": 309,
+          "ready": 670,
+          "frame1": 673,
+          "drawn": 983,
+          "frame2": 1115,
+          "frame3": 1130
+        }
+      },
+      "fps": 50.488924366453986,
+      "frameP95": 16.800000000000182,
+      "renderP95": 0.5,
+      "renderMean": 0.38537549371775903,
+      "quality": "low",
+      "cameraDistance": 3.0000000000000004,
+      "coreFaces": 55040,
+      "frames": 253,
+      "resources": {
+        "records": 176,
+        "active": 155,
+        "mirrorResources": 7,
+        "imageTextures": 15,
+        "rippleBodyTextures": 0,
+        "shadowResources": 4,
+        "shadowSize": 512,
+        "shadowPassCount": 571,
+        "shadowFinite": true,
+        "shadowDraws": 21,
+        "shadowStatic": 42,
+        "shadowStaticRebuilds": 7,
+        "culled": 242,
+        "drawn": 265,
+        "suppressed": 0,
+        "rippleSurfaces": 0,
+        "rippleWaves": 0
+      }
+    },
+    {
+      "mode": "canvas2d",
+      "requestedDistance": 10,
+      "first": {
+        "advanceMs": 137.40000000596046,
+        "firstRenderMax": 135.7000000178814,
+        "buildMs": 91.40000000596046,
+        "timing": {
+          "boot": 296,
+          "renderer": 299,
+          "ready": 655,
+          "frame1": 658,
+          "drawn": 1807,
+          "frame2": 2076,
+          "frame3": 4138
+        }
+      },
+      "fps": 8.290891863081844,
+      "frameP95": 150,
+      "renderP95": 121.2999999821186,
+      "renderMean": 118.59523809736683,
+      "quality": "low",
+      "cameraDistance": 10.000000000000002,
+      "coreFaces": 10752,
+      "frames": 42,
+      "resources": {
+        "records": 0,
+        "active": 0,
+        "mirrorResources": 0,
+        "imageTextures": 0,
+        "rippleBodyTextures": 0,
+        "shadowResources": 0,
+        "shadowSize": 0,
+        "shadowPassCount": 0,
+        "shadowFinite": true,
+        "culled": 0,
+        "drawn": 0,
+        "suppressed": 0,
+        "rippleSurfaces": 1,
+        "rippleWaves": 3,
+        "matrixSurfaces": 0,
+        "matrixLivingSurfaces": 0,
+        "matrixSamples": 0,
+        "matrixSampleStep": 1,
+        "matrixSampleBudget": 524288,
+        "matrixTileBytes": 4096
+      }
+    },
+    {
+      "mode": "canvas2d",
+      "requestedDistance": 3,
+      "first": {
+        "advanceMs": 507.30000001192093,
+        "firstRenderMax": 506.5,
+        "buildMs": 91.40000000596046,
+        "timing": {
+          "boot": 296,
+          "renderer": 299,
+          "ready": 655,
+          "frame1": 658,
+          "drawn": 1807,
+          "frame2": 2076,
+          "frame3": 4138
+        }
+      },
+      "fps": 2.1963138532424415,
+      "frameP95": 516.7000000000007,
+      "renderP95": 506.40000000596046,
+      "renderMean": 494.94166666517657,
+      "quality": "low",
+      "cameraDistance": 3.0000000000000004,
+      "coreFaces": 55040,
+      "frames": 12,
+      "resources": {
+        "records": 0,
+        "active": 0,
+        "mirrorResources": 0,
+        "imageTextures": 0,
+        "rippleBodyTextures": 0,
+        "shadowResources": 0,
+        "shadowSize": 0,
+        "shadowPassCount": 0,
+        "shadowFinite": true,
+        "culled": 0,
+        "drawn": 0,
+        "suppressed": 0,
+        "rippleSurfaces": 0,
+        "rippleWaves": 0,
+        "matrixSurfaces": 0,
+        "matrixLivingSurfaces": 0,
+        "matrixSamples": 0,
+        "matrixSampleStep": 1,
+        "matrixSampleBudget": 524288,
+        "matrixTileBytes": 4096
+      }
+    }
+  ],
+  "revision": "345aafdd86b0e4e6a0fcd0bb819c5cf35dad9b52",
+  "geometry": {
+    "revision": "345aafdd86b0e4e6a0fcd0bb819c5cf35dad9b52",
+    "method": "Count unique geometry referenced by the real factoryGreeter.create rig before and after the camera detail switch, using actual source modules in Node VM. Cold construction timing is diagnostic, not a frame benchmark.",
+    "coldConstructionMs": 367.542583,
+    "far": {
+      "meshes": 13,
+      "faces": 69616,
+      "vertices": 98432
+    },
+    "near": {
+      "meshes": 13,
+      "faces": 449680,
+      "vertices": 536432
+    },
+    "retained": {
+      "meshes": 24,
+      "faces": 518528
+    }
+  },
+  "status": "Before adaptive guide detail gate; actual free-camera distances verified. Initial full-scene draw includes fine geometry warm-up; later near timing is cached, not first fine upload."
+}
