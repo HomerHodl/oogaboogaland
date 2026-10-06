@@ -3508,7 +3508,15 @@
   // for the visitor's Ooga, the crew's and another player's, from where each already stands.
   const floatPose = (cave, feet, height, phase, time) => {
     const p = cave.root.position;
-    if (!mempoolIsland || !mempoolIsland.afloat(p.x, p.z, feet, height * OOGA_DRAUGHT)) return;
+    if (!mempoolIsland || !mempoolIsland.afloat(p.x, p.z, feet, height * OOGA_DRAUGHT)) {
+      if (cave.poolSwimming) {
+        cave.poolSwimming = false;
+        cave.parts.armL.rotation.z = 0.12;
+        cave.parts.armR.rotation.z = -0.12;
+      }
+      return;
+    }
+    cave.poolSwimming = true;
     const parts = cave.parts, s = Math.sin(time * 2.4 + phase), c = Math.cos(time * 2.4 + phase);
     parts.armL.rotation.z = 1.15 + s * 0.16; parts.armR.rotation.z = -1.15 - s * 0.16;
     parts.armL.rotation.x = parts.armR.rotation.x = -0.25 + c * 0.22;
