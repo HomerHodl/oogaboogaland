@@ -1399,7 +1399,14 @@
     return value;
   };
   const free = (x, z, r) => {
-    for (const c of claimed) if (Math.hypot(c.x - x, c.z - z) < c.r + r) return false;
+    for (const c of claimed) {
+      const dx = c.x - x, dz = c.z - z, reach = c.r + r;
+      // Rejection sampling checks thousands of distant footprints. Keep the
+      // original circular predicate for nearby and boundary candidates.
+      if (Number.isFinite(reach) && reach >= 0
+        && (Math.abs(dx) > reach + 1e-12 || Math.abs(dz) > reach + 1e-12)) continue;
+      if (Math.hypot(dx, dz) < reach) return false;
+    }
     return true;
   };
   const nearPath = (x, z, d) => {

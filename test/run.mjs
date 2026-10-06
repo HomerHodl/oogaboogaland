@@ -67,6 +67,39 @@ const northTrajectoryProof = async () => {
     return { maxStep, residual, monotonic, finite, resets, variableSteps };
   })()`);
 };
+// Exercise the real private clearance predicate against the original circular oracle.
+const claimClearanceProof = () => {
+  const source = readFileSync(new URL("../src/js/scene-hub.js", import.meta.url), "utf8");
+  const start = source.indexOf("  const free = (x, z, r) => {");
+  const context = { claimed: [], Math, Number };
+  const free = runInNewContext(`${source.slice(start, source.indexOf("  const nearPath =", start))}; free`, context);
+  let cases = 0, failures = 0, seed = 1739;
+  const random = () => { seed = Math.imul(seed ^ seed >>> 15, 2246822519); seed = Math.imul(seed ^ seed >>> 13, 3266489917); return (seed >>> 0) / 4294967296; };
+  const check = (x, z, r) => {
+    const expected = !context.claimed.some(c => Math.hypot(c.x - x, c.z - z) < c.r + r);
+    cases++; if (free(x, z, r) !== expected) failures++;
+  };
+  for (let i = 0; i < 2000; i++) {
+    context.claimed = Array.from({ length: 12 }, () => ({ x: (random() - .5) * 200, z: (random() - .5) * 200, r: random() * 8 }));
+    check((random() - .5) * 200, (random() - .5) * 200, random() * 8);
+    context.claimed[0].x *= -1; context.claimed[0].r += 1;
+    check(context.claimed[0].x, context.claimed[0].z, .1);
+  }
+  for (const reach of [0, Number.MIN_VALUE, 1e-15, .35, 1.4, 3.5, 20, 1e150, Number.MAX_VALUE, Infinity, NaN, -1]) {
+    context.claimed = [{ x: 0, z: 0, r: reach }];
+    for (const offset of [-4, -1, 0, 1, 4]) for (const sign of [-1, 1]) {
+      const value = (reach + offset * Math.max(Number.MIN_VALUE, Math.abs(reach) * Number.EPSILON)) * sign;
+      check(value, 0, 0); check(0, value, 0); check(value / Math.SQRT2, value / Math.SQRT2, 0);
+    }
+  }
+  for (const coordinate of [NaN, Infinity, -Infinity, Number.MAX_VALUE, -Number.MAX_VALUE]) {
+    context.claimed = [{ x: coordinate, z: coordinate, r: 1.4 }];
+    check(0, 0, .3); check(coordinate, coordinate, -.3);
+    context.claimed = [{ x: 0, z: 0, r: -1 }];
+    check(coordinate, 0, -1); check(0, coordinate, Infinity);
+  }
+  return { cases, failures };
+};
 // Inspect private query storage only in the test VM; the shipped API stays unchanged.
 const cutawayBoundsProof = async () => {
   const context = { window: {} };
@@ -9317,6 +9350,8 @@ const unitChecks = async () => {
     record("QR invoices: matrices match independent reference at short and long capacities", rows.every(r => r.pass) && rejected, JSON.stringify(rows));
   }
   factoryChecks(BL);
+  const clearance = claimClearanceProof();
+  record("hub footprint clearance: conservative rejection preserves circular boundaries, live reservations and exceptional numbers", clearance.failures === 0 && clearance.cases >= 4000, JSON.stringify(clearance));
   await characterChecks(); await contributorActivityChecks(); await mempoolFeedChecks(); await debugActivityStatusChecks(); await soloDebugChecks(); await adaptiveQualityChecks(); await chainSnapshotChecks(); await dsbSharedDataChecks(); await timechainDataChecks(); await weatherStepChecks(); await poolLayoutChecks(); await gameRulesChecks(); await poolWildlifeChecks();
 
   // Scene state built directly instead of booted; seed 1 matches scene-hub.js.
