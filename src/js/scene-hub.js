@@ -7081,7 +7081,7 @@
   // The Leak Check kiosk's board, made on the visit's first poke; it reads the browser only as it opens.
   let leakBoard = null;
   const openLeakCheck = () => {
-    if (!leakBoard) leakBoard = BL.leakCheck.create({ form: hud.el.leakForm, typing: hud.el.leakTyping, mouse: hud.el.leakMouse });
+    if (!leakBoard) leakBoard = BL.leakCheck.create(hud.el.leakTry);
     leakBoard.open();
     hud.openBoard(leakBoard);
   };

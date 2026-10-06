@@ -1,24 +1,27 @@
 // The Leak Check kiosk's board: what the visitor's own browser tells any page that asks, read when the board opens
-// and shown in Ooga-speak through the shared board dialog (`hud.openBoard`). Each page is a reading in the jumbotron's
-// 5x7 font on the board's small canvas, a caption and a note, as the Mempool island's boards draw theirs. Nothing is
-// stored or sent: every value stays in this module's `seen` until the next open, and the page makes no request.
+// and shown in Ooga-speak through the shared board dialog (`hud.openBoard`). The findings are grouped into chapters,
+// one page each: the screen shows a chapter's table (label on the left, value on the right, in the jumbotron's 5x7
+// font) and the note under it says each finding in full. Nothing is stored or sent: every value stays in this module's
+// `seen` until the next open, and the page makes no request.
 //
-// The pages run from the plain readings through the strong fingerprints (canvas, audio, fonts, WebGL detail) to three
-// hands-on demos, one name made of every clue, and the leaks the kiosk will not show because they break the site's
-// rules. Some answers come back as promises; a page shows LOOKING until its answer lands, and an answer from an
-// earlier opening is dropped.
+// The chapters run from who you are through your screen, machine, gear and prints, the add-ons that show themselves,
+// your trail and choices, three hands-on demos, Ooga's verdict (one name made of every clue and a leak meter of what
+// the browser told), what this site itself calls and keeps, how to leak less, and the leaks the site's rules keep the
+// kiosk from showing. Some answers come back as promises or after a short wait; a row shows "..." until its answer
+// lands, and an answer from an earlier opening is dropped.
 //
-// The demos are `panel`s in the board dialog's `#board-panel`: `#leak-form` (hidden autofill: a name box the visitor
-// sees and address boxes kept off screen; the board counts which the browser filled and how many letters, never the
-// text), `#leak-typing` (how long keys are held and the gaps between them, never which keys) and `#leak-mouse` (the
-// pointer's sample rate, speed and wobble). All of it is emptied on Forget, `onClose` and `dispose`.
+// The demos share one `panel`, `#leak-try` in the board dialog: hidden autofill (a name box the visitor sees and
+// address boxes kept off screen; the board counts which the browser filled and how many letters, never the text),
+// typing rhythm (how long keys are held and the gaps between them, never which keys) and mouse rhythm (the pointer's
+// sample rate, speed and turning). All of it is emptied on Forget, `onClose` and `dispose`. Wallets are only seen,
+// never called: nothing here asks one to connect.
 //
-// `create({ form, typing, mouse })` returns the board, plus `open()` (read and draw), `onClose()` and `dispose()`. The
-// GPU is asked through one throwaway WebGL context once a page, since every context counts against the browser's limit.
+// `create(panel)` returns the board, plus `open()` (read and draw), `onClose()` and `dispose()`. The GPU is asked
+// through one throwaway WebGL context once a page, since every context counts against the browser's limit.
 (() => {
   "use strict";
   const BL = window.BL;
-  const W = 128, H = 48, BG = "#0f110f", DIM = "#9b8f7a", INK = "#7ff5e6";
+  const W = 160, H = 80, BG = "#0f110f", DIM = "#9b8f7a", INK = "#7ff5e6", WAIT = "...", HIDDEN_VALUE = "HIDDEN";
   const text = BL.jumbotron.text;
   const HIDDEN = { email: "email", tel: "phone", street: "street", postal: "postcode", org: "workplace" };
   const BROWSERS = [["Edg/", "Edge"], ["OPR/", "Opera"], ["Firefox/", "Firefox"], ["FxiOS/", "Firefox"], ["CriOS/", "Chrome"], ["Chrome/", "Chrome"], ["Version/", "Safari"]];
@@ -40,6 +43,28 @@
     ["wide colour (P3)", "(color-gamut: p3)"], ["HDR", "(dynamic-range: high)"], ["inverted colours", "(inverted-colors: inverted)"],
     ["less transparency", "(prefers-reduced-transparency: reduce)"], ["less data", "(prefers-reduced-data: reduce)"],
     ["no hover (touch first)", "(hover: none)"], ["monochrome", "(monochrome)"]];
+  // Wallets that put themselves on every page so sites can offer to connect. Only their presence is read.
+  const WALLETS = [["alby", "Alby"], ["webln", "a Lightning wallet (WebLN)"], ["nostr", "a Nostr signer (NIP-07)"], ["unisat", "UniSat"],
+    ["XverseProviders", "Xverse"], ["LeatherProvider", "Leather"], ["okxwallet", "OKX Wallet"], ["phantom", "Phantom"], ["magicEden", "Magic Eden"]];
+  const ETHEREUM = [["isMetaMask", "MetaMask"], ["isCoinbaseWallet", "Coinbase Wallet"], ["isBraveWallet", "Brave Wallet"], ["isRabby", "Rabby"], ["isTrust", "Trust Wallet"]];
+  const DEVTOOLS = [["__REACT_DEVTOOLS_GLOBAL_HOOK__", "React DevTools"], ["__VUE_DEVTOOLS_GLOBAL_HOOK__", "Vue DevTools"], ["__REDUX_DEVTOOLS_EXTENSION__", "Redux DevTools"]];
+  // Marks helper add-ons leave in the page: the add-on, then what gives it away.
+  const MARKS = [
+    ["Dark Reader", 'meta[name="darkreader"], style.darkreader, html[data-darkreader-mode], html[data-darkreader-scheme]'],
+    ["Grammarly", "body[data-gr-ext-installed], body[data-new-gr-c-s-check-loaded], grammarly-desktop-integration, grammarly-extension, [data-gramm]"],
+    ["1Password", "com-1password-button, com-1password-menu, [data-com-onepassword-filled]"],
+    ["LastPass", "[data-lastpass-icon-root], [data-lastpass-root], [data-lastpass-infield]"],
+    ["Dashlane", "[data-dashlane-rid], [data-dashlanecreated]"],
+    ["Google Translate", "html.translated-ltr, html.translated-rtl"]
+  ];
+  // Questions a browser may refuse, for the leak meter: told when the answer is real, null while still asking.
+  const METER = [
+    ["exact build", (s) => s.hints], ["CPU cores", (s) => s.cores > 0], ["memory", (s) => s.memory > 0], ["graphics card", (s) => !!s.gpu.name],
+    ["graphics detail", (s) => !!s.gpu.hash], ["keyboard layout", (s) => s.layout === null ? null : !!(s.layout && s.layout.name)],
+    ["cameras and mics", (s) => s.devices], ["permissions", (s) => s.permissions], ["storage size", (s) => s.storage], ["network", (s) => !!s.net],
+    ["battery", (s) => s.battery], ["a true canvas", (s) => !s.canvasNoise], ["audio print", (s) => s.audio], ["fonts", (s) => s.fonts.length > 0],
+    ["voices", (s) => s.voices === null ? null : !!(s.voices && s.voices.length)], ["a true time zone", (s) => !s.shield]
+  ];
   const hex = (hash) => (hash >>> 0).toString(16).padStart(8, "0").toUpperCase();
   const hashBytes = (bytes) => {
     let hash = 2166136261;
@@ -59,6 +84,10 @@
     }
     return "a mystery browser";
   };
+  // The engine the browser really runs, from features no user agent string can change.
+  const engineOf = () => CSS.supports("-moz-appearance", "none") ? "Gecko" : window.chrome ? "Blink" : "WebKit";
+  const claimedEngineOf = (os, browser) => os === "iOS" || os === "iPadOS" || /^Safari/.test(browser) ? "WebKit" : /^Firefox/.test(browser) ? "Gecko" : /^(Chrome|Edge|Opera)/.test(browser) ? "Blink" : "";
+  const PLATFORMS = { Windows: /^Win/, macOS: /^Mac/, iPadOS: /^(Mac|iPad)/, iOS: /^iP/, Android: /Linux|Android|^$/, Linux: /Linux/, ChromeOS: /CrOS|Linux/ };
   let gpu = null;
   const readGpu = () => {
     if (gpu !== null) return gpu;
@@ -106,6 +135,17 @@
     c2.stroke();
     return hashBytes(c2.getImageData(0, 0, canvas.width, canvas.height).data);
   };
+  // One flat colour painted and read back: any pixel off it means something adds noise to canvas reads on purpose.
+  const canvasNoise = () => {
+    const canvas = document.createElement("canvas");
+    canvas.width = canvas.height = 8;
+    const c2 = canvas.getContext("2d", { willReadFrequently: true });
+    c2.fillStyle = "rgb(10, 20, 30)";
+    c2.fillRect(0, 0, 8, 8);
+    const px = c2.getImageData(0, 0, 8, 8).data;
+    for (let i = 0; i < px.length; i += 4) if (px[i] !== 10 || px[i + 1] !== 20 || px[i + 2] !== 30 || px[i + 3] !== 255) return true;
+    return false;
+  };
   // A tone rendered offline through a compressor, never played: the audio stack's rounding decides its samples.
   const audioPrint = () => ask(() => {
     const Offline = window.OfflineAudioContext || window.webkitOfflineAudioContext;
@@ -141,6 +181,29 @@
       : q === "q" && w === "w" ? "QWERTY" : /[Ѐ-ӿ]/.test(q) ? "Cyrillic" : /[Ͱ-Ͽ]/.test(q) ? "Greek" : "unusual";
     return { name, keys };
   };
+  // Wallets on the page right now, from their own announcements. Reading a flag never asks a wallet anything.
+  const walletsOf = () => {
+    const found = [];
+    for (const [key, name] of WALLETS) if (window[key] !== undefined && window[key] !== null) found.push(name);
+    const eth = window.ethereum;
+    if (eth) {
+      const named = ETHEREUM.filter(([flag]) => eth[flag] === true).map(([, name]) => name);
+      found.push(...(named.length ? named : ["an Ethereum wallet"]));
+    }
+    if (window.solana && !window.phantom) found.push("a Solana wallet");
+    return found;
+  };
+  const marksOf = () => {
+    const found = MARKS.filter(([, marks]) => document.querySelector(marks)).map(([name]) => name);
+    for (const [key, name] of DEVTOOLS) if (window[key]) found.push(name);
+    // Elements with dashed names are custom ones; this page defines none, so each is something an add-on put here.
+    const strange = new Set();
+    for (const el of document.body.querySelectorAll("*")) {
+      const tag = el.localName;
+      if (tag.includes("-") && !tag.startsWith("com-1password") && !tag.startsWith("grammarly")) strange.add(tag);
+    }
+    return { found, strange: [...strange] };
+  };
   const windowsOf = (version) => {
     const major = parseInt(version, 10);
     return major >= 13 ? "11" : major > 0 ? "10" : "7 or 8";
@@ -149,209 +212,222 @@
     const a = Math.abs(minutes);
     return `UTC${minutes < 0 ? "-" : "+"}${Math.floor(a / 60)}${a % 60 ? `:${String(a % 60).padStart(2, "0")}` : ""}`;
   };
-  const bytesOf = (n) => n >= 1e12 ? `${(n / 1e12).toFixed(1)} TB` : n >= 1e9 ? `${(n / 1e9).toFixed(1)} GB` : n >= 1e6 ? `${Math.round(n / 1e6)} MB` : `${Math.round(n / 1e3)} KB`;
+  const bytesOf = (n) => n >= 1e12 ? `${(n / 1e12).toFixed(1)} TB` : n >= 1e9 ? `${(n / 1e9).toFixed(1)} GB` : n >= 1e6 ? `${Math.round(n / 1e6)} MB` : n >= 1e3 ? `${Math.round(n / 1e3)} KB` : `${n} B`;
   const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
   const listOf = (items) => items.length < 2 ? items.join("") : `${items.slice(0, -1).join(", ")} and ${items[items.length - 1]}`;
-  // Centred lines of the 5x7 font, wrapped at spaces (or mid-word when a word outruns the board) rather than cut.
-  // Without a context it only counts the lines.
-  const lines = (c2, words, y, ink, scale) => {
-    const per = Math.floor((W - 2 + scale) / (6 * scale));
-    let rest = words, row = 0;
-    while (rest.length) {
-      let cut = rest.length <= per ? rest.length : rest.lastIndexOf(" ", per);
-      if (cut <= 0) cut = Math.min(per, rest.length);
-      const line = rest.slice(0, cut);
-      if (c2) text.drawText(c2, line, Math.round((W - text.measureText(line, scale)) / 2), y + row * 8 * scale, ink, scale);
-      rest = rest.slice(cut).trimStart();
-      row++;
-    }
-    return row;
-  };
-  // A reading: its label small at the top, the value as large as fits in the middle, a line under it at the foot.
-  const reading = (c2, label, value, under) => {
-    const top = lines(c2, label, 2, DIM, 1) * 8 + 3;
-    const scale = text.measureText(value, 2) <= W - 8 ? 2 : 1;
-    const foot = H - 1 - lines(null, under, 0, DIM, 1) * 8;
-    const tall = lines(null, value, 0, INK, scale) * 8 * scale - scale;
-    lines(c2, value, Math.max(top, Math.round((top + foot - 2 - tall) / 2)), INK, scale);
-    lines(c2, under, foot, DIM, 1);
-  };
-  // An answer still on its way (null) or one the browser keeps to itself (false).
-  const LOOKING = "LOOKING...", QUIET = "NOT TELLING";
-  const waiting = (c2, label, answer) => reading(c2, label, answer === null ? LOOKING : QUIET, answer === null ? "" : "BROWSER KEEP QUIET");
+  // A row's value, or "..." while the answer is still on its way and HIDDEN when the browser keeps it to itself.
+  const or = (answer, value) => answer === null ? WAIT : !answer ? HIDDEN_VALUE : value(answer);
   const NOT_YET = "Ooga still asking. Answer come in a blink.";
-  const PAGES = [
+  // A chapter's table: the title centred at the top, then each row's label on the left and value on the right. A value
+  // too long for its row carries on, right-aligned, on the rows under it rather than being cut.
+  const table = (c2, title, rows) => {
+    text.drawText(c2, title, Math.round((W - text.measureText(title, 1)) / 2), 2, DIM, 1);
+    c2.fillStyle = "#2a2724";
+    c2.fillRect(2, 11, W - 4, 1);
+    const full = Math.floor((W - 2) / 6);
+    let y = 14;
+    for (const [label, raw] of rows) {
+      if (y > H - 7) break;
+      text.drawText(c2, label, 2, y, DIM, 1);
+      let rest = String(raw).toUpperCase(), room = Math.floor((W - 6 - text.measureText(label, 1)) / 6) - 1;
+      while (rest.length && y <= H - 7) {
+        let cut = rest.length <= room ? rest.length : rest.lastIndexOf(" ", room);
+        if (cut <= 0) cut = Math.min(room, rest.length);
+        const line = rest.slice(0, cut);
+        text.drawText(c2, line, W - 2 - text.measureText(line, 1), y, INK, 1);
+        rest = rest.slice(cut).trimStart();
+        room = full;
+        y += 8;
+      }
+    }
+  };
+  const meterOf = (s) => {
+    let told = 0, asked = 0, waiting = 0;
+    const hidden = [];
+    for (const [name, check] of METER) {
+      const answer = check(s);
+      if (answer === null) { waiting++; continue; }
+      asked++;
+      if (answer) told++;
+      else hidden.push(name);
+    }
+    return { told, asked, waiting, hidden };
+  };
+  const CHAPTERS = [
     {
-      caption: "Who you are",
-      draw: (c2, s) => reading(c2, "OOGA SEE YOU ON", s.os.toUpperCase(), s.browser.toUpperCase()),
-      note: (s) => `Ooga see you ride ${s.browser} on ${s.os}. Your browser shout this to every cave it visit, before anyone ask.\nWhole shout: ${s.ua}`
+      caption: "Who you are", title: "OOGA SEE WHO YOU ARE",
+      rows: (s) => [
+        ["SYSTEM", s.os], ["BROWSER", s.browser],
+        ["BUILD", or(s.hints, (h) => h.platform === "Windows" ? `Windows ${windowsOf(h.platformVersion)}` : `${h.platform} ${h.platformVersion}`)],
+        ["CHIP", or(s.hints, (h) => `${h.architecture || "?"} ${h.bitness || "?"}-bit`)],
+        ["SPEAKS", s.languages[0]], ["TIME ZONE", s.zone], ["CLOCK", `${s.utc} ${s.hourCycle === "h23" || s.hourCycle === "h24" ? "24H" : "12H"}`]
+      ],
+      notes: (s) => [
+        `Who: Ooga see you ride ${s.browser} on ${s.os}. Your browser shout this to every cave it visit, before anyone ask. Whole shout: ${s.ua}`,
+        s.hints === null ? `Exact build: ${NOT_YET}` : !s.hints
+          ? "Exact build: your browser not answer Ooga's polite ask. Only Chromium browsers (Chrome, Edge, Brave, Opera) hand out exact system build and chip this way."
+          : `Exact build: Ooga ask politely and browser hand over ${s.hints.platform} build ${s.hints.platformVersion}${s.hints.platform === "Windows" ? ` (that Windows ${windowsOf(s.hints.platformVersion)})` : ""}, ${s.hints.architecture || "unknown"} chip, ${s.hints.bitness || "?"}-bit${s.hints.model ? `, model ${s.hints.model}` : ""}${s.hints.wow64 ? ", 32-bit browser on 64-bit system" : ""}. Exact browser: ${(s.hints.fullVersionList || []).map((b) => `${b.brand} ${b.version}`).join(", ") || "not said"}. No prompt, no permission.`,
+        `Talk and time: Ooga hear you speak ${s.languages.join(", ")}. Your sun-clock say ${s.zone} (${s.utc}). Your numbers look like ${s.number}, your days like ${s.date}, ${s.calendar} calendar. Talk and sun-clock together tell any cave roughly where in world you sleep.`
+      ]
     },
     {
-      caption: "Exact build",
-      draw: (c2, s) => !s.hints ? waiting(c2, "OOGA ASK FOR DETAIL", s.hints)
-        : reading(c2, "OOGA ASK FOR DETAIL", (s.hints.platform === "Windows" ? `WINDOWS ${windowsOf(s.hints.platformVersion)}` : `${s.hints.platform} ${s.hints.platformVersion}`).toUpperCase(),
-          `${s.hints.architecture || "?"} ${s.hints.bitness || "?"}-BIT`.toUpperCase()),
-      note: (s) => s.hints === null ? NOT_YET : !s.hints
-        ? "Your browser not answer Ooga's polite ask. Only Chromium browsers (Chrome, Edge, Brave, Opera) hand out exact system build and chip this way."
-        : `Ooga ask politely and browser hand over: ${s.hints.platform} build ${s.hints.platformVersion}${s.hints.platform === "Windows" ? ` (that Windows ${windowsOf(s.hints.platformVersion)})` : ""}, ${s.hints.architecture || "unknown"} chip, ${s.hints.bitness || "?"}-bit${s.hints.model ? `, model ${s.hints.model}` : ""}${s.hints.wow64 ? ", 32-bit browser on 64-bit system" : ""}. Exact browser: ${(s.hints.fullVersionList || []).map((b) => `${b.brand} ${b.version}`).join(", ") || "not said"}. No prompt, no permission. The normal shout only say rough version; this say exact build.`
+      caption: "Your screen", title: "OOGA SEE YOUR SCREEN",
+      rows: (s) => [
+        ["SCREEN", `${s.screenW}x${s.screenH}`], ["PIXELS", `x${s.ratio} ${s.depth}-bit`], ["WINDOW", `${s.windowW}x${s.windowH}`],
+        ["TASKBAR", s.bar], ["SCREENS", s.extended === true ? "more than one" : s.extended === false ? "one" : "not said"],
+        ["TOUCH", s.touch ? `${s.touch} fingers` : "none"], ["SETTINGS", `${s.prefs.length} set`]
+      ],
+      notes: (s) => [
+        `Cave wall: your screen is ${s.screenW} by ${s.screenH}, each dot ${s.ratio} pixels thick and ${s.depth} colour-bits deep. This window ${s.windowW} by ${s.windowH}. Not many Ooga have exact same wall.`,
+        `Taskbar: usable wall is ${s.availW} by ${s.availH}, so taskbar or dock take ${s.bar}. Your window sit at ${s.screenX}, ${s.screenY}, and browser tabs and buttons take ${s.chromeW} by ${s.chromeH} pixels round the page.${s.extended === true ? " Browser also say you have more than one screen." : s.extended === false ? " Browser also say you have one screen." : ""}`,
+        s.touch ? `Touch: your screen feel ${plural(s.touch, "finger", "fingers")} at once${s.coarse ? ", and you poke with your hand." : ", but you mostly poke with mouse-stick: touch laptop."}` : "Touch: no touch. You poke with mouse-stick, so cave know you sit at big computer.",
+        s.prefs.length ? `Settings: Ooga see ${listOf(s.prefs)}. Each switch you flip split the crowd in two, so the rarer the switch, the easier you stand out.` : "Settings: every look setting at default. That is most common, so you blend in."
+      ]
     },
     {
-      caption: "Talk and time",
-      draw: (c2, s) => reading(c2, "OOGA HEAR YOU SPEAK", s.languages[0].toUpperCase(), s.zone.toUpperCase()),
-      note: (s) => `Ooga hear you speak ${s.languages.join(", ")}. Your sun-clock say ${s.zone} (${s.utc}). Your numbers look like ${s.number}, your days like ${s.date}, ${s.calendar} calendar, ${s.hourCycle === "h23" || s.hourCycle === "h24" ? "24-hour" : "12-hour"} clock. Talk and sun-clock together tell any cave roughly where in world you sleep.`
+      caption: "Your machine", title: "OOGA SEE YOUR MACHINE",
+      rows: (s) => [
+        ["CORES", s.cores || HIDDEN_VALUE], ["MEMORY", s.memory ? `${s.memory} GB` : HIDDEN_VALUE],
+        ["GRAPHICS", s.gpu.name ? shortGpu(s.gpu.name) : HIDDEN_VALUE], ["GPU PRINT", s.gpu.hash || HIDDEN_VALUE],
+        ["STORAGE", or(s.storage, (st) => bytesOf(st.quota))], ["NETWORK", s.net ? `${s.net.type} ${s.net.rtt} ms` : HIDDEN_VALUE],
+        ["BATTERY", or(s.battery, (b) => `${Math.round(b.level * 100)}% ${b.charging ? "charging" : "draining"}`)]
+      ],
+      notes: (s) => [
+        (s.cores ? `Brain-rocks: Ooga see you have ${plural(s.cores, "brain-rock", "brain-rocks")} thinking at once` : "Brain-rocks: your browser hide how many brain-rocks you have")
+          + (s.memory ? ` and about ${s.memory} GB of remember-sand. Browser round it so Ooga not count exact.` : ". It not tell your remember-sand either. Sneaky browser, good browser."),
+        s.gpu.name ? `Picture rock: Ooga ask WebGL and it say ${s.gpu.name}. Then Ooga ask many small questions: which extras it do (${s.gpu.extensions}), biggest picture it hold (${s.gpu.maxTexture} pixels), how fine its maths (${s.gpu.precision} bits). Answers mashed together make ${s.gpu.hash}. Same card and driver give same answers, so this sort you into small pile even when the name is hidden.` : "Picture rock: WebGL not answer Ooga. Your graphics card stay secret.",
+        s.storage === null ? `Stash: ${NOT_YET}` : !s.storage ? "Stash: your browser not tell how much it let sites keep." : `Stash: your browser let this cave keep up to ${bytesOf(s.storage.quota)} (Ooga use ${bytesOf(s.storage.usage)}). In Chromium browsers quota grow with your disk, so big number mean big disk. Private windows get a small quota, and that is how sites guess you browse private.`,
+        (s.net ? `Pipe: look like ${s.net.type}, about ${s.net.downlink} Mbit a second and ${s.net.rtt} ms there and back${s.net.saveData ? ", data saver on" : ""}. ` : "Pipe: your browser hide what pipe you are on. ")
+          + (s.battery === null ? `Battery: ${NOT_YET}` : !s.battery ? "Battery stay secret too: Firefox and Safari took it away from pages because level and countdown change slowly, so they could tie two sites you have open together."
+          : s.battery.charging && s.battery.level === 1 ? "Battery say full and charging: plugged in, or no battery at all." : `Battery ${Math.round(s.battery.level * 100)}% and ${s.battery.charging ? "charging" : "draining"}. Level and countdown change slowly, so for a while they can tie two sites you have open together.`)
+      ]
     },
     {
-      caption: "Screen",
-      draw: (c2, s) => reading(c2, "OOGA SEE CAVE WALL", `${s.screenW}X${s.screenH}`, `PIXEL RATIO ${s.ratio}`),
-      note: (s) => `Ooga see your cave wall is ${s.screenW} by ${s.screenH}, each dot ${s.ratio} pixels thick and ${s.depth} colour-bits deep. This window ${s.windowW} by ${s.windowH}. Not many Ooga have exact same wall.`
+      caption: "Your gear", title: "OOGA COUNT YOUR GEAR",
+      rows: (s) => [
+        ["KEYBOARD", s.layout === null ? WAIT : s.layout && s.layout.name ? s.layout.name : HIDDEN_VALUE],
+        ["CAMERAS", or(s.devices, (d) => d.video)], ["MICS", or(s.devices, (d) => d.audio)], ["SPEAKERS", or(s.devices, (d) => d.speaker)],
+        ["PERMITS", or(s.permissions, (p) => `${p.filter((x) => x[1] === "granted").length} yes ${p.filter((x) => x[1] === "denied").length} no`)]
+      ],
+      notes: (s) => [
+        s.layout === null ? `Keyboard: ${NOT_YET}` : !s.layout || !s.layout.name ? "Keyboard: your browser not tell Ooga your layout. Only Chromium browsers answer this one."
+          : `Keyboard: Ooga ask which letter sit on each key and your top row start "${s.layout.keys}". That ${s.layout.name} keyboard. Layout tell cave which country you learn typing in, and no permission needed.`,
+        s.devices === null ? `Eyes and ears: ${NOT_YET}` : !s.devices ? "Eyes and ears: your browser not let Ooga count cameras and mics here."
+          : `Eyes and ears: without asking, Ooga count ${plural(s.devices.video, "camera", "cameras")}, ${plural(s.devices.audio, "microphone", "microphones")} and ${plural(s.devices.speaker, "speaker", "speakers")}. Names stay hidden until you say yes to camera or mic, but the count alone tell cave if you have webcam or headset. Some browsers show only one of each kind until you say yes.`,
+        s.permissions === null ? `Permissions: ${NOT_YET}` : !s.permissions ? "Permissions: your browser not let Ooga ask what you allowed."
+          : `Permissions: Ooga ask, without any prompt, what you already told this site: ${s.permissions.map(([name, state]) => `${name}: ${STATES[state] || "browser won't say"}`).join(", ")}. Every site can ask about itself.`
+      ]
     },
     {
-      caption: "Window and taskbar",
-      draw: (c2, s) => reading(c2, "OOGA SEE TASKBAR", s.bar.toUpperCase(), s.extended === true ? "MORE THAN ONE SCREEN" : s.extended === false ? "ONE SCREEN" : `WINDOW AT ${s.screenX},${s.screenY}`),
-      note: (s) => `Usable wall is ${s.availW} by ${s.availH}, so taskbar or dock take ${s.bar}. Your window sit at ${s.screenX}, ${s.screenY} on it, and browser tabs and buttons take ${s.chromeW} by ${s.chromeH} pixels round the page.`
-        + (s.extended === true ? " Browser also say you have more than one screen." : s.extended === false ? " Browser also say you have one screen." : "")
-        + " Taskbar size and side are a setting few Ooga share."
+      caption: "Your prints", title: "OOGA TAKE YOUR PRINTS",
+      rows: (s) => [
+        ["CANVAS", s.print], ["AUDIO", or(s.audio, (a) => a)], ["FONTS", `${s.fonts.length} of ${FONTS.length}`],
+        ["VOICES", s.voices === null ? WAIT : s.voices ? s.voices.length : HIDDEN_VALUE]
+      ],
+      notes: (s) => [
+        `Canvas print: Ooga paint same secret picture every cave can paint. Your fonts, smoothing and picture rock paint it tiny bit different, so its hash ${s.print} follow you cave to cave, no cookie needed.${s.canvasNoise ? " But your browser sprinkle noise on canvas reads, so this one change: browser fib on purpose. Good browser." : ""}`,
+        s.audio === null ? `Audio print: ${NOT_YET}` : !s.audio ? "Audio print: your browser not let Ooga hum." : `Audio print: Ooga hum a tune inside your browser, never out loud, squash it, and hash what come out: ${s.audio}. Different chips and browsers round the sums different, so this follow you like the canvas print.`,
+        s.fonts.length ? `Fonts: Ooga measure letters in ${FONTS.length} fonts and find ${listOf(s.fonts)}. Fonts tell which system you run, which office, design and coding apps you put on, and which languages. Some browsers now hide every font the system did not ship.` : "Fonts: Ooga find none of the fonts it ask about. Your browser hide them, or your system very plain.",
+        s.voices === null ? `Voices: ${NOT_YET}` : !s.voices || !s.voices.length ? "Voices: no reading-aloud voices. Nothing to tell there."
+          : `Voices: your browser can read aloud in ${plural(s.voices.length, "voice", "voices")}: ${listOf(s.voices.slice(0, 12).map((v) => `${v.name} (${v.lang})`))}${s.voices.length > 12 ? ", and more" : ""}. Voices come with your system and language packs, so the list say a lot about both.`
+      ]
     },
     {
-      caption: "CPU and memory",
-      draw: (c2, s) => reading(c2, "BRAIN-ROCKS", s.cores ? `${s.cores} CORES` : "HIDDEN", s.memory ? `${s.memory} GB MEMORY` : "MEMORY HIDDEN"),
-      note: (s) => (s.cores ? `Ooga see you have ${plural(s.cores, "brain-rock", "brain-rocks")} thinking at once` : "Your browser hide how many brain-rocks you have")
-        + (s.memory ? ` and about ${s.memory} GB of remember-sand. Browser round it so Ooga not count exact.` : ". It not tell Ooga your remember-sand either. Sneaky browser, good browser.")
+      caption: "Your add-ons", title: "OOGA SPOT YOUR ADD-ONS",
+      rows: (s) => [
+        ["WALLETS", s.allWallets === null ? WAIT : s.allWallets.length || "none seen"], ["HELPERS", s.marks.found.length + s.marks.strange.length || "none seen"],
+        ["AD BLOCK", s.blocker === null ? WAIT : s.blocker === "yes" ? "yes" : "none seen"], ["DISGUISES", s.tells.length || "none seen"]
+      ],
+      notes: (s) => [
+        s.allWallets === null ? `Wallets: ${NOT_YET}` : s.allWallets.length
+          ? `Wallets: Ooga see ${listOf(s.allWallets)}. Wallets put themselves on every page so sites can offer to connect, which also tell every site you hold coins. Ooga only look; Ooga never ask a wallet anything.`
+          : "Wallets: Ooga see no wallet on this page. You may have one that hides until you click it, which is the safer way.",
+        s.marks.found.length || s.marks.strange.length
+          ? `Helpers: Ooga see marks of ${listOf(s.marks.found.concat(s.marks.strange.map((t) => `something adding <${t}> tags`)))}. Helpers that change pages leave tracks in them, and any site can read the tracks. Password managers and spell checkers often show only after you click in a box, so try the boxes in Try it, then come back.`
+          : "Helpers: Ooga see no marks from helper add-ons. Some show only after you click in a box, so try the boxes in Try it, then come back.",
+        s.blocker === null ? `Ad block: ${NOT_YET}` : s.blocker === "yes" ? "Ad block: Ooga hide a pretend ad where you no see, and something hide it again. You run an ad blocker. Good for you, but sites can tell, and some nag you for it." : "Ad block: Ooga's pretend ad stay put, so Ooga see no ad blocker. Some blockers skip small sites like this one, so no sure.",
+        s.tells.length ? `Disguises: ${s.tells.join(" ")}` : "Disguises: everything your browser say about itself agree. No disguise Ooga can see.",
+        "Ooga not see every add-on: most hide their own workings from pages and only their tracks show, and some not run on this site at all. None seen not mean none there."
+      ]
     },
     {
-      caption: "GPU",
-      draw: (c2, s) => reading(c2, "OOGA SEE PICTURE ROCK", s.gpu.name ? shortGpu(s.gpu.name).toUpperCase() : "SECRET", "ASKED THROUGH WEBGL"),
-      note: (s) => s.gpu.name ? `Ooga ask WebGL and it say: ${s.gpu.name}. Picture-rock name narrow you down a lot, and any cave can ask it.` : "WebGL not answer Ooga. Your picture rock stay secret."
+      caption: "Your trail and flags", title: "OOGA FOLLOW YOUR TRAIL",
+      rows: (s) => [
+        ["CAME FROM", s.referrer ? s.referrerHost : "straight in"], ["TAB STEPS", s.historyLength], ["ARRIVED", s.arrivalShort],
+        ["DNT", s.dnt ? "on" : "off"], ["GPC", s.gpc ? "on" : "off"], ["COOKIES", s.cookies ? "allowed" : "blocked"]
+      ],
+      notes: (s) => [
+        (s.referrer ? `Trail: you came from ${s.referrer}. The page that send you tell the new one, unless it ask not to.` : "Trail: no page sent you, or it ask browser not to say. Ooga not know where you came from.")
+          + ` This tab hold ${plural(s.historyLength, "step", "steps")} of back-and-forth (Ooga see only the count, not where). You came in by ${s.arrival} and been on island ${s.stay}.`,
+        `Flags: Do Not Track ${s.dnt ? "on" : "off"}, Global Privacy Control ${s.gpc ? "on" : "off"}, cookies ${s.cookies ? "allowed" : "blocked"}, PDF viewer ${s.pdf ? "built in" : "missing"}${s.robot ? ", and browser say a robot drive it" : ""}. Funny thing: few people ask not to be tracked, so the flag itself make you easier to spot. Do Not Track is only a wish; Global Privacy Control has law behind it in some places.`
+      ]
     },
     {
-      caption: "GPU detail",
-      draw: (c2, s) => reading(c2, "OOGA POKE PICTURE ROCK", s.gpu.hash || "SECRET", s.gpu.hash ? `${s.gpu.extensions} EXTRAS ${s.gpu.maxTexture} TEX` : "WEBGL QUIET"),
-      note: (s) => s.gpu.hash ? `Ooga ask picture rock many small questions: which extras it do (${s.gpu.extensions}), biggest picture it hold (${s.gpu.maxTexture} pixels), how fine its maths (${s.gpu.precision} bits), and more. Answers mashed together make ${s.gpu.hash}. Same card and same driver give same answers, so this sort you into small pile even when the name is hidden.` : "WebGL not answer Ooga, so no detail to mash."
+      caption: "Try it", title: "OOGA TRY TRICKS ON YOU", panel: true,
+      rows: (s) => [
+        ["AUTOFILL", `${s.caught.length} caught`], ["TYPING", s.typing.holds < 8 ? "type below" : `${s.typing.hold}/${s.typing.gap} ms`],
+        ["MOUSE", s.mouse.rate ? `${s.mouse.rate} hz` : "wiggle below"]
+      ],
+      notes: (s) => [
+        s.caught.length ? `Hidden autofill: Ooga catch ${s.caught.join(", ")} from boxes you never see. Bad cave take them same way. Ooga only count letters, never read them.`
+          : "Hidden autofill: put your name in Ooga name box and pick your browser's fill-in. Ooga hide email, phone, street, postcode and workplace boxes where you no see. If browser fill them too, Ooga tell you here, counting letters only.",
+        s.typing.holds < 8 ? "Typing rhythm: type the line in the typing box. Ooga time how long you hold each key and the gap before the next one."
+          : `Typing rhythm: you hold each key about ${s.typing.hold} ms and leave about ${s.typing.gap} ms before the next, give or take ${s.typing.wobble} ms. That rhythm stay the same day to day, like your voice. Sites use it to tell people from bots, and to know you again when you log in as someone else. Ooga time only, never which keys.`,
+        !s.mouse.rate ? "Mouse rhythm: wiggle mouse-stick, pen or finger round the pad. Ooga count how often your pointer report and how your hand move."
+          : `Mouse rhythm: your ${s.mouse.kind} report about ${s.mouse.rate} times a second${s.mouse.rate >= 700 ? ": gamer mouse" : s.mouse.rate >= 350 ? ": fast mouse" : ""}. Your hand move about ${s.mouse.speed} pixels a second and turn about ${s.mouse.wobble} degrees between reports${s.mouse.pressure ? `, pen pressing ${Math.round(s.mouse.pressure * 100)}%` : ""}. How a hand speed up, slow down and wobble is like handwriting: bot catchers and fraud checkers watch it.`,
+        "Ooga forget all of it when board close, or now with Forget."
+      ]
     },
     {
-      caption: "Touch",
-      draw: (c2, s) => reading(c2, "OOGA FEEL FOR FINGERS", s.touch ? `${s.touch} FINGERS` : "NO TOUCH", s.coarse ? "POINTER COARSE" : "POINTER FINE"),
-      note: (s) => s.touch ? `Ooga see your screen feel ${plural(s.touch, "finger", "fingers")} at once${s.coarse ? ". Cave know you poke with your hand." : ", but you mostly poke with mouse-stick. Cave know you have touch laptop."}`
-        : "Ooga see no touch. You poke with mouse-stick. Cave know you sit at big computer."
+      caption: "Ooga's verdict", title: "OOGA'S VERDICT",
+      rows: (s) => {
+        const m = meterOf(s);
+        return [["YOUR NAME", s.name], ["CLUES", s.clues], ["TOLD OOGA", m.waiting ? WAIT : `${m.told} of ${m.asked}`], ["REFUSED", m.waiting ? WAIT : m.asked - m.told]];
+      },
+      notes: (s) => {
+        const m = meterOf(s);
+        return [
+          `Ooga name for you: Ooga mash ${s.clues} clues from these pages into one name, ${s.name}. No cookie, no login, nothing stored, yet next time you come in this browser Ooga could work out the same name. Real trackers do exactly this, then hold it up against millions of other visitors to see how rare you are. Ooga have no server and no list, so Ooga cannot say how rare.`,
+          m.waiting ? `Leak meter: ${NOT_YET}` : `Leak meter: Ooga ask ${m.asked} things a browser may refuse, and yours tell ${m.told}.${m.hidden.length ? ` It keep back ${listOf(m.hidden)}.` : " It keep back nothing!"} Try a stricter browser or setting and watch the number drop.`
+        ];
+      }
     },
     {
-      caption: "Keyboard layout",
-      draw: (c2, s) => !s.layout || !s.layout.name ? waiting(c2, "OOGA PEEK AT KEYBOARD", s.layout === null ? null : false) : reading(c2, "OOGA PEEK AT KEYBOARD", s.layout.name.toUpperCase(), "KEYBOARD LAYOUT"),
-      note: (s) => s.layout === null ? NOT_YET : !s.layout || !s.layout.name ? "Your browser not tell Ooga keyboard layout. Only Chromium browsers answer this one."
-        : `Ooga ask which letter sit on each key and your top row start "${s.layout.keys}". That ${s.layout.name} keyboard. Layout tell cave which country you learn typing in, and no permission needed.`
+      caption: "Ooga's own honesty", title: "WHAT OOGA CALL AND KEEP",
+      rows: (s) => [
+        ["CALLED", plural(s.hosts.length, "site", "sites")], ["KEPT", s.stash ? plural(s.stash.length, "thing", "things") : HIDDEN_VALUE],
+        ["COOKIES", s.cookieCount ? s.cookieCount : "none"], ["ABOUT YOU", "nothing sent"]
+      ],
+      notes: (s) => [
+        `Calls: your browser keep a list of what this page loaded, and Ooga read it out: ${s.hosts.length ? listOf(s.hosts) : "nothing from other sites yet"}. That is the Bitcoin feeds and the island's stats board, asking for public data; none of it carry anything about you. Live connections are not on that list: the mempool.space and Coinbase price sockets when they are on.`,
+        !s.stash ? "Kept: your browser not let Ooga read this site's storage." : s.stash.length
+          ? `Kept: in your browser only, this address keep ${listOf(s.stash.map(([key, size, ours]) => `${key} (${bytesOf(size)}${ours ? "" : ", another app on this address"})`))}. Ooga's own are your banana handle and message, game saves, settings and a copy of the chain feed. Clear site data in your browser to wipe them.`
+          : "Kept: this address keep nothing in your browser yet.",
+        `Cookies: ${s.cookieCount ? `this address hold ${plural(s.cookieCount, "cookie", "cookies")}.` : "Ooga set no cookies."} Signing in on the Cloudflare site is the only time Ooga keep anything on a server, and you can delete it.`
+      ]
     },
     {
-      caption: "Cameras and mics",
-      draw: (c2, s) => !s.devices ? waiting(c2, "OOGA COUNT EYES EARS", s.devices) : reading(c2, "OOGA COUNT EYES EARS", `${s.devices.video} CAM ${s.devices.audio} MIC`, plural(s.devices.speaker, "SPEAKER", "SPEAKERS").toUpperCase()),
-      note: (s) => s.devices === null ? NOT_YET : !s.devices ? "Your browser not let Ooga count cameras and mics here."
-        : `Without asking, Ooga count ${plural(s.devices.video, "camera", "cameras")}, ${plural(s.devices.audio, "microphone", "microphones")} and ${plural(s.devices.speaker, "speaker", "speakers")}. Names stay hidden until you say yes to camera or mic, but the count alone tell cave if you have webcam or headset. Some browsers show only one of each kind until you say yes.`
+      caption: "How to leak less", title: "OOGA TIPS TO LEAK LESS",
+      rows: () => [["BROWSER", "Brave, Tor, Firefox"], ["BLOCKER", "uBlock Origin"], ["COOKIES", "block third-party"], ["ADD-ONS", "few, on click"], ["ALLOWED", "check often"], ["AUTOFILL", "on click only"]],
+      notes: () => [
+        "Browser: Tor Browser make everyone look the same. Brave sprinkle noise on prints by default. Firefox has strict tracking protection, and a fingerprint shield (privacy.resistFingerprinting) for the brave of heart.",
+        "Blocker: uBlock Origin block trackers before they load. It work in Firefox fully; Chrome's newer rules limit it to uBlock Origin Lite.",
+        "Cookies: block third-party cookies in settings, so a tracker on one site cannot follow you to the next.",
+        "Add-ons: keep few, and set the rest to run only when you click them (in Chrome: site access, on click). That stop wallets and helpers announcing themselves to every site.",
+        "Allowed: look over site settings now and then, and take back location, camera, mic and notifications from sites you no longer use.",
+        "Autofill: let your password manager fill only when you click, and only into boxes you can see.",
+        "Updates: keep your browser updated. Old tricks keep coming back, and updates close them."
+      ]
     },
     {
-      caption: "Permissions",
-      draw: (c2, s) => !s.permissions ? waiting(c2, "OOGA ASK WHAT YOU ALLOW", s.permissions)
-        : reading(c2, "OOGA ASK WHAT YOU ALLOW", `${s.permissions.filter((p) => p[1] === "granted").length} SAID YES`, `${s.permissions.filter((p) => p[1] === "denied").length} SAID NO`),
-      note: (s) => s.permissions === null ? NOT_YET : !s.permissions ? "Your browser not let Ooga ask what you allowed."
-        : `Ooga ask, without any prompt, what you already told this site: ${s.permissions.map(([name, state]) => `${name}: ${STATES[state] || "browser won't say"}`).join(", ")}. Every site can ask about itself. What you once allowed or blocked is one more clue.`
-    },
-    {
-      caption: "Storage",
-      draw: (c2, s) => !s.storage ? waiting(c2, "OOGA MEASURE STASH", s.storage) : reading(c2, "OOGA MEASURE STASH", bytesOf(s.storage.quota), "STORAGE QUOTA"),
-      note: (s) => s.storage === null ? NOT_YET : !s.storage ? "Your browser not tell Ooga how much it let sites keep."
-        : `Your browser let this cave keep up to ${bytesOf(s.storage.quota)} (Ooga use ${bytesOf(s.storage.usage)}). In Chromium browsers quota grow with your disk, so big number mean big disk. Private windows get a small quota, and that is how sites guess you browse private.`
-    },
-    {
-      caption: "Network and battery",
-      draw: (c2, s) => !s.battery && !s.net ? waiting(c2, "OOGA SEE PIPE AND POWER", s.battery)
-        : reading(c2, "OOGA SEE PIPE AND POWER", s.battery ? `${Math.round(s.battery.level * 100)}%` : s.battery === null ? LOOKING : "NO BATTERY", s.net ? `${s.net.type} ${s.net.rtt} MS`.toUpperCase() : "PIPE HIDDEN"),
-      note: (s) => (s.net ? `Your pipe look like ${s.net.type}, about ${s.net.downlink} Mbit a second and ${s.net.rtt} ms there and back${s.net.saveData ? ", data saver on" : ""}. ` : "Your browser hide what pipe you are on. ")
-        + (s.battery === null ? NOT_YET : !s.battery ? "It keep battery secret too. Firefox and Safari took battery away from pages because level and countdown change slowly, so for a while they could tie two sites you have open together."
-          : s.battery.charging && s.battery.level === 1 ? "Battery say full and charging: plugged in, or no battery at all."
-          : `Battery ${Math.round(s.battery.level * 100)}% and ${s.battery.charging ? "charging" : "draining"}. Level and countdown change slowly, so for a while they can tie two sites you have open together.`)
-    },
-    {
-      caption: "Settings",
-      draw: (c2, s) => reading(c2, "OOGA SEE YOUR SETTINGS", `${s.prefs.length} SET`, "OUT OF THE ORDINARY"),
-      note: (s) => s.prefs.length ? `Ooga see: ${listOf(s.prefs)}. Each switch you flip split the crowd in two, so the rarer the switch, the easier you stand out.` : "Ooga see every look setting at default. That is most common, so you blend in."
-    },
-    {
-      caption: "Privacy flags",
-      draw: (c2, s) => reading(c2, "OOGA SEE YOUR FLAGS", s.dnt || s.gpc ? "FLAGS ON" : "FLAGS OFF", `DNT ${s.dnt ? "ON" : "OFF"} GPC ${s.gpc ? "ON" : "OFF"}`),
-      note: (s) => `Do Not Track ${s.dnt ? "on" : "off"}, Global Privacy Control ${s.gpc ? "on" : "off"}. Cookies ${s.cookies ? "allowed" : "blocked"}, PDF viewer ${s.pdf ? "built in" : "missing"}${s.robot ? ", and browser say a robot drive it" : ""}. Funny thing: few people ask not to be tracked, so the flag itself make you easier to spot. Do Not Track is only a wish; Global Privacy Control has law behind it in some places.`
-    },
-    {
-      caption: "Where you came from",
-      draw: (c2, s) => reading(c2, "OOGA SEE YOUR TRAIL", s.referrer ? s.referrerHost.toUpperCase() : "STRAIGHT IN", plural(s.historyLength, "STEP IN TAB", "STEPS IN TAB")),
-      note: (s) => (s.referrer ? `Ooga see you came from ${s.referrer}. The page that send you tell the new one, unless it ask not to.` : "No page sent you, or it ask browser not to say. Ooga not know where you came from.")
-        + ` This tab hold ${plural(s.historyLength, "step", "steps")} of back-and-forth (Ooga see only the count, not where). You came in by ${s.arrival} and been on island ${s.stay}.`
-    },
-    {
-      caption: "Canvas print",
-      draw: (c2, s) => reading(c2, "OOGA PAINT PICTURE", s.print, "YOUR CANVAS PRINT"),
-      note: (s) => `Ooga paint same secret picture every cave can paint. Your fonts, smoothing and picture rock paint it tiny bit different, so its hash ${s.print} follow you cave to cave, no cookie needed. If hash change every time you open this, your browser fib to Ooga on purpose. Good browser.`
-    },
-    {
-      caption: "Audio print",
-      draw: (c2, s) => !s.audio ? waiting(c2, "OOGA HUM QUIET TUNE", s.audio === null ? null : false) : reading(c2, "OOGA HUM QUIET TUNE", s.audio, "YOUR SOUND PRINT"),
-      note: (s) => s.audio === null ? NOT_YET : !s.audio ? "Your browser not let Ooga hum." : `Ooga hum a tune inside your browser, never out loud, squash it, and hash what come out: ${s.audio}. Different chips and browsers round the sums different, so this follow you like the canvas print. If it change every time, your browser fib on purpose.`
-    },
-    {
-      caption: "Fonts",
-      draw: (c2, s) => reading(c2, "OOGA SNIFF FONTS", `${s.fonts.length} FONTS`, `OF ${FONTS.length} OOGA ASKED`),
-      note: (s) => s.fonts.length ? `Ooga measure letters in ${FONTS.length} fonts and find you have ${listOf(s.fonts)}. Fonts tell which system you run, which office, design and coding apps you put on, and which languages. Some browsers now hide every font the system did not ship.` : "Ooga find none of the fonts it ask about. Your browser hide them, or your system very plain."
-    },
-    {
-      caption: "Voices",
-      draw: (c2, s) => !s.voices ? waiting(c2, "OOGA HEAR TALKING ROCKS", s.voices)
-        : reading(c2, "OOGA HEAR TALKING ROCKS", plural(s.voices.length, "VOICE", "VOICES"), plural(new Set(s.voices.map((v) => v.lang)).size, "LANGUAGE", "LANGUAGES")),
-      note: (s) => s.voices === null ? NOT_YET : !s.voices || !s.voices.length ? "Ooga hear no reading-aloud voices. Nothing to tell there."
-        : `Your browser can read aloud in ${plural(s.voices.length, "voice", "voices")}: ${listOf(s.voices.slice(0, 12).map((v) => `${v.name} (${v.lang})`))}${s.voices.length > 12 ? ", and more" : ""}. Voices come with your system and language packs, so the list say a lot about both.`
-    },
-    {
-      caption: "Hidden autofill", panel: "form",
-      draw: (c2, s) => reading(c2, "OOGA HIDE BOXES", `${s.caught.length} CAUGHT`, "HIDDEN BOXES FILLED"),
-      note: (s) => s.caught.length
-        ? `Ooga catch ${s.caught.join(", ")} from boxes you never see. Bad cave take them same way. Ooga only count letters, never read them, and forget all when board close. Press Forget to clear now.`
-        : "Put your name in Ooga box and pick your browser's fill-in. Ooga hide email, phone, street, postcode and workplace boxes where you no see. If browser fill them too, Ooga tell you here. Ooga only count letters, never read them."
-    },
-    {
-      caption: "Typing rhythm", panel: "typing",
-      draw: (c2, s) => s.typing.holds < 8 ? reading(c2, "OOGA HEAR FINGERS", "TYPE...", "IN OOGA BOX")
-        : reading(c2, "OOGA HEAR FINGERS", `${s.typing.hold}/${s.typing.gap} MS`, "HOLD / GAP"),
-      note: (s) => s.typing.holds < 8
-        ? "Type the line in Ooga box. Ooga time how long you hold each key down and the gap before the next one."
-        : `You hold each key about ${s.typing.hold} ms and leave about ${s.typing.gap} ms before the next, give or take ${s.typing.wobble} ms. That rhythm stay the same day to day, like your voice. Sites use it to tell people from bots, and to know you again when you log in as someone else. Ooga time only, never which keys, and forget when board close.`
-    },
-    {
-      caption: "Mouse rhythm", panel: "mouse",
-      draw: (c2, s) => !s.mouse.rate ? reading(c2, "OOGA FEEL MOUSE-STICK", "WIGGLE...", "IN OOGA PAD")
-        : reading(c2, "OOGA FEEL MOUSE-STICK", `${s.mouse.rate} HZ`, `${s.mouse.kind} ${s.mouse.speed} PX/S`.toUpperCase()),
-      note: (s) => !s.mouse.rate ? "Wiggle mouse-stick, pen or finger round Ooga pad. Ooga count how often your pointer report and how your hand move."
-        : `Your ${s.mouse.kind} report about ${s.mouse.rate} times a second${s.mouse.rate >= 700 ? ": gamer mouse" : s.mouse.rate >= 350 ? ": fast mouse" : ""}. Your hand move about ${s.mouse.speed} pixels a second and turn about ${s.mouse.wobble} degrees between reports${s.mouse.pressure ? `, pen pressing ${Math.round(s.mouse.pressure * 100)}%` : ""}. How a hand speed up, slow down and wobble is like handwriting: bot catchers and fraud checkers watch it on every page. Ooga forget when board close.`
-    },
-    {
-      caption: "Ooga name for you",
-      draw: (c2, s) => reading(c2, "OOGA NAME FOR YOU", s.name, `FROM ${s.clues} CLUES`),
-      note: (s) => `Ooga mash ${s.clues} clues from these pages into one name: ${s.name}. No cookie, no login, nothing stored, yet next time you come in this browser Ooga could work out the same name. Real trackers do exactly this, then hold it up against millions of other visitors to see how rare you are. Ooga have no server and no list, so Ooga cannot say how rare. Ooga forget it now.`
-    },
-    {
-      caption: "Ooga won't: the network",
-      draw: (c2) => reading(c2, "OOGA WON'T PEEK", "YOUR IP", "NEEDS THE NETWORK"),
-      note: () => "Ooga cave make no calls about you, so Ooga skip leaks that need one:\n- Your public IP, and the town and internet company it point to.\n- WebRTC, which can show your home network address (it announce itself on your network to find it).\n- How your browser talk to servers: TLS and header order, which servers fingerprint from their side.\n- Which name server you use (DNS leak), and timing to servers round the world to guess where you are.\n- Supercookies hidden in cache tags, HSTS and favicons.\n- Poking ports on your home network and own computer to find your router and running programs."
-    },
-    {
-      caption: "Ooga won't: ask you",
-      draw: (c2) => reading(c2, "OOGA WON'T PEEK", "ASK FIRST", "NEEDS YOUR YES"),
-      note: () => "These pop up a question before a page get them, and Ooga not ask:\n- Exact location from GPS or Wi-Fi.\n- What is on your clipboard.\n- Your camera picture and microphone sound, and your screen.\n- Bluetooth, USB, serial and game-controller gear, and MIDI instruments.\n- Notifications, which also prove you came back.\nSay yes only to sites you trust, and check what you allowed in site settings."
-    },
-    {
-      caption: "Ooga won't: old tricks",
-      draw: (c2) => reading(c2, "OOGA WON'T PEEK", "OLD TRICKS", "BLOCKED OR PATCHED"),
-      note: () => "Some leaks browsers fixed, or Ooga's own rules block:\n- Reading your history by colouring visited links (patched).\n- Spotting your browser add-ons by loading their files.\n- Timing what is in your cache to see which sites you visited.\n- Third-party cookies that follow you between sites, now split per site or blocked in most browsers.\nOld tricks keep coming back in new shapes, so keep your browser updated."
-    },
-    {
-      caption: "Ooga won't: watch you",
-      draw: (c2) => reading(c2, "OOGA WON'T PEEK", "NO SPYING", "ONLY WHEN YOU LOOK"),
-      note: () => "Ooga read only when you open this board. Plenty of sites watch all the time:\n- When you switch tabs, go idle or leave the window.\n- How far you scroll and where your pointer rest.\n- Session replay: every move and keypress recorded and played back later.\n- Typing and mouse rhythm on every page, quietly, not just in a box like Ooga's.\nPrivacy add-ons and strict browser modes block many of these."
+      caption: "What Ooga won't do", title: "OOGA WON'T PEEK AT",
+      rows: () => [["NETWORK", "6 leaks"], ["ASK FIRST", "5 leaks"], ["OLD TRICKS", "4 leaks"], ["WATCHING", "4 leaks"]],
+      notes: () => [
+        "Need the network: Ooga make no calls about you, so Ooga skip your public IP and the town and internet company it point to; WebRTC, which can show your home network address; how your browser talk to servers (TLS and header order), which servers fingerprint from their side; your name server (DNS leak) and timing to servers round the world; supercookies hidden in cache tags, HSTS and favicons; and poking ports on your home network to find your router and running programs.",
+        "Ask first: these pop up a question before a page get them, and Ooga not ask: exact location from GPS or Wi-Fi; your clipboard; your camera, microphone and screen; Bluetooth, USB, serial and game-controller gear; and notifications, which also prove you came back. Say yes only to sites you trust.",
+        "Old tricks: reading your history by colouring visited links (patched); spotting add-ons by loading their files (blocked by this site's own rules); timing your cache to see which sites you visited; and third-party cookies that follow you between sites, now split per site or blocked in most browsers.",
+        "Watching: Ooga read only when you open this board. Plenty of sites watch all the time: when you switch tabs or go idle, how far you scroll, session replay of every move and keypress, and typing and mouse rhythm on every page, quietly. Privacy add-ons and strict browser modes block many of these."
+      ]
     }
   ];
   // The clues the name is made from: what stays put between visits, not the window, the battery or the trail.
@@ -360,18 +436,27 @@
     (s) => s.hints && `${s.hints.platformVersion}/${s.hints.architecture}`, (s) => s.layout && s.layout.name,
     (s) => s.devices && `${s.devices.video}/${s.devices.audio}/${s.devices.speaker}`, (s) => s.prefs.join(","), (s) => s.print,
     (s) => s.audio, (s) => s.fonts.join(","), (s) => s.voices && s.voices.length, (s) => s.number + s.date,
-    (s) => `${s.dnt}/${s.gpc}/${s.pdf}`];
-  const create = ({ form, typing, mouse }) => {
+    (s) => `${s.dnt}/${s.gpc}/${s.pdf}`, (s) => s.allWallets && s.allWallets.join(","), (s) => s.marks.found.join(","), (s) => s.blocker === "yes"];
+  const create = (panel) => {
     const canvas = document.createElement("canvas");
     canvas.width = W;
     canvas.height = H;
     const c2 = canvas.getContext("2d", { alpha: false });
-    const typed = typing.querySelector("input"), pad = mouse.querySelector(".leak-pad");
-    const seen = { gpu: readGpu(), caught: [], typing: { holds: 0, hold: 0, gap: 0, wobble: 0 }, mouse: { rate: 0, kind: "", speed: 0, wobble: 0, pressure: 0 } };
+    const form = panel.querySelector("form"), typed = panel.querySelector(".leak-typing input"), pad = panel.querySelector(".leak-pad");
+    const seen = { gpu: readGpu(), marks: { found: [], strange: [] }, caught: [], typing: { holds: 0, hold: 0, gap: 0, wobble: 0 }, mouse: { rate: 0, kind: "", speed: 0, wobble: 0, pressure: 0 } };
     // Raw rhythm sums, kept apart from what the pages show.
     const keys = { down: new Map(), lastUp: 0, holds: 0, holdSum: 0, gaps: 0, gapSum: 0, gapSq: 0 };
     const GAPS = 256, pointer = { gaps: new Float64Array(GAPS), sorted: new Float64Array(GAPS), count: 0, last: 0, x: 0, y: 0, angle: NaN, dist: 0, time: 0, turn: 0, turns: 0, shown: 0 };
-    let opening = 0, voiceWait = 0, voiceHeard = null;
+    // What an opening left waiting (timers, listeners, the pretend ad), undone by the next opening and by dispose.
+    const undo = [];
+    let opening = 0;
+    const stop = () => {
+      while (undo.length) undo.pop()();
+    };
+    const wait = (ms) => new Promise((resolve) => {
+      const id = setTimeout(resolve, ms);
+      undo.push(() => clearTimeout(id));
+    });
     const forget = () => {
       form.reset();
       typed.value = "";
@@ -384,12 +469,6 @@
       seen.mouse.rate = seen.mouse.speed = seen.mouse.wobble = seen.mouse.pressure = 0;
       seen.mouse.kind = "";
     };
-    const stopVoices = () => {
-      clearTimeout(voiceWait);
-      if (voiceHeard) speechSynthesis.removeEventListener("voiceschanged", voiceHeard);
-      voiceWait = 0;
-      voiceHeard = null;
-    };
     const name = () => {
       let clues = 0, all = "";
       for (const clue of CLUES) {
@@ -401,29 +480,30 @@
       seen.clues = clues;
       seen.name = hashText(all);
     };
+    const chapter = () => CHAPTERS[board.index];
     const board = {
       title: "Leak Check", help: "Ooga look only in your browser. Nothing stored, nothing sent.",
-      canvas, count: PAGES.length, index: 0, version: 0, caption: "", note: "",
-      get panel() {
-        const panel = PAGES[board.index].panel;
-        return panel === "form" ? form : panel === "typing" ? typing : panel === "mouse" ? mouse : null;
-      },
+      canvas, count: CHAPTERS.length, index: 0, version: 0, caption: "", note: "",
+      get panel() { return chapter().panel ? panel : null; },
       go(i) {
         board.index = i;
         board.draw();
       },
       draw() {
-        const page = PAGES[board.index];
+        const page = chapter();
+        // Helpers often mark the page only once a box is clicked, so their tracks are looked for again on the way back.
+        if (page.caption === "Your add-ons") seen.marks = marksOf();
         name();
         c2.fillStyle = BG;
         c2.fillRect(0, 0, W, H);
-        page.draw(c2, seen);
-        board.caption = page.caption;
-        board.note = page.note(seen);
+        table(c2, page.title, page.rows(seen));
+        board.caption = `${page.caption} · ${board.index + 1} of ${CHAPTERS.length}`;
+        board.note = page.notes(seen).join("\n\n");
         board.version++;
       },
       // Everything is read here, once an opening, and never in a frame. Late answers redraw the page they land on.
       open() {
+        stop();
         const ticket = ++opening;
         const later = (key, promise) => {
           seen[key] = null;
@@ -453,7 +533,7 @@
         seen.availW = screen.availWidth;
         seen.availH = screen.availHeight;
         const barH = screen.height - screen.availHeight, barW = screen.width - screen.availWidth;
-        seen.bar = barH > 0 ? `${barH} px at the ${screen.availTop > 0 ? "top" : "bottom"}` : barW > 0 ? `${barW} px at the ${screen.availLeft > 0 ? "left" : "right"}` : "nothing";
+        seen.bar = barH > 0 ? `${barH} px ${screen.availTop > 0 ? "top" : "bottom"}` : barW > 0 ? `${barW} px ${screen.availLeft > 0 ? "left" : "right"}` : "none";
         seen.extended = typeof screen.isExtended === "boolean" ? screen.isExtended : null;
         seen.screenX = window.screenX;
         seen.screenY = window.screenY;
@@ -476,14 +556,42 @@
         const connection = navigator.connection;
         seen.net = connection && connection.effectiveType ? { type: connection.effectiveType, downlink: connection.downlink, rtt: connection.rtt, saveData: connection.saveData } : null;
         seen.referrer = document.referrer;
-        seen.referrerHost = "";
         try { seen.referrerHost = new URL(document.referrer).host; } catch { seen.referrerHost = document.referrer; }
         seen.historyLength = history.length;
         const entry = performance.getEntriesByType("navigation")[0], minutes = Math.floor(performance.now() / 60000);
+        seen.arrivalShort = !entry ? "unknown" : entry.type === "reload" ? "reload" : entry.type === "back_forward" ? "back/forward" : "link or typed";
         seen.arrival = !entry ? "a way Ooga not see" : entry.type === "reload" ? "reloading" : entry.type === "back_forward" ? "going back or forward" : "following a link or typing the address";
         seen.stay = minutes < 1 ? "less than a minute" : plural(minutes, "minute", "minutes");
         seen.print = canvasPrint();
+        seen.canvasNoise = canvasNoise();
         seen.fonts = readFonts();
+        seen.marks = marksOf();
+        // What this page itself called and keeps: the browser's own list of loads, and this address's storage.
+        const hosts = new Set();
+        for (const load of performance.getEntriesByType("resource")) {
+          try {
+            const url = new URL(load.name);
+            if (/^https?:$/.test(url.protocol) && url.host !== location.host) hosts.add(url.host);
+          } catch { /* a load the browser named without an address */ }
+        }
+        seen.hosts = [...hosts];
+        try {
+          seen.stash = [];
+          for (let i = 0; i < localStorage.length; i++) {
+            const key = localStorage.key(i);
+            seen.stash.push([key, (localStorage.getItem(key) || "").length, /^ooga/.test(key)]);
+          }
+        } catch { seen.stash = false; }
+        seen.cookieCount = document.cookie ? document.cookie.split(";").length : 0;
+        // Disguises: what the browser says about itself against what it is.
+        const engine = engineOf(), claimed = claimedEngineOf(seen.os, seen.browser), platform = navigator.platform || "", fits = PLATFORMS[seen.os];
+        seen.shield = engine === "Gecko" && /^(UTC|Etc\/UTC)$/.test(seen.zone) && seen.screenW === seen.windowW && seen.screenH === seen.windowH;
+        seen.tells = [];
+        if (navigator.brave) seen.tells.push("You ride Brave, which wear Chrome's name on purpose to hide in the crowd.");
+        if (claimed && claimed !== engine) seen.tells.push(`Your browser say it is ${seen.browser}, but under the fur it run the ${engine} engine: something change its name tag.`);
+        if (fits && !fits.test(platform)) seen.tells.push(`Your browser say ${seen.os}, but another part of it say ${platform || "nothing"}: something change its story.`);
+        if (seen.canvasNoise) seen.tells.push("Canvas reads come back sprinkled with noise, so something fib about your prints on purpose.");
+        if (seen.shield) seen.tells.push("Time zone say UTC and screen exactly match window: look like Firefox's fingerprint shield.");
         later("hints", navigator.userAgentData && navigator.userAgentData.getHighEntropyValues
           ? ask(() => navigator.userAgentData.getHighEntropyValues(["platformVersion", "architecture", "bitness", "model", "fullVersionList", "wow64"])) : Promise.resolve(false));
         later("layout", navigator.keyboard && navigator.keyboard.getLayoutMap ? ask(() => navigator.keyboard.getLayoutMap()).then(layoutOf) : Promise.resolve(false));
@@ -496,29 +604,51 @@
         later("battery", navigator.getBattery ? ask(() => navigator.getBattery()).then((b) => ({ level: b.level, charging: b.charging })) : Promise.resolve(false));
         later("audio", audioPrint());
         // Chromium fills its voice list a moment after the first ask.
-        stopVoices();
         later("voices", !window.speechSynthesis ? Promise.resolve(false) : new Promise((resolve) => {
           const now = speechSynthesis.getVoices();
-          if (now.length) return resolve(now.map((v) => ({ name: v.name, lang: v.lang })));
-          const hear = () => {
-            stopVoices();
-            resolve(speechSynthesis.getVoices().map((v) => ({ name: v.name, lang: v.lang })));
-          };
-          voiceHeard = hear;
-          speechSynthesis.addEventListener("voiceschanged", hear);
-          voiceWait = setTimeout(hear, 1500);
+          if (now.length) return resolve(now);
+          const heard = () => resolve(speechSynthesis.getVoices());
+          speechSynthesis.addEventListener("voiceschanged", heard);
+          undo.push(() => speechSynthesis.removeEventListener("voiceschanged", heard));
+          wait(1500).then(heard);
+        }).then((list) => list.map((v) => ({ name: v.name, lang: v.lang }))));
+        // Ethereum wallets answer a shared call (EIP-6963) with their name; the answers come within a moment.
+        const announced = new Map(), hear = (e) => {
+          const info = e.detail && e.detail.info;
+          if (info && info.name) announced.set(info.rdns || info.name, info.name);
+        };
+        window.addEventListener("eip6963:announceProvider", hear);
+        undo.push(() => window.removeEventListener("eip6963:announceProvider", hear));
+        window.dispatchEvent(new Event("eip6963:requestProvider"));
+        later("allWallets", wait(400).then(() => {
+          window.removeEventListener("eip6963:announceProvider", hear);
+          const all = walletsOf();
+          for (const wallet of announced.values()) if (!all.some((w) => w.toLowerCase() === wallet.toLowerCase())) all.push(wallet);
+          return all;
+        }));
+        // A pretend ad off screen: a blocker's hiding rules hide it within a moment.
+        const bait = document.createElement("div");
+        bait.className = "adsbox ad-banner textads banner-ads leak-bait";
+        document.body.append(bait);
+        undo.push(() => bait.remove());
+        later("blocker", wait(250).then(() => {
+          const style = getComputedStyle(bait), hidden = bait.offsetHeight === 0 || style.display === "none" || style.visibility === "hidden";
+          bait.remove();
+          return hidden ? "yes" : "no";
         }));
         forget();
         board.draw();
       },
-      onClose: forget,
-      dispose() {
+      onClose() {
+        stop();
         opening++;
-        stopVoices();
         forget();
+      },
+      dispose() {
+        board.onClose();
         form.removeEventListener("input", onInput);
         form.removeEventListener("submit", onSubmit);
-        form.removeEventListener("click", onForget);
+        panel.removeEventListener("click", onForget);
         typed.removeEventListener("keydown", onKeyDown);
         typed.removeEventListener("keyup", onKeyUp);
         pad.removeEventListener("pointermove", onPointerMove);
@@ -530,7 +660,7 @@
         const n = form.elements[field].value.length;
         if (n) seen.caught.push(`${HIDDEN[field]} (${plural(n, "letter", "letters")})`);
       }
-      if (PAGES[board.index].panel === "form") board.draw();
+      if (chapter().panel) board.draw();
     };
     const onSubmit = (e) => e.preventDefault();
     const onForget = (e) => {
@@ -565,7 +695,7 @@
       t.hold = Math.round(keys.holdSum / keys.holds);
       t.gap = Math.round(mean);
       t.wobble = keys.gaps ? Math.round(Math.sqrt(Math.max(0, keys.gapSq / keys.gaps - mean * mean))) : 0;
-      if (PAGES[board.index].panel === "typing") board.draw();
+      if (chapter().panel) board.draw();
     };
     // The pointer: every raw sample the browser coalesced, its interval (pauses left out), distance and turning.
     const sample = (p) => {
@@ -605,11 +735,11 @@
       m.rate = Math.round(1000 / sorted[n >> 1]);
       m.speed = Math.round(pointer.dist / pointer.time * 1000);
       m.wobble = pointer.turns ? Math.round(pointer.turn / pointer.turns * 180 / Math.PI) : 0;
-      if (PAGES[board.index].panel === "mouse") board.draw();
+      if (chapter().panel) board.draw();
     };
     form.addEventListener("input", onInput);
     form.addEventListener("submit", onSubmit);
-    form.addEventListener("click", onForget);
+    panel.addEventListener("click", onForget);
     typed.addEventListener("keydown", onKeyDown);
     typed.addEventListener("keyup", onKeyUp);
     pad.addEventListener("pointermove", onPointerMove);

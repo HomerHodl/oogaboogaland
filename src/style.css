@@ -3128,6 +3128,15 @@ body[data-active-scene="arcade"] .magazine-hud {
   user-select: none;
 }
 
+/* The Leak Check's pretend ad, off screen for the moment it takes to see whether an ad blocker hides it. */
+.leak-bait {
+  position: absolute;
+  top: 0;
+  left: -10000px;
+  width: 10px;
+  height: 10px;
+}
+
 .leak-hidden {
   position: absolute;
   top: 0;

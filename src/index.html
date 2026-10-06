@@ -1506,25 +1506,23 @@ Then run npm run build and ONLY=characters node test/run.mjs.</pre>
       <div class="board-dots" id="board-dots" aria-label="Pages"></div>
       <p class="board-note" id="board-note" hidden></p>
       <div class="board-panel" id="board-panel" hidden>
-        <!-- The Leak Check's demos. Autofill: the boxes after the name sit off screen; nothing here is ever submitted.
-             Typing and mouse: only timings and motion are measured, never which keys. The board empties all of them on
-             Forget and on close. -->
-        <form class="leak-form" id="leak-form" autocomplete="on" hidden>
-          <label class="field"><span>Ooga name box</span><input name="name" type="text" maxlength="60" autocomplete="name"></label>
-          <div class="leak-hidden" aria-hidden="true">
-            <input name="email" type="email" tabindex="-1" autocomplete="email">
-            <input name="tel" type="tel" tabindex="-1" autocomplete="tel">
-            <input name="street" type="text" tabindex="-1" autocomplete="street-address">
-            <input name="postal" type="text" tabindex="-1" autocomplete="postal-code">
-            <input name="org" type="text" tabindex="-1" autocomplete="organization">
-          </div>
-          <div class="actions leak-actions"><button type="button" class="leak-forget">Forget</button></div>
-        </form>
-        <div class="leak-typing" id="leak-typing" hidden>
-          <label class="field"><span>Type this: ooga booga banana ooga booga banana</span><input type="text" maxlength="80" autocomplete="off" spellcheck="false"></label>
-        </div>
-        <div class="leak-mouse" id="leak-mouse" hidden>
+        <!-- The Leak Check's Try it chapter. Autofill: the boxes after the name sit off screen; nothing here is ever
+             submitted. Typing and mouse: only timings and motion are measured, never which keys. The board empties all
+             of it on Forget and on close. -->
+        <div class="leak-try" id="leak-try" hidden>
+          <form class="leak-form" autocomplete="on">
+            <label class="field"><span>Ooga name box</span><input name="name" type="text" maxlength="60" autocomplete="name"></label>
+            <div class="leak-hidden" aria-hidden="true">
+              <input name="email" type="email" tabindex="-1" autocomplete="email">
+              <input name="tel" type="tel" tabindex="-1" autocomplete="tel">
+              <input name="street" type="text" tabindex="-1" autocomplete="street-address">
+              <input name="postal" type="text" tabindex="-1" autocomplete="postal-code">
+              <input name="org" type="text" tabindex="-1" autocomplete="organization">
+            </div>
+          </form>
+          <label class="field leak-typing"><span>Typing box: ooga booga banana ooga booga banana</span><input type="text" maxlength="80" autocomplete="off" spellcheck="false"></label>
           <div class="leak-pad">Wiggle mouse, pen or finger in here</div>
+          <div class="actions leak-actions"><button type="button" class="leak-forget">Forget</button></div>
         </div>
       </div>
       <p class="help" id="board-help"></p>
