@@ -986,7 +986,7 @@
         "core": 55040
       }
     ],
-    "countNotes": "Cached mesh counts exclude the shared384-face factory emblem; browser guide totals include it. Geometry builds in create; first explicit far render and startup marks include warm-up costs. Fine already warmed in initial scene draw; near sample checks subsequent frame gaps, not a standalone first fine upload.",
-    "limitations": "Single serial synthetic local Chrome comparison; phone is desktop emulation, not physical low-end hardware. Canvas retains about5percent frame-rate cost relative to Flink; baseline Canvas itself is below gameplay performance targets. No threshold weakened."
+    "countNotes": "Cached mesh counts exclude the shared 384-face factory emblem; browser guide totals include it. Geometry builds in create; first explicit far render and startup marks include warm-up costs. Fine already warmed in initial scene draw; near sample checks subsequent frame gaps, not a standalone first fine upload.",
+    "limitations": "Single serial synthetic local Chrome comparison; phone is desktop emulation, not physical low-end hardware. Canvas retains about 5 percent frame-rate cost relative to Flink; baseline Canvas itself is below gameplay performance targets. No threshold weakened."
   }
 }
