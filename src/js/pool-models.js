@@ -163,9 +163,8 @@
     const geo = { verts: [], faces: [], lines: [] }, RAMP = L.RAMP, STEP = 1 / RAMP.r;
     const at = (bearing, r, y) => pushVert(geo, Math.sin(bearing) * r, y, Math.cos(bearing) * r);
     const SHEET = { emissive: 0 };
-    // Slightly overlap the one-metre waterfall so no daylight seam shows at either bank.
-    // Its voxel support still needs the wider corner allowance from the layout.
-    const fallMouthHalf = 0.49;
+    // Match the opening in the voxel ledge so neither smooth floor skirt hangs over a fall.
+    const fallMouthHalf = L.FALL_OPENING_HALF;
     const quad = (b0, b1, r0, r1, y0, y1, color) => face(geo, [at(b0, r0, y0), at(b0, r1, y0), at(b1, r1, y1), at(b1, r0, y1)], color, SHEET);
     const floorEdge = (bearing, edge) => {
       for (const channel of L.CHANNELS) {
@@ -1135,7 +1134,7 @@
   // bevelled stiles, iron plates riveted over the corners and a lamp on the top rail.
   const chainBoardLegs = cached(() => {
     const B = CHAIN_BOARD;
-    return curveChainBoard(merge(...[-1, 1].map((side) => bevelBox({ w: 0.5, h: B.y + 0.4 - BOARD_FOOT, d: 0.5, color: SIGN_POST, offset: { x: side * (B.w / 2 - 0.3), y: (B.y + 0.4 + BOARD_FOOT) / 2 } }))));
+    return curveChainBoard(merge(...[-1, 1].map((side) => bevelBox({ w: 0.5, h: B.y - BOARD_FOOT, d: 0.5, color: SIGN_POST, offset: { x: side * (B.w / 2 - 0.3), y: (B.y + BOARD_FOOT) / 2 } }))));
   });
   const chainBoard = cached(() => {
     const B = CHAIN_BOARD, top = B.y + B.h;
@@ -1311,7 +1310,7 @@
     const signNode = createNode({ position: { x: 0, y: 4.48, z: place.bridgeLocalZ }, geometry: caveSign() });
     // Lit like every hub torch, so the Matrix treats their flames as fire rather than as stone.
     const torches = [-1, 1].map((side) => {
-      const r = L.RAMP.r + side * (L.RAMP.half + 0.9), b = L.RAMP.start - 0.07;
+      const r = L.RAMP.r + side * (L.RAMP.half + 0.3), b = L.RAMP.start + 0.02;
       return createNode({ position: { x: Math.sin(b) * r, y: L.LEVEL.court, z: Math.cos(b) * r }, geometry: torchPost(), matrixEmissiveLiving: true });
     });
     addChild(node, groundNode, floorNode, bridgeNode, membraneNode, membraneRockNode, membraneRimNode, backingNode, vinesNode, signNode, ...crossings, ...beds, ...torches);

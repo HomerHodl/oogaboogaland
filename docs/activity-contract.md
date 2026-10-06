@@ -5,9 +5,9 @@ than one hour, **chilling** from one to 24 hours, then **sleeping**. Activity in
 OogaBoogaX repository can make an Ooga work; each project keeps its own timestamp so
 work routes can choose the corresponding cave. The existing static roster remains a
 historical fallback and does not pretend that its old commits just happened.
-With `?debug=1`, an explicit fixture instead starts three Oogas working, three
-chilling, and three sleeping so the routines can be previewed without a live feed.
-`seedDebugActivity()` is called only on that debug path.
+`?debug=1` leaves these activity-derived states alone. Explicit `status=` and
+`ooga=` fixtures override them when requested; `seedDebugActivity()` remains a
+test helper for repeatable activity windows.
 
 Roster activity labels use yellow **clankin**, orange **chillin**, and gray **sleepin**.
 A separate dot before the name is green when `cave.humanControlled` is true and gray

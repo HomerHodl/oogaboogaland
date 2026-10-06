@@ -1323,8 +1323,12 @@
     const fitClimbBody = () => {
       for (let side = 0; side < 2; side++) {
         const leg = side ? parts.legL : parts.legR;
-        for (let step = 0; step < 15 && !climbPartClear(leg); step++) {
-          leg.position.z -= 0.02; leg.position.y += 0.02;
+        const angle = leg.rotation.x;
+        for (let step = 0; step < 15 && leg.rotation.x < 1.12 && !climbPartClear(leg); step++) {
+          // Fold the foot away from a projecting rock at the hip. Translating
+          // the whole leg here accumulates against pose()'s damping on every
+          // frame and eventually pulls its top clear of the pelvis.
+          leg.rotation.x = Math.min(1.12, angle + (step + 1) * 0.08);
         }
       }
       for (let step = 0; step < 15; step++) {

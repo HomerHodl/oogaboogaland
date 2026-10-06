@@ -3225,14 +3225,20 @@ const poolLayoutChecks = async () => {
   }
   const mouths = shown.filter(Boolean).length;
   const chamber = L.sightClear(3, L.FLOOR + 1, 5, 3, 12, 5) && !L.sightClear(10, L.FLOOR + 1, 0, 10, 12, 0) && L.sightClear(1, L.FLOOR + 1, 1, 1, -40, 1) && !L.sightClear(6, L.FLOOR + 1, 0, 6, -40, 0);
+  const fallLedges = L.CHANNELS.filter(channel => channel.falls).every(channel => [-1.5, 1.5].every(side => {
+    const edge = L.edgeAt(channel.bearing), outer = edge + 0.4, inner = L.channelOutlet(channel) + 0.25;
+    const outerBearing = channel.bearing + side / outer, innerBearing = channel.bearing + side / inner;
+    return L.groundAt(Math.sin(outerBearing) * outer, Math.cos(outerBearing) * outer) === -Infinity
+      && L.solidAt(Math.sin(innerBearing) * inner, L.LEVEL.ground - 0.25, Math.cos(innerBearing) * inner);
+  }));
   L.rampPoint(40, 0, to);
   const out = Math.hypot(to.x, to.z), ux = to.x / out, uz = to.z / out;
   const box = (r, half, test) => test(ux * r - half, to.y + 1, uz * r - half, ux * r + half, to.y + 1.4, uz * r + half);
   const boxes = box(L.RAMP.r, 0.8, L.boxClear) && !box(L.RAMP.r, 0.8, L.boxSolid) && box(20, 0.2, L.boxSolid) && !box(20, 0.2, L.boxClear)
     && !box(wall, 0.6, L.boxSolid) && !box(wall, 0.6, L.boxClear) && !L.boxSolid(40, 0, 40, 41, 1, 41) && L.boxClear(40, 0, 40, 41, 1, 41) && L.sightClear(40, 0, 40, 60, 5, 60);
   record("pool layout: the descent falls ten metres in a hundred at one grade with its headroom open and rock over it all the way, its two links leave it and come back by open mouths round a pier of rock, every bed stands on a nest above the highest flood a body's width from the next, the lake's water stays inside its membrane, and the rock hides a walker from outside the cliff and never from behind in the tunnel",
-    graded && open && roofed && linked && beds && apart >= 1.7 && lake && along && hidden && doorways === L.DOORS.length && mouths === 2 * L.LINKS.length && chamber && boxes,
-    JSON.stringify({ graded, open, roofed, linked, beds, apart, lake, slots: L.SLOTS.length, along, hidden, doorways, mouths, chamber, boxes }));
+    graded && open && roofed && linked && beds && apart >= 1.7 && lake && along && hidden && doorways === L.DOORS.length && mouths === 2 * L.LINKS.length && chamber && fallLedges && boxes,
+    JSON.stringify({ graded, open, roofed, linked, beds, apart, lake, slots: L.SLOTS.length, along, hidden, doorways, mouths, chamber, fallLedges, boxes }));
   // The water over that layout, through its own module: what the backlog floods and what it never reaches.
   Object.assign(context, { document: { createElement: () => ({ getContext: () => null }) }, performance, console });
   for (const file of ["scene", "models", "convex", "terrain", "hub-models", "pool-models", "pool-water"]) runInNewContext(await readFile(new URL(`../src/js/${file}.js`, import.meta.url), "utf8"), context);
@@ -7232,6 +7238,40 @@ scene("hub", { label: "gorilla roof descent", query: "status=chillin", steps: [{
   record("gorilla roof descent: the autonomous OBL roof departure reaches the main floor without climbing back onto the roof or relocation",
     state.mounted && state.y < 0.15 && Math.abs(state.y - state.floor) < 0.1 && !state.active && !state.reversals && !state.recoveries, JSON.stringify(state));
 } }] });
+scene("hub", { label: "gorilla work apron descent", query: "status=clankin", steps: [{ name: "gorilla work apron descent", why: "regression: a worker bound for its cave stopped against the stepped Arcade wall after leaving the roof above the ramp", run: async (b) => {
+  const state = await b.evaluate(`(() => {
+    const B = __ooga, C = B.clankers, e = C.list.find(e => e.owner.traits.name === "w-s-bitcoin");
+    B.pilot.release(true); C.release(); C.cancelDebugMove(e);
+    for (const other of C.list) if (other !== e) { other.owner.override = other.owner.state = "away"; other.active = other.root.visible = false; }
+    for (const cave of B.cavemen.values()) cave.root.visible = false;
+    const x = 15, z = 17, roof = B.island.surfaceAt(x, z);
+    Object.assign(e.root.position, { x, y: roof, z });
+    Object.assign(e, { active: true, controlled: false, mode: "working", phase: "travel", route: "apron", site: 0,
+      fromSite: -1, pendingSite: -1, parked: false, recover: 0, rest: 0, pound: 0, beat: 0, stand: 0,
+      speed: 0, blocked: 0, stuckTime: 0, sampleTime: 0, heading: -2.4 });
+    e.owner.override = e.owner.state = "working"; e.root.visible = true;
+    Object.assign(e.roam, { count: 0, index: 0, wall: false, nextChoice: Infinity, departPending: false });
+    Object.assign(e.climb, { active: false, free: false, mountPending: false, openingStagePending: false, handoffDirection: 0,
+      retry: 0, searchPending: false, searchDeferred: false, claimPending: false, crestPending: false, debugStuck: false });
+    Object.assign(e.drive, { airborne: false, passiveFall: false, resume: false, grounded: true, vx: 0, vy: 0, vz: 0 });
+    Object.assign(e.motion, { lab: false, climb: 0, climbBlend: NaN, mantle: 0, supportOffset: 0, landing: 0, takeoff: 0 });
+    e.stuck.recoveries = e.climb.blocked = 0; e.jump.active = e.fire.burning = e.fire.rolling = false;
+    e.gorilla.poseManaged(2, x, roof, z, e.heading, 0, false, false, "", e.motion);
+    BL.scene.updateWorld(BL.scenes.hub.root); B.headquarters.solids.props.sync();
+    const trace = []; let mounted = false, landed = false, maxBlocked = 0;
+    for (let frame = 0; frame < 720; frame++) {
+      B.advance(1 / 60, 1 / 60); const p = e.root.position, c = e.climb;
+      mounted ||= c.active; maxBlocked = Math.max(maxBlocked, c.blocked);
+      if (frame % 60 === 0) trace.push({ t: frame / 60, x: p.x, y: p.y, z: p.z,
+        route: e.route, active: c.active, free: c.free, blocked: c.blocked, recoveries: e.stuck.recoveries });
+      if (mounted && !c.active && !e.drive.airborne && !e.jump.active && p.y < 0.15) { landed = true; break; }
+    }
+    const p = e.root.position;
+    return { roof, mounted, landed, maxBlocked, y: p.y, recoveries: e.stuck.recoveries, trace };
+  })()`);
+  record("gorilla work apron descent: the worker climbs from the ramp roof onto the ground without stalling or relocation",
+    state.roof > 6 && state.mounted && state.landed && !state.recoveries && state.maxBlocked < 1.2, JSON.stringify(state));
+} }] });
 scene("hub", { label: "gorilla carry jump", query: "status=chillin", steps: [{ name: "gorilla carry jump", why: "regression: a parked gorilla's recovery outlasted jump input while dragging an Ooga, blocking takeoff and a charged midair throw", run: async (b) => {
   const state = await b.evaluate(`(() => {
     const B = __ooga, C = B.clankers, S = BL.scene, c = B.cavemen.get("portlandhodl"), e = C.list.find(entry => entry.owner === c);
@@ -10126,13 +10166,19 @@ const unitChecks = async () => {
   // Sealed cave guides need the hub's seal nodes, so probes reading them stay in the browser tier.
   const island = BL.terrain.island({ seed: 1 });
   {
-    const beds = BL.headquartersSleep.outdoorBeds(island, BL.caves.slots);
-    const caves = new Set(beds.map(b => b.caveId));
-    const supported = beds.every(b => b.outdoor && b.y >= island.surfaceAt(b.x, b.z) && b.y > 3);
+    const place = BL.poolModels.spot(island, {}), L = BL.poolLayout, cos = Math.cos(place.ry), sin = Math.sin(place.ry);
+    const pool = { layout: L, place, worldX: (x, z) => place.x + x * cos + z * sin,
+      worldZ: (x, z) => place.z - x * sin + z * cos };
+    const beds = BL.headquartersSleep.outdoorBeds(pool);
+    const supported = beds.every(b => {
+      const dx = b.x - place.x, dz = b.z - place.z, x = dx * cos - dz * sin, z = dx * sin + dz * cos;
+      const along = L.rampAngle(Math.atan2(x, z)) * L.RAMP.r;
+      return b.outdoor && b.y >= place.y + L.groundAt(x, z) && along >= 3.9 && along <= 40 && Math.hypot(x, z) >= 13;
+    });
     const separate = beds.every((a, i) => beds.every((b, j) => i === j || Math.hypot(a.x - b.x, a.z - b.z) >= 1.79));
-    const blocked = BL.headquartersSleep.outdoorBeds(island, BL.caves.slots, () => false).length === 0;
-    record("outdoor sleep: open cave roofs provide separate supported anchors and reject blocked footprints", beds.length >= 8 && caves.size >= 3 && supported && separate && blocked,
-      JSON.stringify({ count: beds.length, caves: [...caves], supported, separate, blocked }));
+    const blocked = BL.headquartersSleep.outdoorBeds(pool, () => false).length === 0;
+    record("outdoor sleep: rainforest ramp roof provides separate supported anchors and rejects blocked footprints", beds.length >= 8 && supported && separate && blocked,
+      JSON.stringify({ count: beds.length, supported, separate, blocked }));
   }
 
   {
