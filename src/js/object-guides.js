@@ -282,7 +282,7 @@
         return id;
       };
       if (count) build(0, count);
-      cached = { lines: edgeLines, samples, sampleBounds, coverFaces: new Uint32Array(coverFaces), triangleCoverFaces: triangleCoverFaces.slice(0, count), edgeStarts, edgeNormals: new Float64Array(edgeNormals), vertices: v, triangleIndices: triangleIndices.slice(0, count * 3), indices, bounds: new Float64Array(bounds), left: new Int32Array(left), right: new Int32Array(right), starts: new Uint32Array(starts), counts: new Uint32Array(counts), sphere: BL.scene.boundsOf(geometry) };
+      cached = { lines: edgeLines, samples, sampleBounds, coverFaces: new Uint32Array(coverFaces), triangleCoverFaces: count === slots ? triangleCoverFaces : triangleCoverFaces.slice(0, count), edgeStarts, edgeNormals: new Float64Array(edgeNormals), vertices: v, triangleIndices: count === slots ? triangleIndices : triangleIndices.slice(0, count * 3), indices, bounds: new Float64Array(bounds), left: new Int32Array(left), right: new Int32Array(right), starts: new Uint32Array(starts), counts: new Uint32Array(counts), sphere: BL.scene.boundsOf(geometry) };
       const bake = { faces: geometry.faces.map((face) => face.i), record: cached };
       if (baked) baked.push(bake); else bakes.set(geometry.verts, [bake]);
       geometries.set(geometry, cached); stats.geometries++; stats.triangles += count; stats.triangleBytes += cached.triangleIndices.byteLength; stats.samples += samples.length / 3;
