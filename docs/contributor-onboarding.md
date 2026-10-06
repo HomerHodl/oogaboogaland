@@ -20,6 +20,10 @@ unambiguous missing `github` mapping. It then loads the merged character registr
 and compares both `handle` and `github`, ignoring case, with Oogatron's eligible
 logins. A contributor whose first PR includes their character is already present;
 no default is added. Existing custom looks, voices, aliases and dates are preserved.
+An untouched generated profile whose handle is a confirmed contribution alias is
+retired only when its canonical owner already has a character. The artifact job
+revalidates its exact source before committing that removal; customized profiles
+are preserved. This removes Harry's duplicate without recreating it on later merges.
 Missing contributors get `src/characters/<lowercase-login>.js` with only their
 handle and Oogatron's first/last contribution times. Their appearance hashes from
 the same handle at build time and during a temporary session.
@@ -59,6 +63,8 @@ provenance. Human contributors using AI tools remain eligible.
 `src/js/contributor-identities.js` holds the explicit attribution table shared by
 the page, snapshot bake, merge generator and Worker. The maintainer confirmed
 `email:bdb4923572c8ac13` and `email:56537ddd43347582` as `MrHodlX`.
+The maintainer also confirmed `Harry` as the same person as `hotpixelgroup`;
+that account's contribution credits map to `hotpixelgroup`.
 Their counts, weekly history and first/last activity roll into that login, and
 their recent-event labels and leaderboard entries use it too. OBL's Oogatron user
 filter shows only the attributed owner; existing alias selections resolve to that
