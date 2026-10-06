@@ -2505,11 +2505,11 @@ const PROTOCOL = FULL || ARGS.includes("poker-protocol");
 const WHY = /^(regression|playthrough|rule|contract): \S/;
 const SCENE_BUDGET_S = 25;
 const tasks = [];
-const scene = (id, { query = "", steps, perf = false, opts = {}, label = "", url = null }) => {
+const scene = (id, { query = "", steps, perf = false, opts = {}, label = "", url = null, exclusive = false }) => {
   for (const s of steps) if (!WHY.test(s.why || "")) throw new Error(`${id}: step "${s.name}" must say why it exists: "regression: …", "playthrough: …", "rule: …" or "contract: …"`);
   const chosen = !ONLY || (label && onlyMatches(label)) ? steps : steps.filter(s => onlyMatches(s.name));
   if (!chosen.length) return;
-  tasks.push({ name: perf ? `${id} perf` : opts.mobile ? `${id} phone` : label ? `${id} ${label}` : id, scene: id, perf, run: async () => {
+  tasks.push({ name: perf ? `${id} perf` : opts.mobile ? `${id} phone` : label ? `${id} ${label}` : id, scene: id, perf, exclusive, run: async () => {
     const t0 = Date.now();
     await fold(url || sceneUrl(id, query), chosen.map((s) => [s.name, s.run, s.open]), opts);
     const took = (Date.now() - t0) / 1000;
@@ -6108,6 +6108,43 @@ const bifrostExit = { name: "bifrost exit", why: "playthrough: walking back out 
   const escaped = await b.evaluate(`window.__ooga.scene`);
   record("bifrost exit: walking back out through the field returns the same Ooga to the bridge's end, and Escape leaves the chamber", back.scene === "hub" && back.ooga === "portlandhodl" && back.fromArrival !== null && back.fromArrival < 4 && escaped === "hub", JSON.stringify({ back, escaped }));
 } };
+scene("lab", { label: "canvas bounds", steps: [{ name: "canvas bounds", why: "regression: distant Timechain views spent the watchdog shading complete offscreen objects; conservative rejection must preserve every visible pixel", run: async (b) => {
+  const rows = await b.evaluate(`(() => {
+    const S = BL.scene, M = BL.models, results = [];
+    const canvas = document.createElement('canvas'); canvas.getContext('2d', { willReadFrequently: true });
+    const renderer = BL.canvasRenderer.createRenderer(canvas, { width: 128, height: 96 });
+    const root = S.createNode(), geometries = [], reads = new Map(); let faceReads = 0;
+    const box = (position, size = 1) => {
+      const geometry = M.box({ w: size, h: size, d: size, color: '#e54232' }), faces = geometry.faces;
+      Object.defineProperty(geometry, 'faces', { get: () => { faceReads++; reads.set(geometry, (reads.get(geometry) || 0) + 1); return faces; } });
+      geometries.push(geometry); return S.createNode({ geometry, position });
+    };
+    S.addChild(root, box({ x: 0, y: 0, z: -4 }), box({ x: 100, y: 0, z: -4 }), box({ x: -100, y: 0, z: -4 }), box({ x: 0, y: 100, z: -4 }), box({ x: 0, y: -100, z: -4 }), box({ x: 0, y: 0, z: 2 }), box({ x: .075, y: .075, z: -.12 }, .1), box({ x: 2.7, y: 0, z: -4 }));
+    // Rejection belongs to geometry only: an offscreen parent's child may be visible.
+    const parent = box({ x: 100, y: 0, z: -4 }); S.addChild(parent, box({ x: -100, y: 1.3, z: 0 })); S.addChild(root, parent);
+    const receiver = box({ x: 80, y: 0, z: -4 }); receiver.geometry.faces[0].matrixCave = 1; S.addChild(root, receiver);
+    const clipped = box({ x: -80, y: 0, z: -4 }); clipped.geometry.clipMinY = 0; S.addChild(root, clipped);
+    const water = box({ x: 0, y: 80, z: -4 }); water.geometry.lakeBody = [0, 0, 0]; S.addChild(root, water);
+    const encoded = box({ x: 0, y: -80, z: -4 }), encodedFace = encoded.geometry.faces[0]; encodedFace.color = [encodedFace.color[0], encodedFace.color[1], encodedFace.color[2], -2]; S.addChild(root, encoded);
+    const living = box({ x: 90, y: 90, z: -4 }), livingParent = S.createNode({ matrixLiving: true }); S.addChild(livingParent, living); S.addChild(root, livingParent);
+    const camera = S.createCamera({ fov: 60, near: .1, far: 1000 }); camera.position = { x: 0, y: 0, z: 0 }; camera.target = { x: 0, y: 0, z: -1 }; camera.orthoHeight = 6;
+    const options = { matrix: { active: 0, permanentCave: 1, origin: [0, 0, 0], caves: [1, 0, 0, 0], caveBounds: [0, 0, 0, 0] } };
+    // Mirror cave presence must not disable all ordinary-node culling. Warm
+    // immutable bounds/receiver metadata before measuring face traversal.
+    renderer.render(root, camera, options);
+    for (const mix of [0, .25, .5, .75, 1]) {
+      camera.orthoMix = mix; faceReads = 0; reads.clear(); renderer.render(root, camera, options); const optimized = canvas.getContext('2d').getImageData(0, 0, 128, 96).data.slice(), optimizedReads = faceReads, specialReads = [receiver, clipped, water, encoded, living].map(n => reads.get(n.geometry) || 0);
+      // Affine projective matrices have homogeneous w=1, yielding the same
+      // pixels while deliberately taking the uncullable reference path.
+      for (const g of geometries) g.projective = true;
+      faceReads = 0; renderer.render(root, camera, options); const reference = canvas.getContext('2d').getImageData(0, 0, 128, 96).data, referenceReads = faceReads;
+      for (const g of geometries) delete g.projective;
+      results.push({ mix, same: optimized.every((v, i) => v === reference[i]), optimizedReads, referenceReads, specialReads });
+    }
+    return results;
+  })()`);
+  record("canvas bounds: near and viewport crossings, visible children and every orthographic morph preserve exact pixels while skipping offscreen face reads", rows.every(r => r.same && r.optimizedReads < r.referenceReads && r.specialReads.every(n => n > 0)), JSON.stringify(rows));
+} }] });
 const bifrostCanvas = { name: "bifrost canvas2d", why: "contract: the Canvas 2D fallback builds ₿IFRÖST's islet without the WebGL window into the chamber, and boots and draws the chamber", run: async (b) => {
   const hub = await b.evaluate(`(() => { const B = window.__ooga; B.pilot.goPreset("bifrost"); B.advance(1, 1 / 60); return { kind: B.renderer.kind, scene: B.scene, islet: !!B.bifrost, window: !!(B.bifrost && B.bifrost.window) }; })()`);
   await tourGo(b, "bifrost");
@@ -6267,7 +6304,7 @@ const timechainDataChecks = async () => {
   pending[2](); pending[3](); pending[4](); await loading; late.dispose();
   record("timechain API: late sibling metadata fills and repaints the holder view without changing its fetch time", gotHeight && gotBoth && changed.filter(i => i === 5).length >= 3 && late.boards.every(b => b.asof === "2026-09-23 / BLOCK 968330"));
 };
-for (const fallback of [false, true]) scene("hub", { label: "timechain " + (fallback ? "canvas2d" : "webgl2"), query: "solo=1&character=SaniExp&view=timechain&pos=0" + (fallback ? "&canvas2d=1" : ""), steps: [{ name: "timechain crossing", why: "playthrough: Sani can stand and walk on Timechain Island, cross both bridge shores, and fall beyond its real edge", run: async (b) => {
+for (const fallback of [false, true]) scene("hub", { label: "timechain " + (fallback ? "canvas2d" : "webgl2"), exclusive: fallback, query: "solo=1&character=SaniExp&view=timechain&pos=0" + (fallback ? "&canvas2d=1" : ""), steps: [{ name: "timechain crossing", why: "playthrough: Sani can stand and walk on Timechain Island, cross both bridge shores, and fall beyond its real edge", run: async (b) => {
   const result = await b.evaluate(`(() => {
     const B = __ooga, T = BL.scenes.hub.debug.timechainIsland, p = T.place, S = B.headquarters.solids, c = B.pilot.player;
     const dir = BL.timechainModels.DIR, failures = [];
@@ -8633,7 +8670,7 @@ const dsbSoak = async (b) => {
   return { until, rendered, settled, snapshot, travel, heapDetail, within };
 };
 
-scene("dsb", { label: "lifecycle", url: hubPage(src), steps: [{ name: "dsb lifecycle", why: "contract: repeated DSB visits release nodes, listeners and GPU resources", run: async (b) => {
+scene("dsb", { label: "lifecycle", exclusive: true, url: hubPage(src), steps: [{ name: "dsb lifecycle", why: "contract: repeated DSB visits release nodes, listeners and GPU resources", run: async (b) => {
   const { rendered, settled, snapshot, travel, heapDetail, within } = await dsbSoak(b);
   // The weather deck is sized by tier on each visit. Compare the same tier;
   // low is terminal, so the governor cannot change capacity during the soak.
@@ -8648,7 +8685,7 @@ scene("dsb", { label: "lifecycle", url: hubPage(src), steps: [{ name: "dsb lifec
   record("soak: dsb cycles: GPU records, listeners and heap remain bounded", Math.abs(after.stats.gl.records - before.stats.gl.records) <= 3 && before.nodes === after.nodes && before.listeners === after.listeners && within(before, after, 0.1), heapDetail(before, after));
 } }] });
 
-scene("factory", { label: "lifecycle", url: hubPage(src), steps: [{ name: "factory lifecycle", why: "contract: repeated factory visits release the hall's listeners, nodes and GPU resources while retaining one bounded shared node", run: async (b) => {
+scene("factory", { label: "lifecycle", exclusive: true, url: hubPage(src), steps: [{ name: "factory lifecycle", why: "contract: repeated factory visits release the hall's listeners, nodes and GPU resources while retaining one bounded shared node", run: async (b) => {
   const { rendered, settled, snapshot, travel, heapDetail, within } = await dsbSoak(b);
   // Keep resource comparisons at one tier, as in the other lifecycle soaks.
   await b.evaluate('__ooga.renderer.setQuality("low")');
@@ -9934,11 +9971,15 @@ const runTasks = async () => {
   realTimeTask = true;
   for (const t of picked.filter((t) => t.perf)) await t.run();
   realTimeTask = false;
-  const queue = picked.filter((t) => !t.perf);
+  const queue = picked.filter((t) => !t.perf && !t.exclusive);
   const lane = async () => {
     while (queue.length) await queue.shift().run();
   };
   await Promise.all(Array.from({ length: LANES }, lane));
+  // Strict travel deadlines and CPU-heavy Canvas playthroughs must observe
+  // their own frame delivery, rather than other Chrome renderers or heap snapshots.
+  // Preserve every assertion, frame and watchdog while ordinary scenes keep their lanes.
+  for (const t of picked.filter((t) => !t.perf && t.exclusive)) await t.run();
   await dispose();
 };
 if (!PICKED.length && !PERF) console.log(`Global tier only. Name scenes to test them too: npm test -- ${SCENES.join(" ")} | full`);
