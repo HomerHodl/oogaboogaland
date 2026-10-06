@@ -2951,9 +2951,10 @@ const poolLayoutChecks = async () => {
   const anchors = W.levelFor(0) === L.WATER.low && W.levelFor(H.NORMAL_VB) === L.WATER.normal && W.levelFor(H.OVERFLOW_VB) === L.WATER.spill && W.levelFor(H.FULL_VB) === L.WATER.flood && W.levelFor(H.FULL_VB * 3) === L.WATER.flood;
   // Residual waterfalls read the rendered ground; exercise the real mesh rather than an empty site.
   const site = { node: S.createNode(), ground: S.createNode({ geometry: context.window.BL.poolModels.islet() }), membrane: S.createNode({ geometry: { ...context.window.BL.poolModels.membrane() } }) };
+  site.membraneRock = S.createNode({ geometry: { ...context.window.BL.poolModels.membraneRock() } });
   site.boardLegs = S.createNode({ geometry: { ...context.window.BL.poolModels.chainBoardLegs() } });
   site.infoLeg = S.createNode({ geometry: { ...context.window.BL.poolModels.infoSignLeg() } });
-  S.addChild(site.node, site.ground, site.membrane, site.boardLegs, site.infoLeg);
+  S.addChild(site.node, site.ground, site.membrane, site.membraneRock, site.boardLegs, site.infoLeg);
   const water = W.create({ site, renderer: { kind: "webgl2", quality: "high" }, seaY: -76 });
   let elapsed = 0;
   const run = (seconds, now) => { for (let t = 0; t < seconds; t += 1 / 20) water.update(1 / 20, elapsed += 1 / 20, now); };
