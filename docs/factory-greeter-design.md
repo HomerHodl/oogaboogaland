@@ -69,7 +69,7 @@ Within 6 m of the camera Tess switches to a cached close-up rig: the globe has 5
 
 ## Device-cost assessment
 
-The original rig, including rings and optics, had 69,616 faces at the far tier and 449,680 at the fine tier (6.46×); globe-only counts understated device cost. Before the device gate, both tiers retained 518,528 faces through 24 geometry entries. Tiny fasteners and glints now use 12×6 subdivisions in all tiers instead of globe-scale tessellation; the fine globe still has 51,200 faces. The reduced cached meshes total 5,892 faces for light, 47,632 for normal and 158,776 for fine, excluding the separately shared 32-face emblem. Desktop preparation retains three bounded tiers, with fewer total faces than the original two; Low-entry preparation retains only light.
+The original rig, including rings and optics, had 69,616 faces at the far tier and 449,680 at the fine tier (6.46×); globe-only counts understated device cost. Before the device gate, both tiers retained 518,528 faces through 24 geometry entries. Tiny fasteners and glints now use 12×6 subdivisions in all tiers instead of globe-scale tessellation; the fine globe still has 51,200 faces. The reduced cached meshes total 5,892 faces for light, 47,632 for normal and 158,776 for fine, excluding the separately shared 384-face emblem. Desktop preparation retains three bounded tiers, with fewer total faces than the original two; Low-entry preparation retains only light.
 
 Serial local Chrome samples at verified camera distances of 10 m and 3 m measured:
 
@@ -83,4 +83,16 @@ Phone emulation uses desktop hardware; these are not low-end hardware results. C
 
 [Measurement data](tess-device-cost-evidence.json) retains the source revision, geometry counts, startup marks, first measured render and steady samples.
 
-A subsequent matched comparison with the current-engine Flink baseline showed that merely disabling fine detail still left a Canvas regression: at identical 10 m/3 m camera positions, Flink measured 13.75/15.28 FPS while the original far Tess rig measured 8.10/8.99 FPS (render p95 73.5/66.5 ms versus 127.0/117.1 ms). This prompted the separate light rig and decorative tessellation reductions; the matched final browser measurement remains pending. The matched baseline is PR165 revision47867d4 and the before-reduction Tess revision is a2bcf4b.
+A subsequent matched comparison with the current-engine Flink baseline showed that merely disabling fine detail still left a Canvas regression: at identical 10 m/3 m camera positions, Flink measured 13.75/15.28 FPS while the original far Tess rig measured 8.10/8.99 FPS (render p95 73.5/66.5 ms versus 127.0/117.1 ms). This prompted the separate light rig and decorative tessellation reductions; the matched final browser measurement below verifies their effect. The matched baseline is PR165 revision47867d4 and the before-reduction Tess revision is a2bcf4b.
+
+The final serial matched samples on code revision `e433ab9`, against current-engine baseline `47867d4`, measured:
+
+| View | Baseline far / near FPS | Reduced Tess far / near FPS | Tess near render p95 |
+|---|---:|---:|---:|
+| Desktop High | 60.06 / 60.14 | 60.12 / 60.17 | 1.60 ms |
+| Phone emulation, Low | 60.23 / 60.13 | 60.23 / 59.92 | 1.70 ms |
+| Canvas, Low | 13.87 / 15.52 | 13.24 / 14.66 | 69.50 ms |
+
+All WebGL samples settled at 60 FPS after the first second. The final desktop near sample's maximum frame gap was 16.8 ms; no fine-near hitch was observed after scene-entry warm-up. Canvas retains about a 5% measured frame-rate cost compared with Flink, substantially less than the original far Tess rig's roughly 40% loss. Canvas performance is already low on the baseline; this change does not claim to fix that underlying cost or to meet WebGL targets on Canvas.
+
+The browser's actual visible rig totals are 6,276 faces for light, 48,016 for normal and 159,160 for fine, including the shared 384-face emblem. Cold guide construction measured 3.7 ms for light-only entry and 48.1 ms for desktop preparation. The first explicit far WebGL render measured 21.1 ms; the initial full-scene draw took about 182 ms and warmed the prepared fine geometry. Three-frame startup marks still include that entry/upload cost; these measurements do not disguise it as steady rendering. These are local observations, not a guarantee for physical mobile or low-end hardware.
