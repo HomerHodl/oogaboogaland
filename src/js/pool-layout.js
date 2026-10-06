@@ -303,6 +303,13 @@
     }
     if (z >= BRIDGE.z + BRIDGE.deckStart && Math.abs(x) < BRIDGE.width / 2 + UNIT / 2) top = Math.min(top, LEVEL.court - UNIT);
     c.top = top; c.material = material;
+    // The last strip of cliff flanking each exterior fall used to leave two
+    // roof wedges hanging over the water's opening into the outer ramp.
+    for (const channel of CHANNELS) if (channel.falls && r >= channelOutlet(channel)
+      && Math.abs(turn(bearing, channel.bearing)) * r < 2.2) {
+      c.top = Math.min(c.top, stepUnder(rampY(a)));
+      break;
+    }
     // The chamber is round, except at a reading stop, where its wall is one flat face.
     let chamber = r < CHAMBER_R;
     for (const stop of STOPS) {

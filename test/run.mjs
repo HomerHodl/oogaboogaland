@@ -3225,14 +3225,19 @@ const poolLayoutChecks = async () => {
   }
   const mouths = shown.filter(Boolean).length;
   const chamber = L.sightClear(3, L.FLOOR + 1, 5, 3, 12, 5) && !L.sightClear(10, L.FLOOR + 1, 0, 10, 12, 0) && L.sightClear(1, L.FLOOR + 1, 1, 1, -40, 1) && !L.sightClear(6, L.FLOOR + 1, 0, 6, -40, 0);
+  const fallRoofs = L.CHANNELS.filter(channel => channel.falls).every(channel => [-1.5, 1.5].every(side => {
+    const r = L.channelOutlet(channel) + 0.25, bearing = channel.bearing + side / r;
+    const x = Math.sin(bearing) * r, z = Math.cos(bearing) * r;
+    return !L.solidAt(x, L.LEVEL.ground - 0.25, z);
+  }));
   L.rampPoint(40, 0, to);
   const out = Math.hypot(to.x, to.z), ux = to.x / out, uz = to.z / out;
   const box = (r, half, test) => test(ux * r - half, to.y + 1, uz * r - half, ux * r + half, to.y + 1.4, uz * r + half);
   const boxes = box(L.RAMP.r, 0.8, L.boxClear) && !box(L.RAMP.r, 0.8, L.boxSolid) && box(20, 0.2, L.boxSolid) && !box(20, 0.2, L.boxClear)
     && !box(wall, 0.6, L.boxSolid) && !box(wall, 0.6, L.boxClear) && !L.boxSolid(40, 0, 40, 41, 1, 41) && L.boxClear(40, 0, 40, 41, 1, 41) && L.sightClear(40, 0, 40, 60, 5, 60);
   record("pool layout: the descent falls ten metres in a hundred at one grade with its headroom open and rock over it all the way, its two links leave it and come back by open mouths round a pier of rock, every bed stands on a nest above the highest flood a body's width from the next, the lake's water stays inside its membrane, and the rock hides a walker from outside the cliff and never from behind in the tunnel",
-    graded && open && roofed && linked && beds && apart >= 1.7 && lake && along && hidden && doorways === L.DOORS.length && mouths === 2 * L.LINKS.length && chamber && boxes,
-    JSON.stringify({ graded, open, roofed, linked, beds, apart, lake, slots: L.SLOTS.length, along, hidden, doorways, mouths, chamber, boxes }));
+    graded && open && roofed && linked && beds && apart >= 1.7 && lake && along && hidden && doorways === L.DOORS.length && mouths === 2 * L.LINKS.length && chamber && fallRoofs && boxes,
+    JSON.stringify({ graded, open, roofed, linked, beds, apart, lake, slots: L.SLOTS.length, along, hidden, doorways, mouths, chamber, fallRoofs, boxes }));
   // The water over that layout, through its own module: what the backlog floods and what it never reaches.
   Object.assign(context, { document: { createElement: () => ({ getContext: () => null }) }, performance, console });
   for (const file of ["scene", "models", "convex", "terrain", "hub-models", "pool-models", "pool-water"]) runInNewContext(await readFile(new URL(`../src/js/${file}.js`, import.meta.url), "utf8"), context);
@@ -10126,13 +10131,19 @@ const unitChecks = async () => {
   // Sealed cave guides need the hub's seal nodes, so probes reading them stay in the browser tier.
   const island = BL.terrain.island({ seed: 1 });
   {
-    const beds = BL.headquartersSleep.outdoorBeds(island, BL.caves.slots);
-    const caves = new Set(beds.map(b => b.caveId));
-    const supported = beds.every(b => b.outdoor && b.y >= island.surfaceAt(b.x, b.z) && b.y > 3);
+    const place = BL.poolModels.spot(island, {}), L = BL.poolLayout, cos = Math.cos(place.ry), sin = Math.sin(place.ry);
+    const pool = { layout: L, place, worldX: (x, z) => place.x + x * cos + z * sin,
+      worldZ: (x, z) => place.z - x * sin + z * cos };
+    const beds = BL.headquartersSleep.outdoorBeds(pool);
+    const supported = beds.every(b => {
+      const dx = b.x - place.x, dz = b.z - place.z, x = dx * cos - dz * sin, z = dx * sin + dz * cos;
+      const along = L.rampAngle(Math.atan2(x, z)) * L.RAMP.r;
+      return b.outdoor && b.y >= place.y + L.groundAt(x, z) && along >= 3.9 && along <= 40 && Math.hypot(x, z) >= 13;
+    });
     const separate = beds.every((a, i) => beds.every((b, j) => i === j || Math.hypot(a.x - b.x, a.z - b.z) >= 1.79));
-    const blocked = BL.headquartersSleep.outdoorBeds(island, BL.caves.slots, () => false).length === 0;
-    record("outdoor sleep: open cave roofs provide separate supported anchors and reject blocked footprints", beds.length >= 8 && caves.size >= 3 && supported && separate && blocked,
-      JSON.stringify({ count: beds.length, caves: [...caves], supported, separate, blocked }));
+    const blocked = BL.headquartersSleep.outdoorBeds(pool, () => false).length === 0;
+    record("outdoor sleep: rainforest ramp roof provides separate supported anchors and rejects blocked footprints", beds.length >= 8 && supported && separate && blocked,
+      JSON.stringify({ count: beds.length, supported, separate, blocked }));
   }
 
   {
