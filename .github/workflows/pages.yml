@@ -1,8 +1,10 @@
-name: Deploy DSB Master Preview
+name: Deploy GitHub Pages
 
 on:
   push:
-    branches: [feature/dsb-land-master]
+    branches: [rock]
+  schedule:
+    - cron: '*/10 * * * *'
   workflow_dispatch:
     inputs:
       merge_sha:
@@ -22,22 +24,13 @@ concurrency:
 
 jobs:
   deploy:
-    if: github.repository == 'YellowBrokeIt/oogaboogaland'
     runs-on: ubuntu-latest
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
-      - name: Check out stable rock
-        uses: actions/checkout@v6
+      - uses: actions/checkout@v6
         with:
-          ref: rock
-          path: live-src
-          persist-credentials: false
-      - name: Check out this preview revision
-        uses: actions/checkout@v6
-        with:
-          path: preview-src
           persist-credentials: false
           ref: ${{ github.sha }}
       - uses: actions/setup-node@v6
@@ -45,83 +38,84 @@ jobs:
           node-version: '22'
           package-manager-cache: false
       - uses: actions/configure-pages@v5
-      - name: Build stable root including routes and cards
-        run: node live-src/scripts/site.mjs "$GITHUB_WORKSPACE/_site"
-      - name: Build isolated preview
-        run: |
-          cd preview-src
-          npm run build
-          mkdir -p ../_site/dsb-preview
-          cp oogaboogaland.html ../_site/dsb-preview/index.html
-          mkdir -p ../_site/dsb-preview/src/js
-          cp -R src/maxis-player ../_site/dsb-preview/src/maxis-player
-          cp src/js/maxis-media-data.js ../_site/dsb-preview/src/js/maxis-media-data.js
-      - name: Validate shared DSB presence, menus and voice contracts
-        working-directory: preview-src
-        run: |
-          node --test worker/test/*.test.mjs
-          export CHROME="$(command -v google-chrome)"
-          TEST_CANVAS2D=1 LANES=1 ONLY="integration checkpoint" node test/run.mjs integration-unit dsb
-      - name: Validate shoreline, Olympus and preserved exterior
-        working-directory: preview-src
-        run: |
-          export CHROME="$(command -v google-chrome)"
-          node test/run.mjs vacancy-unit
-          node test/run.mjs exterior-unit
-          LANES=1 VERBOSE=1 ONLY="shoreline checkpoint" node test/run.mjs water-unit dsb
-      - name: Validate Chora vacancy addresses and renderer
-        working-directory: preview-src
-        run: |
-          export CHROME="$(command -v google-chrome)"
-          LANES=1 VERBOSE=1 ONLY="vacancy checkpoint" node test/run.mjs vacancy-unit dsb
-      - name: Validate SVRN Society interior and review semantics
-        working-directory: preview-src
-        run: |
-          export CHROME="$(command -v google-chrome)"
-          TEST_CANVAS2D=1 LANES=1 VERBOSE=1 ONLY="SVRN checkpoint" node test/run.mjs svrn-unit dsb
-          LANES=1 VERBOSE=1 ONLY="SVRN visual review" node test/run.mjs svrn-unit dsb
-      - name: Validate preview menus and preserved media contracts
-        working-directory: preview-src
-        run: |
-          export CHROME="$(command -v google-chrome)"
-          export TEST_CANVAS2D=1
-          for checkpoint in "venue menus checkpoint" "radio TV correction" "studio checkpoint" "interior checkpoint"; do
-            ONLY="$checkpoint" node test/run.mjs dsb-menus-unit dsb
-          done
-      - name: Validate Portara aperture and shared portal behavior
-        working-directory: preview-src
-        run: |
-          export CHROME="$(command -v google-chrome)"
-          LANES=1 VERBOSE=1 ONLY="Portara aperture" node test/run.mjs portal-unit dsb
-      # Capture has its own bounded operation clock. Only a healthy software-GPU
-      # timeout reproduced on the approved checkpoint is advisory in the runner;
-      # renderer, runtime, semantic and other capture errors still fail this job.
-      - name: Capture DSB review evidence after all functional gates
-        working-directory: preview-src
-        run: |
-          export CHROME="$(command -v google-chrome)"
-          export DSB_REVIEW=1 DSB_CAPTURE_BASELINE=1 LANES=1
-          ONLY="SVRN visual review" node test/run.mjs svrn-unit dsb
-          ONLY="vacancy checkpoint" node test/run.mjs vacancy-unit dsb
-          ONLY="Portara visual evidence" node test/run.mjs portal-unit dsb
-          ONLY="shoreline visual evidence" node test/run.mjs water-unit dsb
-          TEST_CANVAS2D=1 ONLY="venue menus checkpoint" node test/run.mjs dsb-menus-unit dsb
-          TEST_CANVAS2D=1 ONLY="SVRN checkpoint" node test/run.mjs svrn-unit dsb
-      - name: Save menu and interior review screenshots
-        if: always()
+      - name: Reconcile contributor files on OBL merges
+        if: github.event_name == 'push' || inputs.merge_sha != ''
+        run: node scripts/sync-characters.mjs --merge
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          CHARACTER_BOT_LOGIN: ${{ vars.CHARACTER_BOT_LOGIN || 'github-actions[bot]' }}
+          CHARACTER_MERGE_SHA: ${{ inputs.merge_sha }}
+      - name: Refresh Oogatron activity snapshot
+        run: node scripts/jumbotron-data.mjs "$OOGATRON_STATS_URL"
+        env:
+          OOGATRON_STATS_URL: https://oogatron.wickedsmartbitcoin.workers.dev/v2/stats
+      - name: Build and stage site
+        run: node scripts/site.mjs _site
+      - name: Upload the built page for the artifact job
         uses: actions/upload-artifact@v4
         with:
-          name: dsb-menu-review
+          name: oogaboogaland-page
           path: |
-            preview-src/untracked/svrn-review
-            preview-src/untracked/vacancy-review
-            preview-src/untracked/water-review
-            preview-src/untracked/dsb-menu-review
-            preview-src/untracked/test-ledger.json
-          if-no-files-found: ignore
+            oogaboogaland.html
+            src/js/jumbotron-data.js
+            untracked/new-characters/
       - uses: actions/upload-pages-artifact@v4
         with:
           path: _site
       - name: Deploy
         id: deployment
         uses: actions/deploy-pages@v4
+
+  artifact:
+    name: Artifact · commit the built page after merge
+    if: github.ref == 'refs/heads/rock' && (github.event_name == 'push' || inputs.merge_sha != '')
+    needs: [deploy]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+      statuses: write
+    steps:
+      - name: Repository-scoped artifact writer token
+        if: vars.CHARACTER_APP_CLIENT_ID != ''
+        id: app
+        uses: actions/create-github-app-token@v3
+        with:
+          client-id: ${{ vars.CHARACTER_APP_CLIENT_ID }}
+          private-key: ${{ secrets.CHARACTER_APP_PRIVATE_KEY }}
+          permission-contents: write
+          permission-statuses: write
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.sha }}
+          token: ${{ steps.app.outputs.token || github.token }}
+      - name: Download the page that was deployed
+        uses: actions/download-artifact@v4
+        with:
+          name: oogaboogaland-page
+      - name: Commit the built page
+        run: |
+          if [ -d untracked/new-characters ]; then
+            find untracked/new-characters -name '*.js' -exec cp {} src/characters/ \;
+          fi
+          node scripts/sync-characters.mjs --retired-artifact
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -f oogaboogaland.html
+          git add src/characters src/js/jumbotron-data.js
+          if git diff --cached --quiet; then
+            echo "Built page is unchanged; nothing to commit."
+            exit 0
+          fi
+          git commit -m "Reconcile contributors and rebuild site artifact [skip ci]"
+          # Publish the object before attaching statuses, then fast-forward rock.
+          # A concurrent rock update fails instead of overwriting newer work.
+          artifact_branch="automation/site-artifact-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          git push origin "HEAD:refs/heads/$artifact_branch"
+          for context in 'Character identity ownership' 'Character intake' 'Character bundle safety'; do
+            gh api "repos/$GITHUB_REPOSITORY/statuses/$(git rev-parse HEAD)" -f state=success -f context="$context" -f description='Trusted generated-character and site artifact commit'
+          done
+          git push origin HEAD:rock
+          git push origin --delete "$artifact_branch"
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token || github.token }}
