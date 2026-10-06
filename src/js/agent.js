@@ -1267,7 +1267,9 @@
       // Fit contacts after the visible support offset too: applying that
       // offset afterward can lower a previously clear foot into a tread.
       if (motion && Number.isFinite(motion.supportOffset)) hips.position.y += motion.supportOffset / scale;
-      const fitWalking = climbSolidAt && !state.climb && !state.lab && !airborne && !state.lounge
+      // A tiny positive mount blend still uses the walking pose. Keep its
+      // contact fitting until the climbing arm fitter activates above 0.001.
+      const fitWalking = climbSolidAt && state.climbBlend <= 0.001 && !state.lab && !airborne && !state.lounge
         && !state.roll && !state.beat && !state.pound;
       if (state.climbFitArms) {
         fitClimbHands(Math.max(0, dt)); fitClimbBody();
@@ -1336,6 +1338,16 @@
         parts.head.position.z -= 0.02;
       }
     };
+    const fitWalkArm = (arm, side) => {
+      const angle = arm.rotation.x;
+      if (climbArmContact(arm, side, false, 0, 0, 0) >= 0) return;
+      let clear = false;
+      for (let step = 1; step <= 20; step++) {
+        arm.rotation.x = angle - step * 0.05;
+        if (climbArmContact(arm, side, false, 0, 0, 0) >= 0) { clear = true; break; }
+      }
+      if (!clear) arm.rotation.x = angle;
+    };
     const fitWalkHands = () => {
       updateLocal(hips); updateLocal(chest);
       mat4.multiply(envelopeChest, hips.local, chest.local);
@@ -1345,14 +1357,7 @@
       }
       for (let side = 0; side < 2; side++) {
         if (state.dragging && side === 1) continue;
-        const arm = side ? parts.armL : parts.armR, angle = arm.rotation.x;
-        if (climbArmContact(arm, side, false, 0, 0, 0) >= 0) continue;
-        let clear = false;
-        for (let step = 1; step <= 20; step++) {
-          arm.rotation.x = angle - step * 0.05;
-          if (climbArmContact(arm, side, false, 0, 0, 0) >= 0) { clear = true; break; }
-        }
-        if (!clear) arm.rotation.x = angle;
+        fitWalkArm(side ? parts.armL : parts.armR, side);
       }
     };
     // A high grip can reach over a stepped rim into empty air. Lower each arm
@@ -1396,11 +1401,11 @@
             && climbArmContact(arm, side, preparing, dx, dy, dz) === 1) break;
           if (clear && (angle === -1.9 || state.climbGripRelease & 1 << side) || unsafe > safe && unsafe - safe < 0.0125) break;
         }
-        const pitch = base + (safe - base) * blend;
+        const pitch = found ? base + (safe - base) * blend : previous;
         arm.rotation.x = pitch;
         // Keep the wall grip's shoulder turn while the hand follows the
         // rectangle onto the floor, then release it continuously.
-        let yaw = previousYaw * clamp((blend - 0.7) / 0.3, 0, 1);
+        let yaw = found ? previousYaw * clamp((blend - 0.7) / 0.3, 0, 1) : previousYaw;
         if (blend > 0.98 && !(state.climbGripRelease & 1 << side)) {
           arm.rotation.y = 0;
           if (climbArmContact(arm, side, preparing, dx, dy, dz) === 1) yaw = 0;
@@ -1455,6 +1460,12 @@
         // visible gap while the root continues climbing.
         arm.rotation.x = blend > 0.98 ? pitch : damp(previous, pitch, 18, dt);
         arm.rotation.y = blend > 0.98 ? yaw : damp(previousYaw, yaw, 18, dt);
+        // A clear target does not prove the eased pose clear at this root.
+        // Keep the exact checked pitch/yaw if the interpolation meets a tread.
+        if (!climbPartClear(arm)) {
+          if (found) { arm.rotation.x = pitch; arm.rotation.y = previousYaw; }
+          else fitWalkArm(arm, side);
+        }
       }
     };
     const climbHandContactMask = () => !climbSolidAt ? 0

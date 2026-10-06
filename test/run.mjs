@@ -9323,6 +9323,42 @@ const unitChecks = async () => {
   // Sealed cave guides need the hub's seal nodes, so probes reading them stay in the browser tier.
   const island = BL.terrain.island({ seed: 1 });
   {
+    // These real c3 roof poses cover the threshold gap, unsafe interpolation,
+    // and a rejected first target with a previously clear raised arm.
+    const solid = island.solidAt, rows = [];
+    const cases = [
+      { name: "tiny blend", x: 24.92151335087419, z: 0.7603217276131707, blend: 0.0009134192576236537, angle: -1.491094355390107, frames: 1, dt: 0 },
+      { name: "eased arm", x: 24.92151335087419, z: 0.7603217276131707, blend: 0.002, angle: -1.491094355390107, frames: 1, dt: 1 / 30 },
+      { name: "rejected target", x: 25.2, z: 0.2, blend: 0.1, angle: -3.5, frames: 30, dt: 1 / 30 }
+    ];
+    for (const fixture of cases) {
+      const gorilla = BL.agent.create({ managed: true, groundAt: island.surfaceAt, climbSolidAt: solid });
+      const motion = { climb: fixture.blend, climbBlend: fixture.blend, supportOffset: 0 };
+      gorilla.poseManaged(2, fixture.x, 7, fixture.z, Math.PI / 2, 0, false, false, "", motion);
+      gorilla.parts.armL.rotation.x = fixture.angle;
+      const enclosed = () => {
+        BL.scene.updateWorld(gorilla.root);
+        const arm = gorilla.parts.armL, v = arm.geometry.verts, m = arm.world;
+        let count = 0;
+        for (let i = 0; i < v.length; i += 3) {
+          const x = m[0] * v[i] + m[4] * v[i + 1] + m[8] * v[i + 2] + m[12];
+          const y = m[1] * v[i] + m[5] * v[i + 1] + m[9] * v[i + 2] + m[13];
+          const z = m[2] * v[i] + m[6] * v[i + 1] + m[10] * v[i + 2] + m[14];
+          if (solid(x,y,z) && solid(x-.004,y,z) && solid(x+.004,y,z) && solid(x,y-.004,z) && solid(x,y+.004,z) && solid(x,y,z-.004) && solid(x,y,z+.004)) count++;
+        }
+        return count;
+      };
+      const before = enclosed(); let maximum = 0;
+      for (let frame = 0; frame < fixture.frames; frame++) {
+        gorilla.poseManaged(fixture.dt, fixture.x, 7, fixture.z, Math.PI / 2, 0, false, false, "", motion);
+        maximum = Math.max(maximum, enclosed());
+      }
+      rows.push({ name: fixture.name, before, maximum, stationary: gorilla.root.position.x === fixture.x && gorilla.root.position.y === 7 && gorilla.root.position.z === fixture.z });
+      gorilla.dispose();
+    }
+    record("gorilla mount transitions: tiny blends, eased arms and rejected targets retain rendered clearance without root relocation", rows[0].before > 0 && rows[1].before > 0 && rows[2].before === 0 && rows.every(row => !row.maximum && row.stationary), JSON.stringify(rows));
+  }
+  {
     const beds = BL.headquartersSleep.outdoorBeds(island, BL.caves.slots);
     const caves = new Set(beds.map(b => b.caveId));
     const supported = beds.every(b => b.outdoor && b.y >= island.surfaceAt(b.x, b.z) && b.y > 3);
