@@ -3284,7 +3284,7 @@
       // the same step budget as the vertical/lateral input and stops one
       // standoff short of the next face; the body and scenery sweeps still
       // certify each short move.
-      if (vertical >= 0 && wallBodyClear(tx, ty, tz, heading)) {
+      if (vertical && wallBodyClear(tx, ty, tz, heading)) {
         const face = wallFaceDepth(tx, ty, tz, heading);
         if (Number.isFinite(face) && face >= 0.76) {
           const advance = Math.max(0, Math.min(distance * 0.7, face - CLIMB_STANDOFF));
