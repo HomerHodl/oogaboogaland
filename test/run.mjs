@@ -5,7 +5,7 @@ import { runInNewContext } from "node:vm";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { tmpdir } from "node:os";
-import { createHash } from "node:crypto";
+import { createHash, webcrypto } from "node:crypto";
 import { externalizeAudio } from "../scripts/distribution-audio.mjs";
 import { launch, acquire, dispose, driverError } from "./browser.mjs";
 import { writeCharacters } from "../scripts/characters.mjs";
@@ -2428,7 +2428,7 @@ const session = (url, steps, opts, final) => output.run({ lines: [], results: []
     started = Date.now();
     // Watchdog kills Chrome so a wedged session never holds its lane; the longest healthy session is ~20 s.
     const browser = b;
-    watchdog = setTimeout(() => { overran = true; browser.close(); }, SESSION_MS);
+    watchdog = setTimeout(() => { overran = true; browser.close(true); }, SESSION_MS);
     // Install before scripts/boot: observe every DSB runtime factory and prohibit live requests.
     if (steps.some(([name]) => name.startsWith("Ooga Portal"))) await b.send("Page.addScriptToEvaluateOnNewDocument", { source: `(() => {
       const counts = window.__gateDormancy = { enter: 0, land: 0, zuzu: 0, data: 0, tv: 0, audio: 0, chat: 0, fetch: 0, socket: 0, radio: 0 };
@@ -3690,6 +3690,68 @@ const raceStart = { name: "race start and steering", why: "regression: A and D s
   const racing = await st();
   const px = await b.evaluate(raceSteer(["a", "d", "ArrowLeft", "ArrowRight"]));
   record("race start and steering: Enter closes the title card, Enter starts the countdown into the race, and A, D and the arrows steer left and right on screen", fresh.card && fresh.phase === "garage" && !closed.card && closed.phase === "garage" && counting.phase === "countdown" && racing.phase === "racing" && px.none === 0 && px.a < -50 && px.ArrowLeft < -50 && px.d > 50 && px.ArrowRight > 50, JSON.stringify({ fresh, closed, counting, racing, px }));
+} };
+const raceRigs = { name: "race rig poses", why: "regression: the full custom driver field exceeded the global GPU record budget before a rebuilt track even rendered", run: async (b) => {
+  const r = await b.evaluate(`(() => {
+    const B = __ooga, gl = B.renderer.kind === "webgl2", rows = [], poses = [], originalTrack = B.race.selection.track, originalMount = B.race.selection.mount;
+    B.race.toGarage();
+    const rigs = B.racers.racers.map(racer => racer.node.geometry?.meshRig);
+    const matrices = rigs.map(rig => rig?.matrices);
+    for (const id of ["bay", "gorge", "peak", "bay"]) {
+      document.querySelector('[data-track="' + id + '"]').click(); B.advance(1 / 60, 1 / 60); B.housekeep();
+      rows.push({ id, records: B.renderer.stats.records, racers: B.racers.racers.length });
+    }
+    for (const mount of ["run", "dino", "kart"]) {
+      document.querySelector('[data-mount="' + mount + '"]').click(); B.advance(1 / 60, 1 / 60);
+      let exact = true, complete = true;
+      for (let i = 0; i < B.racers.racers.length; i++) {
+        const racer = B.racers.racers[i], rig = racer.node.geometry?.meshRig;
+        if (gl) {
+          exact &&= rig === rigs[i] && rig.matrices === matrices[i] && rig.nodes.length === 9;
+          for (let j = 0; j < rig.nodes.length; j++) for (let k = 0; k < 16; k++) exact &&= rig.matrices[j * 16 + k] === Math.fround(rig.nodes[j].world[k]);
+          complete &&= rig.sources.every((source, j) => source === rig.nodes[j].geometry && source.faces.length > 0);
+        } else complete &&= !rig && ["legR", "legL", "torso", "armR", "armL", "club", "head", "fingersR", "fingersL"].every(key => racer.cave.parts[key].geometry.faces.length > 0 && !racer.cave.parts[key].meshRigSource);
+      }
+      poses.push({ mount, exact, complete });
+    }
+    document.querySelector('[data-track="' + originalTrack + '"]').click(); document.querySelector('[data-mount="' + originalMount + '"]').click(); B.advance(1 / 60, 1 / 60);
+    return { gl, rows, poses, ready: B.renderer.ready, failure: B.renderer.failure };
+  })()`);
+  record("race rigs: every rendered track keeps the unchanged global GPU record cap with the full cast and every CPU joint follows its mount", r.ready && !r.failure && r.rows.every(row => row.records < 320 && row.racers === CAST) && r.poses.every(pose => pose.exact && pose.complete), JSON.stringify(r));
+} };
+const raceRigContext = { name: "race rig context restoration", why: "regression: restored WebGL records must rebuild joint streams without replacing CPU poses or dropping custom racers", run: async (b) => {
+  const r = await b.evaluate(`new Promise((resolve, reject) => {
+    const B = __ooga, canvas = document.getElementById("scene"), gl = canvas.getContext("webgl2"), ext = gl && gl.getExtension("WEBGL_lose_context");
+    if (!ext) return reject(new Error("Race context-loss extension unavailable"));
+    B.race.toGarage(); B.advance(1 / 60, 1 / 60); B.housekeep();
+    const before = B.renderer.stats.records, frames = B.renderedFrames;
+    const saved = B.racers.racers.map(racer => { const geometry = racer.node.geometry, rig = geometry.meshRig; return { racer, geometry, rig, nodes: rig.nodes.slice(), sources: rig.sources.slice(), matrices: rig.matrices, params: rig.params, voxels: rig.voxels, voxelValues: Array.from(rig.voxels), visibility: rig.visibility }; });
+    const originalBuffer = gl.createBuffer, originalVao = gl.createVertexArray;
+    let buffers = 0, vaos = 0, lost = false, restored = false, done = false, restoreTimer;
+    gl.createBuffer = function(...args) { buffers++; return originalBuffer.apply(this, args); };
+    gl.createVertexArray = function(...args) { vaos++; return originalVao.apply(this, args); };
+    const cleanup = () => { done = true; clearTimeout(timer); clearTimeout(restoreTimer); canvas.removeEventListener("webglcontextlost", onLost); canvas.removeEventListener("webglcontextrestored", onRestored); gl.createBuffer = originalBuffer; gl.createVertexArray = originalVao; };
+    const timer = setTimeout(() => { cleanup(); reject(new Error("Race WebGL context restoration exceeded 15000ms")); }, 15000);
+    const onLost = () => { lost = gl.isContextLost(); restoreTimer = setTimeout(() => ext.restoreContext(), 100); };
+    const onRestored = () => { restored = true; requestAnimationFrame(check); };
+    const check = () => {
+      if (done) return;
+      if (!B.renderer.ready || B.renderedFrames <= frames + 2 || B.renderer.stats.drawn <= 0) return requestAnimationFrame(check);
+      B.housekeep();
+      let identities = B.racers.racers.length === saved.length, exact = true, voxelsFinite = true;
+      for (const entry of saved) {
+        const rig = entry.rig;
+        identities &&= entry.racer.node.geometry === entry.geometry && entry.geometry.meshRig === rig && rig.matrices === entry.matrices && rig.params === entry.params && rig.voxels === entry.voxels && rig.visibility === entry.visibility;
+        identities &&= rig.nodes.length === 9 && rig.nodes.every((node, j) => node === entry.nodes[j] && node.geometry === entry.sources[j] && rig.sources[j] === entry.sources[j] && node.meshRigSource === rig && node.geometry.faces.length > 0);
+        for (let j = 0; j < rig.nodes.length; j++) for (let k = 0; k < 16; k++) exact &&= rig.matrices[j * 16 + k] === Math.fround(rig.nodes[j].world[k]);
+        voxelsFinite &&= Array.from(rig.voxels).every((value, j) => Number.isFinite(value) && value === entry.voxelValues[j]);
+      }
+      const result = { lost, restored, contextLost: gl.isContextLost(), before, records: B.renderer.stats.records, drawn: B.renderer.stats.drawn, ready: B.renderer.ready, failure: B.renderer.failure, framesBefore: frames, framesAfter: B.renderedFrames, racers: saved.length, buffers, vaos, identities, exact, voxelsFinite, error: gl.getError() };
+      cleanup(); resolve(result);
+    };
+    canvas.addEventListener("webglcontextlost", onLost); canvas.addEventListener("webglcontextrestored", onRestored); ext.loseContext();
+  })`);
+  record("race rigs: a real WebGL context loss rebuilds GPU records for the full cast within the unchanged cap while preserving CPU sources and joint palettes", r.lost && r.restored && !r.contextLost && r.ready && !r.failure && r.drawn > 0 && r.records > 0 && r.records < 320 && r.before < 320 && r.racers === CAST && r.buffers >= CAST * 2 && r.vaos >= CAST && r.identities && r.exact && r.voxelsFinite && r.error === 0, JSON.stringify(r));
 } };
 const racePause = { name: "race pause", why: "rule: Escape pauses the race and nothing moves until it is pressed again", run: async (b) => {
   await b.evaluate(`(() => { const B = window.__ooga; ${EV} B.race.startRace(); B.advance(3.6, 1 / 60); ev("keydown", "w"); B.advance(1, 1 / 60); })()`);
@@ -7855,7 +7917,7 @@ scene("hub", { label: "mirror clanker", query: "solo=1&character=portlandhodl&st
 } }] });
 scene("hub", { perf: true, query: "bananas=1000", opts: { w: 1920, h: 1080, perf: true, motion: true }, steps: [{ name: "wall movement performance", why: "regression: frame rate fell moving behind cave walls during a donation", run: wallPerformance }] });
 scene("lab", { steps: [donation("lab"), labWalking, labKeys, trip("lab")] });
-scene("race", { query: "rain=0", steps: [raceStart, { name: "race tracks", why: "regression: the 12-slot grid spawned a free banana on Banana Bay", run: async (b) => { await b.evaluate(`window.__ooga.race.toGarage()`); await raceTracks[1](b); } }, racePause, play("race", "a whole cup under the autopilot: every racer finishes in order, the cup medal and every track's best are saved", cupRun), raceMirror, raceAgain, trip("race")] });
+scene("race", { query: "rain=0", steps: [raceStart, { name: "race tracks", why: "regression: the 12-slot grid spawned a free banana on Banana Bay", run: async (b) => { await b.evaluate(`window.__ooga.race.toGarage()`); await raceTracks[1](b); } }, raceRigs, raceRigContext, racePause, play("race", "a whole cup under the autopilot: every racer finishes in order, the cup medal and every track's best are saved", cupRun), raceMirror, raceAgain, trip("race")] });
 scene("drop", { steps: [dropStart, dropSteering, play("drop", "a jump lands on the target, scores its own medal and is saved as the best", dropRun), dropCrash, trip("drop")] });
 scene("orbit", { steps: [{ name: "orbit flow", why: "regression: the spacewalk air bonus was missing from the flight log", run: orbitFlow }, orbitSteering, orbitMissed, orbitEscape, trip("orbit")] });
 scene("mine", { steps: [mineResume, trip("mine"), mineControls] });
@@ -9254,7 +9316,234 @@ const qualityFramebufferChecks = async () => {
   })()`, { ...context, countCreated: () => created, countWrites: () => writes, isLive: handle => live.has(handle), liveCount: () => live.size });
   record("quality framebuffer: capped tiers and repeated resizes preserve identical targets, every changed attachment configuration rebuilds and disposal permits fresh restoration", Object.values(r).every(Boolean), JSON.stringify({ ...r, created, deleted, writes }));
 };
+const raceRigChecks = async () => {
+  const context = { window: {}, location: { search: "?debug=1&rain=0" }, URLSearchParams, crypto: webcrypto };
+  for (const name of ["math", "scene", "models", "caves", "contributor-identities", "activity-repos", "characters"]) runInNewContext(await readFile(new URL(`../src/js/${name}.js`, import.meta.url), "utf8"), context);
+  for (const name of readdirSync(join(root, "src", "characters")).filter(name => name.endsWith(".js")).sort()) runInNewContext(readFileSync(join(root, "src", "characters", name), "utf8"), context);
+  for (const name of ["contributors", "hub-models", "dressing", "daylight", "race-models", "race-track", "racers", "mirror-ripples", "mirror-body", "gl-renderer"]) runInNewContext(await readFile(new URL(`../src/js/${name}.js`, import.meta.url), "utf8"), context);
+  const BL = context.window.BL, scene = BL.scene.createNode(), released = [];
+  const renderer = { createRig: BL.glRenderer.createRig, releaseGeometry: geometry => released.push(geometry) };
+  const track = BL.raceTrack.build(BL.raceTrack.TRACKS[0], { renderer, slots: CAST, rain: false, hour: 12 });
+  const racers = BL.racers.create({ root: scene, track, renderer, input: { add() {}, remove() {} }, fx: null });
+  const originals = racers.racers.map(racer => ({ node: racer.node, geometry: racer.node.geometry, rig: racer.node.geometry.meshRig, joints: racer.node.geometry.meshRig.nodes.slice(), sources: racer.node.geometry.meshRig.sources.slice() }));
+  let stable = true;
+  for (const mount of ["kart", "run", "dino", "kart", "dino", "run", "kart"]) {
+    racers.setup({ track, playerName: racers.racers[0].name, playerMount: mount, lapCount: 3 });
+    BL.scene.updateWorld(scene);
+    for (const entry of originals) stable &&= entry.node.geometry === entry.geometry && entry.rig.nodes.length === 9 && entry.rig.sources.every((source, i) => source === entry.sources[i] && entry.rig.nodes[i].geometry === source && entry.rig.nodes[i].meshRigSource === entry.rig);
+  }
+  const bounded = originals.every(({ rig }) => rig.matrices.length === 144 && rig.params.length === 36 && rig.voxels.length === 36 && rig.visibility.length === 27);
+  const rejectNodes = Array.from({ length: 2 }, () => BL.scene.createNode({ geometry: BL.models.box({ color: "#ffffff" }) }));
+  rejectNodes[1].geometry.clipPlane = new Float32Array([0, 1, 0, 0]);
+  let rejected = renderer.createRig(rejectNodes) === null && rejectNodes.every(node => !node.meshRigSource);
+  delete rejectNodes[1].geometry.clipPlane;
+  for (const flag of ["lakeChargeRise", "lightBeam"]) {
+    rejectNodes[1].geometry[flag] = 1;
+    rejected &&= renderer.createRig(rejectNodes) === null && rejectNodes.every(node => !node.meshRigSource);
+    delete rejectNodes[1].geometry[flag];
+  }
+  let overflow = false;
+  try { renderer.createRig(Array.from({ length: 10 }, () => rejectNodes[0])); } catch { overflow = true; }
+  const rendererSource = await readFile(new URL("../src/js/gl-renderer.js", import.meta.url), "utf8");
+  // Ordinary shaders must retain the pre-rig programs exactly. These fixed
+  // hashes come from fabdec255, not from deriving a second copy of the new code.
+  runInNewContext(rendererSource.replace("  BL.glRenderer =", "  window.__ordinaryRigProof = [ORDINARY_MESH_VS, ORDINARY_MESH_FS, ORDINARY_SHADOW_VS];\n  BL.glRenderer ="), context);
+  const ordinaryHashes = context.window.__ordinaryRigProof.map(shader => createHash("sha256").update(shader).digest("hex"));
+  const expectedOrdinaryHashes = ["cbe7d57dd7b7a1a262700d25c99f5da16d7f67dc0987321a7b686a996c75d8e6", "4b9578e199968d7d40a8cc4a52d3666755b621ef5c74b1de06cd9b1f8cd5361a", "37030f053de422aa157f017ceedef0812ed57a17c9e1b2af4aab017c0b645364"];
+  record("race rig strategy: ordinary mesh, fragment and shadow shader bytes retain the pre-rig fast path", ordinaryHashes.every((hash, i) => hash === expectedOrdinaryHashes[i]), JSON.stringify(ordinaryHashes));
+  const extract = (name, next) => rendererSource.slice(rendererSource.indexOf(`    const ${name} =`), rendererSource.indexOf(next, rendererSource.indexOf(`    const ${name} =`))).trim();
+  const cachedRig = {}, cachedGeometry = { meshRig: cachedRig }, cacheRecords = new Map([[cachedGeometry, {}]]), uniformCalls = [];
+  const cacheMesh = { rig: cachedRig, u: { uRigCount: "mesh-count" } }, cacheShadow = { rig: cachedRig, u: { uRigCount: "shadow-count" } };
+  const cacheContext = { rigPrograms: { mesh: cacheMesh, shadow: cacheShadow }, programs: { mesh: cacheMesh, shadow: cacheShadow }, records: cacheRecords, res: { programs: { mesh: cacheMesh, shadow: cacheShadow } }, destroyReflector() {}, deleteRecord() {}, gl: { uniform1i: (...args) => uniformCalls.push(args) }, geometry: cachedGeometry };
+  runInNewContext(`${extract("releaseGeometry", "    init();")}
+${extract("applyRig", "    const uploadInstances =")}
+releaseGeometry(geometry); applyRig(res.programs.mesh, { geometry: {} }, 1); applyRig(res.programs.shadow, { geometry: {} }, 2);`, cacheContext);
+  const cacheReleased = cacheRecords.size === 0 && cacheMesh.rig === undefined && cacheShadow.rig === undefined && uniformCalls.length === 2 && uniformCalls.every(call => call[1] === 0);
+  record("race rigs: disposing the cached rig resets both shader palettes before an ordinary draw", cacheReleased, JSON.stringify({ records: cacheRecords.size, uniformCalls }));
+  racers.dispose();
+  const disposed = released.length === CAST && originals.every(({ node, rig, joints, sources }) => joints.every(joint => !joint.meshRigSource) && !node.geometry && !node.parent && rig.nodes.length === 0 && rig.sources.length === 0 && !rig.matrices && !rig.params && !rig.voxels && !rig.visibility && sources.every(source => source.verts.length > 0));
+  record("race rigs: all custom CPU joints survive repeated mount changes, palettes stay bounded, unsupported surfaces reject atomically and disposal releases every GPU rig", originals.length === CAST && stable && bounded && rejected && overflow && disposed, JSON.stringify({ racers: originals.length, stable, bounded, rejected, overflow, disposed, released: released.length }));
+};
+
+const visibilitySourceBakeProof = () => {
+  const math = readFileSync(new URL("../src/js/math.js", import.meta.url), "utf8");
+  const source = readFileSync(new URL("../src/js/character-visibility.js", import.meta.url), "utf8");
+  const expose = source.slice(0, source.indexOf("  const create =")) + " window.__meshProof={meshOf,meshes};})();";
+  return runInNewContext(math + "\n" + expose + `
+(() => {
+    const {meshOf}=window.__meshProof;
+    const source={verts:new Float64Array([0,0,0, 1,0,0, 0,1,0, 0,0,1]),faces:[{i:[0,1,2]},{i:[0,2,3]}]};
+    const wrapper=()=>({...source,faces:source.faces.map(f=>({...f,matrixCave:2,matrixLocalGlyphSurface:true})),matrixSourceGeometry:source});
+    const first=wrapper(), baked=meshOf(first);let cases=0;
+    const check=(ok,label)=>{cases++;if(!ok)throw Error(label);};
+    for(let i=0;i<100;i++){const g=wrapper();check(meshOf(g)===baked,'Identical topology not shared');check(meshOf(g)===baked,'Alias cache changed');}
+    const exact=wrapper(), independent=meshOf({verts:exact.verts,faces:exact.faces});
+    check(JSON.stringify(baked.nodes)===JSON.stringify(independent.nodes),'Shared BVH bounds differ');
+    check(JSON.stringify(Array.from(baked.indices))===JSON.stringify(Array.from(independent.indices)),'Shared triangles differ');
+    check(JSON.stringify(Array.from(baked.order))===JSON.stringify(Array.from(independent.order)),'Shared order differs');
+    check(exact.faces[0].matrixCave===2 && exact.faces[0].matrixLocalGlyphSurface===true,'Wrapper material ownership changed');
+    const changedVerts=wrapper();changedVerts.verts=source.verts.slice();check(meshOf(changedVerts)!==baked,'Changed vertex identity shared');
+    const changedFaces=wrapper();changedFaces.faces[0]={i:[0,1,3]};check(meshOf(changedFaces)!==baked,'Changed triangles shared');
+    const reordered=wrapper();reordered.faces.reverse();check(meshOf(reordered)!==baked,'Face order changed');
+    const truncated=wrapper();truncated.faces.pop();check(meshOf(truncated)!==baked,'Face count changed');
+    const cyclic=wrapper();cyclic.matrixSourceGeometry=cyclic;check(!!meshOf(cyclic),'Self reference failed');
+    const a=wrapper(),b=wrapper();a.matrixSourceGeometry=b;b.matrixSourceGeometry=a;check(!!meshOf(a),'Source cycle failed');
+    // Each rejected wrapper remains exactly equivalent to a fresh geometry bake.
+    for(const g of [changedVerts,changedFaces,reordered,truncated]){const fresh={verts:g.verts,faces:g.faces};const l=meshOf(g),r=meshOf(fresh);check(JSON.stringify(Array.from(l.indices))===JSON.stringify(Array.from(r.indices)),'Rejected topology differs');check(JSON.stringify(Array.from(l.order))===JSON.stringify(Array.from(r.order)),'Rejected ordering differs');}
+    source.verts[0]=.125;
+    const movedSource=wrapper();check(meshOf(movedSource)!==baked,'Mutated source vertices reused stale bounds');
+    const movedFresh=meshOf({verts:movedSource.verts,faces:movedSource.faces});check(JSON.stringify(meshOf(movedSource).nodes)===JSON.stringify(movedFresh.nodes),'Mutated source bounds differ');
+    source.faces = [{i:[0,1,3]}];
+    const later = wrapper();check(meshOf(later)!==baked,'Replaced source faces reused stale bake');
+    const newBake=meshOf({verts:later.verts,faces:later.faces});check(JSON.stringify(Array.from(meshOf(later).indices))===JSON.stringify(Array.from(newBake.indices)),'Replaced source topology differs');
+    return { cases, failures: 0, wrapperVisits: 100, sharedSourceBVHs: 1 };
+  })()`, { window: { BL: { scene: { boundsOf() { throw Error("Unused"); } } } } });
+};
+
+// Run the shipped driver with synthetic processes, discovery and sockets; never launch Chrome.
+const browserDriverProof = async () => {
+  const source = await readFile(new URL("./browser.mjs", import.meta.url), "utf8");
+  const flush = async () => { for (let i = 0; i < 500; i++) await Promise.resolve(); };
+  const fixture = (mode = "ok") => {
+    let clock = 0, serial = 0, discovery = 0;
+    const timers = new Set(), children = [], sockets = [], removed = [], requests = [];
+    const timeout = (fn, ms) => {
+      const timer = { fn, ms, active: true, unref() { return this; } };
+      timers.add(timer);
+      // Advance short startup/reset delays deterministically; command watchdogs fire explicitly below.
+      if (ms <= 1000) queueMicrotask(() => {
+        if (!timer.active) return;
+        clock += ms; timer.active = false; timers.delete(timer); fn();
+      });
+      return timer;
+    };
+    const clear = timer => { if (timer) { timer.active = false; timers.delete(timer); } };
+    const spawn = () => {
+      const handlers = new Map();
+      const child = {
+        kills: [],
+        on(name, fn) { handlers.set(name, fn); },
+        listenerCount(name) { return handlers.has(name) ? 1 : 0; },
+        emit(name, ...args) { handlers.get(name)?.(...args); },
+        kill(signal) { this.kills.push(signal || "SIGTERM"); return true; }
+      };
+      children.push(child);
+      if (mode === "spawn-error") queueMicrotask(() => {
+        if (child.listenerCount("error")) child.emit("error", new Error("synthetic ENOENT"));
+        else child.unhandledError = true;
+      });
+      return child;
+    };
+    class Socket {
+      constructor() { sockets.push(this); queueMicrotask(() => this.onopen?.()); }
+      close() { this.closed = true; } // A wedged transport deliberately never emits a close event.
+      send(raw) {
+        const message = JSON.parse(raw);
+        if (message.method.startsWith("Synthetic.hang")) return;
+        if (message.method === "Synthetic.throw") throw new Error("synthetic send failure");
+        const value = message.params?.expression?.includes("location.href") ? mode !== "reset-not-blank" : 1;
+        queueMicrotask(() => this.onmessage?.({ data: JSON.stringify({ id: message.id, result: { result: { value } } }) }));
+      }
+    }
+    const context = {
+      spawn, mkdtempSync: () => `synthetic-profile-${++serial}`, readFileSync: () => "9999\nsynthetic",
+      rmSync: profile => removed.push(profile), writeFileSync() {}, tmpdir: () => "/tmp", join: (...parts) => parts.join("/"),
+      process: { env: {}, once() {} }, setTimeout: timeout, clearTimeout: clear, queueMicrotask, WebSocket: Socket,
+      AbortSignal: { timeout(ms) {
+        const signal = { handler: null, once(name, fn) { this.handler = fn; }, emit() { this.handler?.(); } };
+        timeout(() => signal.emit("abort"), ms);
+        return signal;
+      } },
+      fetch: async (url, opts) => {
+        requests.push({ url, bounded: !!opts?.signal });
+        if (mode === "discovery-hang") return new Promise((resolve, reject) => opts?.signal?.once("abort", () => reject(new Error("synthetic abort"))));
+        discovery++;
+        return { json: async () => mode === "missing-page" && discovery === 1 ? [] : [{ type: "page", webSocketDebuggerUrl: "ws://synthetic/page" }] };
+      },
+      Date: class extends Date { static now() { return clock; } }, console, Buffer
+    };
+    const script = source.replace(/^import .*;\n/gm, "").replace(/export const /g, "const ")
+      + "\nthis.driver = { launch, acquire, release, dispose };";
+    runInNewContext(script, context);
+    return { ...context.driver, children, sockets, timers, removed, requests,
+      fire(ms) {
+        const timer = [...timers].find(timer => timer.ms === ms && timer.active);
+        if (!timer) throw new Error(`No timer ${ms}`);
+        timer.active = false; timers.delete(timer); timer.fn();
+      }
+    };
+  };
+  const rows = [];
+  for (const event of ["timeout", "send-throw", "socket-close", "process-exit"]) {
+    const f = fixture(), browser = await f.launch();
+    let first = "pending", second = "pending";
+    browser.send("Synthetic.hang.one").then(() => first = "resolved", () => first = "rejected");
+    browser.send("Synthetic.hang.two").then(() => second = "resolved", () => second = "rejected");
+    if (event === "timeout") f.fire(90000);
+    if (event === "send-throw") await browser.send("Synthetic.throw").catch(() => {});
+    if (event === "socket-close") f.sockets[0].onclose();
+    if (event === "process-exit") f.children[0].emit("exit", 1);
+    await flush();
+    rows.push({ name: event, pass: first === "rejected" && second === "rejected" && f.children[0].kills.includes("SIGKILL"), first, second, kills: f.children[0].kills.slice() });
+    await f.dispose();
+  }
+  {
+    const f = fixture(), browser = await f.acquire();
+    browser.close(true); await flush();
+    rows.push({ name: "forced pooled close", pass: f.children[0].kills.includes("SIGKILL"), kills: f.children[0].kills.slice() });
+    await f.dispose();
+  }
+  {
+    const f = fixture();
+    await f.launch(); await f.dispose(); await flush();
+    rows.push({ name: "dispose active browser", pass: f.children[0].kills.includes("SIGKILL"), kills: f.children[0].kills.slice() });
+  }
+  {
+    const f = fixture("missing-page");
+    let browser = null, error = null;
+    try { browser = await f.launch(); } catch (err) { error = err.message; }
+    rows.push({ name: "wait for usable page", pass: !!browser && f.requests.length === 2, requests: f.requests.length, error });
+    await f.dispose();
+  }
+  {
+    const f = fixture("spawn-error");
+    let error = null;
+    try { await f.launch(); } catch (err) { error = err.message; }
+    rows.push({ name: "spawn error cleanup", pass: !!error && error.includes("synthetic ENOENT") && f.removed.length > 0, error, removed: f.removed.length });
+  }
+  {
+    const f = fixture("discovery-hang");
+    let error = null;
+    f.launch().catch(err => error = err.message);
+    await flush(); await flush();
+    rows.push({ name: "bounded discovery fetch", pass: !!error && f.requests.every(request => request.bounded) && f.children[0].kills.includes("SIGKILL"), error, bounded: f.requests.every(request => request.bounded), requests: f.requests.length });
+    await f.dispose();
+  }
+  {
+    const f = fixture("reset-not-blank"), browser = await f.acquire();
+    browser.close(); await flush();
+    rows.push({ name: "failed blank reset retires browser", pass: f.children[0].kills.includes("SIGKILL"), kills: f.children[0].kills.slice() });
+    await f.dispose();
+  }
+  {
+    const f = fixture(), browser = await f.acquire();
+    browser.close(); browser.close(); await flush();
+    const first = await f.acquire(), second = await f.acquire();
+    await flush();
+    rows.push({ name: "duplicate close cannot publish two pool entries", pass: first !== second && f.children.length === 2 });
+    first.close(true); second.close(true); await f.dispose();
+  }
+  return { cases: rows.length, failures: rows.filter(row => !row.pass).length, rows };
+};
+
 const unitChecks = async () => {
+  const driver = await browserDriverProof();
+  record("browser driver: broken transports retire every pending command and owned child, discovery is bounded, and pool ownership remains exclusive", driver.cases === 11 && driver.failures === 0, JSON.stringify(driver));
+
+const sharedBake = visibilitySourceBakeProof();
+record("character visibility source bakes: ownership wrappers share exact immutable triangles and reject changed topology or source vertices", sharedBake.failures === 0 && sharedBake.cases >= 200, JSON.stringify(sharedBake));
+
+  await raceRigChecks();
   await qualityFramebufferChecks();
   const north = await northTrajectoryProof();
   record("birds-eye north: worst shortest arcs stay monotonic below the frame step limit and settle before the replay deadline", north.finite && north.monotonic && north.resets && north.variableSteps && north.maxStep < 0.25 && north.residual < 0.001, JSON.stringify(north));
