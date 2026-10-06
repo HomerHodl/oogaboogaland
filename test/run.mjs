@@ -2389,6 +2389,7 @@ const record = (name, ok, detail = "") => {
   const run = output.getStore(), open = !ok && !!run && !!run.open;
   const line = ok && !VERBOSE ? null : `${ok ? "PASS" : open ? "OPEN" : "FAIL"} ${name}${open ? ` · known: ${run.open}` : ""}${detail ? " · " + detail : ""}`;
   if (run) {
+    if(process.env.DSB_TRACE==="1")console.log("CHECK",ok?"PASS":"FAIL",name,detail);
     run.results.push({ name, ok, open, detail });
     if (line) run.lines.push(line);
   } else {
@@ -2396,23 +2397,173 @@ const record = (name, ok, detail = "") => {
     if (line) console.log(line);
   }
 };
-const untilReady = async (b) => {
+const untilReady = async (b, ms = 20000) => {
   const t0 = Date.now();
+  const sample = () => b.evaluate(`(() => { const B=window.__ooga;return {scene:B?.scene,frames:B?.renderedFrames||0,curtain:!!document.getElementById("curtain"),renderer:B?.renderer?.kind}; })()`);
+  const isReady = s => s.frames>=2&&!s.curtain;
   for (;;) {
-    let ready = false;
+    let state = null;
     try {
-      ready = await b.evaluate(`!!window.__ooga && window.__ooga.renderedFrames >= 2 && !document.getElementById("curtain")`);
+      state = await sample();
     } catch (err) {
       if (err.driver) throw err;
       // The old document is still tearing down.
     }
-    if (ready) break;
-    if (Date.now() - t0 > 20000) throw driverError("the page did not draw its first frame");
+    if (state&&isReady(state)) break;
+    if (Date.now() - t0 > ms) {
+      // A slow DevTools reply can cross the deadline while the page becomes ready. Judge the
+      // fresh state, not the stale boolean; never synchronously read pixels on a failure path.
+      state=await sample();if(isReady(state))break;
+      throw driverError("page readiness deadline: "+JSON.stringify(state)+" "+b.logs.join(" | "));
+    }
     await b.sleep(40);
   }
   // Entering pops the seven cavemen in on tweens, so a drawn scene is not a settled one.
   // Wait for tweenCount() === 0, not the shortened 0.9 s leaf-curtain transition.
   await b.evaluate(`new Promise((resolve) => { const t0 = performance.now(); const tick = () => { if (window.BL.scene.tweenCount() === 0 || performance.now() - t0 > 4000) resolve(); else requestAnimationFrame(tick); }; tick(); })`);
+};
+// Installed only by the shoreline browser tests, before boot. Production code is untouched.
+const shorelineHarness = () => {
+  const P=window.__shoreline={draws:0,attempts:0,readbacks:0,readbackMs:0,maxRenderMs:0,contextsLost:0,simulating:false,tick:0,last:0};
+  const read=WebGL2RenderingContext.prototype.readPixels;
+  WebGL2RenderingContext.prototype.readPixels=function(...args){const t=performance.now();P.readbacks++;try{return read.apply(this,args);}finally{P.readbackMs+=performance.now()-t;}};
+  document.addEventListener("webglcontextlost",()=>P.contextsLost++,true);
+  document.addEventListener("DOMContentLoaded",()=>{
+    const B=window.__ooga,R=B?.renderer;if(!R)return;
+    // Use the existing low tier, including its real shaders/buffers, on the software-GPU lane.
+    // All three tiers' upload capacities and gameplay are additionally covered by water-unit.
+    R.setQuality("low");const render=R.render;
+    R.render=function(...args){
+      if(P.simulating&&++P.tick%60!==0&&P.tick!==P.last){P.observe?.(false);return false;}
+      const t=performance.now();P.attempts++;const drawn=render.apply(this,args);
+      P.maxRenderMs=Math.max(P.maxRenderMs,performance.now()-t);if(drawn)P.draws++;P.observe?.(drawn);return drawn;
+    };
+    // Keep every original 60 Hz director/input/physics step and draw each simulated second
+    // plus the final state. The ordinary requestAnimationFrame loop is never replaced.
+    P.advance=(seconds,observe=null)=>{P.simulating=true;P.observe=observe;P.tick=0;P.last=Math.round(seconds*60);try{B.advance(seconds);}finally{P.simulating=false;P.observe=null;}};
+    // Simulated time advances through the normal director; readiness, not elapsed time, ends a wait.
+    P.until=(ready,limit=60)=>{let seconds=0;while(!ready()&&seconds<limit){P.advance(1);seconds++;}if(!ready())throw Error("Shoreline lifecycle did not become ready within "+limit+" simulated seconds");return seconds;};
+  },{once:true});
+};
+const shorelineState = () => {
+  const B=window.__ooga,D=B?.dsb,P=window.__shoreline,gl=document.getElementById("scene")?.getContext("webgl2");
+  const ext=gl?.getExtension("WEBGL_debug_renderer_info"),errors=[];
+  if(gl)for(let i=0;i<8;i++){const e=gl.getError();if(e===gl.NO_ERROR)break;errors.push(e);}
+  return {scene:B?.scene,kind:B?.renderer.kind,ready:B?.renderer.ready,failure:String(B?.renderer.failure||""),frames:B?.renderedFrames,draws:P.draws,
+    curtain:!!document.getElementById("curtain"),lost:!gl||gl.isContextLost()||P.contextsLost>0,errors,
+    gpu:ext?gl.getParameter(ext.UNMASKED_RENDERER_WEBGL):"unknown",readbacks:P.readbacks,readbackMs:P.readbackMs,maxRenderMs:P.maxRenderMs,timing:B?.timing,
+    initialized:!!(D?.water&&D.waterInteraction&&D.land&&D.avatar&&B.crew&&window.BL.dsbCoast),
+    capacity:D?.waterInteraction.stats.capacity,nodes:D?.waterInteraction.group.children.length,records:B?.renderer.stats.records,textures:B?.renderer.stats.waterTextures};
+};
+const shorelineHealthy = s => s.scene==="dsb"&&s.kind==="webgl2"&&s.ready&&!s.failure&&s.frames>=3&&s.draws>=2&&!s.curtain&&!s.lost&&!s.errors.length&&s.initialized&&s.capacity===24&&s.textures===2;
+// Interiors intentionally omit the exterior water render targets. Keep renderer health strict
+// and measure the actual active room/visibility instead of demanding water textures indoors.
+const svrnReviewHealthy = (s,inside) => s.scene==="dsb"&&s.kind==="webgl2"&&s.ready&&!s.failure&&s.frames>=3&&s.draws>=2&&!s.curtain&&!s.lost&&!s.errors.length&&s.initialized&&s.capacity===24&&s.records>0&&
+  (inside?s.interior==="svrn-society"&&s.roomVisible&&!s.exteriorVisible&&s.textures===0:!s.interior&&s.exteriorVisible&&s.textures===2);
+
+// Functional checks never synchronously read pixels. Evidence runs replay the same
+// semantic checks with DSB_REVIEW=1; only a proven healthy software-GPU timeout is advisory.
+const reviewHealth = () => {
+  const B=window.__ooga,R=B.renderer,gl=R.kind==="webgl2"?document.getElementById("scene").getContext("webgl2"):null;
+  const errors=[];if(gl)for(let i=0;i<8;i++){const e=gl.getError();if(e===gl.NO_ERROR)break;errors.push(e);}
+  const ext=gl?.getExtension("WEBGL_debug_renderer_info");
+  return {scene:B.scene,room:B.dsb?.interiors.active?.room.id||null,frames:B.renderedFrames,curtain:!!document.getElementById("curtain"),
+    kind:R.kind,ready:R.kind==="canvas2d"||R.ready,failure:String(R.failure||""),lost:!!gl?.isContextLost(),errors,
+    gpu:ext?gl.getParameter(ext.UNMASKED_RENDERER_WEBGL):"canvas2d",records:R.stats?.records||0};
+};
+const reviewHealthOK = h => h.ready&&h.frames>=3&&!h.curtain&&!h.failure&&!h.lost&&!h.errors.length;
+const reviewShot = async (b,path) => {
+  const {before,live}=await b.evaluate(`(async()=>{const health=${reviewHealth.toString()},before=health();await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));return {before,live:health()};})()`);
+  const healthy=reviewHealthOK(before)&&reviewHealthOK(live)&&live.frames>before.frames;
+  record("Review render health: "+path.split("/").at(-1),healthy,JSON.stringify({before,live}));
+  if(!healthy)throw Error("Review renderer is not healthy");
+  if(process.env.DSB_REVIEW!=="1")return;
+  // Do not let evidence from a previous run masquerade as this run's capture.
+  rmSync(path,{force:true});rmSync(path+".capture.json",{force:true});
+  const start=Date.now();
+  try {
+    const shot=await b.send("Page.captureScreenshot",{format:"png"},5000);
+    if(!shot.result?.data)throw Error("Review capture returned no image");
+    writeFileSync(path,Buffer.from(shot.result.data,"base64"));
+  } catch(err) {
+    // A missing image, shader/GL/context/runtime error, hardware-GPU timeout, or
+    // an unproved baseline is a failure. Never convert those to evidence notices.
+    const known=process.env.DSB_CAPTURE_BASELINE==="1"&&/SwiftShader|llvmpipe|software/i.test(live.gpu)&&
+      err.driver&&/^Page.captureScreenshot got no reply in 5 s/.test(err.message);
+    if(!known)throw err;
+    // Exterior software-GPU readback can leave work ahead of this query. Give
+    // evidence recovery a bounded ten seconds; functional readiness is unchanged.
+    const healthStart=Date.now();
+    const reply=await b.send("Runtime.evaluate",{expression:`(${reviewHealth.toString()})()`,returnByValue:true},10000);
+    const after=reply.result?.result?.value;
+    if(!after||!reviewHealthOK(after)||after.frames<=live.frames||output.getStore().results.some(r=>!r.ok&&!r.open)||b.logs.some(l=>!readbackPerformanceNotice(l)))throw err;
+    b.shorelineHealthy=true;b.shorelineSoftware=true;
+    const report={path,status:"software-GPU capture timeout",ms:Date.now()-start,healthMs:Date.now()-healthStart,before:live,after};
+    writeFileSync(path+".capture.json",JSON.stringify(report,null,2)+"\n");
+    output.getStore().lines.push("CAPTURE unavailable (healthy, baseline-reproduced software GPU): "+path);
+  }
+};
+
+const readbackPerformanceNotice = line => /^\[log\.warning\] \[\.WebGL-[^\]]+\]GL Driver Message \(OpenGL, Performance, [^)]*\): GPU stall due to ReadPixels(?: \(this message will no longer repeat\))?$/.test(line);
+const reviewCaptureChecks = async () => {
+  const review=process.env.DSB_REVIEW,baseline=process.env.DSB_CAPTURE_BASELINE;
+  const dir=join(root,"untracked/capture-validator");mkdirSync(dir,{recursive:true});
+  const run=async({capture=true,proven=true,gpu="SwiftShader",errors=[],logs=[],missing=false}={})=>{
+    process.env.DSB_REVIEW=capture?"1":"0";process.env.DSB_CAPTURE_BASELINE=proven?"1":"0";
+    let frames=3,shots=0,clocks=0;const h=()=>({scene:"dsb",room:null,frames:frames++,curtain:false,kind:"webgl2",ready:true,failure:"",lost:false,errors,gpu,records:20});
+    const store={lines:[],results:[]},b={logs,evaluate:async()=>({before:h(),live:h()}),captureClock:()=>{clocks++;},send:async method=>{
+      if(method==="Page.captureScreenshot"){shots++;if(missing)return {result:{}};throw driverError("Page.captureScreenshot got no reply in 5 s: Chrome hung");}
+      return {result:{result:{value:h()}}};
+    }};
+    let failed=false;try{await output.run(store,()=>reviewShot(b,join(dir,"fixture.png")));}catch{failed=true;}
+    return {failed,shots,clocks,notice:store.lines.some(l=>l.startsWith("CAPTURE unavailable"))};
+  };
+  try {
+    const normal=await run({capture:false}),known=await run(),unproved=await run({proven:false}),hardware=await run({gpu:"hardware"}),broken=await run({errors:[1282]}),runtime=await run({logs:["[exception] broken scene"]}),missing=await run({missing:true});
+    record("Review validator: functional mode avoids readback; only baseline-proven healthy software timeout is advisory, with renderer/runtime/image errors still gating",
+      !normal.failed&&normal.shots===0&&!known.failed&&known.notice&&known.shots===1&&known.clocks===0&&[unproved,hardware,broken,runtime,missing].every(r=>r.failed),JSON.stringify({normal,known,unproved,hardware,broken,runtime,missing}));
+    // Exercise the real session and capture paths against a virtual absolute clock.
+    // Chrome is healthy until a screenshot crosses the deadline; that must kill, fail and never retry.
+    let now=0,deadline=0,fire=null,killed=false,frames=3;
+    const health=()=>({frames:frames++,curtain:false,ready:true,failure:"",lost:false,errors:[],gpu:"SwiftShader"});
+    const browser={logs:[],open:async()=>{},focus:async()=>{},close:force=>{killed=force;},evaluate:async()=>({before:health(),live:health()}),send:async method=>{
+      if(method!=="Page.captureScreenshot")return {};
+      now=deadline;fire();throw driverError("DevTools socket closed: Chrome is gone");
+    }};
+    const context={output,Date:{now:()=>now},SESSION_MS,POOLED:false,UNLOCKED:false,realTimeTask:false,process:{env:{}},VERBOSE:false,
+      launch:async()=>{now=100;return browser;},setTimeout:(fn,ms)=>{fire=fn;deadline=now+ms;return 1;},clearTimeout:()=>{},
+      untilReady:async()=>{},driverError,failure,record,readbackPerformanceNotice};
+    const bounded=runInNewContext(`(${session.toString()})`,context);
+    process.env.DSB_REVIEW="1";
+    const timed=await bounded("about:blank",[["capture deadline",b=>reviewShot(b,join(dir,"deadline.png"))]],{},false);
+    record("Review validator: screenshot time counts toward the absolute 120s session deadline, forces Chrome destruction and fails without retry",
+      deadline===120000&&killed&&timed.retry===null&&timed.results.some(r=>!r.ok&&r.detail.includes("120 s")),JSON.stringify({deadline,killed,retry:timed.retry,results:timed.results}));
+  } finally {if(review===undefined)delete process.env.DSB_REVIEW;else process.env.DSB_REVIEW=review;if(baseline===undefined)delete process.env.DSB_CAPTURE_BASELINE;else process.env.DSB_CAPTURE_BASELINE=baseline;}
+};
+
+const shorelineHarnessChecks = async () => {
+  const now=Date.now;let elapsed=0,calls=0,screenshots=0;
+  const context={window:{__ooga:{scene:"dsb",renderedFrames:1,renderer:{kind:"webgl2"}},BL:{scene:{tweenCount:()=>0}}},document:{getElementById:()=>true},performance:{now:()=>0}};
+  const b={logs:[],sleep:async()=>{},screenshot:async()=>{screenshots++;},evaluate:async expression=>{
+    const result=runInNewContext(expression,context);calls++;
+    if(calls===1){elapsed=20001;context.window.__ooga.renderedFrames=3;context.document.getElementById=()=>null;}
+    return result;
+  }};
+  try{Date.now=()=>elapsed;await untilReady(b);record("Shoreline validator: a late ready reply succeeds without failure-path screenshot readback",calls===3&&screenshots===0);}
+  catch(e){record("Shoreline validator: a late ready reply succeeds without failure-path screenshot readback",false,String(e));}
+  finally{Date.now=now;}
+  let boot=null,ticks=0,renders=0,readbacks=0;const R={setQuality(){},render:()=>{renders++;return true;}};
+  const B={renderer:R,advance:seconds=>{for(let i=0;i<Math.round(seconds*60);i++){ticks++;R.render();}}};
+  const C=class {readPixels(){readbacks++;}};
+  const sandbox={window:{__ooga:B},document:{addEventListener:(name,fn)=>{if(name==="DOMContentLoaded")boot=fn;}},WebGL2RenderingContext:C,performance:{now:()=>0}};
+  runInNewContext(`(${shorelineHarness.toString()})()`,sandbox);boot();const P=sandbox.window.__shoreline;
+  let observations=0,observedDraws=0,transient=false;
+  P.advance(2.25,drawn=>{observations++;if(drawn)observedDraws++;if(ticks===7)transient=true;});const sampled=renders,sampledTicks=ticks;R.render();new C().readPixels();const ordinary=renders;
+  const waitStart=ticks,waited=P.until(()=>ticks-waitStart>=135,4);
+  let deadline=false;try{P.until(()=>false,1);}catch{deadline=true;}
+  record("Shoreline validator: observes transient simulation ticks and waits for semantic readiness with a bounded deadline",observations===135&&observedDraws===3&&transient&&waited===3&&deadline&&!P.observe);
+  B.advance=()=>{throw Error("fixture simulation failure");};try{P.advance(1);}catch{}
+  record("Shoreline validator: sampling preserves every physics tick, final draw, normal rendering and readback forwarding",sampledTicks===135&&sampled===3&&ordinary===4&&readbacks===1&&P.readbacks===1&&!P.simulating&&!P.observe);
 };
 // Frame limiter stays on: unlocked measured 418 fps, turning every `fps >= 50` floor into `418 >= 50`.
 // UNLOCK=1 unlocks the non-measuring lanes so the trade can be measured.
@@ -2434,11 +2585,18 @@ const session = (url, steps, opts, final) => output.run({ lines: [], results: []
     const shape = { ...opts, perf: opts.perf ?? (realTimeTask || !UNLOCKED) };
     b = POOLED && !shape.perf && !final ? await acquire(shape) : await launch(shape);
     started = Date.now();
-    // Watchdog kills Chrome so a wedged session never holds its lane; the longest healthy session is ~20 s.
+    // One absolute deadline, including launch, readiness and screenshot/evidence capture.
+    // Force destruction even in POOL mode: a timed-out Chrome must never return to the pool.
     const browser = b;
-    watchdog = setTimeout(() => { overran = true; browser.close(true); }, SESSION_MS);
+    watchdog = setTimeout(() => { overran = true; browser.close(true); }, Math.max(0, SESSION_MS-(Date.now()-t0)));
+    if(process.env.DSB_TRACE==="1") {
+      const evaluate=b.evaluate;
+      b.evaluate=async code=>{console.log("DSB STEP",Date.now()-started,String(code).slice(0,150));const value=await evaluate(code);console.log("DSB DONE",Date.now()-started);return value;};
+    }
+
+    if(steps.some(([name])=>name.startsWith("dsb shoreline")||name.includes("Portara aperture")))await b.send("Page.addScriptToEvaluateOnNewDocument",{source:`(${shorelineHarness.toString()})()`});
     // Install before scripts/boot: observe every DSB runtime factory and prohibit live requests.
-    if (steps.some(([name]) => name.startsWith("Ooga Portal"))) await b.send("Page.addScriptToEvaluateOnNewDocument", { source: `(() => {
+    if (steps.some(([name]) => name.startsWith("Ooga Portal")||name.includes("Portara aperture"))) await b.send("Page.addScriptToEvaluateOnNewDocument", { source: `(() => {
       const counts = window.__gateDormancy = { enter: 0, land: 0, zuzu: 0, data: 0, tv: 0, audio: 0, chat: 0, fetch: 0, socket: 0, radio: 0 };
       const watch = (object, key, method, counter) => {
         let value;
@@ -2478,11 +2636,14 @@ const session = (url, steps, opts, final) => output.run({ lines: [], results: []
       window.__dsbFeedFixture = { requests: 0, sockets: 0, closed: 0 };
       window.fetch = async (url, options) => {
         if (window.__gateDormancy) __gateDormancy.fetch++;
+        // Menu/layout gates must not depend on the live public archive. Studio
+        // still installs its playback fixture and counts requests independently.
+        if (String(url).startsWith("https://hodlerhiq.net/index.php?rest_route=/wp/v2/pages/")) return new Response(JSON.stringify({content:{rendered:[1,2,3].map(i=>'<div data-mediafile="https://hodlerhiq.net/wp-content/uploads/2026/fixture-'+i+'.mp3"><span class="player_song_name" data-albumname="2026-01-0'+i+'">Space '+i+'</span></div>').join("")}}));
         if (String(url).startsWith("https://noderunnersradio.com/")) {
           window.__dsbTvFixture = window.__dsbTvFixture || { invoices: 0, searches: 0 }; let value;
           if (url.includes("/api/search")) { __dsbTvFixture.searches++; value = { results: [{ title: "Banana Beats", artist: "Ooga", source: "library", sats: 21 }] }; }
-          else if (url.includes("/api/play/status")) value = { paid: true, queued: true };
-          else if (url.endsWith("/api/play")) { __dsbTvFixture.invoices++; value = { bolt11: "lnbc210n1" + "q".repeat(340), sats: 21, payment_hash: "fixture-hash" }; }
+          else if (url.includes("/api/play/status")) { if(__dsbTvFixture.paymentError)throw new Error("offline");value = __dsbTvFixture.payment || { paid: false, queued: false }; }
+          else if (url.endsWith("/api/play")) { __dsbTvFixture.invoices++; value = {"bolt11": "lnbc2100n1p4vzq52pp50dsaw0kxfc0urmtzl7ezwv4qemxs8ufx98cyjjsj9wkz7l3l7afsdpltfshqgpg2c69v2f6ypqkzun0dcsykmm9de5kwgpdyppxjarrda5kugzzv4skx6qcqzzsxqzuysp535fyv3fcdnf59stpn82fd6mypgd245r8n9zg6mcnx90a8ws68v2s9qxpqysgqxj432mzxnppe93v7fqxvs8hav584jgqfejc3mrpagrkheq0ythhse9ldk82lc0p43njn39dcs36m0djafxgug2aa374eczjfm3ew54qqt8zcnh", "sats": 210, "payment_hash": "7b61d73ec64e1fc1ed62ffb22732a0cecd03f12629f0494a122bac2f7e3ff753"}; }
           else value = url.includes("nowplaying") ? { now_playing: { title: "Turtle Radio", artist: "DSB Band", note: "Hello island" }, queue: [{ title: "Banana Beats", artist: "Ooga" }] } : { history: [{ title: "Neon River", artist: "Purple Crew" }] };
           return { ok: true, json: async () => value };
         }
@@ -2499,18 +2660,21 @@ const session = (url, steps, opts, final) => output.run({ lines: [], results: []
     })()` });
     await b.open(url);
     await b.focus(true);
-    await untilReady(b);
+    await untilReady(b, opts.readyMs);
     ready = Date.now();
     for (const [i, [name, fn, open]] of steps.entries()) {
       const from = i ? b.logs.length : 0;
       run.open = open || null;
       try {
         await fn(b);
-        const noise = b.logs.slice(from).filter((l) => !l.includes("WebGL2 renderer failed"));
+        if (Date.now()-t0>=SESSION_MS) { overran=true; b.close(true); throw driverError("session deadline"); }
+        const observed=b.logs.slice(from),notices=b.shorelineHealthy&&b.shorelineSoftware?observed.filter(readbackPerformanceNotice):[];
+        if(notices.length)lines.push(`INFO software WebGL: ${notices.length} driver ReadPixels performance notices; healthy state/GL checks passed (no application readback required).`);
+        const noise = observed.filter((l) => !l.includes("WebGL2 renderer failed")&&!notices.includes(l));
         record(`${name}: clean console`, noise.length === 0, `${((Date.now() - started) / 1000).toFixed(1)}s ${noise.join(" | ").slice(0, 1600)}`);
       } catch (err) {
         if (overran) err = driverError(`the session passed ${SESSION_MS / 1000} s and its Chrome was killed`);
-        if (err.driver && !final && run.results.every((r) => r.ok)) {
+        if (err.driver && !overran && !final && run.results.every((r) => r.ok)) {
           run.retry = `${name} · ${failure(err)}`;
           break;
         }
@@ -2520,13 +2684,13 @@ const session = (url, steps, opts, final) => output.run({ lines: [], results: []
     }
   } catch (err) {
     if (overran) err = driverError(`the session passed ${SESSION_MS / 1000} s and its Chrome was killed`);
-    if (err.driver && !final && run.results.every((r) => r.ok)) run.retry = `${steps[0][0]} · ${failure(err)}`;
+    if (err.driver && !overran && !final && run.results.every((r) => r.ok)) run.retry = `${steps[0][0]} · ${failure(err)}`;
     else record(steps[0][0], false, failure(err));
   } finally {
     clearTimeout(watchdog);
     if (b && !overran) b.close();
     const s = (ms) => (ms / 1000).toFixed(1);
-    if (VERBOSE) lines.push(`TIME ${steps.map((step) => step[0]).join(" + ")} · launch ${s(started - t0)}s · boot ${s(ready - started)}s · body ${s(Date.now() - ready)}s`);
+    if (VERBOSE) lines.push(`TIME ${steps.map((step) => step[0]).join(" + ")} · launch ${s(started - t0)}s · boot ${s(ready - started)}s · body ${s(Date.now() - ready)}s · wall ${s(Date.now()-t0)}s · checks ${run.results.length} · watchdog ${overran?"FIRED":"clear"}${b?.renderer?" · renderer "+b.renderer:""}`);
   }
   return run;
 });
@@ -2630,7 +2794,7 @@ const orbitFlow = async (b) => {
 const SCENES = ["hub", "lab", "race", "drop", "orbit", "mine", "dsb", "factory", "bifrost", "poker", "arcade", "skee", "hoops", "shy", "claw", "hockey", "billiards", "darts", "pinball", "ride", "invaders", "snake", "pong", "stampede", "flap", "breaker", "dash", "stacker"];
 const LANES = Number(process.env.LANES) || 8;
 const ARGS = process.argv.slice(2);
-for (const a of ARGS) if (!SCENES.includes(a) && !["unit", "perf", "full", "poker-protocol"].includes(a)) throw new Error(`Unknown argument "${a}" (unit | perf | full | poker-protocol | ${SCENES.join(" | ")})`);
+for (const a of ARGS) if (!SCENES.includes(a) && !["unit", "integration-unit", "svrn-unit", "svrn-review", "vacancy-unit", "portal-unit", "water-baseline", "water-review", "water-unit", "stackchain-review", "stackchain-unit", "dsb-menus-unit", "maxis-unit", "exterior-unit", "rulers-unit", "ink-unit", "big-unit", "perf", "full", "poker-protocol"].includes(a)) throw new Error(`Unknown argument "${a}" (unit | perf | full | poker-protocol | ${SCENES.join(" | ")})`);
 const ONLY = process.env.ONLY || ""; // Optional comma-separated substrings within the requested scenes.
 const onlyMatches = value => ONLY.split(",").some(part => value.includes(part));
 const FULL = ARGS.includes("full");
@@ -3118,6 +3282,9 @@ const weatherStepChecks = async () => {
   const context = { window: { BL: { math: null, models: { cached: (f) => f, noShadow: (g) => g, box: () => ({}), merge: () => ({}), polyline: () => ({}), particleGeometry: () => ({}) }, scene: {} } } };
   runInNewContext(await readFile(new URL("../src/js/math.js", import.meta.url), "utf8"), context);
   runInNewContext(await readFile(new URL("../src/js/weather.js", import.meta.url), "utf8"), context);
+  runInNewContext(await readFile(new URL("../src/js/dsb-weather.js", import.meta.url), "utf8"), context);
+  const parse = query => context.window.BL.dsbWeather.override(new URLSearchParams(query));
+  record("DSB weather override: only known debug presets can replace ordinary chain weather", parse("weather=storm") === null && parse("debug=1&weather=storm") === "storm" && parse("debug=1&weather=NaN") === null && parse("debug=1&weather=__proto__") === null);
   const { STEPS, stepFor, wetAt } = context.window.BL.weather;
   const names = [0, 0.1, 0.25, 0.45, 0.65, 0.85, 1].map((k) => STEPS[stepFor(k)].name);
   const ladder = names.join() === "dry,drizzle,light rain,rain,heavy rain,downpour,downpour";
@@ -3623,7 +3790,7 @@ const adaptiveQualityChecks = async () => {
 // A scene is the unit of testing: one Chrome session running that scene's steps, side by side with the
 // other picked scenes. Every step says why it exists; a step with `open` is a known, unfixed bug whose
 // failure prints OPEN and does not fail the run.
-const sceneUrl = (id, query = "") => `${src}?debug=1&nosim=1${id === "hub" ? "" : `&scene=${id}`}${clock(query)}`;
+const sceneUrl = (id, query = "") => `${src}?debug=1&nosim=1${id === "hub" ? "" : `&scene=${id}`}${process.env.TEST_CANVAS2D==="1"?"&canvas2d=1":""}${clock(query)}`;
 const tourGo = (b, id) => b.evaluate(`(() => { const B = window.__ooga; B.go("${id}"); for (let i = 0; i < 150 && (B.transitioning || B.scene !== "${id}"); i++) B.advance(1 / 30, 1 / 30); B.advance(0.3, 1 / 30); B.housekeep(); const s = B.stats(); return { scene: B.scene, records: B.renderer.stats.records, nodes: s.allNodes, targets: s.targets, dom: s.dom }; })()`);
 // Away and back twice. The director's ?debug=1 leave contract throws inside advance on a broken leave,
 // and the second visit may hold no more GPU records, nodes, input targets or DOM than the first.
@@ -8374,7 +8541,7 @@ for (const fallback of [false, true]) scene("dsb", { label: "dsb gameplay " + (f
   await click("#dsb-tv-channel");
   await b.evaluate(`document.getElementById("dsb-tv-query").value = "Ooga"`); await click("#dsb-tv-search"); await untilPage(b, 'document.querySelector("#dsb-tv-results button") !== null');
   await click("#dsb-tv-results button"); await untilPage(b, '!document.getElementById("dsb-tv-invoice").hidden');
-  record("dsb gameplay: song selection creates one invoice QR and wallet link", await b.evaluate(`__dsbTvFixture.invoices === 1 && document.getElementById("dsb-tv-invoice-qr").width > 200 && document.getElementById("dsb-tv-wallet").href.startsWith("lightning:lnbc") && document.getElementById("dsb-tv-price").textContent.includes("21 sats")`));
+  record("dsb gameplay: song selection creates one invoice QR and wallet link", await b.evaluate(`__dsbTvFixture.invoices === 1 && document.getElementById("dsb-tv-invoice-qr").width > 200 && document.getElementById("dsb-tv-wallet").href.startsWith("lightning:lnbc") && document.getElementById("dsb-tv-price").textContent.includes("210 sats")`));
   record("dsb gameplay: station payment confirmation is shown", await untilPage(b, 'document.getElementById("dsb-tv-payment-status").textContent.includes("confirmed")', 10000));
   if (process.env.DSB_CAPTURE && !fallback) await b.screenshot(join(root, "untracked", "dsb-jukebox.png"));
   await click("#dsb-tv-close"); await dsbApproach(b, "shop"); await click("#dsb-context"); await click('[data-action="dsb-banana"]'); await click('[data-action="dsb-tomato"]');
@@ -9264,6 +9431,769 @@ const pokerProtocolChecks = async () => {
   } catch (e) { record("poker protocol: timeouts refund chips, repeated requests cannot stall, and signers cannot be impersonated", false, e.stack); }
 };
 
+// Regression: DSB uses the measured marble aperture without changing circular gates or controller timing.
+const portalChecks=(BL,el)=>{
+  {
+    // Contract: both directions use the production swept aperture and wall-clock cycle.
+    const get = document.getElementById, listen = window.addEventListener, unlisten = window.removeEventListener;
+    document.getElementById = () => { const node = el(); node.querySelector = () => el(); return node; };
+    window.addEventListener = window.removeEventListener = () => {};
+    let time = 0, crossings = 0;
+    const gate = BL.oogaPortal.create({ radius: 2.2, outerRadius: 2.5, position: { x: 0, y: 2, z: 28 }, rotation: { x: -Math.PI / 2, y: 0, z: 0 }, now: () => time, destinations: [{ id: "hub", enabled: true }], onTraverse: () => crossings++ });
+    const from = { x: 0, y: 1, z: 20 }, to = { x: 0, y: 1, z: 60 };
+    const off = !gate.traverse(from, to, 0.8), activated = gate.activate(0), duplicate = !gate.activate(0), warming = !gate.traverse(from, to, 0.8);
+    time = 1999; gate.update(); const activation = gate.state === "ACTIVATING";
+    time = 2000; gate.update(); const active = gate.state === "ACTIVE";
+    const wrong = !gate.traverse(to, from, 0.8), outside = !gate.traverse({ ...from, x: 3 }, { ...to, x: 3 }, 0.8);
+    const swept = gate.traverse(from, to, 0.8), once = !gate.traverse(from, to, 0.8);
+    time = 11999; gate.update(); const fullWindow = gate.state === "ACTIVE";
+    time = 12000; gate.update(); const shutdown = gate.state === "SHUTDOWN" && !gate.traverse(from, to, 0.8);
+    time = 12450; gate.update(); const expired = gate.state === "OFF" && !gate.traverse(from, to, 0.8);
+    record("Ooga Portal return: directional swept front crossing, exact deadlines and one-use cycle", off && activated && duplicate && warming && activation && active && wrong && outside && swept && once && fullWindow && shutdown && expired && crossings === 1);
+    gate.receive(); time += 60000; gate.update(); const receiving = gate.receiving && gate.state === "ACTIVE" && !gate.activate(0);
+    gate.finishReceiving(true); const fading = gate.state === "SHUTDOWN";
+    time += 450; gate.update();
+    record("Ooga Portal receiving: host owns duration then restores reusable outbound cycle", receiving && fading && !gate.receiving && gate.state === "OFF" && gate.activate(0));
+    gate.dispose();
+    document.getElementById = get; window.addEventListener = listen; window.removeEventListener = unlisten;
+  }
+  const get=document.getElementById,listen=window.addEventListener,unlisten=window.removeEventListener;
+  const listeners=new Set(),nodes=[];
+  const element=()=>{const n=el();n.addEventListener=(type,fn)=>listeners.add(fn);n.removeEventListener=(type,fn)=>listeners.delete(fn);nodes.push(n);return n;};
+  document.getElementById=()=>{const n=element();n.querySelector=()=>element();return n;};window.addEventListener=(type,fn)=>listeners.add(fn);window.removeEventListener=(type,fn)=>listeners.delete(fn);
+  try{
+    const P=BL.dsbAtmosphere.portaraAperture,S=BL.scene,root=S.createNode();let time=0,crossings=0;
+    const gate=BL.oogaPortal.create({radius:2.5,outerRadius:2.8,aperture:P,position:{x:0,y:P.height/2,z:0},rotation:{x:Math.PI/2,y:0,z:0},now:()=>time,destinations:[{id:"bifrost",enabled:true}],onTraverse:()=>crossings++});
+    gate.ring.visible=false;S.addChild(root,gate.root,gate.dialer);
+    const marble=JSON.stringify(BL.dsbAtmosphere.portara());let hash=2166136261;for(let i=0;i<marble.length;i++)hash=Math.imul(hash^marble.charCodeAt(i),16777619);
+    record("Portara: approved marble bytes and measured 5 by 6.5 opening remain unchanged",(hash>>>0).toString(16)==="b4da96ad"&&P.width===5&&P.height===6.5&&P.footWidth===4.5&&P.footHeight===.5);
+    const g=gate.horizon.geometry,v=g.verts,circle=BL.oogaPortalModels.build(2.5,2.8),copy=BL.oogaPortalModels.build(2.5,2.8,P),original=circle.horizon.geometry.verts.slice();
+    const corners=[];for(const x of [-1,1])for(const z of [-1,1])corners.push(v.some((a,i)=>i%3===0&&Math.abs(a-x)<1e-6&&Math.abs(v[i+2]-z)<1e-6));
+    record("Portara: actual rectangular mesh fills four corners, caches separately and fits within the marble shafts/lintel",g.portalRect&&corners.every(Boolean)&&g===copy.horizon.geometry&&g!==circle.horizon.geometry&&gate.halfWidth===2.475&&gate.halfHeight===3.225&&v.every((a,i)=>i%3===1?a===0:Math.abs(a)<=1.000001));
+    const wave=BL.oogaPortalModels.liquidHeight;
+    record("Portara: rectangular ripple envelope reaches the corners and pins every aperture edge",wave(.8,.8,.3,0,true)!==wave(.8,.8,.6,0,true)&&[-1,1].every(x=>[-1,-.5,0,.5,1].every(z=>wave(x,z,.4,1,true)===0&&wave(z,x,.4,1,true)===0))&&wave(.8,.8,.3,0)===0);
+    const rows=[];for(const [name,x,y,r,h,expected,reverse] of [["floor",0,.7,.7,1.4,true,false],["upper corner",2,5.8,.2,.5,true,false],["footing",2.2,.7,.2,1.4,false,false],["column",2.45,3,.2,1,false,false],["lintel",0,6.2,.2,1,false,false],["below threshold",0,.2,.2,1,false,false],["wrong way",0,.7,.7,1.4,false,true]]){
+      gate.receive();const a={x,y,z:reverse?-1:1},b={x,y,z:reverse?1:-1},hit=gate.traverse(a,b,r,1,h);rows.push({name,hit,expected});
+    }
+    record("Portara: swept rectangle accepts its upper corners and rejects columns, footings, lintel, below-ground and reverse entry",rows.every(r=>r.hit===r.expected)&&crossings===2,JSON.stringify(rows));
+    gate.finishReceiving();let cycles=true;const slots=gate.root.children.slice(),snapshot=JSON.stringify(g.verts);
+    for(let i=0;i<10;i++){
+      const base=time;cycles&&=gate.activate();time=base+1000;gate.update();cycles&&=gate.state==="ACTIVATING"&&gate.kawoosh.visible&&gate.horizon.portalReveal===.5&&gate.kawoosh.scale.x===gate.halfWidth*.5&&gate.kawoosh.scale.z===gate.halfHeight*.5;
+      time=base+2000;gate.update();cycles&&=gate.state==="ACTIVE"&&gate.horizon.portalReveal===1&&!gate.kawoosh.visible;
+      time=base+12000;gate.update();cycles&&=gate.state==="SHUTDOWN";time=base+12450;gate.update();cycles&&=gate.state==="OFF"&&!gate.horizon.visible&&!gate.kawoosh.visible&&gate.root.children.every((n,k)=>n===slots[k]);
+    }
+    record("Portara: ten cycles retain shared reveal/surge/shutdown deadlines and fixed nodes/geometry",cycles&&snapshot===JSON.stringify(g.verts)&&original.every((n,i)=>n===circle.horizon.geometry.verts[i])&&copy.kawoosh.geometry===gate.kawoosh.geometry);
+    gate.dispose();gate.dispose();record("Portara: disposal releases scene nodes and all controller listeners",root.children.length===0&&listeners.size===0&&gate.disposed);
+  }finally{document.getElementById=get;window.addEventListener=listen;window.removeEventListener=unlisten;}
+};
+
+// Rule: one support mesh, bounded water effects and the real crew must agree about immersion.
+const waterWorld = BL => {
+  const S=BL.scene,root=S.createNode(),land=BL.dsbGeography.build(),renderer={kind:"webgl2",quality:"high"},camera=S.createCamera();
+  S.addChild(root,land.root);S.removeChild(land.root,land.sea);camera.position.x=20;camera.position.y=8;camera.position.z=83;
+  const water=BL.dsbWater.create(land);S.addChild(root,water.node);
+  const nature=BL.dsbNature.create({root,land,renderer,camera,weather:{state:{wind:{strength:.2}}}}),detail=BL.dsbExterior.create({root,land,nature});
+  const enrichment=BL.dsbEnrichment.create({root,land,nature,detail,renderer,camera}),town=BL.dsbTown.create({root,land,nature,detail,enrichment});
+  const olympus=BL.dsbOlympus.create({root,land,nature,detail,enrichment,renderer});
+  const noop=()=>{},fx={say:noop,zzzAt:noop,burst:noop,puff:noop,spawnParticle:noop,damageNumber:noop};
+  const walkable=(...a)=>land.walkable(...a)&&town.clearSegment(...a)&&olympus.clearSegment(...a);
+  const ground=(x,z)=>olympus.supportAt(x,z,land.groundAt(x,z));
+  const crew=BL.crew.create({root,world:{level:0},playerName:"YellowBrokeIt",input:{add:noop,remove:noop},hud:{setRosterRow:noop},game:{state:{assignments:{},inventory:[]}},viewYaw:0,groundAt:ground,walkable,fx});
+  const avatar=crew.cavemen.get("YellowBrokeIt");crew.control(avatar);
+  const dispose=()=>{crew.dispose();olympus.dispose();town.dispose();enrichment.dispose();detail.dispose();nature.dispose();};
+  return {root,land,water,nature,detail,enrichment,town,olympus,renderer,camera,fx,crew,avatar,walkable,ground,dispose};
+};
+const waterGolden = W => {
+  const hash=values=>{let h=2166136261;const text=JSON.stringify(values);for(let i=0;i<text.length;i++)h=Math.imul(h^text.charCodeAt(i),16777619);return (h>>>0).toString(16);};
+  const ground=[];for(let x=-96;x<=96;x+=1.5)for(let z=-96;z<=96;z+=1.5)if(!(x>-5&&x<55&&z>58))ground.push(W.land.heightAt(x,z));
+  const nodes=[];const visit=n=>{if(n.geometry)nodes.push(n.geometry.verts,n.geometry.faces.map(f=>f.i),n.position,n.rotation,n.scale);for(const c of n.children)visit(c);};visit(W.olympus.group);
+  W.water.update(0);
+  return {ground:hash(ground),olympus:hash(nodes),bridges:hash(W.olympus.bridges),buildings:hash(W.land.buildings),fft:hash(Array.from(W.water.pixels))};
+};
+// Regression: cached dressing shapes used by explicit fields and ordinary Olympus nodes must not
+// alias a renderer record. Exercise the real collector/uploader against a byte-bounded GL sink;
+// shader compilation and pixels remain the separate, mandatory WebGL browser checkpoint.
+const waterUploadProbe = (BL, W) => {
+  const buffers=new Map(),bindings=new Map(),errors=[],uploads=new Map(),listeners=new Set();let serial=0,tier="",draws=0;
+  const api={
+    getExtension:()=>null,getProgramParameter:()=>true,getParameter:()=>4,
+    createBuffer:()=>{const b={id:++serial};buffers.set(b,0);return b;},
+    bindBuffer:(target,b)=>bindings.set(target,b),
+    bufferData:(target,data)=>buffers.set(bindings.get(target),typeof data==="number"?data:data.byteLength),
+    bufferSubData:(target,offset,data,start=0,length=0)=>{
+      const count=length||data.length-start,capacity=buffers.get(bindings.get(target)),end=offset+count*data.BYTES_PER_ELEMENT;
+      if(start<0||count<0||start+count>data.length||end>capacity)errors.push({tier,source:data.length,start,length:count,capacity,offset});
+      uploads.set(data,{count,capacity});
+    },
+    deleteBuffer:b=>buffers.delete(b),drawArraysInstanced:()=>draws++
+  };
+  const gl=new Proxy(api,{get:(o,k)=>k in o?o[k]:o[k]=/^[A-Z0-9_]+$/.test(k)?++serial:k.startsWith("create")||k==="getUniformLocation"?()=>({id:++serial}):()=>{}});
+  const canvas={clientWidth:64,clientHeight:64,getContext:()=>gl,addEventListener:k=>listeners.add(k),removeEventListener:k=>listeners.delete(k)};
+  const R=BL.glRenderer.createRenderer(canvas),opts={...BL.scenes.dsb.renderOpts,dsbWater:W.water},rows=[];
+  const arrays=new Map();BL.scene.traverseVisible(W.root,n=>{if(n.instanceData)arrays.set(n,n.instanceData);});
+  for(tier of ["high","medium","low","high"]){
+    W.renderer.quality=tier;R.setQuality(tier);
+    for(const [x,y,z] of [[20,8,83],[-40,25,-8],[0,110,1]]){
+      Object.assign(W.camera.position,{x,y,z});W.nature.update(.02,1);W.enrichment.update(1,0);W.olympus.update(.02,0);
+      const owners=new Map();BL.scene.traverseVisible(W.root,n=>{if(n.geometry){const a=owners.get(n.geometry)||[];a.push(n);owners.set(n.geometry,a);}});
+      let exclusive=true,bounded=true;
+      for(const nodes of owners.values())for(const n of nodes)if(n.instanceData){exclusive&&=nodes.length===1;bounded&&=Number.isInteger(n.instanceCount)&&n.instanceCount>=0&&n.instanceCount*20<=n.instanceData.length&&n.instanceData===arrays.get(n)&&n.instanceData.every(Number.isFinite);}
+      uploads.clear();const drawn=R.render(W.root,W.camera,opts);
+      let exact=true;for(const [n,data] of arrays)if(uploads.has(data)){const upload=uploads.get(data);exact&&=upload.count===n.instanceCount*20&&upload.capacity===data.byteLength;}
+      rows.push({tier,x,y,z,exclusive,bounded,drawn,exact});
+    }
+  }
+  R.releaseUnused(new Set());const released=R.stats.records===0&&R.stats.waterTextures===0;R.dispose();
+  return {rows,errors,draws,released,buffers:buffers.size,listeners:listeners.size};
+};
+const waterChecks = BL => {
+  const W=waterWorld(BL),{land:L,water,olympus:O,crew,avatar:A,renderer,camera}=W,C=BL.dsbCoast;
+  const I=BL.dsbWaterInteraction.create(W),input=I.steering(crew,()=>true),point=(ratio,x=20)=>{
+    let lo=66,hi=96;for(let i=0;i<30;i++){const z=(lo+hi)/2;if(C.LEVEL-L.heightAt(x,z)<ratio*A.bodyHeight)lo=z;else hi=z;}const z=(lo+hi)/2;return {x,y:L.heightAt(x,z),z};
+  };
+  let time=0;
+  const step=(seconds,x=0,z=0,speed=1)=>{for(let i=0;i<Math.ceil(seconds*60);i++){input.steer(x,z,0,z,x,speed);crew.update(1/60,time);I.update(1/60,time,A);time+=1/60;}};
+  const locate=ratio=>{const p=point(ratio);crew.relocatePlayer(p,0);I.clear();step(.02);return p;};
+  const golden=waterGolden(W);
+  record("DSB water: protected terrain, Olympus geometry, bridges, lots and Clearwater FFT match starting checkpoint",JSON.stringify(golden)===JSON.stringify(WATER_GOLDEN),JSON.stringify(golden));
+  const sails=O.group.children.flatMap(n=>n.children),angles=sails.map(n=>n.rotation.z);O.update(.5,0);
+  record("DSB Olympus: both windmills still turn and their original towers remain solid",sails.length===2&&sails.every((n,i)=>n.rotation.z>angles[i])&&O.inside(-14,-58,.4)&&O.inside(-24,-66,.4));
+  record("DSB water: approved mean surface stays at -0.3 with no new texture or framebuffer",water.geometry.verts.every((v,i)=>i%3!==1||v===-.3)&&water.size===64&&water.depthSize===256&&water.depths.length===256*256*4);
+  // Execute the actual scalar GLSL foam expression, not a second implementation of its formula.
+  const expression=BL.dsbWater.shader.match(/float foam=([^;]+);/)[1],smoothstep=(a,b,x)=>{const t=Math.max(0,Math.min(1,(x-a)/(b-a)));return t*t*(3-2*t);};
+  const foam=new Function("bed","depth","shoreWave","uDSBEnvironment","smoothstep","return "+expression),sampleFoam=(sand,depth,crest)=>foam({g:sand},depth,crest,{w:3},smoothstep);
+  const mask=(x,z)=>water.depths[(Math.floor((z/650+.5)*256)*256+Math.floor((x/650+.5)*256))*4+1];
+  record("DSB coast foam: non-beach coasts and zero depth have no universal rim; sand shoals retain moving crests",[0,.04,.2,.6,1.2].every(d=>[0,.5,1].every(c=>sampleFoam(0,d,c)===0))&&sampleFoam(1,0,1)===0&&sampleFoam(1,.4,1)>0&&sampleFoam(1,.4,0)===0&&!/foam\s*\+=/.test(BL.dsbWater.shader)&&mask(20,80)>250&&[[-39,54],[85,14],[-55,-91]].every(p=>mask(...p)===0));
+  const apronFaces=L.root.children.flatMap(n=>n.geometry?n.geometry.faces.filter(f=>f.i.every(i=>n.geometry.verts[i*3+1]>=-.29&&n.geometry.verts[i*3+1]<=-.26)):[]);
+  record("DSB coast foam: no waterline strip traces the coast, white or dark; terrain meets the sea directly",apronFaces.length===0,JSON.stringify({faces:apronFaces.length}));
+  const depths=[-.35,0,.12,.3,.5,.7,.87],positions=depths.map(r=>point(r)),routes=[];
+  for(const x of [9,20,39,45]){
+    let previous=point(-.35,x),maxStep=0,blocked=0;
+    const end=point(.86,x);
+    for(let z=previous.z+.05;z<=end.z;z+=.05){const y=L.heightAt(x,z);maxStep=Math.max(maxStep,Math.abs(y-previous.y));if(!W.walkable(x,previous.z,x,z,previous.y,A.bodyHeight,A)||!W.walkable(x,z,x,previous.z,y,A.bodyHeight,A))blocked++;previous={x,y,z};}
+    routes.push({x,maxStep,blocked});
+  }
+  record("DSB wading: dry sand through ankle knee waist chest head and back has continuous body-wide support",routes.every(r=>!r.blocked&&r.maxStep<.08)&&positions.every((p,i)=>!i||p.z>positions[i-1].z),JSON.stringify({height:A.bodyHeight,radius:A.bodyRadius,routes,positions}));
+  locate(-.35);const start=A.root.position.z;step(24,0,1);const deepest=C.LEVEL-W.ground(A.root.position.x,A.root.position.z),deepZ=A.root.position.z;step(4,0,1);const stopped=Math.abs(A.root.position.z-deepZ)<.02;step(30,0,-1);
+  record("DSB wading: real Yellow reaches around head depth, cannot cross ocean floor and walks back ashore",deepest>A.bodyHeight*.83&&deepest<=C.maxDepth(A)&&stopped&&A.root.position.z<start&&I.stats.depth===0,JSON.stringify({deepest,height:A.bodyHeight,deepZ,stopped,returned:A.root.position.z,start}));
+  const rates=[];
+  for(const ratio of [0,.12,.3,.5,.7,.85]){locate(ratio);const x=A.root.position.x;step(.25,1,0);rates.push((A.root.position.x-x)/.25);}
+  record("DSB wading: real movement slows smoothly with depth while ankle movement remains responsive",rates.every((r,i)=>r>0&&(!i||r<=rates[i-1]+.015))&&rates[1]>rates[0]*.97&&rates.at(-1)<rates[0]*.5,JSON.stringify(rates));
+  let smooth=true,last=1;for(let k=0;k<=1000;k++){const v=C.speed(k/1000);smooth&&=Number.isFinite(v)&&v<=last&&last-v<.002;last=v;}
+  record("DSB wading: depth curve has no speed steps and stays above one-third walking speed",smooth&&last>=.33);
+  const deep=point(1.05);crew.relocatePlayer(deep,0);I.clear();step(10,0,-1);
+  record("DSB wading: a relocated over-depth actor can always retreat to shallower ground",A.root.position.z<deep.z-3&&I.stats.depth<A.bodyHeight,JSON.stringify({from:deep,to:A.root.position,depth:I.stats.depth}));
+  record("DSB coast types: only Chora sand has a shelf; rear Olympus, rocky east and harbor retain deep water",L.heightAt(-55,-91)===-5&&L.heightAt(92,14)===-5&&L.heightAt(-39,54)===-5&&C.beach(-55,-80)===0&&C.beach(-39,54)===0&&C.beach(85,14)===0&&!W.walkable(-39,54,-39,54,-5,A.bodyHeight,A));
+  const first=I.stats.emitted;locate(.5);const entries=I.stats.splashes;step(6);const idle=I.stats.emitted-first;step(2,1,0);const moving=I.stats.emitted-first-idle,wakes=I.stats.wakes;
+  record("DSB ripples: idle disturbances are sparse; moving creates stronger trailing wakes",idle<10&&moving>idle&&wakes>0&&I.stats.player>0,JSON.stringify({idle,moving,wakes,stats:I.stats}));
+  const splashes=I.stats.splashes;crew.jumpPlayer();step(2);
+  record("DSB splashes: shallow entry and an actual jump landing produce small bounded events",entries>0&&I.stats.splashes>splashes,JSON.stringify({entries,splashes,after:I.stats.splashes}));
+  camera.position.x=-40;camera.position.z=-8;I.clear();locate(.5);step(2,1,0);
+  record("DSB waterfall: all five impacts coexist with player disturbances in reserved slots",O.impacts.length===5&&I.stats.impacts===5&&I.stats.player>0,JSON.stringify(I.stats));
+  let reachable=null;const query={};
+  for(const p of O.stream)if(O.waterAt(p.x,p.z,query)&&query.y-W.ground(p.x,p.z)>.025&&query.y-W.ground(p.x,p.z)<A.bodyHeight&&W.walkable(p.x,p.z,p.x,p.z,W.ground(p.x,p.z),A.bodyHeight,A)){reachable=p;break;}
+  if(reachable){crew.relocatePlayer({x:reachable.x,y:W.ground(reachable.x,reachable.z),z:reachable.z},0);I.clear();step(.1);}
+  record("DSB waterfall: Yellow produces local stream ripples where the approved course is reachable",!!reachable&&I.stats.player>0&&I.stats.depth>0&&I.stats.impacts===5,JSON.stringify({reachable,stats:I.stats}));
+  const nodes=I.group.children.length,geometries=new Set(I.group.children.map(n=>n.geometry)),slots=I.impulses.map(p=>p.node),tiers=[];
+  for(const quality of ["high","medium","low"]){renderer.quality=quality;for(let k=0;k<600;k++){I.emit(20,-.3,83,.3,.3,1);I.update(1/60,k/60,null);}tiers.push({quality,active:I.stats.active,swash:I.stats.swash,contacts:I.stats.contacts,streaks:I.stats.streaks,budget:I.budget.ripples,speed:I.speedAt(A)});}
+  record("DSB effects: thousands of impulses reuse fixed slots and at most two shared effect geometries",I.group.children.length===nodes&&geometries.size===2&&I.impulses.every((p,i)=>p.node===slots[i])&&tiers.every(t=>t.active<=t.budget),JSON.stringify({nodes,geometries:geometries.size,tiers}));
+  record("DSB effects: quality scales only visuals and keeps essential low-tier ripples and swash",tiers[0].swash>tiers[2].swash&&tiers[0].streaks>tiers[2].streaks&&tiers[2].swash>0&&tiers[2].active>0&&tiers.every(t=>t.speed===tiers[0].speed));
+  renderer.quality="high";I.clear();camera.position.x=250;camera.position.z=250;I.emit(20,-.3,83,.3,.4,1);I.update(2,2,null);
+  record("DSB ripples: rings expire instead of becoming permanent ocean geometry",I.stats.active===0);
+  const wash=[];for(const t of [0,1.5,3,4.5,6]){I.update(.02,t,null);const n=I.swash[Math.floor(I.swash.length/2)].node;wash.push([n.position.x,n.position.y,n.position.z,n.smokeOpacity]);}
+  record("DSB swash: front advances, retreats, fades and follows terrain above the mean sea",new Set(wash.map(p=>p[2].toFixed(3))).size>3&&wash.every(p=>p[1]>=C.LEVEL&&p[1]>=L.heightAt(p[0],p[2]))&&Math.max(...wash.map(p=>p[3]))-Math.min(...wash.map(p=>p[3]))>.1,JSON.stringify(wash));
+  water.setEnvironment({waveEnergy:3,roughness:1,glint:.2,foam:3});I.update(.02,3,null);const storm=I.contacts[0].node.scale.z;water.setEnvironment({waveEnergy:1,roughness:0,glint:1,foam:1});I.update(.02,3,null);
+  record("DSB contact: storm foam is stronger; harbor uses restrained post-sized footprints",storm>I.contacts[0].node.scale.z&&I.contacts.filter(p=>p.harbor).length===16&&I.contacts.filter(p=>p.harbor).every(p=>p.node.scale.x<.5));
+  const rock=I.contacts.find(p=>!p.harbor),pulse=rock.node.smokeOpacity;I.update(.02,3.5,null);
+  record("DSB coast foam: rock contacts remain localized and pulse independently of the sandy swash",I.swash.length>0&&I.contacts.filter(p=>!p.harbor).length>0&&I.contacts.length<50&&rock.node.smokeOpacity!==pulse&&I.swash.every(p=>C.beach(p.x,p.z)>0));
+  record("DSB waterfall: retained sheets span every fall and all water/spray surfaces use scene lighting",O.sheets.length===5&&O.sheets.every(f=>f.top>f.bottom&&f.top-f.bottom<15)&&[...geometries].every(g=>g.faces.every(f=>!f.emissive))&&BL.dsbWater.shader.includes("vWorld.y*.8+uWindTime*3.2")&&!BL.dsbWater.shader.includes("lace*.15"));
+  I.update(.02,1,null);const streakY=I.streaks[0].node.position.y;I.update(.02,1.05,null);
+  record("DSB waterfall: highlights move downward on the unchanged fall sheets",I.streaks[0].node.position.y<streakY);
+  // Marine support never replaces heightAt: optics/immersion still see the original deep seabed.
+  const bridge=BL.dsbInteriors.create({root:W.root,exterior:{visible:true},land:L,weather:{shared:{state:{muted:true}},setInterior(){}},relocate(){},lock(){},onChange(){}});
+  for(const d of L.harborDecks.filter(d=>d.id!=="quay")){
+    let left=d.x-d.w/2,right=d.x+d.w/2,props=0;
+    const edgeProp=(v,m)=>{let lo=Infinity,hi=-Infinity,bottom=Infinity,top=-Infinity,z0=Infinity,z1=-Infinity;
+      for(let j=0;j<v.length;j+=3){const x=m[0]*v[j]+m[8]*v[j+2]+m[12],y=m[1]*v[j]+m[5]*v[j+1]+m[9]*v[j+2]+m[13],z=m[2]*v[j]+m[10]*v[j+2]+m[14];lo=Math.min(lo,x);hi=Math.max(hi,x);bottom=Math.min(bottom,y);top=Math.max(top,y);z0=Math.min(z0,z);z1=Math.max(z1,z);}
+      if(z1<43||z0>58.5||top<=d.top||bottom>=d.top+A.bodyHeight||lo>d.x+2||hi<d.x-2)return;
+      props++;if((lo+hi)/2<d.x)left=Math.max(left,hi);else right=Math.min(right,lo);
+    };
+    for(const f of W.enrichment.fields)for(let i=0;i<f.list.length;i++)if(f.list[i].region==="pier")edgeProp(f.geometry.verts,f.source.subarray(i*20,i*20+16));
+    for(const n of W.detail.group.children)if(n.geometry===BL.dressing.chora("bollard"))edgeProp(n.geometry.verts,[1,0,0,0,0,1,0,0,0,0,1,0,n.position.x,n.position.y,n.position.z,1]);
+    const spine=(left+right)/2;
+    record("DSB pier "+d.id+": existing posts, ropes, lamps and fenders leave a body-wide walking spine",props>10&&right-left>A.bodyRadius*2&&W.walkable(spine,43,spine,57,d.top,A.bodyHeight,A),JSON.stringify({left,right,width:right-left,body:A.bodyRadius*2,props}));
+    crew.relocatePlayer({x:d.x,y:W.ground(d.x,38),z:38},0);I.clear();let ticks=0,error=0,wet=false;
+    while(A.root.position.z<57.6&&ticks++<1200){step(1/60,0,1);if(A.root.position.z>43){error=Math.max(error,Math.abs(A.root.position.y-A.baseY-d.top));wet ||= I.stats.depth>0||I.speedAt(A)!==1;}}
+    const end=A.root.position.z;step(2,0,1);const edge=A.root.position.z;
+    const c={x:d.x,y:-3,z:51};bridge.clampCamera(c);
+    const support=L.groundAt(d.x,51)===d.top&&L.supportAt(d.x,51)===d.top&&bridge.groundAt(d.x,51)===d.top&&c.y===d.top+1;
+    ticks=0;while(A.root.position.z>38.1&&ticks++<1200)step(1/60,0,-1);
+    record("DSB pier "+d.id+": real Yellow walks from shore to deck end and back with dry, exact deck support",end>57.5&&edge<=58.5-A.bodyRadius+1e-6&&A.root.position.z<38.2&&error<1e-6&&!wet&&support,JSON.stringify({end,edge,returned:A.root.position.z,error,wet,support}));
+    record("DSB pier "+d.id+": deck edges retain deep nonwalkable harbor water and unchanged optics",L.heightAt(d.x,51)===-5&&water.depthAt(d.x,51)>=4.7&&L.groundAt(d.x+2,51)===-5&&!W.walkable(d.x,51,d.x+2,51,d.top,A.bodyHeight,A)&&!W.walkable(d.x+2,51,d.x+2,51,-5,A.bodyHeight,A));
+  }
+  bridge.dispose();
+  const children=W.root.children.length;let lifecycle=true;
+  I.update(.02,5,A,false);lifecycle&&=I.stats.active===0&&I.stats.depth===0&&!I.group.visible;I.dispose();I.dispose();lifecycle&&=I.group.children.length===0&&W.root.children.length===children-1;
+  for(let i=0;i<3;i++){const next=BL.dsbWaterInteraction.create(W);next.update(.02,i,A);lifecycle&&=next.group.children.length===nodes&&next.stats.active<=24;next.dispose();lifecycle&&=next.group.children.length===0&&W.root.children.length===children-1;}
+  record("DSB water lifecycle: indoor gating and repeat disposal/re-entry clear impulses without growing nodes",lifecycle);
+  const upload=waterUploadProbe(BL,W);
+  record("DSB WebGL uploads: independent dressing fields own their records across tiers, views and disposal",upload.rows.every(r=>r.exclusive&&r.bounded&&r.drawn&&r.exact)&&!upload.errors.length&&upload.draws>0&&upload.released&&!upload.buffers&&!upload.listeners,JSON.stringify(upload));
+  W.dispose();
+};
+// Recorded from f578f9cda6e77468049b5e000e3002ce9711809b before applying the water extension.
+// Upstream 822addee keeps leaf vertices/normals/fronts and placement, but anchors each reversed
+// back-face fan at the front's first vertex. Approved/merged/A-B geometry comparison and
+// Olympus renders are documented in docs/dsb-upstream-validation.md; all other hashes stay frozen.
+const WATER_GOLDEN = {ground:"69d81f3b",olympus:"7490fca7",bridges:"9164c056",buildings:"634c3799",fft:"aa331f6b"};
+
+// Rule: exterior addresses must survive registry reordering and preserve every established route/venue.
+const vacancyChecks = async BL => {
+  const W=waterWorld(BL),S=BL.scene,before=waterGolden(W),labels=JSON.stringify(W.detail.facades),children=W.root.children.length;
+  const V=BL.dsbVacancies.create(W),P=V.properties,R=BL.dsbVacancies.REGISTRY;
+  const houses=W.land.buildings.filter(b=>b.name.startsWith("VACANT ")),mills=W.olympus.group.children.filter(n=>n.children.length===1&&n.children[0].geometry.verts.length>100);
+  record("Vacancies: every initially vacant white house retains its frozen address",houses.length===33&&houses.every(b=>P.filter(p=>p.building===b).length===1)&&P.filter(p=>p.address.type==="house").length===houses.length);
+  record("Vacancies: both original animated white windmills resolve exactly once",mills.length===2&&mills.every(b=>P.filter(p=>p.building===b&&p.address.type==="windmill").length===1));
+  record("Vacancies: occupied venues, Noderunner and harbor utilities are excluded",W.land.buildings.filter(b=>!b.name.startsWith("VACANT ")).every(b=>!P.some(p=>p.building===b))&&W.detail.facades.length===7);
+  record("Vacancies: frozen initial IDs are unique and contiguous 1 through 35",R.length===35&&new Set(R.map(p=>p.number)).size===35&&Array.from({length:35},(_,i)=>i+1).every(n=>V.resolve(n))&&Object.isFrozen(R)&&R.every(Object.isFrozen));
+  record("Vacancies: published identities cannot silently renumber",JSON.stringify(R.map(p=>p.buildingId))===JSON.stringify([21,20,19,4,1,5,2,3,11,10,9,8,7,6,25,24,23,22,15,12,13,14,17,18,16,32,26,33,27,28,31,30,29].map(n=>"VACANT "+n).concat(["olympus-mill-east","olympus-mill-west"])));
+  record("Vacancies: one two-part world sign belongs to each registered address",V.group.children.length===35&&P.every(p=>p.node.parent===V.group&&p.node.children.length===2&&p.plaque.parent===p.node&&p.lettering.parent===p.node)&&new Set(P.map(p=>p.building)).size===35);
+  record("Vacancies: actual lettering preserves VAC numbers with only VAC 7 occupied by SVRN Society",P.every(p=>p.text===(p.address.number===7?"SVRN Society":"VAC "+p.address.number)&&p.lettering.geometry===BL.dsbModels.text(p.text,"#fff4df")));
+  S.updateWorld(W.root);
+  const bounds=node=>{const lo=[Infinity,Infinity,Infinity],hi=[-Infinity,-Infinity,-Infinity],q=[];for(let i=0;i<node.geometry.verts.length;i+=3){BL.math.mat4.transformPoint(q,node.local,...node.geometry.verts.slice(i,i+3));for(let j=0;j<3;j++){lo[j]=Math.min(lo[j],q[j]);hi[j]=Math.max(hi[j],q[j]);}}return {lo,hi};};
+  const placement=P.map(p=>{const b=p.building,a=bounds(p.plaque),t=bounds(p.lettering),house=p.address.type==="house",front=house?b.d/2:2.1;
+    const millPoints=[];if(!house){const inv=new Float32Array(16),q=[];BL.math.mat4.invert(inv,b.world);for(let i=0;i<p.plaque.geometry.verts.length;i+=3){BL.math.mat4.transformPoint(q,p.plaque.world,...p.plaque.geometry.verts.slice(i,i+3));BL.math.mat4.transformPoint(q,inv,...q);millPoints.push(q.slice());}}
+    return {id:p.address.number,front:house?p.node.rotation.y===b.yaw:p.node.rotation.y===b.rotation.y+.85,attached:Math.abs(a.lo[2]-front-(p.mount==="balcony rail"?.98:house?.08:0))<1e-5,
+      insideWidth:a.lo[0]>=-(house?b.w/2:2)&&a.hi[0]<=(house?b.w/2:2),headroom:house?a.lo[1]>2.44:millPoints.every(q=>q[0]>.55&&Math.abs(q[0])<3.1&&Math.abs(q[2])<3.1),lettering:t.lo[0]>a.lo[0]&&t.hi[0]<a.hi[0]&&t.lo[1]>a.lo[1]&&t.hi[1]<a.hi[1]&&t.lo[2]>=a.hi[2]-.001};});
+  record("Vacancies: plaques face and attach to their own facade or existing balcony rail",placement.every(p=>p.front&&p.attached&&p.insideWidth),JSON.stringify(placement));
+  record("Vacancies: real sign bounds clear doors/headroom and contain readable front lettering",placement.every(p=>p.headroom&&p.lettering),JSON.stringify(placement));
+  // Compare the town's production movement queries before/after sign removal across every entrance approach.
+  const approaches=()=>P.map(p=>{const a=p.approach,c=Math.cos(p.yaw),s=Math.sin(p.yaw);return [-.6,0,.6].map(dx=>W.walkable(a.x+c*dx+s,a.z-s*dx+c,a.x+c*dx,a.z-s*dx,W.ground(a.x,a.z),W.avatar.bodyHeight,W.avatar));});
+  const withSigns=JSON.stringify(approaches());S.removeChild(W.root,V.group);const withoutSigns=JSON.stringify(approaches());S.addChild(W.root,V.group);
+  record("Vacancies: signs do not change town/door approaches or existing movement collision",withSigns===withoutSigns&&placement.every(p=>p.headroom));
+  record("Vacancies: established venue labels and protected terrain/buildings/Olympus stay byte-identical",JSON.stringify(W.detail.facades)===labels&&JSON.stringify(waterGolden(W))===JSON.stringify(before)&&Object.keys(WATER_GOLDEN).every(k=>before[k]===WATER_GOLDEN[k]));
+  const snapshot=v=>JSON.stringify(v.properties.map(p=>({number:p.address.number,id:p.address.buildingId,x:p.x,z:p.z,yaw:p.yaw,door:p.door,approach:p.approach,text:p.text,sign:p.plaque.position})));
+  const W2=waterWorld(BL);W2.land.buildings.reverse();const V2=BL.dsbVacancies.create(W2);
+  record("Vacancies: repeated scene creation and reversed building order retain exact mapping",snapshot(V)===snapshot(V2));V2.dispose();W2.dispose();
+  const out=join(root,"untracked/vacancy-review");mkdirSync(out,{recursive:true});writeFileSync(join(out,"mapping.json"),snapshot(V));
+  if(process.env.VACANCY_CANVAS){
+    const {createCanvas}=await import(process.env.VACANCY_CANVAS),oldCreate=document.createElement;document.createElement=tag=>tag==="canvas"?createCanvas(1,1):oldCreate(tag);
+    const canvas=createCanvas(1280,800),renderer=BL.canvasRenderer.createRenderer(canvas,{width:1280,height:800}),camera=S.createCamera({far:450}),opts=BL.scenes.dsb.renderOpts;
+    BL.daylight.sample(12,opts,180,37);BL.dsbAtmosphere.light(opts);W.water.update(0);
+    const views={...BL.dsbVacancies.REVIEWS};
+    for(const n of [4,8,17,34,35]){const p=V.resolve(n);views["vac-"+n]={yaw:p.node.rotation.y,pitch:.08,dist:9,target:{x:p.door.x,y:p.floor+(n>=34?1.2:2.7),z:p.door.z}};}
+    for(const [name,v] of Object.entries(views)){Object.assign(camera.target,v.target);Object.assign(camera.position,{x:v.target.x+Math.sin(v.yaw)*Math.cos(v.pitch)*v.dist,y:v.target.y+Math.sin(v.pitch)*v.dist,z:v.target.z+Math.cos(v.yaw)*Math.cos(v.pitch)*v.dist});renderer.render(W.root,camera,opts);writeFileSync(join(out,name+".png"),canvas.toBuffer("image/png"));}
+    renderer.dispose();document.createElement=oldCreate;
+  }
+  V.dispose();V.dispose();record("Vacancies: repeat disposal removes every sign and visit-owned reference",V.group.children.length===0&&V.properties.length===0&&W.root.children.length===children);W.dispose();
+};
+
+// Rule: exterior dressing must preserve the exact support surface and usable routes at every tier.
+const exteriorEnrichmentChecks = BL => {
+  const S=BL.scene,root=S.createNode(),land=BL.dsbGeography.build(),renderer={kind:"webgl2",quality:"high"},camera=S.createCamera();camera.position.y=110;
+  const nature=BL.dsbNature.create({root,land,renderer,camera,weather:{state:{wind:{strength:.2}}}}),detail=BL.dsbExterior.create({root,land,nature});
+  const original=JSON.stringify(land.root.children[0].geometry),heightSamples=[];
+  for(let x=-90;x<90;x+=3)for(let z=-90;z<80;z+=3)heightSamples.push(land.heightAt(x,z));
+  const E=BL.dsbEnrichment.create({root,land,nature,detail,renderer,camera});E.update(0,0);
+  const counts=Object.fromEntries(E.fields.map(f=>[f.kind,f.list.length]));
+  record("Exterior enrichment: furnished sand, harbor, flowering town and planted ruins are built",E.stats.sandFaces>200&&counts.parasol>=3&&counts.lounger>=4&&counts.pergolaroof===2&&counts.boat===3&&counts.column>=2&&counts.broken>=2&&counts.flowerbox>100&&counts.vine>40,JSON.stringify(counts));
+  let floating=0,buried=0,invalid=0,contacts=0;
+  for(const f of E.fields){
+    for(let n=0;n<f.list.length;n++){
+      const p=f.list[n],a=f.source,o=n*20,v=f.geometry.verts;let top=-Infinity;
+      for(let j=0;j<v.length;j+=3){const x=a[o]*v[j]+a[o+8]*v[j+2]+a[o+12],y=a[o+1]*v[j]+a[o+5]*v[j+1]+a[o+9]*v[j+2]+a[o+13],z=a[o+2]*v[j]+a[o+10]*v[j+2]+a[o+14];
+        if(![x,y,z].every(Number.isFinite))invalid++;
+        if(p.bottom!==undefined&&Math.abs(v[j+1]-p.bottom)<.001){contacts++;if(y>land.heightAt(x,z)+.002)floating++;}top=Math.max(top,y);
+      }
+      if(p.bottom!==undefined&&top<land.heightAt(p.x,p.z)+.06)buried++;
+    }
+  }
+  record("Exterior enrichment: real transformed contact vertices are grounded and geometry finite",contacts>500&&!floating&&!buried&&!invalid,JSON.stringify({contacts,floating,buried,invalid}));
+  const noop=()=>{},C=BL.crew.create({root:S.createNode(),world:{level:0},playerName:"YellowBrokeIt",input:{add:noop,remove:noop},hud:{setRosterRow:noop},game:{state:{assignments:{},inventory:[]}},viewYaw:0,groundAt:land.heightAt,walkable:land.walkable,fx:{say:noop,zzzAt:noop,burst:noop,puff:noop,spawnParticle:noop,damageNumber:noop}}),A=C.cavemen.get("YellowBrokeIt");
+  const blocked=[],intrusions=[];
+  for(const [name,line] of [["beach",E.beachRoute],["ruins",E.ruinRoute],["trail",land.trail]])for(let i=1;i<line.length;i++){
+    const a=line[i-1],b=line[i];if(!land.walkable(a[0],a[1],b[0],b[1],land.heightAt(...a),A.bodyHeight,A))blocked.push([name,i]);
+  }
+  // Independent corridor sampling compares complete ground-prop bounds against the actor radius.
+  for(const line of [land.trail,land.waterfront,...land.lanes,E.beachRoute,E.ruinRoute])for(let i=1;i<line.length;i++){
+    const a=line[i-1],b=line[i],n=Math.ceil(Math.hypot(b[0]-a[0],b[1]-a[1])*3);
+    for(let j=0;j<=n;j++){const x=a[0]+(b[0]-a[0])*j/n,z=a[1]+(b[1]-a[1])*j/n;
+      for(const p of E.placements)if(p.r&&Math.hypot(x-p.x,z-p.z)<p.r+A.bodyRadius)intrusions.push([p.kind,p.x,p.z]);
+    }
+  }
+  C.dispose();
+  record("Exterior enrichment: measured Yellow reaches beach, ruins and trail with all authored corridors clear",!blocked.length&&!intrusions.length,JSON.stringify({radius:A.bodyRadius,blocked,intrusions:intrusions.slice(0,5)}));
+  const after=[];for(let x=-90;x<90;x+=3)for(let z=-90;z<80;z+=3)after.push(land.heightAt(x,z));
+  const sand=E.surfaces[0],coastal=E.placements.filter(p=>["beach","outcrop","coast"].includes(p.region));
+  record("Exterior enrichment: approved terrain is byte-identical and no new beach reaches rear Olympus",original===JSON.stringify(land.root.children[0].geometry)&&JSON.stringify(after)===JSON.stringify(heightSamples)&&coastal.every(p=>p.z>=-23)&&sand.verts.every((v,i)=>i%3!==2||v>=60),JSON.stringify({coastal:coastal.length,sandFaces:sand.faces.length}));
+  const signature=JSON.stringify(E.placements),buffers=E.fields.map(f=>f.node.instanceData),high=E.stats.visible,foam=E.fields.find(f=>f.kind==="foam");
+  renderer.quality="medium";E.update(1,1);const medium=E.stats.visible;renderer.quality="low";E.update(2,1);const low=E.stats.visible,lowFoam=Array.from(foam.node.instanceData);E.update(10,1);
+  const stable=JSON.stringify(lowFoam)===JSON.stringify(Array.from(foam.node.instanceData));
+  renderer.kind="canvas2d";renderer.quality="high";E.update(11,0);const canvas=E.stats.visible;
+  record("Exterior enrichment: bounded tiers retain landmarks, stop low-tier wash and reuse every buffer",high>medium&&medium>low&&canvas===low&&stable&&E.stats.batches<=42&&E.stats.lights===0&&E.fields.every((f,i)=>f.node.instanceData===buffers[i])&&E.fields.filter(f=>["column","boat","parasol","pergolaroof"].includes(f.kind)).every(f=>f.node.instanceCount===f.list.length),JSON.stringify({high,medium,low,canvas,batches:E.stats.batches,foam:E.stats.foam}));
+  renderer.kind="webgl2";renderer.quality="high";E.update(12,1);const lit=E.fields.filter(f=>["glass","windowglow"].includes(f.kind)).every(f=>f.geometry.faces.some(face=>face.emissive>0)&&f.node.glow>.7&&f.node.instanceData.every((v,i)=>i%20!==16||i>=f.node.instanceCount*20||v>.7));E.update(13,0);
+  record("Exterior enrichment: practical lights follow the existing lamp factor without adding real lights",lit&&E.fields.filter(f=>["glass","windowglow"].includes(f.kind)).every(f=>f.node.glow===0&&f.node.instanceData.every((v,i)=>i%20!==16||i>=f.node.instanceCount*20||v===0))&&E.stats.lights===0);
+  const children=root.children.length;let lifecycle=true;
+  E.dispose();E.dispose();
+  lifecycle&&=E.group.children.length===0&&root.children.length===children-1&&E.fields.length===0;
+  for(let i=0;i<2;i++){const next=BL.dsbEnrichment.create({root,land,nature,detail,renderer,camera});next.update(i,0);lifecycle&&=JSON.stringify(next.placements)===signature&&root.children.length===children;next.dispose();lifecycle&&=next.group.children.length===0&&root.children.length===children-1;}
+  detail.dispose();nature.dispose();
+  record("Exterior enrichment: repeat visits release every node and rebuild the same bounded layout",lifecycle&&root.children.length===0);
+};
+
+// Rule: the authored Maxis routes and stand points must fit the real Yellow actor, not a guessed radius.
+const maxisChecks = BL => {
+  const noop=()=>{},S=BL.scene,root=S.createNode(),targets=new Set();
+  const land={buildings:[{name:"Maxis Club Theater",x:0,z:0,yaw:0,d:2}],heightAt:()=>0,walkable:()=>true};
+  const I=BL.dsbInteriors.create({root,exterior:{visible:true},land,weather:{shared:{state:{muted:true}},setInterior:noop},relocate:noop,lock:noop,onChange:noop});
+  I.review("maxis-club",true);I.update(.4);const R=I.active.room;
+  const C=BL.crew.create({root,world:{level:0},playerName:"YellowBrokeIt",input:{add:n=>targets.add(n),remove:n=>targets.delete(n)},hud:{setRosterRow:noop},game:{state:{assignments:{},inventory:[]}},viewYaw:0,groundAt:I.groundAt,walkable:I.walkable,fx:{say:noop,zzzAt:noop,burst:noop,puff:noop,spawnParticle:noop,damageNumber:noop}});
+  const A=C.cavemen.get("YellowBrokeIt");C.control(A);
+  const clear=(ax,az,bx=ax,bz=az)=>I.walkable(ax,az,bx,bz,R.groundAt(ax,az),A.bodyHeight,A);
+  record("Maxis: 50 reusable seats fit measured Yellow scale",R.seats.length===50&&A.bodyHeight>1.3&&A.bodyHeight<1.5&&R.seats.every(s=>s.allowWeapons&&s.lockMovement&&clear(s.walkAt.x,s.walkAt.z)),JSON.stringify({height:A.bodyHeight,radius:A.bodyRadius,blocked:R.seats.map((s,i)=>!clear(s.walkAt.x,s.walkAt.z)?i:null).filter(i=>i!==null)}));
+  const seatResults=[];
+  for(const [i,seat] of R.seats.entries()){
+    Object.assign(A.root.position,{x:seat.walkAt.x,y:seat.floor+A.baseY,z:seat.walkAt.z});A.hop=A.hopV=0;
+    const sat=C.sitPlayer(seat),aligned=A.root.rotation.y===seat.ry;
+    C.configureWeapon(A,2,30);C.steer(.5,0);C.look(seat.ry,.1,1);C.update(.2,i*.2);
+    const locked=A.root.position.x===seat.x&&A.root.position.z===seat.z,shots=A.weapon.shotsFired;
+    const gun=sat&&C.fireWeapon(A,{x:seat.x,y:seat.y+1,z:-13},1)&&A.weapon.shotsFired===shots+1;
+    C.steer(0,0);const threw=sat&&C.throwTomato();C.clearProjectiles();
+    const stood=C.standPlayer();seatResults.push({i,ok:sat&&aligned&&locked&&gun&&threw&&stood&&!seat.sitter&&!A.camp.seat&&clear(A.root.position.x,A.root.position.z)});
+  }
+  record("Maxis: real crew sits, locks movement, aims/fires, throws and stands at all 50 chairs",seatResults.every(x=>x.ok),JSON.stringify(seatResults.filter(x=>!x.ok)));
+  // Flood the actual collision queries at quarter-unit resolution, rejecting discontinuous floor steps.
+  const step=.25,w=101,h=125,seen=new Uint8Array(w*h),queue=[],index=(x,z)=>Math.round((z+13.5)/step)*w+Math.round((x+12.5)/step);
+  const start=index(R.spawn.x,R.spawn.z);seen[start]=1;queue.push(start);
+  for(let head=0;head<queue.length;head++){
+    const i=queue[head],ix=i%w,iz=Math.floor(i/w),x=-12.5+ix*step,z=-13.5+iz*step;
+    for(const [dx,dz] of [[1,0],[-1,0],[0,1],[0,-1]]){
+      const nx=ix+dx,nz=iz+dz,n=nz*w+nx;if(nx<0||nx>=w||nz<0||nz>=h||seen[n])continue;
+      const px=x+dx*step,pz=z+dz*step;
+      if(Math.abs(R.groundAt(x,z)-R.groundAt(px,pz))>.5||!clear(x,z,px,pz))continue;
+      seen[n]=1;queue.push(n);
+    }
+  }
+  const reachable=(x,z)=>{const i=index(x,z),ix=i%w,iz=Math.floor(i/w);for(let dx=-2;dx<=2;dx++)for(let dz=-2;dz<=2;dz++){const nx=ix+dx,nz=iz+dz;if(nx>=0&&nx<w&&nz>=0&&nz<h&&seen[nz*w+nx]&&clear(-12.5+nx*step,-13.5+nz*step,x,z))return true;}return false;};
+  const goals=[R.mediaAt,{x:0,z:-10},{x:0,z:-12.3},{x:-10.3,z:-8.25},{x:10.3,z:-8.25},{x:6,z:11},...R.seats.map(s=>s.walkAt)];
+  record("Maxis: lobby reaches screen, stairs, both galleries, bar and every seat",goals.every(p=>reachable(p.x,p.z)),JSON.stringify(goals.filter(p=>!reachable(p.x,p.z))));
+  const geometries=new Set();let nodes=0,finite=true;S.updateWorld(R.root);const visit=n=>{nodes++;if(n.geometry){geometries.add(n.geometry);finite&&=n.geometry.verts.every(Number.isFinite);}n.children.forEach(visit);};visit(R.root);
+  record("Maxis: shared geometry, finite transforms and five authored lights",finite&&geometries.size<90&&nodes<2200&&R.lighting.lightCount===5,JSON.stringify({nodes,geometries:geometries.size}));
+  record("Maxis: main theater gain exceeds lobby and physical screen changes state",R.gainAt(0,0)>R.gainAt(-5.6,16)&&R.gainAt(-5.6,16)>0&&typeof R.setMedia==="function");
+  const roomRoot=R.root;C.dispose();I.dispose();record("Maxis: actor and room disposal remove input targets and scene children",targets.size===0&&!root.children.includes(roomRoot));
+};
+
+// Rule: the showroom must be reachable by the real Yellow and must only expose public catalog links.
+const rulersChecks = BL => {
+  const noop=()=>{},S=BL.scene,root=S.createNode(),targets=new Set(),exterior={visible:true},weather={shared:{state:{muted:true}},inside:false,setInterior(on){this.inside=on;}};
+  const land={buildings:[{name:"Without Rulers Shop",x:0,z:0,yaw:0,d:6}],heightAt:()=>0,walkable:()=>true};
+  const I=BL.dsbInteriors.create({root,exterior,land,weather,relocate:noop,lock:noop,onChange:noop});
+  I.review("without-rulers",true);I.update(.4);const R=I.active.room;
+  const C=BL.crew.create({root,world:{level:0},playerName:"YellowBrokeIt",input:{add:n=>targets.add(n),remove:n=>targets.delete(n)},hud:{setRosterRow:noop},game:{state:{assignments:{},inventory:[]}},viewYaw:0,groundAt:I.groundAt,walkable:I.walkable,fx:{say:noop,zzzAt:noop,burst:noop,puff:noop,spawnParticle:noop,damageNumber:noop}});
+  const A=C.cavemen.get("YellowBrokeIt");C.control(A);
+  const clear=(ax,az,bx=ax,bz=az)=>I.walkable(ax,az,bx,bz,0,A.bodyHeight,A);
+  const step=.25,w=93,h=85,seen=new Uint8Array(w*h),queue=[],index=(x,z)=>Math.round((z+10.5)/step)*w+Math.round((x+11.5)/step),start=index(R.spawn.x,R.spawn.z);seen[start]=1;queue.push(start);
+  for(let head=0;head<queue.length;head++){
+    const n=queue[head],ix=n%w,iz=Math.floor(n/w),x=-11.5+ix*step,z=-10.5+iz*step;
+    for(const [dx,dz] of [[1,0],[-1,0],[0,1],[0,-1]]){const nx=ix+dx,nz=iz+dz,i=nz*w+nx;if(nx<0||nx>=w||nz<0||nz>=h||seen[i]||!clear(x,z,x+dx*step,z+dz*step))continue;seen[i]=1;queue.push(i);}
+  }
+  const reachable=p=>{const i=index(p.x,p.z),ix=i%w,iz=Math.floor(i/w);for(let dx=-1;dx<=1;dx++)for(let dz=-1;dz<=1;dz++){const nx=ix+dx,nz=iz+dz;if(nx>=0&&nx<w&&nz>=0&&nz<h&&seen[nz*w+nx]&&clear(-11.5+nx*step,-10.5+nz*step,p.x,p.z))return true;}return false;};
+  const goals=[R.exit,...R.browseGoals,...Object.values(R.reviews).map(v=>v.position)];record("Without Rulers: entrance reaches kiosk, apparel, print gallery, desk and both lounge seats at Yellow scale",clear(R.spawn.x,R.spawn.z)&&goals.every(reachable),JSON.stringify({radius:A.bodyRadius,unreachable:goals.filter(p=>!reachable(p))}));
+  let seated=true;for(const seat of R.seats){Object.assign(A.root.position,{x:seat.walkAt.x,y:A.baseY,z:seat.walkAt.z});A.hop=A.hopV=0;seated&&=C.sitPlayer(seat);C.steer(.5,0);C.look(seat.ry,.2,1);C.update(.2,1);seated&&=A.camp.seat===seat&&A.root.position.x===seat.x&&A.root.position.z===seat.z;C.steer(0,0);seated&&=C.standPlayer()&&!A.camp.seat&&!seat.sitter&&clear(A.root.position.x,A.root.position.z);}
+  record("Without Rulers: both lounge seats reuse real crew sit, free look, locked movement and safe stand",R.seats.length===2&&seated);
+  S.updateWorld(R.root);let nodes=0,finite=true;const geometries=new Set();const visit=n=>{nodes++;if(n.geometry){geometries.add(n.geometry);finite&&=n.geometry.verts.every(Number.isFinite);}n.children.forEach(visit);};visit(R.root);
+  record("Without Rulers: dense distinct retail zones use bounded shared geometry and three lights",finite&&nodes<1800&&geometries.size<120&&R.lighting.lightCount===3&&R.counts.shirts>=10&&R.counts.hoodies>=10&&R.counts.folded>=35&&R.counts.caps>=45&&R.counts.prints>=16&&R.counts.mannequins===2,JSON.stringify({nodes,geometries:geometries.size,...R.counts}));
+  let lifecycle=true;const childCount=root.children.length,roomRoot=R.root;
+  for(let i=0;i<3;i++){lifecycle&&=weather.inside&&!exterior.visible&&I.audio.stats.active;I.request(R.exit);I.update(.4);lifecycle&&=!I.active&&!weather.inside&&exterior.visible&&!I.audio.stats.active&&!I.audio.stats.connected&&!roomRoot.visible;I.review("without-rulers",true);I.update(.4);lifecycle&&=I.active.room===R&&root.children.length===childCount&&I.rooms.size===1;}
+  C.dispose();I.dispose();record("Without Rulers: three entry/exit cycles reuse one room, suppress exterior, stop room audio and dispose",lifecycle&&targets.size===0&&!root.children.includes(roomRoot)&&!I.audio.stats.contexts);
+  // Rule: real ambience routing stays local and reuses its existing three-source audio pool.
+  const savedAudio=window.AudioContext,activation=Object.getOwnPropertyDescriptor(navigator,"userActivation"),audioNodes=[],contexts=[];
+  const node=()=>{const n={connected:false,stopped:false,gain:{value:0,setTargetAtTime(v){this.value=v;}},frequency:{value:0,setTargetAtTime(v){this.value=v;}},Q:{value:0},connect(){this.connected=true;},disconnect(){this.connected=false;},start(){},stop(){this.stopped=true;}};audioNodes.push(n);return n;};
+  window.AudioContext=class {constructor(){this.destination={};this.currentTime=1;this.sampleRate=8000;this.state="running";contexts.push(this);}createGain(){return node();}createOscillator(){return node();}createBufferSource(){return node();}createBiquadFilter(){return node();}createBuffer(c,n){return {getChannelData:()=>new Float32Array(n)};}close(){this.state="closed";return Promise.resolve();}};
+  Object.defineProperty(navigator,"userActivation",{configurable:true,value:{hasBeenActive:true}});
+  try{const audio=BL.dsbInteriorAudio.create();let clean=true;for(let i=0;i<3;i++){audio.setActive(true,"shop");audio.update(false);clean&&=audio.stats.contexts===1&&audio.stats.sources===3&&audio.stats.connected&&audioNodes[0].gain.value===.12;audio.setActive(false);clean&&=!audio.stats.connected;}audio.setActive(true,"shop");audio.update(true);clean&&=!audio.stats.connected;audio.dispose();record("Without Rulers audio: quiet shop gain, mute, three visits and disposal never duplicate contexts or leak connections",clean&&contexts.length===1&&contexts[0].state==="closed"&&audioNodes.every(n=>!n.connected));}finally{window.AudioContext=savedAudio;if(activation)Object.defineProperty(navigator,"userActivation",activation);else delete navigator.userActivation;}
+  const D=BL.withoutRulersData;
+  record("Without Rulers catalog: all categories and five themes contain real bounded official product previews",D.products.length===14&&D.categories.every(c=>D.filter(c.id).length>0)&&D.collections.every(c=>D.filter("home","",c.id).length>0)&&D.products.every(p=>D.official(p.url)&&p.title&&p.price>0&&/^data:image\/(png|jpeg|webp);base64,/.test(p.image))&&D.collections.every(c=>D.official(c.url)));
+  record("Without Rulers catalog: local search is case insensitive and outbound links reject lookalikes and unsafe URLs",D.filter("home","BiP-85").map(p=>p.id).sort().join() === ["nyknyc-bip-85-t-shirt","nyknyc-bip-85-hoodie-black-and-white","bip-85-bucket-hat"].sort().join()&&D.filter("home","impossible nonproduct").length===0&&["javascript:alert(1)","https://www.without-rulers.com.evil.test/products/a","https://without-rulers.com/products/a","https://user:pass@www.without-rulers.com/","https://www.without-rulers.com/cart","https://www.without-rulers.com/?email=private"].every(u=>!D.official(u)));
+  // Contract: actual menu event handlers, without loading any remote service or customer state.
+  const savedDoc=globalThis.document,savedShell=BL.dsbMenuShell,listeners=new Map(),elements=[];
+  const element=tag=>{
+    const e={tag,children:[],dataset:{},hidden:false,value:"",attributes:{},parent:null,isConnected:true,textContent:"",listeners:new Map(),
+      setAttribute(k,v){this.attributes[k]=v;},appendChild(c){c.parent=this;this.children.push(c);return c;},replaceChildren(){this.children.forEach(c=>c.parent=null);this.children=[];},
+      contains(n){for(;n;n=n.parent)if(n===this)return true;return false;},closest(s){if(s==="button")return this.tag==="button"?this:this.parent?.closest(s);if(s==="[hidden]")return this.hidden?this:this.parent?.closest(s);return null;},
+      focus(){document.activeElement=this;},blur(){if(document.activeElement===this)document.activeElement=null;},addEventListener(k,f){this.listeners.set(k,f);},removeEventListener(k){this.listeners.delete(k);}
+    };elements.push(e);return e;
+  };
+  const panel=element("section"),selectors=new Map();
+  for(const [q,tag] of [["nav","nav"],[".rulers-results","div"],[".rulers-heading","h3"],["input","input"],[".rulers-search","label"],[".rulers-status","p"],['[data-wr="back"]',"button"],['[data-wr="close"]',"button"]]){const e=element(tag);panel.appendChild(e);selectors.set(q,e);}
+  selectors.get('[data-wr="close"]').dataset.wr="close";selectors.get('[data-wr="back"]').dataset.wr="back";
+  panel.querySelector=q=>selectors.get(q);panel.querySelectorAll=()=>elements.filter(e=>panel.contains(e)&&["button","input","a"].includes(e.tag));
+  globalThis.document={getElementById:()=>panel,createElement:element,activeElement:null,addEventListener:(k,f)=>listeners.set(k,f),removeEventListener:k=>listeners.delete(k)};
+  try{
+    BL.dsbMenuShell={present:noop};
+    const M=BL.withoutRulersMenu.create(),results=selectors.get(".rulers-results"),search=selectors.get("input");let okay=!M.open();
+    const descendants=(node,out=[])=>{out.push(node);node.children.forEach(c=>descendants(c,out));return out;};
+    const click=(action,value)=>{const b=descendants(panel).find(n=>n.tag==="button"&&n.dataset.wr===action&&(!value||n.dataset.value===value));if(!b)throw Error("Missing menu action "+action);panel.listeners.get("click")({target:b});};
+    for(let i=0;i<3;i++){
+      M.enter();const opened=M.open();okay&&=opened&&M.isOpen&&!panel.hidden&&selectors.get("nav").children.length===8;click("section","hats");okay&&=results.children.filter(c=>c.tag==="article").length===D.filter("hats").length;
+      click("section","search");search.value="BiP-85";search.listeners.get("input")();okay&&=results.children.length===3;
+      click("product",D.products[0].id);const links=descendants(results).filter(n=>n.tag==="a");okay&&=links.length===1&&links[0].href===D.products[0].url&&links[0].target==="_blank"&&links[0].rel==="noopener noreferrer";
+      click("back");click("section","collections");okay&&=results.children.length===5;click("collection","2140");okay&&=results.children.filter(c=>c.tag==="article").length===3;
+      panel.listeners.get("keydown")({type:"keydown",key:"Escape",stopPropagation:noop,preventDefault:noop});okay&&=!M.isOpen&&panel.hidden;
+      M.open();M.leave();okay&&=!M.isOpen&&panel.hidden&&results.children.length===0&&search.value==="";
+    }
+    for(const route of ["shirts","hoodies","hats","art","bip85","samourai","slavery","cartel","2140","nonsense"]){M.enter();M.open(route);okay&&=D.collections.some(c=>c.id===route)?M.stats.collection===route:M.stats.section===(D.categories.some(c=>c.id===route)?route:"home");M.leave();}
+    M.dispose();M.dispose();record("Without Rulers menu: categories, collection search, product redirect, Escape and repeated visits clean all handlers",okay&&listeners.size===0&&elements.every(e=>e.listeners.size===0)&&M.stats.disposed);
+  }finally{globalThis.document=savedDoc;BL.dsbMenuShell=savedShell;}
+};
+
+// Proof of Ink uses the real player collision, seating, transition and menu handlers.
+const inkChecks = BL => {
+  const noop=()=>{},S=BL.scene,root=S.createNode(),targets=new Set(),exterior={visible:true},weather={shared:{state:{muted:true}},inside:false,setInterior(on){this.inside=on;}};
+  const land={buildings:[{name:"Proof Of Ink",x:0,z:0,yaw:0,d:6}],heightAt:()=>0,walkable:()=>true};
+  const I=BL.dsbInteriors.create({root,exterior,land,weather,relocate:noop,lock:noop,onChange:noop});
+  I.review("proof-of-ink",true);I.update(.4);const R=I.active.room;
+  const C=BL.crew.create({root,world:{level:0},playerName:"YellowBrokeIt",input:{add:n=>targets.add(n),remove:n=>targets.delete(n)},hud:{setRosterRow:noop},game:{state:{assignments:{},inventory:[]}},viewYaw:0,groundAt:I.groundAt,walkable:I.walkable,fx:{say:noop,zzzAt:noop,burst:noop,puff:noop,spawnParticle:noop,damageNumber:noop}});
+  const A=C.cavemen.get("YellowBrokeIt");C.control(A);
+  const clear=(ax,az,bx=ax,bz=az)=>I.walkable(ax,az,bx,bz,0,A.bodyHeight,A);
+  const step=.25,w=109,h=101,seen=new Uint8Array(w*h),queue=[],index=(x,z)=>Math.round((z+12.5)/step)*w+Math.round((x+13.5)/step),start=index(R.spawn.x,R.spawn.z);seen[start]=1;queue.push(start);
+  for(let head=0;head<queue.length;head++){
+    const n=queue[head],ix=n%w,iz=Math.floor(n/w),x=-13.5+ix*step,z=-12.5+iz*step;
+    for(const [dx,dz] of [[1,0],[-1,0],[0,1],[0,-1]]){const nx=ix+dx,nz=iz+dz,i=nz*w+nx;if(nx<0||nx>=w||nz<0||nz>=h||seen[i]||!clear(x,z,x+dx*step,z+dz*step))continue;seen[i]=1;queue.push(i);}
+  }
+  const reachable=p=>{const i=index(p.x,p.z),ix=i%w,iz=Math.floor(i/w);for(let dx=-1;dx<=1;dx++)for(let dz=-1;dz<=1;dz++){const nx=ix+dx,nz=iz+dz;if(nx>=0&&nx<w&&nz>=0&&nz<h&&seen[nz*w+nx]&&clear(-13.5+nx*step,-12.5+nz*step,p.x,p.z))return true;}return false;};
+  const goals=[R.exit,...R.browseGoals,...Object.values(R.reviews).map(v=>v.position)];record("Proof of Ink: entrance reaches kiosk, apparel, print gallery, desk and three lounge seats at Yellow scale",clear(R.spawn.x,R.spawn.z)&&goals.every(reachable),JSON.stringify({radius:A.bodyRadius,unreachable:goals.filter(p=>!reachable(p))}));
+  let seated=true;for(const seat of R.seats){Object.assign(A.root.position,{x:seat.walkAt.x,y:A.baseY,z:seat.walkAt.z});A.hop=A.hopV=0;seated&&=C.sitPlayer(seat);C.steer(.5,0);C.look(seat.ry,.2,1);C.update(.2,1);seated&&=A.camp.seat===seat&&A.root.position.x===seat.x&&A.root.position.z===seat.z;C.steer(0,0);seated&&=C.standPlayer()&&!A.camp.seat&&!seat.sitter&&clear(A.root.position.x,A.root.position.z);}
+  record("Proof of Ink: three lounge seats reuse real crew sit, free look, locked movement and safe stand",R.seats.length===3&&seated);
+  S.updateWorld(R.root);let nodes=0,finite=true;const geometries=new Set();const visit=n=>{nodes++;if(n.geometry){geometries.add(n.geometry);finite&&=n.geometry.verts.every(Number.isFinite);}n.children.forEach(visit);};visit(R.root);
+  record("Proof of Ink: dense distinct retail zones use bounded shared geometry and three lights",finite&&nodes<2000&&geometries.size<150&&R.lighting.lightCount===3&&R.counts.apparel>=15&&R.counts.folded>=40&&R.counts.caps>=25&&R.counts.art>=18&&R.counts.ink>=70&&R.counts.presses===2&&R.counts.dryers===2,JSON.stringify({nodes,geometries:geometries.size,...R.counts}));
+  let lifecycle=true;const childCount=root.children.length,roomRoot=R.root;
+  for(let i=0;i<3;i++){lifecycle&&=weather.inside&&!exterior.visible&&I.audio.stats.active;I.request(R.exit);I.update(.4);lifecycle&&=!I.active&&!weather.inside&&exterior.visible&&!I.audio.stats.active&&!I.audio.stats.connected&&!roomRoot.visible;I.review("proof-of-ink",true);I.update(.4);lifecycle&&=I.active.room===R&&root.children.length===childCount&&I.rooms.size===1;}
+  C.dispose();I.dispose();record("Proof of Ink: three entry/exit cycles reuse one room, suppress exterior, stop room audio and dispose",lifecycle&&targets.size===0&&!root.children.includes(roomRoot)&&!I.audio.stats.contexts);
+  // Preserve the real exterior door registry and all previously implemented room factories.
+  const realLand=BL.dsbGeography.build(),allRoot=S.createNode(),allExterior={visible:true};let lastPoint=null;
+  const all=BL.dsbInteriors.create({root:allRoot,exterior:allExterior,land:realLand,weather,relocate:p=>lastPoint={...p},lock:noop,onChange:noop});let preserved=true;
+  for(const id of ["meme-factory","dsb-studio","maxis-club","without-rulers","proof-of-ink"]){const entry=all.registry.get(id);preserved&&=all.target(entry.entry)?.id===id;all.review(id,true);all.update(.4);preserved&&=all.active?.room.id===id&&!allExterior.visible&&weather.inside;const room=all.active.room;all.request(room.exit);all.update(.4);preserved&&=!all.active&&allExterior.visible&&!weather.inside&&lastPoint.x===entry.entry.x&&lastPoint.z===entry.entry.z&&!all.audio.stats.connected;}
+  all.dispose();const NR=BL.dsbNoderunner.create({root:allRoot,land:realLand});const near=NR.near(NR.review);NR.update(.016,NR.review,{audioEnabled:false},.5);const nrScreen=!!NR.screenFace.geometry,quiet=NR.stats.sources===0;NR.dispose();
+  record("DSB preservation: all five real doors return to their own facades; existing interiors and Noderunner still build and dispose",preserved&&near&&nrScreen&&quiet&&allRoot.children.length===0);
+  const sceneSource=readFileSync(new URL("../src/js/scene-dsb.js",import.meta.url),"utf8"),menuSource=readFileSync(new URL("../src/js/proof-of-ink-menu.js",import.meta.url),"utf8");
+  record("Proof of Ink privacy and shared controls: no network or customer persistence, and one shared stand action",!/fetch\(|XMLHttpRequest|localStorage|sessionStorage|setInterval|createElement\("(?:iframe|form)"/.test(menuSource)&&sceneSource.includes("context.hidden=!!avatar.camp.seat")&&sceneSource.includes("!menuOpen()&&!interiors.transitioning")&&sceneSource.includes("else inkMenu?.leave()"));
+  const D=BL.proofOfInkData;
+  record("Proof of Ink catalog: verified products cover every available category and curated collection",D.products.length===18&&D.categories.filter(c=>c.id!=="tanks").every(c=>D.filter("featured","",c.id).length>0)&&D.filter("featured","","tanks").length===0&&D.collections.filter(c=>c.kind!=="service").every(c=>D.filter("featured","",c.id).length>0)&&D.products.every(p=>D.official(p.url)&&p.title&&p.price>0&&/^data:image\/jpeg;base64,/.test(p.image))&&D.collections.every(c=>D.official(c.url)));
+  record("Proof of Ink catalog: local search and exact official destination allowlist",D.filter("search","bTc SeSSions").length===4&&D.filter("search","no such artwork").length===0&&["javascript:alert(1)","https://proofofink.com.evil.test/","https://user:pass@proofofink.com/","https://proofofink.com/cart","https://proofofink.com/?email=private","https://proofofink.com:443/cart"].every(u=>!D.official(u)));
+  // Contract: actual menu event handlers, without loading any remote service or customer state.
+  const savedDoc=globalThis.document,savedShell=BL.dsbMenuShell,listeners=new Map(),elements=[];
+  const element=tag=>{
+    const e={tag,children:[],dataset:{},hidden:false,value:"",attributes:{},parent:null,isConnected:true,textContent:"",listeners:new Map(),
+      setAttribute(k,v){this.attributes[k]=v;},appendChild(c){c.parent=this;this.children.push(c);return c;},replaceChildren(){this.children.forEach(c=>c.parent=null);this.children=[];},
+      contains(n){for(;n;n=n.parent)if(n===this)return true;return false;},closest(s){if(s==="button")return this.tag==="button"?this:this.parent?.closest(s);if(s==="[hidden]")return this.hidden?this:this.parent?.closest(s);return null;},
+      focus(){document.activeElement=this;},blur(){if(document.activeElement===this)document.activeElement=null;},addEventListener(k,f){this.listeners.set(k,f);},removeEventListener(k){this.listeners.delete(k);}
+    };elements.push(e);return e;
+  };
+  const panel=element("section"),selectors=new Map();
+  for(const [q,tag] of [["nav","nav"],[".ink-results","div"],[".ink-heading","h3"],["input","input"],[".ink-filters","div"],[".ink-status","p"],['[data-ink="back"]',"button"],['[data-ink="close"]',"button"]]){const e=element(tag);panel.appendChild(e);selectors.set(q,e);}
+  selectors.get('[data-ink="close"]').dataset.ink="close";selectors.get('[data-ink="back"]').dataset.ink="back";
+  panel.querySelector=q=>selectors.get(q);panel.querySelectorAll=()=>elements.filter(e=>panel.contains(e)&&["button","input","a"].includes(e.tag));
+  globalThis.document={getElementById:()=>panel,createElement:element,activeElement:null,addEventListener:(k,f)=>listeners.set(k,f),removeEventListener:k=>listeners.delete(k)};
+  try{
+    BL.dsbMenuShell={present:noop};
+    const M=BL.proofOfInkMenu.create(),results=selectors.get(".ink-results"),search=selectors.get("input");let okay=!M.open();
+    const descendants=(node,out=[])=>{out.push(node);node.children.forEach(c=>descendants(c,out));return out;};
+    const click=(action,value)=>{const b=descendants(panel).find(n=>n.tag==="button"&&n.dataset.ink===action&&(!value||n.dataset.value===value));if(!b)throw Error("Missing menu action "+action);panel.listeners.get("click")({target:b});};
+    for(let i=0;i<3;i++){
+      M.enter();const opened=M.open();okay&&=opened&&M.isOpen&&!panel.hidden&&selectors.get("nav").children.length===6;
+      click("section","apparel");click("filter","hats");okay&&=results.children.filter(c=>c.tag==="article").length===D.filter("apparel","","hats").length;
+      click("filter","tanks");okay&&=results.children.some(c=>c.textContent.includes("no tank products"));
+      click("section","search");search.value="BTC Sessions";search.listeners.get("input")();okay&&=results.children.filter(c=>c.tag==="article"&&c.className==="ink-card").length===4;
+      click("product",D.products[0].id);const links=descendants(results).filter(n=>n.tag==="a");okay&&=links.length===1&&links[0].href===D.products[0].url&&links[0].target==="_blank"&&links[0].rel==="noopener noreferrer"&&links[0].referrerPolicy==="no-referrer";
+      click("back");click("section","collections");okay&&=results.children.length===6;click("filter","nakamoto-collection");okay&&=results.children.filter(c=>c.tag==="article").length===4;
+      click("section","studio");okay&&=descendants(results).some(c=>c.href===D.wholesale)&&descendants(results).some(c=>c.href?.endsWith("/proof-of-work"));
+      panel.listeners.get("keydown")({type:"keydown",key:"Escape",stopPropagation:noop,preventDefault:noop});okay&&=!M.isOpen&&panel.hidden;
+      M.open();M.leave();okay&&=!M.isOpen&&panel.hidden&&results.children.length===0&&search.value===""&&selectors.get("nav").children.length===0;
+    }
+    for(const route of ["featured","apparel","shirts","hats","fine-arts","collabs","stackchain-magazine","proof-of-work","nonsense"]){M.enter();M.open(route);okay&&=route==="nonsense"?M.stats.section==="featured":M.stats.section===route||M.stats.tag===route;M.leave();}
+    M.dispose();M.dispose();record("Proof of Ink menu: categories, collection search, product redirect, Escape and repeated visits clean all handlers",okay&&listeners.size===0&&elements.every(e=>e.listeners.size===0)&&M.stats.disposed);
+  }finally{globalThis.document=savedDoc;BL.dsbMenuShell=savedShell;}
+};
+
+// Rule/contract: exercise the real room collision and shared crew seating at Yellow's dimensions.
+const bigBitcoinChecks = BL => {
+  const noop=()=>{},S=BL.scene,root=S.createNode(),targets=new Set(),exterior={visible:true},weather={shared:{state:{muted:true}},inside:false,setInterior(on){this.inside=on;}};
+  const land=BL.dsbGeography.build();let returned=null;
+  const I=BL.dsbInteriors.create({root,exterior,land,weather,relocate:p=>returned={...p},lock:noop,onChange:noop});
+  const entry=I.registry.get("big-bitcoin");I.review("big-bitcoin",true);I.update(.4);const R=I.active.room;
+  const C=BL.crew.create({root,world:{level:0},playerName:"YellowBrokeIt",input:{add:n=>targets.add(n),remove:n=>targets.delete(n)},hud:{setRosterRow:noop},game:{state:{assignments:{},inventory:[]}},viewYaw:0,groundAt:I.groundAt,walkable:I.walkable,fx:{say:noop,zzzAt:noop,burst:noop,puff:noop,spawnParticle:noop,damageNumber:noop}});
+  const A=C.cavemen.get("YellowBrokeIt");C.control(A);
+  const clear=(ax,az,bx=ax,bz=az)=>I.walkable(ax,az,bx,bz,0,A.bodyHeight,A);
+  const step=.3,minX=-20.4,minZ=-26.4,w=137,h=177,seen=new Uint8Array(w*h),queue=[];
+  const index=(x,z)=>Math.round((z-minZ)/step)*w+Math.round((x-minX)/step),start=index(R.spawn.x,R.spawn.z);seen[start]=1;queue.push(start);
+  for(let head=0;head<queue.length;head++){
+    const n=queue[head],ix=n%w,iz=Math.floor(n/w),x=minX+ix*step,z=minZ+iz*step;
+    for(const [dx,dz] of [[1,0],[-1,0],[0,1],[0,-1]]){const nx=ix+dx,nz=iz+dz,i=nz*w+nx;if(nx<0||nx>=w||nz<0||nz>=h||seen[i]||!clear(x,z,x+dx*step,z+dz*step))continue;seen[i]=1;queue.push(i);}
+  }
+  const reachable=p=>{const i=index(p.x,p.z),ix=i%w,iz=Math.floor(i/w);for(let dx=-1;dx<=1;dx++)for(let dz=-1;dz<=1;dz++){const nx=ix+dx,nz=iz+dz;if(nx>=0&&nx<w&&nz>=0&&nz<h&&seen[nz*w+nx]&&clear(minX+nx*step,minZ+nz*step,p.x,p.z))return true;}return false;};
+  const goals=[R.exit,R.mediaAt,...R.browseGoals];
+  record("BIG BITCOIN navigation: Yellow reaches every wing, review, terminal and seat from the actual facade entrance",clear(R.spawn.x,R.spawn.z)&&goals.every(reachable),JSON.stringify({radius:A.bodyRadius,unreachable:goals.filter(p=>!reachable(p))}));
+  let seating=true;
+  for(const seat of R.seats){Object.assign(A.root.position,{x:seat.walkAt.x,y:A.baseY,z:seat.walkAt.z});A.hop=A.hopV=0;seating&&=C.sitPlayer(seat);C.steer(.6,0);C.look(seat.ry,.2,1);C.update(.2,1);seating&&=A.camp.seat===seat&&A.root.position.x===seat.x&&A.root.position.z===seat.z;C.steer(0,0);seating&&=C.standPlayer()&&!A.camp.seat&&!seat.sitter&&clear(A.root.position.x,A.root.position.z);}
+  record("BIG BITCOIN seating: boardroom, press, control and archive use shared sit/free-look/stand with safe exits",seating&&R.seats.filter(s=>s.zone==="boardroom").length===10&&R.seats.filter(s=>s.zone==="press").length===12,JSON.stringify(R.seats.filter(s=>!clear(s.walkAt.x,s.walkAt.z))));
+  let nodes=0,finite=true;const geometry=new Set();const visit=n=>{nodes++;if(n.geometry){geometry.add(n.geometry);finite&&=n.geometry.verts.every(Number.isFinite);}n.children.forEach(visit);};S.updateWorld(R.root);visit(R.root);
+  record("BIG BITCOIN render budget: dense room uses finite shared assemblies, static screens and seven lights",finite&&nodes<2400&&geometry.size<180&&R.lighting.lightCount===7&&R.counts.books>=400&&R.counts.monitors>=20,JSON.stringify({nodes,geometry:geometry.size,...R.counts}));
+  let cameraClear=true;for(const x of [-7.2,7.2])for(const z of [-10,10]){const focus={x:x<0?x+1:x-1,y:2,z},p={x:x<0?x-3:x+3,y:2,z};R.clampCamera(p,focus);cameraClear&&=x<0?p.x>x+.17:p.x<x-.17;}
+  record("BIG BITCOIN camera: trailing view stays on the player's side of solid partitions",cameraClear);
+  let lifecycle=true;const count=root.children.length;
+  for(let i=0;i<3;i++){lifecycle&&=weather.inside&&!exterior.visible&&I.audio.stats.active;I.request(R.exit);I.update(.4);lifecycle&&=!I.active&&!weather.inside&&exterior.visible&&!I.audio.stats.active&&!I.audio.stats.connected&&!R.root.visible&&returned.x===entry.entry.x&&returned.z===entry.entry.z;I.review("big-bitcoin",true);I.update(.4);lifecycle&&=I.active.room===R&&root.children.length===count&&I.rooms.size===1;}
+  C.dispose();I.dispose();record("BIG BITCOIN lifecycle: repeat entry/exit returns to the same building, restores exterior and reuses/disposes room resources",lifecycle&&targets.size===0&&!root.children.includes(R.root)&&!I.audio.stats.contexts);
+  const D=BL.bigBitcoinData,source=readFileSync(new URL("../src/js/big-bitcoin-menu.js",import.meta.url),"utf8"),scene=readFileSync(new URL("../src/js/scene-dsb.js",import.meta.url),"utf8");
+  record("BIG BITCOIN privacy: bounded official destinations, no live prices, customer collection, polling or persistence",D.cards.every(c=>D.official(c.url)&&c.url.startsWith(D.home)&&!c.price)&&["javascript:alert(1)","https://podconf.xyz.evil.test/","https://podconf.xyz/?email=x","https://podconf.xyz/cart/"].every(u=>!D.official(u))&&!/fetch\(|XMLHttpRequest|localStorage|sessionStorage|setInterval|createElement\("(?:iframe|form|input)"/.test(source)&&scene.includes("context.hidden=!!avatar.camp.seat"));
+  // Contract: the actual terminal event handlers must reset all content and listeners each visit.
+  const savedDoc=globalThis.document,savedShell=BL.dsbMenuShell,listeners=new Map(),elements=[];
+  const element=tag=>{
+    const e={tag,children:[],dataset:{},hidden:false,attributes:{},parent:null,isConnected:true,textContent:"",listeners:new Map(),
+      setAttribute(k,v){this.attributes[k]=v;},appendChild(c){c.parent=this;this.children.push(c);return c;},replaceChildren(){this.children.forEach(c=>c.parent=null);this.children=[];},
+      contains(n){for(;n;n=n.parent)if(n===this)return true;return false;},closest(s){if(s==="button")return this.tag==="button"?this:this.parent?.closest(s);if(s==="[hidden]")return this.hidden?this:this.parent?.closest(s);return null;},focus(){document.activeElement=this;},addEventListener(k,f){this.listeners.set(k,f);},removeEventListener(k){this.listeners.delete(k);}
+    };elements.push(e);return e;
+  };
+  const panel=element("section"),selectors=new Map();for(const [q,tag] of [["nav","nav"],[".big-results","div"],['[data-big="close"]',"button"]]){const e=element(tag);panel.appendChild(e);selectors.set(q,e);}selectors.get('[data-big="close"]').dataset.big="close";
+  panel.querySelector=q=>selectors.get(q);panel.querySelectorAll=()=>elements.filter(e=>panel.contains(e)&&["button","a"].includes(e.tag));
+  globalThis.document={getElementById:()=>panel,createElement:element,activeElement:null,addEventListener:(k,f)=>listeners.set(k,f),removeEventListener:k=>listeners.delete(k)};
+  try{
+    BL.dsbMenuShell={present:noop};
+    const M=BL.bigBitcoinMenu.create(),results=selectors.get(".big-results"),nav=selectors.get("nav");let okay=!M.open();
+    for(let i=0;i<3;i++){
+      M.enter();okay&&=M.open()&&M.isOpen&&nav.children.length===D.sections.length;
+      for(const [id] of D.sections){const b=nav.children.find(n=>n.dataset.section===id);panel.listeners.get("click")({target:b});okay&&=results.children.length===D.cards.filter(c=>c.section===id).length&&results.children.every(c=>{const a=c.children.find(n=>n.tag==="a");return D.official(a.href)&&a.target==="_blank"&&a.rel==="noopener noreferrer"&&a.referrerPolicy==="no-referrer";});}
+      panel.listeners.get("keydown")({type:"keydown",key:"Escape",stopPropagation:noop,preventDefault:noop});okay&&=!M.isOpen&&panel.hidden;
+      M.open();M.leave();okay&&=!M.isOpen&&panel.hidden&&!nav.children.length&&!results.children.length&&M.stats.section==="overview";
+    }
+    for(const route of ["overview","news","research","merch","fictional-boardroom"]){M.enter();M.open(route);okay&&=M.stats.section===(route==="fictional-boardroom"?"overview":route);M.leave();}
+    M.dispose();M.dispose();record("BIG BITCOIN terminal: actual sections, safe redirects, Escape and three visits leave one panel with no stale handlers",okay&&listeners.size===0&&elements.every(e=>e.listeners.size===0));
+  }finally{globalThis.document=savedDoc;BL.dsbMenuShell=savedShell;}
+};
+
+// Rule: the concept's sections and every seat must be reachable by the real Yellow controller.
+const memeFactoryChecks = BL => {
+  const noop=()=>{},S=BL.scene,root=S.createNode(),targets=new Set(),exterior={visible:true},weather={shared:{state:{muted:true}},inside:false,setInterior(on){this.inside=on;}};
+  const land=BL.dsbGeography.build();let returned=null;
+  const I=BL.dsbInteriors.create({root,exterior,land,weather,relocate:p=>returned={...p},lock:noop,onChange:noop});
+  I.review("meme-factory",true);I.update(.4);const R=I.active.room;
+  const C=BL.crew.create({root,world:{level:0},playerName:"YellowBrokeIt",input:{add:n=>targets.add(n),remove:n=>targets.delete(n)},hud:{setRosterRow:noop},game:{state:{assignments:{},inventory:[]}},viewYaw:0,groundAt:I.groundAt,walkable:I.walkable,fx:{say:noop,zzzAt:noop,burst:noop,puff:noop,spawnParticle:noop,damageNumber:noop}});
+  const A=C.cavemen.get("YellowBrokeIt");C.control(A);
+  const clear=(ax,az,bx=ax,bz=az)=>I.walkable(ax,az,bx,bz,0,A.bodyHeight,A);
+  const step=.25,minX=-17.5,minZ=-20.5,w=141,h=165,seen=new Uint8Array(w*h),queue=[];
+  const index=(x,z)=>Math.round((z-minZ)/step)*w+Math.round((x-minX)/step),start=index(R.spawn.x,R.spawn.z);seen[start]=1;queue.push(start);
+  for(let head=0;head<queue.length;head++){
+    const n=queue[head],ix=n%w,iz=Math.floor(n/w),x=minX+ix*step,z=minZ+iz*step;
+    for(const [dx,dz] of [[1,0],[-1,0],[0,1],[0,-1]]){const nx=ix+dx,nz=iz+dz,i=nz*w+nx;if(nx<0||nx>=w||nz<0||nz>=h||seen[i]||!clear(x,z,x+dx*step,z+dz*step))continue;seen[i]=1;queue.push(i);}
+  }
+  const reachable=p=>{const i=index(p.x,p.z),ix=i%w,iz=Math.floor(i/w);for(let dx=-1;dx<=1;dx++)for(let dz=-1;dz<=1;dz++){const nx=ix+dx,nz=iz+dz;if(nx>=0&&nx<w&&nz>=0&&nz<h&&seen[nz*w+nx]&&clear(minX+nx*step,minZ+nz*step,p.x,p.z))return true;}return false;};
+  const goals=[R.exit,...R.browseGoals,...R.seats.map(s=>s.walkAt),...R.menuZones.filter(z=>z.priority===3)];
+  record("Meme Factory navigation: real Yellow reaches six sections, every portrait, all seats and exit",clear(R.spawn.x,R.spawn.z)&&goals.every(reachable),JSON.stringify({radius:A.bodyRadius,unreachable:goals.filter(p=>!reachable(p))}));
+  let seating=true;
+  for(const seat of R.seats){Object.assign(A.root.position,{x:seat.walkAt.x,y:A.baseY,z:seat.walkAt.z});A.hop=A.hopV=0;seating&&=C.sitPlayer(seat);C.steer(.6,0);C.look(seat.ry,.3,1);C.update(.2,1);seating&&=A.camp.seat===seat&&A.root.position.x===seat.x&&A.root.position.z===seat.z;C.steer(0,0);seating&&=C.standPlayer()&&!A.camp.seat&&!seat.sitter&&clear(A.root.position.x,A.root.position.z);}
+  record("Meme Factory seating: seven shared seats support pose, free look, movement lock and safe stand",seating&&R.seats.length===7);
+  let nodes=0,finite=true,faces=0;const geometries=new Set();const visit=n=>{nodes++;if(n.geometry){geometries.add(n.geometry);finite&&=n.geometry.verts.every(Number.isFinite);}n.children.forEach(visit);};S.updateWorld(R.root);visit(R.root);for(const g of geometries)faces+=g.faces.length;
+  record("Meme Factory resource budget: cached furniture and portraits, static screens and six lights",finite&&nodes<2200&&geometries.size<190&&faces<35000&&R.lighting.lightCount===6&&R.counts.workstations===4,JSON.stringify({nodes,geometries:geometries.size,faces,...R.counts}));
+  const Z=BL.dsbMenuZones,route=(x,z)=>Z.resolve(R,{x,z}).route;
+  const cases=[[0,16,"home"],[-8,-9.7,"laser"],[10.8,-11.5,"contributors"],[9.2,-18.3,"yellow"],[-11.4,12,"home"],[0,.2,"podcast"],[7.2,11,"home"]];
+  record("Meme Factory context: physical sections select real pages, exact portraits override gallery, production/archive fall home",cases.every(([x,z,r])=>route(x,z)===r)&&R.menuZones.filter(z=>z.priority===3).every(z=>route(z.x,z.z)===z.route),JSON.stringify(cases.map(([x,z,r])=>({want:r,got:route(x,z)}))));
+  const venues={"without-rulers":[[-5.3,1.5,"shirts"],[5.3,1.5,"hoodies"],[9.4,-.85,"hats"],[8.1,6,"art"],[-9.5,-7.8,"bip85"],[0,7,"home"]],"proof-of-ink":[[0,11,"featured"],[-10.6,1,"fine-arts"],[8,-10.1,"collabs"],[-9,8.8,"stackchain-magazine"],[0,-7,"featured"]],"big-bitcoin":[[0,17,"overview"],[14.2,-17,"news"],[14.2,0,"research"],[-14.2,17,"merch"],[-14.2,-17,"overview"]]};
+  for(const [id,checks] of Object.entries(venues)){const r={id};r.menuZones=Z.forRoom(r);record("DSB contextual routes: "+id,checks.every(([x,z,want])=>Z.resolve(r,{x,z}).route===want),JSON.stringify(checks.map(([x,z,want])=>({want,got:Z.resolve(r,{x,z}).route}))));}
+  let lifecycle=true;const childCount=root.children.length,entry=I.registry.get("meme-factory").entry;
+  for(let i=0;i<10;i++){lifecycle&&=weather.inside&&!exterior.visible&&I.audio.stats.active;I.request(R.exit);I.update(.4);lifecycle&&=!I.active&&!weather.inside&&exterior.visible&&!I.audio.stats.active&&!I.audio.stats.connected&&returned.x===entry.x&&returned.z===entry.z;I.review("meme-factory",true);I.update(.4);lifecycle&&=I.active.room===R&&root.children.length===childCount;}
+  // Exercise the merged entrance's actual tunnel, Portara flight and return to exterior with a deterministic input source.
+  const savedW=globalThis.innerWidth,savedH=globalThis.innerHeight;globalThis.innerWidth=1440;globalThis.innerHeight=900;
+  let external=false,held=false,arrivals=0,received=0,finished=0;
+  const pilot={controls:{read:()=>({y:1})},setExternalControl:on=>external=on},camera={position:{x:0,y:0,z:0},target:{x:0,y:0,z:0}},scene={renderOpts:{}},renderOpts=scene.renderOpts;
+  const entrance=BL.dsbEntrance.create({root,camera,avatar:A,pilot,fx:{update:noop},exterior,scene,renderOpts,land,gate:{root:{position:{x:-58,y:0,z:-64}},receive:()=>received++,finishReceiving:()=>finished++},hold:on=>held=on,muted:()=>true,onArrive:()=>arrivals++,onLeave:noop});
+  entrance.update(1/60,0);entrance.update(1/60,1/60);const tunnel=entrance.phase==="tunnel"&&entrance.group.visible&&!exterior.visible&&external;
+  for(let i=0;i<1500&&entrance.phase==="tunnel";i++)entrance.update(1/60,i/60);
+  const arrival=entrance.phase==="arrival"&&held&&received===1&&exterior.visible&&!entrance.group.visible,poses=[];
+  for(let i=0;i<1200&&entrance.phase!=="done";i++){entrance.update(1/60,i/60);if(i%120===0)poses.push({...camera.position});}
+  record("Merged DSB entrance: walking crosses wormhole, receives at Portara, flies island and returns controls to exterior",tunnel&&arrival&&entrance.phase==="done"&&!held&&!external&&arrivals===1&&finished===1&&scene.renderOpts===renderOpts&&poses.length>5&&poses.every(p=>Object.values(p).every(Number.isFinite)),JSON.stringify({tunnel,arrival,phase:entrance.phase,arrivals,received,finished,poses:poses.length}));
+  entrance.dispose();globalThis.innerWidth=savedW;globalThis.innerHeight=savedH;
+  C.dispose();I.dispose();record("Meme Factory lifecycle: ten visits preserve facade return/audio gating and release scene/input resources",lifecycle&&targets.size===0&&!root.children.includes(R.root)&&!I.audio.stats.contexts);
+};
+
+// Rule: the publication's real content, navigation, seat and exterior contracts are bounded.
+const stackchainChecks = BL => {
+  const rootPath=root;
+  const noop=()=>{},S=BL.scene,roomRoot=S.createNode(),targets=new Set(),exterior={visible:true},weather={shared:{state:{muted:true}},inside:false,setInterior(on){this.inside=on;}};
+  const land=BL.dsbGeography.build();let returned=null;
+  const I=BL.dsbInteriors.create({root:roomRoot,exterior,land,weather,relocate:p=>returned={...p},lock:noop,onChange:noop});
+  I.review("stackchain-magazine",true);I.update(.4);const R=I.active.room,D=BL.stackchainData;
+  const C=BL.crew.create({root:roomRoot,world:{level:0},playerName:"YellowBrokeIt",input:{add:n=>targets.add(n),remove:n=>targets.delete(n)},hud:{setRosterRow:noop},game:{state:{assignments:{},inventory:[]}},viewYaw:0,groundAt:I.groundAt,walkable:I.walkable,fx:{say:noop,zzzAt:noop,burst:noop,puff:noop,spawnParticle:noop,damageNumber:noop}});
+  const A=C.cavemen.get("YellowBrokeIt");C.control(A);
+  const clear=(ax,az,bx=ax,bz=az)=>I.walkable(ax,az,bx,bz,0,A.bodyHeight,A),step=.25,minX=-15.5,minZ=-18.5,w=125,h=149,seen=new Uint8Array(w*h),queue=[];
+  const index=(x,z)=>Math.round((z-minZ)/step)*w+Math.round((x-minX)/step),start=index(R.spawn.x,R.spawn.z);seen[start]=1;queue.push(start);
+  for(let head=0;head<queue.length;head++){const n=queue[head],ix=n%w,iz=Math.floor(n/w),x=minX+ix*step,z=minZ+iz*step;
+    for(const [dx,dz] of [[1,0],[-1,0],[0,1],[0,-1]]){const nx=ix+dx,nz=iz+dz,i=nz*w+nx;if(nx<0||nx>=w||nz<0||nz>=h||seen[i]||!clear(x,z,x+dx*step,z+dz*step))continue;seen[i]=1;queue.push(i);}}
+  const reachable=p=>{const i=index(p.x,p.z),ix=i%w,iz=Math.floor(i/w);for(let dx=-1;dx<=1;dx++)for(let dz=-1;dz<=1;dz++){const nx=ix+dx,nz=iz+dz;if(nx>=0&&nx<w&&nz>=0&&nz<h&&seen[nz*w+nx]&&clear(minX+nx*step,minZ+nz*step,p.x,p.z))return true;}return false;};
+  const goals=[R.exit,...R.browseGoals,...R.seats.map(s=>s.walkAt)];
+  record("Stackchain navigation: real Yellow reaches all review areas, every seat and the existing exit",clear(R.spawn.x,R.spawn.z)&&goals.every(reachable),JSON.stringify({radius:A.bodyRadius,unreachable:goals.filter(p=>!reachable(p))}));
+  let seating=true;for(const seat of R.seats){Object.assign(A.root.position,{x:seat.walkAt.x,y:A.baseY,z:seat.walkAt.z});A.hop=A.hopV=0;seating&&=C.sitPlayer(seat);C.steer(.6,0);C.look(seat.ry,.3,1);C.update(.2,1);seating&&=A.camp.seat===seat&&A.root.position.x===seat.x&&A.root.position.z===seat.z;C.steer(0,0);seating&&=C.standPlayer()&&!A.camp.seat&&!seat.sitter&&clear(A.root.position.x,A.root.position.z);}
+  record("Stackchain seating: eight shared seats support pose, look, movement lock and safe stand",seating&&R.seats.length===8);
+  const cases=[[0,16.5,"home"],[-8,1,"articles"],[-10,8.5,"articles"],[6,-13,"articles"],[0,-14,"articles"],[10,11.5,"pleb-losophy"],[5,2,"submissions"],[10,2,"newsletter"],[-6,15,"donations"],[6,15,"contact"],[9,-4.5,"physical-copies"],[0,4,"home"]];
+  record("Stackchain context: all ten semantic areas select official routes with Home fallback and specific priority",cases.every(([x,z,r])=>reachable({x,z})&&BL.dsbMenuZones.resolve(R,{x,z}).route===r),JSON.stringify(cases.map(([x,z,want])=>({want,got:BL.dsbMenuZones.resolve(R,{x,z}).route,reachable:reachable({x,z})}))));
+  let nodes=0,finite=true,faces=0;const geometry=new Set();const visit=n=>{nodes++;if(n.geometry){geometry.add(n.geometry);finite&&=n.geometry.verts.every(Number.isFinite);}n.children.forEach(visit);};S.updateWorld(R.root);visit(R.root);for(const g of geometry)faces+=g.faces.length;
+  record("Stackchain budget: cached magazine/library meshes, four workstations, static screens and six lights",finite&&nodes<2300&&geometry.size<190&&faces<35000&&R.lighting.lightCount===6&&R.counts.workstations===4,JSON.stringify({nodes,geometries:geometry.size,faces,...R.counts}));
+  record("Stackchain editorial data: bounded dated article selection with actual bylines and official full-reading links",D.articles.length===6&&D.articles.every(a=>a.title&&a.author&&/^2026-09-\d\d$/.test(a.date)&&a.summary.length<200&&new URL(a.url).hostname==="www.stackchainmagazine.net"&&BL.stackchainArt[a.art].source.startsWith("https://www.stackchainmagazine.net/"))&&D.articles.map(a=>a.author).join("|")==="Dug|Spoonman|Anthony & Ratpoison|Ratpoison|Ratpoison|Sosy");
+  record("Stackchain physical copies: only authorized category products, exact displayed prices and public stock labels",D.shopSource==="https://proofofink.com/stackchain-magazine"&&D.products.length===12&&D.products.every(p=>new URL(p.url).hostname==="proofofink.com"&&new URL(p.url).pathname.startsWith("/product/")&&/^\$\d+\.\d\d$/.test(p.price)&&["Listed available","Pre-order","Out of stock"].includes(p.status))&&D.products[0].price==="$69.00"&&D.products.find(p=>p.id==="copy-11").title==="Protective Magazine Top-loader");
+  const source=readFileSync(join(rootPath,"src/js/stackchain-menu.js"),"utf8")+readFileSync(join(rootPath,"src/js/stackchain-room.js"),"utf8");
+  record("Stackchain privacy: browse-only, no customer storage, forms, checkout, tracking or polling",!/fetch\(|XMLHttpRequest|localStorage|sessionStorage|setInterval|createElement\("(?:iframe|form)"/.test(source)&&D.pages.every(p=>p.id==="physical-copies"?p.url===D.shopSource:new URL(p.url).hostname==="www.stackchainmagazine.net"));
+  let lifecycle=true;const children=roomRoot.children.length,entry=I.registry.get("stackchain-magazine").entry;
+  for(let i=0;i<10;i++){lifecycle&&=weather.inside&&!exterior.visible&&I.audio.stats.active;I.request(R.exit);I.update(.4);lifecycle&&=!I.active&&!weather.inside&&exterior.visible&&!I.audio.stats.active&&!I.audio.stats.connected&&returned.x===entry.x&&returned.z===entry.z;I.review("stackchain-magazine",true);I.update(.4);lifecycle&&=I.active.room===R&&roomRoot.children.length===children;}
+  C.dispose();I.dispose();record("Stackchain lifecycle: ten visits preserve exterior return and audio gates without growing room/input resources",lifecycle&&targets.size===0&&!roomRoot.children.includes(R.root)&&!I.audio.stats.contexts);
+};
+
+const svrnChecks = BL => {
+  // Regression: a healthy interior has zero water targets, unlike its exterior doorway.
+  const health={scene:"dsb",kind:"webgl2",ready:true,failure:"",frames:111,draws:17,curtain:false,lost:false,errors:[],initialized:true,capacity:24,records:411,textures:0,interior:"svrn-society",roomVisible:true,exteriorVisible:false};
+  const rejected=[{textures:2},{lost:true},{errors:[1282]},{failure:"shader compile"},{kind:"canvas2d"},{ready:false},{draws:0},{records:0},{interior:"meme-factory"},{roomVisible:false},{exteriorVisible:true}];
+  record("SVRN review validator: interior water targets differ without masking shader/context/room failures",svrnReviewHealthy(health,true)&&rejected.every(p=>!svrnReviewHealthy({...health,...p},true))&&svrnReviewHealthy({...health,textures:2,interior:null,roomVisible:false,exteriorVisible:true},false)&&!svrnReviewHealthy({...health,interior:null,exteriorVisible:true},false));
+  const rootPath=root;
+  const noop=()=>{},S=BL.scene,roomRoot=S.createNode(),targets=new Set(),exterior={visible:true},weather={shared:{state:{muted:true}},inside:false,setInterior(on){this.inside=on;}};
+  const land=BL.dsbGeography.build();let returned=null;
+  const I=BL.dsbInteriors.create({root:roomRoot,exterior,land,weather,relocate:p=>returned={...p},lock:noop,onChange:noop});
+  I.review("svrn-society",true);I.update(.4);const R=I.active.room,D=BL.svrnData;
+  const C=BL.crew.create({root:roomRoot,world:{level:0},playerName:"YellowBrokeIt",input:{add:n=>targets.add(n),remove:n=>targets.delete(n)},hud:{setRosterRow:noop},game:{state:{assignments:{},inventory:[]}},viewYaw:0,groundAt:I.groundAt,walkable:I.walkable,fx:{say:noop,zzzAt:noop,burst:noop,puff:noop,spawnParticle:noop,damageNumber:noop}});
+  const A=C.cavemen.get("YellowBrokeIt");C.control(A);
+  const clear=(ax,az,bx=ax,bz=az)=>I.walkable(ax,az,bx,bz,0,A.bodyHeight,A),step=.25,minX=-12.5,minZ=-14.5,w=101,h=117,seen=new Uint8Array(w*h),queue=[];
+  const index=(x,z)=>Math.round((z-minZ)/step)*w+Math.round((x-minX)/step),start=index(R.spawn.x,R.spawn.z);seen[start]=1;queue.push(start);
+  for(let head=0;head<queue.length;head++){const n=queue[head],ix=n%w,iz=Math.floor(n/w),x=minX+ix*step,z=minZ+iz*step;
+    for(const [dx,dz] of [[1,0],[-1,0],[0,1],[0,-1]]){const nx=ix+dx,nz=iz+dz,i=nz*w+nx;if(nx<0||nx>=w||nz<0||nz>=h||seen[i]||!clear(x,z,x+dx*step,z+dz*step))continue;seen[i]=1;queue.push(i);}}
+  const reachable=p=>{const i=index(p.x,p.z),ix=i%w,iz=Math.floor(i/w);for(let dx=-1;dx<=1;dx++)for(let dz=-1;dz<=1;dz++){const nx=ix+dx,nz=iz+dz;if(nx>=0&&nx<w&&nz>=0&&nz<h&&seen[nz*w+nx]&&clear(minX+nx*step,minZ+nz*step,p.x,p.z))return true;}return false;};
+  const goals=[R.exit,...R.browseGoals,...R.seats.map(s=>s.walkAt)];
+  record("SVRN navigation: real Yellow reaches all review areas, every seat and the existing exit",clear(R.spawn.x,R.spawn.z)&&goals.every(reachable),JSON.stringify({radius:A.bodyRadius,unreachable:goals.filter(p=>!reachable(p))}));
+  let seating=true;for(const seat of R.seats){Object.assign(A.root.position,{x:seat.walkAt.x,y:A.baseY,z:seat.walkAt.z});A.hop=A.hopV=0;seating&&=C.sitPlayer(seat);C.steer(.6,0);C.look(seat.ry,.3,1);C.update(.2,1);seating&&=A.camp.seat===seat&&A.root.position.x===seat.x&&A.root.position.z===seat.z;C.steer(0,0);seating&&=C.standPlayer()&&!A.camp.seat&&!seat.sitter&&clear(A.root.position.x,A.root.position.z);}
+  record("SVRN seating: two shared seats support pose, look, movement lock and safe stand",seating&&R.seats.length===2);
+  const v=BL.dsbVacancies.REGISTRY.find(p=>p.number===7),e=I.registry.get("svrn-society");
+  record("SVRN address: occupied VAC 7 keeps VACANT 2 at 10/23 and original facade",v.status==="occupied"&&v.occupant==="SVRN Society"&&v.interiorId===R.id&&e.building.name===v.buildingId&&e.building.x===10&&e.building.z===23&&e.building.yaw===Math.PI/2&&e.building.w===6&&e.building.d===5&&BL.dsbVacancies.REGISTRY.filter(p=>p.status==="vacant").length===34);
+  const cases=[[8.3,11,"home"],[-9,-4,"shirts"],[-9,4,"hoodies"],[9,-4,"faith"],[9,5,"hats"],[0,-11.7,"collections"],[-6.5,-8.5,"lookbook"],[0,6.5,"home"]];
+  record("SVRN zones: walkable apparel, faith, hats, collections, kiosk and lounge routes",cases.every(([x,z,r])=>reachable({x,z})&&BL.dsbMenuZones.resolve(R,{x,z}).route===r),JSON.stringify(cases.map(([x,z,want])=>({x,z,want,got:BL.dsbMenuZones.resolve(R,{x,z}).route,clear:reachable({x,z})}))));
+  let nodes=0,finite=true;const geometry=new Set(),walk=n=>{nodes++;if(n.geometry){geometry.add(n.geometry);finite&&=n.geometry.verts.every(Number.isFinite);}n.children.forEach(walk);};S.updateWorld(R.root);walk(R.root);
+  record("SVRN stock: real mounted garments, stacks, caps, mannequins and seven collection panels",R.displays.filter(d=>["shirt","hoodie"].includes(d.kind)).length>=80&&R.displays.filter(d=>d.kind==="folded").length>=60&&R.displays.filter(d=>d.kind==="cap").length>=20&&R.displays.filter(d=>d.kind==="mannequin").length===3&&R.counts.collectionPanels===7&&R.displays.every(d=>d.node.parent&&geometry.has(d.node.geometry)),JSON.stringify(R.counts));
+  record("SVRN budget: finite shared meshes and six bounded lights",finite&&nodes<1800&&geometry.size<160&&R.lighting.lightCount===6,JSON.stringify({nodes,geometries:geometry.size,counts:R.counts}));
+  const low=n=>{let y=Infinity;for(let i=1;i<n.geometry.verts.length;i+=3)y=Math.min(y,n.geometry.verts[i]);return y;};
+  record("SVRN fixtures: floor-standing supports and supported retail displays",R.fixtures.every(f=>f.node.position.y===0)&&R.displays.every(d=>{const y=d.node.position.y+low(d.node);return d.kind==="shirt"||d.kind==="hoodie"?Math.abs(d.node.position.y+1.33-2.64)<.015:y>=d.supportY-.01&&y<=d.supportY+.12;}));
+  record("SVRN sources: dated official-only categories, seven collections and bounded real listings",D.verified==="2026-10-05"&&D.pages.length===16&&D.collections.map(c=>c.title).join("|")==="1913|1984|Captivated|Faith Apparel|Fix The Money|Flip The Tables|Moms Against Money Printing"&&D.products.length===8&&[...D.pages,...D.collections,...D.products].every(p=>new URL(p.url).origin===D.origin));
+  const source=["svrn-data","svrn-menu","svrn-room","svrn-models"].map(f=>readFileSync(join(rootPath,"src/js/"+f+".js"),"utf8")).join("\n");
+  record("SVRN privacy: offline room/catalog, no remote fetch, image hotlinks, accounts or checkout",!/fetch\(|XMLHttpRequest|localStorage|sessionStorage|setInterval|createElement\("(?:iframe|form)"/.test(source)&&!D.products.some(p=>"price" in p||"stock" in p)&&D.pages.every(p=>!/(cart|checkout|account)/.test(p.url)));
+  let lifecycle=true;const children=roomRoot.children.length,entry=I.registry.get("svrn-society").entry;
+  for(let i=0;i<10;i++){lifecycle&&=weather.inside&&!exterior.visible&&I.audio.stats.active;I.request(R.exit);I.update(.4);lifecycle&&=!I.active&&!weather.inside&&exterior.visible&&!I.audio.stats.active&&!I.audio.stats.connected&&returned.x===entry.x&&returned.z===entry.z;I.review("svrn-society",true);I.update(.4);lifecycle&&=I.active.room===R&&roomRoot.children.length===children;}
+  C.dispose();I.dispose();record("SVRN lifecycle: ten visits preserve exterior return and audio gates without growing room/input resources",lifecycle&&targets.size===0&&!roomRoot.children.includes(R.root)&&!I.audio.stats.contexts);
+};
+
+
+// Contract: actual shared shell + lazy menu lifecycle, using a DOM transport double (no browser layout claims).
+const menuShellChecks = BL => {
+  const keys=["document","innerWidth","innerHeight","visualViewport","addEventListener","removeEventListener"],saved=Object.fromEntries(keys.map(k=>[k,globalThis[k]]));
+  const listeners=new Map(),vlisteners=new Map(),elements=[],noop=()=>{};
+  const eventHost=map=>({addEventListener:(k,f)=>map.set(k,f),removeEventListener:k=>map.delete(k)});
+  const element=tag=>{
+    const classes=new Set(),styles=new Map();
+    const e={tag,children:[],dataset:{},attributes:{},style:{setProperty:(k,v)=>styles.set(k,v),getPropertyValue:k=>styles.get(k)},hidden:false,inert:false,open:false,parentElement:null,textContent:"",listeners:new Map(),
+      classList:{add:(...v)=>v.forEach(x=>classes.add(x)),remove:(...v)=>v.forEach(x=>classes.delete(x)),contains:v=>classes.has(v)},
+      setAttribute(k,v){this.attributes[k]=v;},removeAttribute(k){delete this.attributes[k];},appendChild(c){c.parentElement=this;this.children.push(c);return c;},append(...v){v.forEach(x=>this.appendChild(x));},replaceChildren(){this.children.forEach(c=>c.parentElement=null);this.children=[];},
+      contains(n){for(;n;n=n.parentElement)if(n===this)return true;return false;},closest(q){if(q==="button")return this.tag==="button"?this:this.parentElement?.closest(q);if(q==="[hidden]")return this.hidden?this:this.parentElement?.closest(q);return null;},
+      querySelectorAll(q){const out=[];const walk=n=>{for(const c of n.children){if(q.includes(c.tag))out.push(c);walk(c);}};walk(this);return out;},querySelector(q){return this.querySelectorAll(q)[0]||null;},
+      getClientRects:()=>[{}],focus(){document.activeElement=this;},showModal(){this.open=true;},close(){this.open=false;},remove(){if(this.parentElement)this.parentElement.children=this.parentElement.children.filter(n=>n!==this);this.parentElement=null;},
+      addEventListener(k,f){this.listeners.set(k,f);},removeEventListener(k){this.listeners.delete(k);},get isConnected(){return this===document.body||!!this.parentElement;}
+    };elements.push(e);return e;
+  };
+  const body=element("body"),world=element("main"),trigger=element("button");world.append(trigger);body.append(world);
+  globalThis.document={body,createElement:element,activeElement:trigger,...eventHost(listeners)};
+  globalThis.innerWidth=1440;globalThis.innerHeight=900;globalThis.visualViewport={width:1440,height:900,offsetLeft:0,offsetTop:0,...eventHost(vlisteners)};
+  const windowListeners=new Map();Object.assign(globalThis,eventHost(windowListeners));
+  try{
+    let notices=0;const M=BL.memeFactoryMenu.create({onOpen:()=>notices++});M.enter();
+    let routes=true,isolated=true,positions=true;const initial=["home","laser","contributors","yellow","podcast","invalid"];
+    for(let i=0;i<12;i++){
+      const route=initial[i%initial.length];M.open(route);const panel=body.children.find(n=>n.tag==="dialog");routes&&=M.stats.route===(route==="invalid"?"home":route);isolated&&=world.inert&&BL.dsbMenuShell.count===1&&body.classList.contains("dsb-menu-open");
+      for(const [width,height] of [[1440,900],[390,844],[844,390]]){Object.assign(visualViewport,{width,height,offsetTop:8,offsetLeft:2});vlisteners.get("resize")();positions&&=panel.style.getPropertyValue("--menu-x")===(width/2+2)+"px"&&panel.style.getPropertyValue("--menu-y")===(height/2+8)+"px";}
+      // Navigation is free after physical entry; an already-open call cannot move the page behind the user.
+      const nav=panel.children.find(n=>n.tag==="nav"),button=nav.children.find(n=>n.dataset.route==="contributors");panel.listeners.get("click")({target:button});M.open("home");routes&&=M.stats.route==="contributors";
+      M.close();isolated&&=!world.inert&&BL.dsbMenuShell.count===0&&!body.classList.contains("dsb-menu-open")&&document.activeElement===trigger&&listeners.size===0&&vlisteners.size===0&&windowListeners.size===0;
+      M.leave();M.enter();routes&&=M.stats.route==="home";
+    }
+    record("DSB shell: visual-viewport coordinates follow desktop, portrait, landscape and offsets",positions);
+    record("DSB shell: twelve openings isolate world, restore focus and leave no listeners/shades",isolated&&notices===24&&body.children.length===2);
+    record("Meme menu: fresh context, direct person priority, free navigation and exit reset",routes);
+    const destinations=BL.memeFactoryData;record("Meme sources: twelve real public profiles, official listening links and sourced laser history",destinations.contributors.length===12&&destinations.contributors.every(p=>/^https:\/\/www.memefactorytm.com\//.test(p.url)&&p.image.startsWith("data:image/jpeg"))&&destinations.history.includes("knowyourmeme.com/memes/laser-eyes-bitcoin-trend-laserrayuntil100k")&&destinations.links.length>=6);
+    M.dispose();record("Meme menu: lazy singleton disposal releases all handlers and panel",body.children.length===1&&elements.every(e=>!e.listeners.size)&&BL.dsbMenuShell.count===0);
+    const P=BL.stackchainMenu.create();let okay=!P.open(),search=true;P.enter();
+    for(let i=0;i<12;i++){
+      const route=BL.stackchainData.pages[i%9].id;P.open(route);const panel=body.children.find(n=>n.tag==="dialog"),nav=panel.children.find(n=>n.tag==="nav");
+      okay&&=P.stats.route===route&&world.inert&&BL.dsbMenuShell.count===1;panel.listeners.get("click")({target:nav.children.find(n=>n.dataset.route==="articles")});
+      const input=panel.querySelectorAll("input").find(n=>n.tag==="input");input.value="Spoonman";panel.listeners.get("input")({target:input});search&&=panel.querySelectorAll("article").filter(n=>n.tag==="article").length===1;
+      input.value="no-such-author";panel.listeners.get("input")({target:input});search&&=panel.querySelectorAll("article").filter(n=>n.tag==="article").length===0;
+      panel.listeners.get("click")({target:nav.children.find(n=>n.dataset.route==="physical-copies")});
+      const links=panel.querySelectorAll("a");okay&&=links.length===13&&links.every(a=>a.href.startsWith("https://proofofink.com/")&&a.target==="_blank"&&a.rel==="noopener noreferrer");
+      P.open("home");okay&&=P.stats.route==="physical-copies";P.leave();okay&&=!world.inert&&P.stats.route==="home"&&P.stats.query===""&&BL.dsbMenuShell.count===0&&listeners.size===0&&vlisteners.size===0;P.enter();
+    }
+    P.open("unsupported");okay&&=P.stats.route==="home";P.dispose();
+    record("Stackchain menu: article search and empty results over bounded titles, bylines and summaries",search);
+    record("Stackchain menu: twelve visits, free browsing, safe product links, Home reset and complete listener disposal",okay&&body.children.length===1&&elements.every(e=>!e.listeners.size)&&!windowListeners.size);
+
+    const V=BL.svrnMenu.create();let vroutes=!V.open(),vlinks=true,visolated=true;V.enter();
+    for(const page of BL.svrnData.pages){
+      V.open(page.id);const panel=body.children.find(n=>n.tag==="dialog"),nav=panel.children.find(n=>n.tag==="nav");vroutes&&=V.stats.route===page.id;
+      vlinks&&=panel.querySelectorAll("a").every(a=>new URL(a.href).origin===BL.svrnData.origin&&a.target==="_blank"&&a.rel==="noopener noreferrer");
+      visolated&&=world.inert&&BL.dsbMenuShell.count===1;panel.listeners.get("click")({target:nav.children.find(n=>n.dataset.route==="collections")});vroutes&&=V.stats.route==="collections";
+      V.leave();visolated&&=!world.inert&&BL.dsbMenuShell.count===0&&!listeners.size&&!vlisteners.size;V.enter();
+    }
+    V.open("invalid");vroutes&&=V.stats.route==="home";V.dispose();
+    record("SVRN menu: all 16 routes, free navigation, safe official links and invalid-route fallback",vroutes&&vlinks);
+    record("SVRN menu: shared world isolation, focus restoration and bounded disposal",visolated&&body.children.length===1&&elements.every(e=>!e.listeners.size)&&!windowListeners.size);
+
+  }finally{for(const [k,v] of Object.entries(saved))globalThis[k]=v;}
+};
+
+
+const integrationChecks = async BL => {
+  const source=readFileSync(join(root,"src/js/net.js"),"utf8");
+  const fixture=(response)=>{
+    const sockets=[],sent=[],events=new Map();let calls=0,tick=1000;
+    class Socket {static OPEN=1;constructor(){this.readyState=1;sockets.push(this);}send(v){sent.push(typeof v==="string"?JSON.parse(v):v);}close(){this.readyState=3;}}
+    const voice={setPeers:()=>{},restart:()=>{},stop:()=>{}};
+    const context={window:{BL:{characters:BL.characters,contributors:BL.contributors,voice},setTimeout:()=>1,clearTimeout(){},setInterval:()=>1,clearInterval(){}},document:{hidden:false,addEventListener:(k,v)=>events.set(k,v),removeEventListener:k=>events.delete(k)},location:{protocol:"https:",host:"fixture.invalid"},fetch:async()=>{calls++;return response();},AbortSignal,WebSocket:Socket,performance:{now:()=>tick+=200},Date,ArrayBuffer};
+    runInNewContext(source,context);
+    return {net:context.window.BL.net,sockets,sent,events,get calls(){return calls;}};
+  };
+  for(const kind of ["html","404","failure"]){
+    const f=fixture(()=>{if(kind==="failure")throw Error("offline");return {ok:kind!=="404",headers:{get:()=>"text/html"}};});
+    await f.net.start();await f.net.start();f.net.setZone("dsb-outside");f.net.setBody("YellowBrokeIt");f.net.sendPose(-45,40,-43,0);
+    record("integration static: "+kind+" backend stays single-player after one attempt",f.calls===1&&!f.net.state.backend&&f.net.state.room==="off"&&f.sockets.length===0&&f.net.remotes.size===0);
+    f.net.dispose();
+  }
+  const f=fixture(()=>({ok:true,headers:{get:()=>"application/json"},json:async()=>({player:{id:71,login:"YellowBrokeIt",display:"Yellow"}})}));
+  await f.net.start();const ws=f.sockets[0],message=v=>ws.onmessage({data:JSON.stringify(v)});
+  message({t:"welcome",you:{id:71},players:[{id:72,login:"peer",body:"w-s-bitcoin",zone:"dsb-svrn",x:1,y:0,z:2,yaw:0}],now:Date.now()});
+  f.net.setZone("dsb-studio");f.net.setBody("YellowBrokeIt");f.net.sendPose(-45,40,-43,1);
+  record("integration network: account, owned body, DSB zone and pose share one room",f.sockets.length===1&&f.net.ownCharacter()?.handle==="YellowBrokeIt"&&f.net.mayDrive("w-s-bitcoin",false)!==null&&f.sent.some(m=>m.t==="zone"&&m.name==="dsb-studio")&&f.sent.some(m=>m.t==="body"&&m.name==="YellowBrokeIt")&&f.sent.some(m=>m.t==="pose"&&m.x===-45));
+  message({t:"zone",id:72,name:"dsb-outside"});
+  record("integration network: remote zones change through the shared wire contract",f.net.remotes.get(72).zone==="dsb-outside");
+  message({t:"join",p:{id:71,login:"YellowBrokeIt",body:"YellowBrokeIt",zone:"dsb-outside"}});
+  record("integration network: the local identity never becomes a remote",!f.net.remotes.has(71)&&f.net.remotes.size===1);
+  f.net.setBody(null);f.net.setZone("scene-bifrost");
+  record("integration network: leaving DSB clears its body and zone",f.sent.at(-2).t==="body"&&f.sent.at(-2).name===null&&f.sent.at(-1).name==="scene-bifrost");
+  message({t:"leave",id:72});f.net.dispose();
+  record("integration network: disposal clears presence and visibility listeners",f.net.remotes.size===0&&f.events.size===0&&ws.readyState===3);
+  const oldNet=BL.net,sceneRoot=BL.scene.createNode(),records=new Map(),cavemen=new Map();
+  const crew={cavemen,player:null,refreshStates(){}};
+  BL.net={remotes:records};
+  const pool=BL.remotePlayers.create({root:sceneRoot,crew,visible:r=>r.zone==="dsb-outside"});
+  records.set(72,{id:72,login:"peer",display:"Peer",body:"w-s-bitcoin",zone:"outside",x:1,y:0,z:2,yaw:0});pool.update(.1);
+  record("integration remotes: hub actors stay out of DSB",pool.stats().remotePlayers===0&&sceneRoot.children.every(n=>!n.visible));
+  records.get(72).zone="dsb-outside";pool.update(.1);
+  record("integration remotes: exterior shares one body and collision actor",pool.stats().remotePlayers===1&&pool.actors().length===1);
+  records.get(72).zone="dsb-studio";pool.update(.1);
+  record("integration remotes: a venue actor leaves the exterior immediately",pool.stats().remotePlayers===0);
+  records.get(72).zone="dsb-outside";crew.player={traits:{name:"w-s-bitcoin"}};pool.update(.1);
+  record("integration remotes: a pending local claim never renders a duplicate",pool.stats().remotePlayers===0);
+  pool.dispose();BL.net=oldNet;
+  record("integration remotes: scene disposal releases nodes and actor pool",sceneRoot.children.length===0&&pool.actors().length===0);
+};
+
 // Staging must preserve exact recordings and hash the final script, including literal replacement tokens.
 const distributionAudioChecks = async () => {
   const out = mkdtempSync(join(tmpdir(), "ooga-audio-"));
@@ -9328,7 +10258,7 @@ const raceRigChecks = async () => {
   const context = { window: {}, location: { search: "?debug=1&rain=0" }, URLSearchParams, crypto: webcrypto };
   for (const name of ["math", "scene", "models", "caves", "contributor-identities", "activity-repos", "characters"]) runInNewContext(await readFile(new URL(`../src/js/${name}.js`, import.meta.url), "utf8"), context);
   for (const name of readdirSync(join(root, "src", "characters")).filter(name => name.endsWith(".js")).sort()) runInNewContext(readFileSync(join(root, "src", "characters", name), "utf8"), context);
-  for (const name of ["contributors", "hub-models", "dressing", "daylight", "race-models", "race-track", "racers", "mirror-ripples", "mirror-body", "gl-renderer"]) runInNewContext(await readFile(new URL(`../src/js/${name}.js`, import.meta.url), "utf8"), context);
+  for (const name of ["contributors", "hub-models", "dressing", "daylight", "race-models", "race-track", "racers", "mirror-ripples", "mirror-body", "dsb-water", "gl-renderer"]) runInNewContext(await readFile(new URL(`../src/js/${name}.js`, import.meta.url), "utf8"), context);
   const BL = context.window.BL, scene = BL.scene.createNode(), released = [];
   const renderer = { createRig: BL.glRenderer.createRig, releaseGeometry: geometry => released.push(geometry) };
   const track = BL.raceTrack.build(BL.raceTrack.TRACKS[0], { renderer, slots: CAST, rain: false, hour: 12 });
@@ -9357,7 +10287,12 @@ const raceRigChecks = async () => {
   // hashes come from fabdec255, not from deriving a second copy of the new code.
   runInNewContext(rendererSource.replace("  BL.glRenderer =", "  window.__ordinaryRigProof = [ORDINARY_MESH_VS, ORDINARY_MESH_FS, ORDINARY_SHADOW_VS];\n  BL.glRenderer ="), context);
   const ordinaryHashes = context.window.__ordinaryRigProof.map(shader => createHash("sha256").update(shader).digest("hex"));
-  const expectedOrdinaryHashes = ["cbe7d57dd7b7a1a262700d25c99f5da16d7f67dc0987321a7b686a996c75d8e6", "4b9578e199968d7d40a8cc4a52d3666755b621ef5c74b1de06cd9b1f8cd5361a", "37030f053de422aa157f017ceedef0812ed57a17c9e1b2af4aab017c0b645364"];
+  const expectedOrdinaryHashes = [
+    // Canonical rock bc8ec01: preserve its DSB portal and water shader changes exactly.
+    "f1d1d746fa92363ac1cc71dd999732da0c1c9bb1666e2872f7766e11535a60c5",
+    "65f271818a1c681d3017559fd4f5e11861c64acf080066ce85cf113c8a1db646",
+    "37030f053de422aa157f017ceedef0812ed57a17c9e1b2af4aab017c0b645364"
+  ];
   record("race rig strategy: ordinary mesh, fragment and shadow shader bytes retain the pre-rig fast path", ordinaryHashes.every((hash, i) => hash === expectedOrdinaryHashes[i]), JSON.stringify(ordinaryHashes));
   const extract = (name, next) => rendererSource.slice(rendererSource.indexOf(`    const ${name} =`), rendererSource.indexOf(next, rendererSource.indexOf(`    const ${name} =`))).trim();
   const cachedRig = {}, cachedGeometry = { meshRig: cachedRig }, cacheRecords = new Map([[cachedGeometry, {}]]), uniformCalls = [];
@@ -9560,6 +10495,7 @@ const raceRigDisposalProof = async () => {
     const rig = { ...base, mesh, shadow };
     let duplicateDeletes = 0;
     const context = {
+      dsbGPU: null,
       canvas: { removeEventListener() {} }, onLost() {}, onRestored() {},
       destroyRecords() {}, reflectorTargets: new Map(), destroyReflector() {},
       destroyMirror() {}, destroyFbo() {}, destroyShadow() {},
@@ -9754,6 +10690,8 @@ record("character visibility source bakes: ownership wrappers share exact immuta
   globalThis.requestAnimationFrame = () => 0;
   globalThis.cancelAnimationFrame = () => {};
   globalThis.devicePixelRatio = 1;
+  globalThis.addEventListener = () => {};
+  globalThis.removeEventListener = () => {};
   if (!globalThis.crypto) Object.defineProperty(globalThis, "crypto", { value: { getRandomValues: (a) => a.fill(1) } });
 
   const order = [...readFileSync(join(root, "src/index.html"), "utf8").matchAll(/<script src="js\/([^"]+)"><\/script>/g)].map((m) => m[1]);
@@ -9766,6 +10704,97 @@ record("character visibility source bakes: ownership wrappers share exact immuta
     }
   }
   const BL = globalThis.BL;
+  if(ARGS.includes("water-baseline")){
+    if(!process.env.DSB_BASELINE)throw Error("Provide the unmodified checkpoint source directory");
+    for(const name of ["dsb-geography.js","dsb-olympus.js","dsb-water.js"])new Function(readFileSync(join(process.env.DSB_BASELINE,name),"utf8"))();
+    const W=waterWorld(BL);console.log(JSON.stringify(waterGolden(W)));W.dispose();return;
+  }
+  if(ARGS.includes("water-review")){
+    if(!process.env.WATER_CANVAS)throw Error("Provide WATER_CANVAS for offline render export");
+    const {createCanvas}=await import(process.env.WATER_CANVAS),oldCreate=document.createElement;
+    document.createElement=tag=>tag==="canvas"?createCanvas(1,1):oldCreate(tag);
+    const W=waterWorld(BL),I=BL.dsbWaterInteraction.create(W),A=W.avatar,canvas=createCanvas(1280,800),renderer=BL.canvasRenderer.createRenderer(canvas,{width:1280,height:800});
+    W.renderer.kind="canvas2d";
+    const out=join(root,"untracked/water-review");mkdirSync(out,{recursive:true});
+    const opts=BL.scenes.dsb.renderOpts,rows=[];
+    for(const [name,ratio] of [["dry",-.35],["ankle",.12],["knee",.3],["waist",.5],["chest",.7],["head",.85],["swash",0]]){
+      let lo=69,hi=96;for(let i=0;i<30;i++){const z=(lo+hi)/2;if(-.3-W.land.heightAt(20,z)<ratio*A.bodyHeight)lo=z;else hi=z;}rows.push({name,x:20,z:(lo+hi)/2,yaw:Math.PI,dist:7});
+    }
+    rows.push({name:"rocks",x:73,z:43,yaw:-1.1,dist:11},{name:"harbor",x:-39,z:42,yaw:Math.PI,dist:17});
+    rows.push({name:"pier-west",x:-43,z:46,yaw:Math.PI,dist:6},{name:"pier-east",x:-34,z:46,yaw:Math.PI,dist:6},{name:"harbor-night",x:-39,z:42,yaw:.5,dist:27,hour:23});
+    for(const [name,i,hour] of [["falls",0,12],["pool",1,12],["falls-night",0,23],["falls-golden",0,18],["falls-storm",0,12]]){const f=W.olympus.impacts[i];rows.push({name,x:f.x+4,z:f.z+4,yaw:1,dist:12,hour});}
+    for(const row of rows){
+      const y=W.ground(row.x,row.z);W.crew.relocatePlayer({x:row.x,y,z:row.z},0);
+      Object.assign(W.camera.position,{x:row.x+Math.sin(row.yaw)*row.dist,y:Math.max(2,y+5),z:row.z+Math.cos(row.yaw)*row.dist});
+      Object.assign(W.camera.target,{x:row.x,y:y+.5,z:row.z});W.camera.far=180;
+      if(row.name.startsWith("falls")||row.name==="pool"){
+        const f=W.olympus.impacts[row.name==="pool"?1:0];Object.assign(W.camera.target,{x:f.x,y:f.y+2,z:f.z});Object.assign(W.camera.position,{x:f.x-13,y:f.y+14,z:f.z+18});
+      }
+      BL.daylight.sample(row.hour||12,opts,180,37);BL.dsbAtmosphere.light(opts);
+      if(row.name.includes("storm")){opts.directStrength*=.18;for(let k=0;k<3;k++){opts.sky[k]*=.4;opts.horizon[k]*=.4;opts.zenith[k]*=.4;}}
+      W.nature.update(0,3);W.enrichment.update(3,opts.lampFactor);W.detail.update(opts.lampFactor);W.olympus.update(.02,opts.lampFactor);
+      I.clear();I.update(.02,3,A);I.emit(row.x,-.3,row.z,.4,.7,2);I.update(.35,3.35,A);W.water.update(3);
+      renderer.render(W.root,W.camera,opts);writeFileSync(join(out,row.name+".png"),canvas.toBuffer("image/png"));
+    }
+    renderer.dispose();I.dispose();W.dispose();document.createElement=oldCreate;console.log("Exported "+rows.length+" actual Canvas water review views to "+out);return;
+  }
+  if(ARGS.includes("integration-unit")){await reviewCaptureChecks();await integrationChecks(BL);return;}
+  if(ARGS.includes("svrn-unit")){svrnChecks(BL);menuShellChecks(BL);return;}
+  if(ARGS.includes("vacancy-unit")){await vacancyChecks(BL);return;}
+  if(ARGS.includes("portal-unit")){portalChecks(BL,el);return;}
+  if(ARGS.includes("water-unit")){await shorelineHarnessChecks();waterChecks(BL);return;}
+  // Offline visual export through the actual Canvas renderer when this workspace cannot start Chrome.
+  // Adapter is supplied by the review environment; it is never a production/package dependency.
+  if(ARGS.includes("svrn-review")){
+    if(!process.env.SVRN_CANVAS)throw Error("Set SVRN_CANVAS to a Canvas 2D adapter module for offline review");
+    const {createCanvas}=await import(process.env.SVRN_CANVAS),oldCreate=document.createElement;
+    document.createElement=tag=>tag==="canvas"?createCanvas(1,1):oldCreate(tag);
+    const S=BL.scene,sceneRoot=S.createNode(),R=BL.svrnRoom.build(),noop=()=>{};
+    R.root.visible=true;S.addChild(sceneRoot,R.root);
+    const crew=BL.crew.create({root:sceneRoot,world:{level:0},playerName:"YellowBrokeIt",input:{add:noop,remove:noop},hud:{setRosterRow:noop},game:{state:{assignments:{},inventory:[]}},viewYaw:0,groundAt:()=>0,walkable:()=>true,fx:{say:noop,zzzAt:noop,burst:noop,puff:noop,spawnParticle:noop,damageNumber:noop}});
+    const avatar=crew.cavemen.get("YellowBrokeIt");crew.control(avatar);
+    const canvas=createCanvas(1440,900),renderer=BL.canvasRenderer.createRenderer(canvas,{width:1440,height:900}),camera=S.createCamera({fov:56,near:.1,far:100}),out=join(root,"untracked/svrn-review");mkdirSync(out,{recursive:true});
+    for(const [name,pose] of Object.entries(R.reviews)){
+      const p=pose.position;Object.assign(avatar.root.position,{x:p.x,y:avatar.baseY,z:p.z});avatar.root.rotation.y=pose.yaw+Math.PI;
+      Object.assign(camera.position,{x:p.x+Math.sin(pose.yaw)*3.3,y:2.9,z:p.z+Math.cos(pose.yaw)*3.3});
+      Object.assign(camera.target,{x:p.x-Math.sin(pose.yaw)*4,y:2.9-Math.sin(pose.pitch)*7,z:p.z-Math.cos(pose.yaw)*4});
+      camera.position.x=Math.max(-12.3,Math.min(12.3,camera.position.x));camera.position.z=Math.max(-14.3,Math.min(14.3,camera.position.z));
+      renderer.render(sceneRoot,camera,R.lighting);writeFileSync(join(out,name+".png"),canvas.toBuffer("image/png"));
+    }
+    renderer.dispose();crew.dispose();document.createElement=oldCreate;
+    console.log("Rendered eight actual room views to "+out+" (visual export, no browser assertions)");return;
+  }
+  if(ARGS.includes("stackchain-review")){
+    if(!process.env.STACKCHAIN_CANVAS)throw Error("Set STACKCHAIN_CANVAS to a Canvas 2D adapter module for offline review");
+    const {createCanvas}=await import(process.env.STACKCHAIN_CANVAS),oldCreate=document.createElement;
+    document.createElement=tag=>tag==="canvas"?createCanvas(1,1):oldCreate(tag);
+    const S=BL.scene,sceneRoot=S.createNode(),R=BL.stackchainRoom.build(),noop=()=>{};
+    R.root.visible=true;S.addChild(sceneRoot,R.root);
+    const crew=BL.crew.create({root:sceneRoot,world:{level:0},playerName:"YellowBrokeIt",input:{add:noop,remove:noop},hud:{setRosterRow:noop},game:{state:{assignments:{},inventory:[]}},viewYaw:0,groundAt:()=>0,walkable:()=>true,fx:{say:noop,zzzAt:noop,burst:noop,puff:noop,spawnParticle:noop,damageNumber:noop}});
+    const avatar=crew.cavemen.get("YellowBrokeIt");crew.control(avatar);
+    const canvas=createCanvas(1440,900),renderer=BL.canvasRenderer.createRenderer(canvas,{width:1440,height:900}),camera=S.createCamera({fov:56,near:.1,far:100}),out=join(root,"untracked/stackchain-review");mkdirSync(out,{recursive:true});
+    for(const [name,pose] of Object.entries(R.reviews)){
+      const p=pose.position;Object.assign(avatar.root.position,{x:p.x,y:avatar.baseY,z:p.z});avatar.root.rotation.y=pose.yaw+Math.PI;
+      Object.assign(camera.position,{x:p.x+Math.sin(pose.yaw)*3.3,y:2.9,z:p.z+Math.cos(pose.yaw)*3.3});
+      Object.assign(camera.target,{x:p.x-Math.sin(pose.yaw)*4,y:2.9-Math.sin(pose.pitch)*7,z:p.z-Math.cos(pose.yaw)*4});
+      camera.position.x=Math.max(-15.3,Math.min(15.3,camera.position.x));camera.position.z=Math.max(-18.3,Math.min(18.3,camera.position.z));
+      renderer.render(sceneRoot,camera,R.lighting);writeFileSync(join(out,name+".png"),canvas.toBuffer("image/png"));
+    }
+    renderer.dispose();crew.dispose();document.createElement=oldCreate;
+    console.log("Rendered seven actual room views to "+out+" (visual export, no browser assertions)");return;
+  }
+  if(ARGS.includes("stackchain-unit")){stackchainChecks(BL);menuShellChecks(BL);return;}
+  if(ARGS.includes("dsb-menus-unit")){stackchainChecks(BL);memeFactoryChecks(BL);menuShellChecks(BL);maxisChecks(BL);rulersChecks(BL);inkChecks(BL);bigBitcoinChecks(BL);return;}
+  exteriorEnrichmentChecks(BL);
+  if(ARGS.includes("exterior-unit"))return;
+  maxisChecks(BL);
+  if(ARGS.includes("maxis-unit"))return;
+  rulersChecks(BL);
+  if(ARGS.includes("rulers-unit"))return;
+  inkChecks(BL);
+  if(ARGS.includes("ink-unit"))return;
+  bigBitcoinChecks(BL);
+  if(ARGS.includes("big-unit"))return;
   pokerChecks(BL);
   {
     // At an uneven roof lip, the partially upright chest must clear the stone while the root and grips stay put.
@@ -9954,30 +10983,7 @@ record("character visibility source bakes: ownership wrappers share exact immuta
       && rows.every((row) => row.dimensions && row.samples === 33 && row.owned && row.clear && row.enclosed && row.swept && row.walls)
       && ramps.length === 2 && ramps.every((mouth) => mouth.room.w === 6 && mouth.room.h === 4 && mouth.room.from === 2.5 && mouth.room.to === 6.5), JSON.stringify({ rows, ramps: ramps.map((mouth) => ({ id: mouth.id, room: mouth.room })) }));
   }
-  {
-    // Contract: both directions use the production swept aperture and wall-clock cycle.
-    const get = document.getElementById, listen = window.addEventListener, unlisten = window.removeEventListener;
-    document.getElementById = () => { const node = el(); node.querySelector = () => el(); return node; };
-    window.addEventListener = window.removeEventListener = () => {};
-    let time = 0, crossings = 0;
-    const gate = BL.oogaPortal.create({ radius: 2.2, outerRadius: 2.5, position: { x: 0, y: 2, z: 28 }, rotation: { x: -Math.PI / 2, y: 0, z: 0 }, now: () => time, destinations: [{ id: "hub", enabled: true }], onTraverse: () => crossings++ });
-    const from = { x: 0, y: 1, z: 20 }, to = { x: 0, y: 1, z: 60 };
-    const off = !gate.traverse(from, to, 0.8), activated = gate.activate(0), duplicate = !gate.activate(0), warming = !gate.traverse(from, to, 0.8);
-    time = 1999; gate.update(); const activation = gate.state === "ACTIVATING";
-    time = 2000; gate.update(); const active = gate.state === "ACTIVE";
-    const wrong = !gate.traverse(to, from, 0.8), outside = !gate.traverse({ ...from, x: 3 }, { ...to, x: 3 }, 0.8);
-    const swept = gate.traverse(from, to, 0.8), once = !gate.traverse(from, to, 0.8);
-    time = 11999; gate.update(); const fullWindow = gate.state === "ACTIVE";
-    time = 12000; gate.update(); const shutdown = gate.state === "SHUTDOWN" && !gate.traverse(from, to, 0.8);
-    time = 12450; gate.update(); const expired = gate.state === "OFF" && !gate.traverse(from, to, 0.8);
-    record("Ooga Portal return: directional swept front crossing, exact deadlines and one-use cycle", off && activated && duplicate && warming && activation && active && wrong && outside && swept && once && fullWindow && shutdown && expired && crossings === 1);
-    gate.receive(); time += 60000; gate.update(); const receiving = gate.receiving && gate.state === "ACTIVE" && !gate.activate(0);
-    gate.finishReceiving(true); const fading = gate.state === "SHUTDOWN";
-    time += 450; gate.update();
-    record("Ooga Portal receiving: host owns duration then restores reusable outbound cycle", receiving && fading && !gate.receiving && gate.state === "OFF" && gate.activate(0));
-    gate.dispose();
-    document.getElementById = get; window.addEventListener = listen; window.removeEventListener = unlisten;
-  }
+  portalChecks(BL,el);
   {
     // A larger cast must never put sleepers at the pile origin when HQ is full.
     const S = BL.scene, root = S.createNode(), noop = () => {}, C = BL.contributors, now = Date.now(), day = 86400000;
@@ -10626,6 +11632,687 @@ record("character visibility source bakes: ownership wrappers share exact immuta
     record("orbit flight: from low orbit the pod comes home alone, shield first runs cooler than flipped, the chute lands it soft and no chute breaks it on the sea", shield.pod && !shield.failure && shield.landing === "soft" && shield.chute === "open" && shield.peakHeat > 0 && flipped.peakHeat > shield.peakHeat * 1.5 && bare.failure === "splat", JSON.stringify({ shield, flipped, bare }));
   }
 };
+
+
+// Contract: the actual VAC 7 door, shared seats and centered catalog remain usable on desktop/phone.
+scene("dsb",{label:"SVRN checkpoint",query:"&view=svrn-door&weather=storm&time=1200",opts:{w:640,h:400,motion:true},steps:[{name:"dsb SVRN checkpoint",why:"contract: VAC 7 enters the boutique, safely browses and seats, then returns without growing resources",run:async b=>{
+  const out=join(root,"untracked/svrn-review");mkdirSync(out,{recursive:true});
+  const step=()=>b.evaluate('for(let i=0;i<36;i++)BL.scenes.dsb.update(1/60,i/60)');
+  await step();await b.key(" ");await step();
+  const entry=await b.evaluate('(()=>{const D=__ooga.dsb,I=D.interiors,V=D.vacancies.resolve(7);window.__svrnAvatar=D.avatar;return {id:I.active?.room.id,text:V.text,occupied:V.address.status,exterior:D.exterior.visible,drops:D.weather.shared.state.drops,master:D.weather.shared.state.masterLevel,radio:D.noderunner.stats,weather:D.weather.state.exterior};})()');
+  record("SVRN browser: real VAC 7 door enters its occupied room and suppresses exterior weather/audio",entry.id==="svrn-society"&&entry.text==="SVRN Society"&&entry.occupied==="occupied"&&!entry.exterior&&!entry.weather&&entry.drops===0&&entry.master===0&&entry.radio.target===0&&entry.radio.level===0,JSON.stringify(entry));
+  await b.evaluate('__ooga.pilot.navigate(__ooga.dsb.interiors.active.room.reviews["svrn-kiosk"])');await step();
+  await b.key(" ");await step();
+  record("SVRN browser: physical kiosk approach opens the shared contextual Home catalog",await b.evaluate('__ooga.dsb.svrnMenu.isOpen&&__ooga.dsb.svrnMenu.stats.route==="home"&&document.querySelector(".svrn-menu").classList.contains("dsb-menu-engaged")'));
+  for(const [w,h] of [[1440,900],[390,844],[844,390]]){
+    await b.send("Emulation.setDeviceMetricsOverride",{width:w,height:h,deviceScaleFactor:1,mobile:w!==1440});
+    const synced=await b.evaluate('new Promise(resolve=>{const p=document.querySelector(".svrn-menu"),start=performance.now();const tick=()=>{const v=visualViewport,s=p.style,ready=Math.abs(parseFloat(s.getPropertyValue("--menu-w"))-v.width)<.01&&Math.abs(parseFloat(s.getPropertyValue("--menu-h"))-v.height)<.01;if(ready||performance.now()-start>5000)resolve(ready);else requestAnimationFrame(tick);};requestAnimationFrame(tick);})');
+    const r=await b.evaluate('(()=>{const p=document.querySelector(".svrn-menu"),r=p.getBoundingClientRect(),v=visualViewport,s=getComputedStyle(p);p.scrollTop=10;const scrolls=p.scrollHeight>p.clientHeight&&p.scrollTop>0;p.scrollTop=0;return {cx:Math.abs(r.x+r.width/2-v.offsetLeft-v.width/2),cy:Math.abs(r.y+r.height/2-v.offsetTop-v.height/2),margins:[r.x-v.offsetLeft,r.y-v.offsetTop,v.offsetLeft+v.width-r.right,v.offsetTop+v.height-r.bottom],scrolls,width:p.scrollWidth<=p.clientWidth+1,overflow:s.overflowY,body:getComputedStyle(document.body).overflowY,isolated:BL.dsbMenuShell.count===1&&getComputedStyle(document.getElementById("dsb-context")).visibility==="hidden"};})()');
+    record(`SVRN browser ${w}x${h}: centered, safe margins, internal scroll and isolated controls`,synced&&r.cx<1&&r.cy<1&&r.margins.every(n=>n>=11.5)&&r.scrolls&&r.width&&r.overflow==="auto"&&r.body==="hidden"&&r.isolated,JSON.stringify(r));
+    await reviewShot(b,join(out,"svrn-menu-"+w+".png"));
+  }
+  const before=await b.evaluate('({...__ooga.dsb.avatar.root.position})');await b.send("Input.dispatchKeyEvent",{type:"keyDown",key:"d",code:"KeyD"});await step();await b.send("Input.dispatchKeyEvent",{type:"keyUp",key:"d",code:"KeyD"});
+  const still=await b.evaluate('({...__ooga.dsb.avatar.root.position})');record("SVRN browser: held movement cannot move the player behind the catalog",before.x===still.x&&before.z===still.z);
+  const routes=await b.evaluate('(()=>{const D=__ooga.dsb,M=D.svrnMenu,p=document.querySelector(".svrn-menu");let okay=true;for(const page of BL.svrnData.pages){p.querySelector(`[data-route="${page.id}"]`).click();okay&&=M.stats.route===page.id&&Array.from(p.querySelectorAll("a")).every(a=>new URL(a.href).origin===BL.svrnData.origin&&a.target==="_blank"&&a.rel==="noopener noreferrer");}return {okay,forms:p.querySelectorAll("form,input,iframe").length};})()');
+  record("SVRN browser: all sixteen catalog routes use safe official links with no transaction/account forms",routes.okay&&routes.forms===0,JSON.stringify(routes));
+  await b.key("Escape");await step();
+  await b.evaluate('(()=>{const B=__ooga,R=B.dsb.interiors.active.room,s=R.seats[0];B.pilot.navigate({position:{...s.walkAt,y:0},yaw:s.viewYaw,pitch:.12,dist:3});return s.walkAt;})()');await step();await b.key(" ");await step();
+  record("SVRN browser: shared seat interaction locks the lounge pose",await b.evaluate('__ooga.dsb.avatar.camp.seat===__ooga.dsb.interiors.active.room.seats[0]'));
+  await b.key(" ");await step();record("SVRN browser: shared stand interaction restores the floor",await b.evaluate('!__ooga.dsb.avatar.camp.seat&&Math.abs(__ooga.dsb.avatar.root.position.y-__ooga.dsb.avatar.baseY)<.01'));
+  const snapshot=()=>b.evaluate('(()=>{const I=__ooga.dsb.interiors,R=I.active.room;let nodes=0;const visit=n=>{nodes++;n.children.forEach(visit);};visit(R.root);return {nodes,rooms:I.rooms.size,targets:BL.scenes.dsb.input.targetCount,contexts:I.audio.stats.contexts,panels:document.querySelectorAll(".svrn-menu").length};})()');
+  const base=await snapshot();let roundtrip=true;
+  for(let i=0;i<3;i++){
+    await b.evaluate('__ooga.pilot.navigate({position:__ooga.dsb.interiors.active.room.exit,yaw:Math.PI,pitch:.12,dist:3})');await step();await b.key(" ");await step();
+    roundtrip&&=await b.evaluate('(()=>{const D=__ooga.dsb,e=D.interiors.registry.get("svrn-society").entry,p=D.avatar.root.position;return !D.interiors.active&&D.exterior.visible&&D.avatar===__svrnAvatar&&Math.hypot(p.x-e.x,p.z-e.z)<.01&&!D.svrnMenu.isOpen&&BL.dsbMenuShell.count===0;})()');
+    await b.key(" ");await step();
+  }
+  const after=await snapshot();record("SVRN browser: three real door round trips preserve VAC 7 and bounded room/input/menu/audio resources",roundtrip&&JSON.stringify(base)===JSON.stringify(after),JSON.stringify({base,after}));
+  await b.evaluate('__ooga.dsb.svrnMenu.open();window.__oldSvrn=__ooga.dsb.svrnMenu;window.__oldSvrnI=__ooga.dsb.interiors;__ooga.go("dsb",null,true);__ooga.advance(.05)');
+  record("SVRN browser: scene departure removes kiosk/menu handlers, cached room and audio context",await b.evaluate('__oldSvrn.stats.disposed&&!document.querySelector(".svrn-menu")&&__oldSvrnI.rooms.size===0&&__oldSvrnI.audio.stats.contexts===0&&BL.dsbMenuShell.count===0'));
+}}]});
+// Review measures settled WebGL views, not the opening curtain's CSS animation.
+// Keep the driver's reduced-motion default: software compositing can delay the
+// full curtain past readiness even on the approved pre-merge build.
+scene("dsb",{label:"SVRN visual review",query:"&view=svrn-door&weather=clear&time=1200",opts:{w:640,h:400,readyMs:45000},steps:[{name:"dsb shoreline SVRN visual review",why:"contract: VAC 7 sign and deterministic boutique views render in the actual WebGL scene",run:async b=>{
+  const out=join(root,"untracked/svrn-review");mkdirSync(out,{recursive:true});
+  const capture=async name=>{
+    const health=await b.evaluate(`(()=>{const s=(${shorelineState.toString()})(),D=__ooga.dsb,R=D.interiors.active?.room;return {...s,interior:R?.id||null,roomVisible:!!R?.root.visible,exteriorVisible:D.exterior.visible};})()`);
+    const healthy=svrnReviewHealthy(health,name!=="svrn-door");record("SVRN WebGL: "+name,healthy,JSON.stringify(health));
+    // Same narrowly scoped software-driver notice policy as the existing exterior captures.
+    b.shorelineHealthy=healthy&&output.getStore().results.every(r=>r.ok);b.shorelineSoftware=/SwiftShader|llvmpipe|software/i.test(health.gpu);
+    await reviewShot(b,join(out,name+".png"));
+  };
+  await b.evaluate('__shoreline.advance(.3)');await capture("svrn-door");
+  await b.key(" ");await b.evaluate('__shoreline.until(()=>__ooga.dsb.interiors.active?.room.id==="svrn-society"&&!__ooga.dsb.interiors.transitioning,2)');
+  const views=await b.evaluate('Object.keys(__ooga.dsb.interiors.active.room.reviews)');
+  for(const view of views){await b.evaluate(`__ooga.pilot.navigate(__ooga.dsb.interiors.active.room.reviews[${JSON.stringify(view)}]);__shoreline.advance(.3)`);await capture(view);}
+}}]});
+
+scene("dsb",{label:"vacancy checkpoint",query:"&view=vac-overview&weather=clear&time=1200",opts:{w:640,h:400,readyMs:45000},steps:[{name:"dsb shoreline vacancy review",why:"contract: the integrated scene draws every vacancy sign and preserves review evidence",run:async b=>{
+  const out=join(root,"untracked/vacancy-review");mkdirSync(out,{recursive:true});
+  const state=await b.evaluate('(()=>{const V=__ooga.dsb.vacancies;return {count:V.properties.length,signs:V.group.children.length,ids:V.properties.map(p=>p.address.number),texts:V.properties.every(p=>p.text===(p.address.number===7?"SVRN Society":"VAC "+p.address.number)),visible:V.group.visible&&__ooga.dsb.exterior.visible};})()');
+  record("Vacancy browser: 35 registered signs are attached to the visible exterior",state.count===35&&state.signs===35&&state.texts&&state.visible&&new Set(state.ids).size===35,JSON.stringify(state));
+  for(const name of ["vac-overview","vac-lower","vac-central","vac-upper","vac-windmills"]){
+    await b.evaluate(`__ooga.pilot.goPreset(${JSON.stringify(name)});__shoreline.advance(.3)`);
+    const health=await b.evaluate(`(${shorelineState.toString()})()`);record("Vacancy browser: "+name+" draws with healthy WebGL",shorelineHealthy(health),JSON.stringify(health));
+    b.shorelineHealthy=shorelineHealthy(health);b.shorelineSoftware=/SwiftShader|llvmpipe|software/i.test(health.gpu);
+    await reviewShot(b,join(out,name+".png"));
+  }
+}}]});
+
+// The two Portara visits stay together: renderer residency must be compared within one Chrome.
+// Wading and weather use fresh sessions so no checkpoint needs an extended deadline.
+const shorelineFinish = async (b,label,state) => {
+  const final=await b.evaluate(`(${shorelineState.toString()})()`);
+  record("DSB shoreline browser: playthrough retains WebGL2 with no API error, shader failure or context loss",shorelineHealthy(final),JSON.stringify(final));
+  b.shorelineHealthy=shorelineHealthy(final)&&output.getStore().results.every(r=>r.ok);
+  b.shorelineSoftware=/SwiftShader|llvmpipe|software/i.test(final.gpu);
+  b.renderer=final.gpu;
+  const evidence=join(root,"untracked/water-review");mkdirSync(evidence,{recursive:true});
+  writeFileSync(join(evidence,"webgl-"+label+".json"),JSON.stringify({...state,final,logs:b.logs},null,2));
+};
+scene("dsb",{label:"shoreline checkpoint wading",query:"&view=water-dry&weather=clear&time=1200",opts:{w:480,h:320},steps:[{name:"dsb shoreline checkpoint wading",why:"playthrough: actual input wades to the head-depth boundary and returns with bounded ripples",run:async b=>{
+  const boot=await b.evaluate(`(${shorelineState.toString()})()`);
+  await b.evaluate('new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))');
+  const live=await b.evaluate(`(${shorelineState.toString()})()`);
+  record("DSB shoreline browser: WebGL startup draws and advances without API errors or pixel readback",shorelineHealthy(live)&&live.frames>boot.frames&&live.draws>boot.draws&&live.readbacks===0,JSON.stringify(live));
+  await b.evaluate('__shoreline.advance(.25)');
+  const stable=await b.evaluate(`(${shorelineState.toString()})()`);
+  record("DSB shoreline browser: startup retains fixed water resources and GPU record count",shorelineHealthy(stable)&&stable.nodes===live.nodes&&stable.records===live.records&&stable.draws>live.draws,JSON.stringify(stable));
+  const info=await b.evaluate(`(()=>{const B=__ooga,D=B.dsb;return {kind:B.renderer.kind,impulses:D.waterInteraction.stats.capacity,height:D.avatar.bodyHeight,mean:D.water.geometry.verts[1]};})()`);
+  record("DSB shoreline browser: shader compiles and approved water surface is retained",info.kind==="webgl2"&&info.impulses===24&&info.mean===-.3,JSON.stringify(info));
+  await b.send("Input.dispatchKeyEvent",{type:"keyDown",key:"w",code:"KeyW"});
+  const moving=await b.evaluate(`(()=>{const W=__ooga.dsb.waterInteraction,start={...W.stats},seen={player:false,drawn:false,wakes:0,splashes:0,maxActive:0};let wakes=start.wakes,splashes=start.splashes;
+    __shoreline.advance(24,drawn=>{const s=W.stats;seen.maxActive=Math.max(seen.maxActive,s.active);
+      if(s.depth>0&&s.velocity>.1){const visible=W.impulses.slice(5).some(p=>p.age>=0&&p.age<p.life&&p.node.visible&&p.node.smokeOpacity>0);seen.player ||= s.player>0&&visible;seen.drawn ||= drawn&&s.player>0&&visible;seen.wakes+=s.wakes-wakes;seen.splashes+=s.splashes-splashes;}
+      wakes=s.wakes;splashes=s.splashes;
+    });return {...seen,emitted:W.stats.emitted-start.emitted};})()`);
+  await b.send("Input.dispatchKeyEvent",{type:"keyUp",key:"w",code:"KeyW"});
+  const deep=await b.evaluate('({stats:{...__ooga.dsb.waterInteraction.stats},z:__ooga.dsb.avatar.root.position.z,camera:__ooga.camera.position.y})');
+  record("DSB shoreline browser: keyboard reaches safe head depth with ripples and responsive surface camera",deep.stats.depth>info.height*.83&&deep.stats.depth<=info.height*.98&&moving.player&&moving.drawn&&deep.camera>-.3,JSON.stringify({deep,moving}));
+  record("DSB shoreline browser: movement emits player impulses, wakes and shallow splashes within the fixed budget",moving.emitted>0&&moving.wakes>0&&moving.splashes>0&&moving.maxActive<=24,JSON.stringify(moving));
+  await b.send("Input.dispatchKeyEvent",{type:"keyDown",key:"s",code:"KeyS"});await b.evaluate('__shoreline.advance(30)');await b.send("Input.dispatchKeyEvent",{type:"keyUp",key:"s",code:"KeyS"});
+  record("DSB shoreline browser: reverse input returns to dry land",await b.evaluate('__ooga.dsb.waterInteraction.stats.depth===0&&__ooga.dsb.avatar.root.position.z<76'));
+  const expired=await b.evaluate(`(()=>{const W=__ooga.dsb.waterInteraction;__shoreline.until(()=>W.stats.player===0,3);return {depth:W.stats.depth,player:W.stats.player,hidden:W.impulses.slice(5).every(p=>p.age<0&&!p.node.visible),capacity:W.stats.capacity};})()`);
+  record("DSB shoreline browser: player ripples expire normally after returning to shore",moving.player&&expired.depth===0&&expired.player===0&&expired.hidden&&expired.capacity===24,JSON.stringify(expired));
+  await shorelineFinish(b,"wading",{boot,live,stable,moving,deep,expired});
+}}]});
+scene("dsb",{label:"shoreline checkpoint weather",query:"&view=water-dry&weather=clear&time=1200",opts:{w:480,h:320},steps:[{name:"dsb shoreline checkpoint weather",why:"rule: all five light/weather states retain bounded waterfall effects and the preserved coast",run:async b=>{
+  for(const [name,hour,weather] of [["noon",12,"clear"],["golden",18,"clear"],["night",23,"clear"],["rain",12,"rain"],["storm",12,"storm"]]){
+    // Reserved impact rings expire and renew on successive updates. Observe their visible lifetime,
+    // keeping all five required, rather than requiring the final sample to miss every renewal gap.
+    const r=await b.evaluate(`(()=>{const B=__ooga,D=B.dsb,W=D.waterInteraction,f=D.olympus.impacts[0];B.pilot.navigate({position:{x:f.x+5,y:D.land.heightAt(f.x+5,f.z+3),z:f.z+3},yaw:1.05,pitch:.4,dist:18});B.daylight.read=()=>${hour};B.daylight.continuousDay=B.daylight.dayOfYear-1+${hour}/24;D.weather.setMode(${JSON.stringify(weather)});let stats=null,finite=true,maxActive=0;__shoreline.advance(2,()=>{finite&&=D.water.environment.every(Number.isFinite);maxActive=Math.max(maxActive,W.stats.active);if(W.stats.impacts===5&&W.impulses.slice(0,5).every(p=>p.node.visible&&p.node.smokeOpacity>0))stats={...W.stats};});return {stats:stats||{...W.stats},visible:!!stats,finite,maxActive,light:D.weather.state.mode,nodes:W.group.children.length};})()`);
+    record("DSB shoreline browser: "+name+" has finite water and bounded waterfall impacts",r.finite&&r.visible&&r.stats.impacts===5&&r.stats.streaks>0&&r.stats.active<=24&&r.maxActive<=24,JSON.stringify(r));
+  }
+  const preserved=await b.evaluate(`(()=>{const D=__ooga.dsb,O=D.olympus,L=D.land,A=D.avatar;let blocked=0;for(let i=1;i<L.trail.length;i++){const a=L.trail[i-1],b=L.trail[i];if(!L.walkable(...a.slice(0,2),...b.slice(0,2),L.heightAt(...a),A.bodyHeight,A)||!O.clearSegment(...a.slice(0,2),...b.slice(0,2),L.heightAt(...a),A.bodyHeight,A))blocked++;}return {blocked,bridges:O.bridges.length,rear:L.heightAt(-55,-91),milestones:Array.from(D.interiors.registry.keys())};})()`);
+  record("DSB shoreline browser: Sacred Way, both bridges, seven preserved venues plus SVRN and deep rear Olympus remain intact",preserved.blocked===0&&preserved.bridges===2&&preserved.rear===-5&&preserved.milestones.length===8&&["meme-factory","dsb-studio","maxis-club","without-rulers","proof-of-ink","big-bitcoin","stackchain-magazine","svrn-society"].every(id=>preserved.milestones.includes(id)),JSON.stringify(preserved));
+  await shorelineFinish(b,"weather",{});
+}}]});
+scene("dsb",{label:"shoreline checkpoint reentry",query:"&view=water-dry&weather=clear&time=1200",opts:{w:480,h:320},steps:[{name:"dsb shoreline checkpoint reentry",why:"contract: two consecutive Portara trips release effects and retain identical renderer resources",run:async b=>{
+  // Recreate the old checkpoint's final weather/view before testing disposal and re-entry.
+  await b.evaluate('(()=>{const B=__ooga,D=B.dsb,f=D.olympus.impacts[0];B.pilot.navigate({position:{x:f.x+5,y:D.land.heightAt(f.x+5,f.z+3),z:f.z+3},yaw:1.05,pitch:.4,dist:18});D.weather.setMode("storm");__shoreline.advance(2);})()');
+  const before=await b.evaluate('({nodes:__ooga.dsb.waterInteraction.group.children.length,records:__ooga.renderer.stats.records})');
+  const visits=[];
+  for(let i=0;i<2;i++){
+    const tunnel=await b.evaluate(`(()=>{window.__oldWater=__ooga.dsb.waterInteraction;window.__oldEntrance=__ooga.dsb.entrance;
+      __ooga.go("bifrost",null,true);__shoreline.until(()=>__ooga.scene==="bifrost"&&!__ooga.transitioning,2);
+      const bifrost=__ooga.scene;__ooga.go("dsb",null,true);__shoreline.until(()=>__ooga.scene==="dsb"&&!__ooga.transitioning,2);
+      const D=__ooga.dsb;return {bifrost,phase:D.entrance?.phase,progress:D.entrance?.progress,exterior:D.exterior.visible,textures:__ooga.renderer.stats.waterTextures};})()`);
+    await b.send("Input.dispatchKeyEvent",{type:"keyDown",key:"w",code:"KeyW"});
+    // Walk the preserved tunnel with real input. Reduced-motion browsers use its normal direct
+    // arrival; other browsers also wait through the flight. Never call entrance.skip().
+    const seconds=await b.evaluate('__shoreline.until(()=>__ooga.dsb.entrance?.phase==="done"&&__ooga.dsb.exterior.visible&&!__ooga.transitioning)');
+    await b.send("Input.dispatchKeyEvent",{type:"keyUp",key:"w",code:"KeyW"});
+    await b.evaluate('__shoreline.advance(.25)');
+    const r=await b.evaluate(`(()=>{const D=__ooga.dsb;return {cleared:__oldWater!==D.waterInteraction&&__oldWater.group.children.length===0&&__oldWater.stats.active===0&&(!__oldEntrance||__oldEntrance.group.children.length===0),
+      phase:D.entrance.phase,progress:D.entrance.progress,exterior:D.exterior.visible,water:D.water.heights.every(Number.isFinite),active:D.waterInteraction.group.visible&&D.waterInteraction.stats.swash>0,
+      nodes:D.waterInteraction.group.children.length,capacity:D.waterInteraction.stats.capacity,depth:D.waterInteraction.stats.depth,textures:__ooga.renderer.stats.waterTextures,records:__ooga.renderer.stats.records};})()`);
+    visits.push({tunnel,seconds,...r});
+    record("DSB shoreline browser: Portara scene trip "+i+" releases effects and creates a clean bounded visit",tunnel.bifrost==="bifrost"&&tunnel.phase==="tunnel"&&tunnel.progress<1&&!tunnel.exterior&&tunnel.textures===0&&r.phase==="done"&&r.progress===1&&r.exterior&&r.water&&r.active&&r.cleared&&r.nodes===before.nodes&&r.capacity===24&&r.depth===0&&r.textures===2,JSON.stringify(visits[i]));
+  }
+  record("DSB shoreline browser: completed re-entry retains identical renderer records, water nodes and textures",visits[1].records===visits[0].records&&visits.every(v=>v.nodes===before.nodes&&v.textures===2),JSON.stringify(visits));
+  await shorelineFinish(b,"reentry",{before,visits});
+}}]});
+
+scene("dsb",{label:"shoreline checkpoint piers",query:"&view=water-pier-west&weather=clear&time=1200",opts:{w:480,h:320},steps:[{name:"dsb shoreline pier access",why:"regression: visible harbor decks must support real keyboard walking without changing the seabed or permitting ocean-floor access",run:async b=>{
+  const visits=[];
+  for(const x of [-43,-34]){
+    await b.evaluate(`__ooga.pilot.navigate({position:{x:${x},y:__ooga.dsb.land.groundAt(${x},38),z:38},yaw:Math.PI,pitch:.16,dist:5});__shoreline.advance(.1)`);
+    await b.send("Input.dispatchKeyEvent",{type:"keyDown",key:"w",code:"KeyW"});
+    await b.evaluate('__shoreline.until(()=>__ooga.dsb.avatar.root.position.z>=57.6,20)');
+    await b.send("Input.dispatchKeyEvent",{type:"keyUp",key:"w",code:"KeyW"});
+    const end=await b.evaluate(`(()=>{const B=__ooga,D=B.dsb,A=D.avatar,p=A.root.position;return {x:p.x,z:p.z,feet:p.y-A.baseY,support:D.interiors.groundAt(p.x,p.z),depth:D.waterInteraction.stats.depth,speed:D.waterInteraction.speedAt(A),camera:B.camera.position.y,bed:D.land.heightAt(p.x,p.z),optics:D.water.depthAt(p.x,p.z),offEdge:D.land.walkable(p.x,p.z,p.x+2,p.z,1.35,A.bodyHeight,A)};})()`);
+    record("DSB pier browser "+x+": shore input reaches the deck end with dry footing above deep harbor water",Math.abs(end.x-x)<.01&&end.z>=57.6&&Math.abs(end.feet-1.35)<1e-6&&end.support===1.35&&end.depth===0&&end.speed===1&&end.camera>1.35&&end.bed===-5&&end.optics>=4.7&&!end.offEdge,JSON.stringify(end));
+    await b.send("Input.dispatchKeyEvent",{type:"keyDown",key:"s",code:"KeyS"});
+    await b.evaluate('__shoreline.until(()=>__ooga.dsb.avatar.root.position.z<38.2,20)');
+    await b.send("Input.dispatchKeyEvent",{type:"keyUp",key:"s",code:"KeyS"});
+    const back=await b.evaluate('({z:__ooga.dsb.avatar.root.position.z,depth:__ooga.dsb.waterInteraction.stats.depth})');
+    record("DSB pier browser "+x+": reverse input returns ashore",back.z<38.2&&back.depth===0,JSON.stringify(back));visits.push({x,end,back});
+  }
+  const state=await b.evaluate(`(${shorelineState.toString()})()`);
+  record("DSB pier browser: revised sea shader and supported harbor retain healthy WebGL and bounded effects",shorelineHealthy(state)&&state.nodes===136&&state.readbacks===0,JSON.stringify(state));
+  b.shorelineHealthy=shorelineHealthy(state)&&output.getStore().results.every(r=>r.ok);b.shorelineSoftware=/SwiftShader|llvmpipe|software/i.test(state.gpu);
+  const evidence=join(root,"untracked/water-review");mkdirSync(evidence,{recursive:true});writeFileSync(join(evidence,"pier-state.json"),JSON.stringify({visits,state,logs:b.logs},null,2));
+}}]});
+
+for(const fallback of [false,true])scene("dsb",{label:"Portara aperture "+(fallback?"Canvas phone":"WebGL"),query:"&view=portara&weather=clear&time=1200"+(fallback?"&canvas2d=1":""),opts:fallback?{...PHONE_SIZE,motion:true}:{w:640,h:480,motion:true},steps:[{name:"dsb Portara aperture "+(fallback?"Canvas phone":"WebGL"),why:"regression: the Portara fills its rectangular marble opening while the shared dialer, animation, aperture and return transport keep working",run:async b=>{
+  // Finish the ordinary camera preset before comparing active-gate renderer residency.
+  await b.evaluate('__shoreline.advance(2)');
+  const kind=await b.evaluate('__ooga.renderer.kind');record("Portara "+kind+": expected renderer is active",kind===(fallback?"canvas2d":"webgl2"));
+  const shape=await b.evaluate(`(()=>{const B=__ooga,G=B.dsb.gate,P=G.aperture,V=G.horizon.geometry.verts;return {off:G.state==="OFF"&&!G.horizon.visible&&!G.kawoosh.visible,rect:G.horizon.geometry.portalRect,width:G.horizon.scale.x*2,height:G.horizon.scale.z*2,center:G.root.position.y-B.dsb.land.heightAt(-45,-48),corners:[[-1,-1],[-1,1],[1,-1],[1,1]].every(([x,z])=>V.some((v,i)=>i%3===0&&Math.abs(v-x)<1e-6&&Math.abs(V[i+2]-z)<1e-6))};})()`);
+  record("Portara "+kind+": inactive membrane is hidden and real rectangular corners match the measured opening",shape.off&&shape.rect&&shape.corners&&shape.width===4.95&&shape.height===6.45&&Math.abs(shape.center-3.25)<1e-6,JSON.stringify(shape));
+  const cycles=await b.evaluate(`(()=>{const B=__ooga,G=B.dsb.gate,records=[],rows=[],geometry=G.horizon.geometry,children=G.root.children.slice();for(let i=0;i<3;i++){const start=i*13000;__gateClock=start;const activated=G.activate();__gateClock=start+1000;__shoreline.advance(.05);const surge=G.kawoosh.visible&&G.horizon.portalReveal===.5&&G.kawoosh.scale.x===G.halfWidth*.5&&G.kawoosh.scale.z===G.halfHeight*.5;__gateClock=start+2000;__shoreline.advance(.05);records.push(B.renderer.stats?.records||0);const active=G.state==="ACTIVE"&&G.horizon.visible&&G.horizon.portalReveal===1&&!G.kawoosh.visible;__gateClock=start+12225;__shoreline.advance(.05);const closing=G.state==="SHUTDOWN"&&G.horizon.portalReveal===.5;__gateClock=start+12450;__shoreline.advance(.05);rows.push(activated&&surge&&active&&closing&&G.state==="OFF"&&!G.horizon.visible&&!G.kawoosh.visible&&G.horizon.geometry===geometry&&G.root.children.every((n,k)=>n===children[k]));}return {rows,records};})()`);
+  record("Portara "+kind+": repeated reveal, rectangular surge and shutdown retain fixed geometry and renderer records",cycles.rows.every(Boolean)&&cycles.records.every(n=>n===cycles.records[0]),JSON.stringify(cycles));
+  if(!fallback){const state=await b.evaluate(`(${shorelineState.toString()})()`);record("Portara WebGL: rectangular shader compiles and draws without API errors or context loss",shorelineHealthy(state)&&state.readbacks===0,JSON.stringify(state));b.shorelineHealthy=shorelineHealthy(state)&&output.getStore().results.every(r=>r.ok);b.shorelineSoftware=/SwiftShader|llvmpipe|software/i.test(state.gpu);}
+  await b.evaluate(`(()=>{document.querySelector('[data-action="reset-view"]').click();const B=__ooga,D=B.dsb;B.pilot.navigate({position:{x:-45,y:D.land.groundAt(-45,-44),z:-44},yaw:0,pitch:.2,dist:6});__shoreline.advance(.1);window.__portaraGate=D.gate;document.getElementById("dsb-context").click();})()`);
+  record("Portara "+kind+": existing contextual dialer opens",await b.evaluate('__ooga.dsb.gate.isOpen&&document.getElementById("ooga-portal-menu").open'));
+  await b.evaluate('__gateClock=50000;document.querySelector("#ooga-portal-menu button[data-destination]").click();__gateClock=52000;__shoreline.advance(.1)');
+  // Return is a direct Director fade, never the inbound DSB tunnel. Retain the
+  // same deadline and final-state assertion, but expose where a failed trip stops.
+  const activation=await b.evaluate('({state:__ooga.dsb.gate.state,open:__ooga.dsb.gate.isOpen,dialog:document.getElementById("ooga-portal-menu").open,player:!!__ooga.pilot.player,focus:document.activeElement?.tagName})');
+  record("Portara "+kind+": destination click activates the membrane and releases the dialer",activation.state==="ACTIVE"&&!activation.open&&!activation.dialog&&activation.player,JSON.stringify(activation));
+  let returned;
+  await b.send("Input.dispatchKeyEvent",{type:"keyDown",key:"w",code:"KeyW"});
+  try{
+    returned=await b.evaluate(`(()=>{const B=__ooga,G=__portaraGate,rows=[],entered=__gateDormancy.enter;let ticks=0,last="",seconds=0;
+      const sample=()=>{const A=B.crew?.player,p=A?.root.position,key=B.scene+":"+B.transitioning; if(key!==last||ticks%60===0){rows.push({tick:ticks,scene:B.scene,transition:B.transitioning,gate:G.state,open:G.isOpen,input:B.pilot?.controls.read().y,player:A?.traits.name,x:p?.x,y:p?.y,z:p?.z});last=key;}ticks++;};
+      sample();while(!(B.scene==="bifrost"&&!B.transitioning)&&seconds<8){__shoreline.advance(1,sample);seconds++;}
+      return {ready:B.scene==="bifrost"&&!B.transitioning,disposed:G.disposed&&!G.root.parent&&!G.horizon.visible,noDsbReentry:__gateDormancy.enter===entered,seconds,rows};})()`);
+  }finally{await b.send("Input.dispatchKeyEvent",{type:"keyUp",key:"w",code:"KeyW"});}
+  record("Portara "+kind+": keyboard crosses the aperture to Bifrost and disposes the old gate",returned.ready&&returned.disposed&&returned.noDsbReentry,JSON.stringify(returned));
+}}]});
+
+for(const fallback of [false,true])scene("dsb",{label:"Portara visual evidence "+(fallback?"Canvas phone":"WebGL"),query:"&view=portara&weather=clear&time=1200"+(fallback?"&canvas2d=1":""),opts:fallback?{...PHONE_SIZE,motion:true}:{w:800,h:600,motion:true},steps:[{name:"dsb Portara aperture visual evidence "+(fallback?"Canvas":"WebGL"),why:"contract: retain human evidence of the exact aperture in both renderers after functional checks",run:async b=>{
+  const out=join(root,"untracked/water-review");mkdirSync(out,{recursive:true});await b.evaluate('document.getElementById("overlay").style.visibility="hidden"');
+  for(const [name,time] of [["off",0],["surge",1000],["active",2000]]){
+    await b.evaluate(`__gateClock=${time};if(${time}===1000){__gateClock=0;__ooga.dsb.gate.activate();__gateClock=1000;}__shoreline.advance(.05)`);
+    if(!fallback){const state=await b.evaluate(`(${shorelineState.toString()})()`);if(!shorelineHealthy(state))throw Error("Portara evidence WebGL: "+JSON.stringify(state));b.shorelineHealthy=true;b.shorelineSoftware=/SwiftShader|llvmpipe|software/i.test(state.gpu);}
+    await reviewShot(b,join(out,"portara-"+(fallback?"canvas":"webgl")+"-"+name+".png"));
+  }
+}}]});
+
+// Optional human evidence: separate Chrome/session after the functional gate, never its readiness oracle.
+scene("dsb",{label:"shoreline visual evidence",query:"&view=water-dry&weather=clear&time=1200",opts:{w:640,h:400},steps:[{name:"dsb shoreline visual evidence",why:"contract: preserve review screenshots after WebGL readiness without blocking functional deployment validation",run:async b=>{
+  const paths=join(root,"untracked/water-review");mkdirSync(paths,{recursive:true});
+  for(const [name,hour,weather] of [["noon",12,"clear"],["golden",18,"clear"],["night",23,"clear"],["rain",12,"rain"],["storm",12,"storm"]]){
+    await b.evaluate(`(()=>{const B=__ooga,D=B.dsb,f=D.olympus.impacts[0];B.pilot.navigate({position:{x:f.x+5,y:D.land.heightAt(f.x+5,f.z+3),z:f.z+3},yaw:1.05,pitch:.4,dist:18});B.daylight.read=()=>${hour};B.daylight.continuousDay=B.daylight.dayOfYear-1+${hour}/24;D.weather.setMode(${JSON.stringify(weather)});__shoreline.advance(.25);})()`);
+    const state=await b.evaluate(`(${shorelineState.toString()})()`);
+    if(!shorelineHealthy(state))throw Error("Visual evidence WebGL state: "+JSON.stringify(state));
+    b.shorelineHealthy=true;b.shorelineSoftware=/SwiftShader|llvmpipe|software/i.test(state.gpu);
+    await reviewShot(b,join(paths,"waterfall-"+name+".png"));
+  }
+}}]});
+
+scene("dsb",{label:"shoreline visual evidence coast",query:"&view=water-pier-west&weather=clear&time=1200",opts:{w:640,h:400},steps:[{name:"dsb shoreline coast visual evidence",why:"contract: inspect beach, rocky coast and both supported piers after functional validation, including night rain",run:async b=>{
+  const paths=join(root,"untracked/water-review");mkdirSync(paths,{recursive:true});
+  for(const [name,x,z,yaw,pitch,dist,hour,weather] of [["beach",20,76,Math.PI,.22,9,12,"clear"],["rocks",72,45,-1.1,.25,16,12,"clear"],["harbor",-39,42,.5,.42,38,12,"clear"],["pier-west",-43,46,Math.PI,.16,5,12,"clear"],["pier-east",-34,46,Math.PI,.16,5,12,"clear"],["harbor-night-rain",-39,42,.5,.42,38,23,"rain"]]){
+    await b.evaluate(`(()=>{const B=__ooga,D=B.dsb;B.pilot.navigate({position:{x:${x},y:D.land.groundAt(${x},${z}),z:${z}},yaw:${yaw},pitch:${pitch},dist:${dist}});B.daylight.read=()=>${hour};B.daylight.continuousDay=B.daylight.dayOfYear-1+${hour}/24;D.weather.setMode(${JSON.stringify(weather)});__shoreline.advance(.25);})()`);
+    const state=await b.evaluate(`(${shorelineState.toString()})()`);if(!shorelineHealthy(state))throw Error("Coast evidence WebGL state: "+JSON.stringify(state));
+    b.shorelineHealthy=true;b.shorelineSoftware=/SwiftShader|llvmpipe|software/i.test(state.gpu);
+    await reviewShot(b,join(paths,"coast-"+name+".png"));
+  }
+}}]});
+
+const dsbWaterCheckpoint = { name: "dsb water checkpoint", why: "contract: Aegean water preserves movement and releases its GPU textures across Portara trips", run: async b => {
+  const r=await b.evaluate(`(() => {
+    const B=__ooga,W=B.dsb.water,first=new Uint8Array(W.pixels);
+    W.update(13);const moved=W.pixels.some((x,i)=>x!==first[i]);
+    W.update(0);const zero=new Uint8Array(W.pixels);W.update(120);
+    const loop=W.pixels.every((x,i)=>x===zero[i]),finite=W.heights.every(Number.isFinite);
+    const start=performance.now();for(let i=0;i<60;i++)W.update(i/60);
+    return {kind:B.renderer.kind,textures:B.renderer.stats.waterTextures,moved,loop,finite,cost:(performance.now()-start)/60,
+      depthNear:W.depthAt(-39,54),depthFar:W.depthAt(250,250),camera:B.dsb.overview};
+  })()`);
+  const canvas=await b.evaluate('new URLSearchParams(location.search).has("canvas2d")');
+  record("DSB FFT: finite, periodic, animated; depth grows offshore; renderer stays available",r.finite&&r.loop&&r.moved&&r.depthFar>r.depthNear&&(canvas?r.kind==="canvas2d":r.kind==="webgl2"&&r.textures===2),JSON.stringify(r));
+  if(!canvas){
+    await b.evaluate(`document.querySelector('[data-action="reset-view"]').click()`);
+    const before=await b.evaluate('({x:__ooga.dsb.avatar.root.position.x,z:__ooga.dsb.avatar.root.position.z})');
+    await b.send("Input.dispatchKeyEvent",{type:"keyDown",key:"s",code:"KeyS"});
+    await b.evaluate('__ooga.advance(.3)');
+    await b.send("Input.dispatchKeyEvent",{type:"keyUp",key:"s",code:"KeyS"});
+    const after=await b.evaluate('({x:__ooga.dsb.avatar.root.position.x,z:__ooga.dsb.avatar.root.position.z})');
+    record("DSB keyboard movement still walks on approved land",Math.hypot(after.x-before.x,after.z-before.z)>.05,JSON.stringify({before,after}));
+  }
+  const name=await b.evaluate('__ooga.dsb.avatar.traits.name');
+  for(let i=0;i<2;i++){
+    const crossed=await b.evaluate(`(() => {const B=__ooga,G=B.dsb.gate;G.receive();return G.traverse({x:-45,y:41.4,z:-46},{x:-45,y:41.4,z:-50},.3);})()`);
+    await untilPage(b,'B.scene==="bifrost"&&!B.transitioning',20000);
+    const released=await b.evaluate('__ooga.renderer.stats.waterTextures');
+    await b.evaluate('__ooga.go("dsb")');
+    await untilPage(b,'B.scene==="dsb"&&!B.transitioning',20000);
+    const returned=await b.evaluate('({name:__ooga.dsb.avatar.traits.name,textures:__ooga.renderer.stats.waterTextures})');
+    record("DSB water trip "+i+": Portara crossing preserves identity and releases textures",crossed&&released===0&&returned.name===name&&returned.textures===(canvas?0:2),JSON.stringify({crossed,released,returned}));
+  }
+}};
+scene("dsb",{label:"water checkpoint",query:"&overview=1",steps:[dsbWaterCheckpoint]});
+scene("dsb",{label:"water checkpoint canvas",query:"&overview=1&canvas2d=1",steps:[dsbWaterCheckpoint]});
+scene("dsb",{label:"water checkpoint phone",query:"&overview=1",opts:{w:390,h:844,mobile:true},steps:[dsbWaterCheckpoint]});
+
+// The current master scene deliberately omits the old attraction prototype. Exercise its
+// environment through the same public debug surface used by the visual review.
+const dsbWeatherCheckpoint = { name: "dsb weather checkpoint", why: "rule: weather recovers to clear, preserves night and gates exterior sound without growing particle or GPU pools", run: async b => {
+  await b.key("m"); await b.key("m"); // Real gesture unlocks the shared sound graph.
+  const r = await b.evaluate(`(() => {
+    const B=__ooga,D=B.dsb,W=D.weather,S=W.shared.state,O=B.renderOpts;
+    let elapsed=0;const advance=seconds=>{for(let t=0;t<seconds;t+=1/60)BL.scenes.dsb.update(1/60,elapsed+=1/60);};
+    const settle=()=>advance(8);
+    W.setMode("clear");settle();
+    const base={light:O.directStrength,sky:Array.from(O.sky),wave:D.water.environment[0],drops:S.drops};
+    W.setMode("light-rain");settle();
+    const rain={light:O.directStrength,drops:S.drops,cloud:W.state.cloud,wave:D.water.environment[0]};
+    W.setMode("storm");settle();
+    const storm={light:O.directStrength,drops:S.drops,cloud:W.state.cloud,wave:D.water.environment[0],strikes:S.strikes};
+    W.strike();advance(.04);const flash=S.flash;advance(2);const expired=S.flash===0;
+    D.setInterior(true);advance(.1);
+    const gated=!S.exterior&&S.drops===0&&S.masterLevel===0&&!S.thunderPending;
+    D.setInterior(false);advance(1);
+    const resumed=S.exterior&&S.drops>0&&S.masterLevel>0;
+    const tier=B.renderer.quality;B.renderer.setQuality("low");advance(2);
+    const bounded=S.drops<=260&&S.deckShown<=22;
+    B.renderer.setQuality(tier);W.setMode("clear");settle();
+    const recovered=Math.abs(O.directStrength-base.light)<.0001&&S.drops===0&&D.water.environment[0]===1;
+    const finite=Array.from(D.water.environment).every(Number.isFinite)&&D.water.heights.every(Number.isFinite);
+    return {base,rain,storm,flash,expired,gated,resumed,bounded,recovered,finite,thunders:S.thunders,kind:B.renderer.kind,textures:B.renderer.stats.waterTextures};
+  })()`);
+  record("DSB weather: rain and storm attenuate daylight and raise bounded water energy",r.base.drops===0&&r.rain.drops>0&&r.rain.light<r.base.light&&r.storm.light<r.rain.light&&r.storm.wave>r.rain.wave&&r.storm.strikes>0,JSON.stringify(r));
+  record("DSB weather: flash expires, exterior gate silences and resumes, tiers bound pools and clear recovers",r.flash>0&&r.expired&&r.thunders>0&&r.gated&&r.resumed&&r.bounded&&r.recovered&&r.finite,JSON.stringify(r));
+  const night=await b.evaluate(`(() => {
+    const B=__ooga,D=B.dsb;D.weather.setMode("rain");for(let i=0;i<240;i++)BL.scenes.dsb.update(1/60,i/60);BL.daylight.sample(0,B.renderOpts,80,37);D.weather.update(0,B.renderOpts);
+    return {day:B.renderOpts.day,lamps:B.renderOpts.lampFactor,drops:D.weather.shared.state.drops,glint:D.water.environment[2],sky:Array.from(B.renderOpts.sky)};
+  })()`);
+  record("DSB night rain: clock stays at night, lamps stay lit, precipitation stays visible and solar glints vanish",night.day===0&&night.lamps>.9&&night.drops>0&&night.glint===0&&night.sky.every(Number.isFinite),JSON.stringify(night));
+  record("DSB weather: runtime console remains clean",b.logs.length===0,b.logs.join(" | "));
+}};
+scene("dsb",{label:"weather checkpoint",query:"&overview=1&weather=clear&time=1200",steps:[dsbWeatherCheckpoint]});
+scene("dsb",{label:"weather checkpoint phone",query:"&overview=1&weather=clear&time=1200",opts:{w:390,h:844,mobile:true},steps:[dsbWeatherCheckpoint]});
+
+const dsbRadioTvCorrection = { name:"dsb radio TV correction", why:"regression: restore the physical radio TV, safe invoice flow and exclusive live/fallback audio with the shared interior gate", run:async b=>{
+  const step=()=>b.evaluate('for(let i=0;i<60;i++)BL.scenes.dsb.update(1/60,i/60)');
+  const click=async id=>{const p=await b.evaluate(`(()=>{const e=document.getElementById(${JSON.stringify(id)});e.scrollIntoView({block:"center"});const r=e.getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2};})()`);await b.send("Input.dispatchTouchEvent",{type:"touchStart",touchPoints:[p]});await b.send("Input.dispatchTouchEvent",{type:"touchEnd",touchPoints:[]});};
+  await b.key("m");await b.key("m");await step();
+  await b.evaluate('window.__correction={audio:__ooga.dsb.noderunner.audio,tv:__ooga.dsb.tv};__ooga.dsb.tv.close()');
+  await click("dsb-context");await step();
+  record("DSB TV correction: physical nearby touch action opens five-channel menu",await b.evaluate('document.getElementById("dsb-tv").open&&document.querySelectorAll("#dsb-tv-menu button").length===5&&document.querySelectorAll("#dsb-tv-menu button:disabled").length===4'));
+  await click("dsb-tv-channel");
+  record("DSB TV correction: bounded metadata and local official QR are visible",await b.evaluate('document.getElementById("dsb-tv-song").textContent==="Turtle Radio"&&document.querySelectorAll("#dsb-tv-queue li").length===1&&document.getElementById("dsb-tv-qr").width>100'));
+  await b.evaluate('document.getElementById("dsb-tv-query").value="Ooga"');await click("dsb-tv-search");
+  await b.evaluate('window.__paymentClock={native:window.setTimeout.bind(window)};window.setTimeout=(fn,ms,...args)=>{if(ms===5000){__paymentClock.tick=fn;__paymentClock.id=__paymentClock.native(()=>{},ms);return __paymentClock.id;}return __paymentClock.native(fn,ms,...args);};document.querySelector("#dsb-tv-results button").click()');await b.sleep(100);
+  const invoice=await b.evaluate(`(()=>{const T=BL.dsbTv,good={"bolt11": "lnbc2100n1p4vzq52pp50dsaw0kxfc0urmtzl7ezwv4qemxs8ufx98cyjjsj9wkz7l3l7afsdpltfshqgpg2c69v2f6ypqkzun0dcsykmm9de5kwgpdyppxjarrda5kugzzv4skx6qcqzzsxqzuysp535fyv3fcdnf59stpn82fd6mypgd245r8n9zg6mcnx90a8ws68v2s9qxpqysgqxj432mzxnppe93v7fqxvs8hav584jgqfejc3mrpagrkheq0ythhse9ldk82lc0p43njn39dcs36m0djafxgug2aa374eczjfm3ew54qqt8zcnh", "sats": 210, "payment_hash": "7b61d73ec64e1fc1ed62ffb22732a0cecd03f12629f0494a122bac2f7e3ff753"},bad={...good,sats:1},long="\u0000"+"x".repeat(500);return {valid:T.validInvoice(good),bad:T.validInvoice(bad),hash:T.validInvoice({...good,payment_hash:"bad"}),check:T.validInvoice({...good,bolt11:good.bolt11.slice(0,-1)+"q"}),clean:T.clean(long).length,bounded:T.results({results:Array.from({length:30},()=>({title:long,artist:"<img>",source:"library"}))}).length,open:!document.getElementById("dsb-tv-invoice").hidden,qr:document.getElementById("dsb-tv-invoice-qr").width,link:document.getElementById("dsb-tv-wallet").getAttribute("href"),width:document.getElementById("dsb-tv").scrollWidth<=document.getElementById("dsb-tv").clientWidth};})()`);
+  record("DSB TV correction: valid station invoice, local QR, bounded data and mobile layout",invoice.valid&&!invoice.bad&&!invoice.hash&&!invoice.check&&invoice.clean===160&&invoice.bounded===12&&invoice.open&&invoice.qr>200&&invoice.link.startsWith("lightning:lnbc")&&invoice.width,JSON.stringify(invoice));
+  await b.evaluate('document.querySelector("#dsb-tv-results button").click()');
+  record("DSB TV correction: duplicate invoice is refused",await b.evaluate('__dsbTvFixture.invoices===1'));
+  const payment=async (value,error=false)=>{await b.evaluate(`__dsbTvFixture.payment=${JSON.stringify(value)};__dsbTvFixture.paymentError=${error};clearTimeout(__paymentClock.id);__paymentClock.tick()`);await b.sleep(40);return b.evaluate('document.getElementById("dsb-tv-payment-status").textContent');};
+  const unpaid=await payment({paid:false,queued:false}),offline=await payment(null,true),paid=await payment({paid:true,queued:false}),queued=await payment({paid:true,queued:true});
+  record("DSB TV correction: unpaid, failure, paid and queued states never suggest a second payment",unpaid.includes("Waiting for payment")&&offline.includes("do not pay twice")&&paid.includes("waiting for the station")&&queued.includes("your song is queued"));
+  await click("dsb-tv-copy");
+  record("DSB TV correction: copy succeeds or selects the full invoice",await b.evaluate('/Invoice copied|Invoice selected/.test(document.getElementById("dsb-tv-payment-status").textContent)'));
+  await b.evaluate('window.__correction.epoch=__ooga.dsb.tv.stats.paymentEpoch');await click("dsb-tv-cancel-invoice");
+  record("DSB TV correction: closing invoice invalidates polling epoch",await b.evaluate('!__ooga.dsb.tv.stats.invoice&&__ooga.dsb.tv.stats.paymentEpoch>__correction.epoch&&document.getElementById("dsb-tv-invoice").hidden'));
+  await b.evaluate('clearTimeout(__paymentClock.id);__paymentClock.tick();window.setTimeout=__paymentClock.native');await b.sleep(40);
+  record("DSB TV correction: cancelled epoch cannot revive its invoice",await b.evaluate('!__ooga.dsb.tv.stats.invoice&&document.getElementById("dsb-tv-invoice").hidden'));
+  await b.key("Escape");await step();
+  record("DSB TV correction: Escape closes TV without stopping the live stream",await b.evaluate('!__ooga.dsb.tv.isOpen&&__correction.audio.stats.mode==="live"&&__correction.audio.stats.starts===1'));
+  const audio=await b.evaluate(`(()=>{const D=__ooga.dsb,A=D.noderunner.audio,E=__dsbRadioFixture.element;A.update(1,4,true);const live=A.stats;D.weather.setInterior(true);const gated=E.muted&&!A.stats.enabled;D.weather.setInterior(false);A.update(1,80,true);const far=E.muted;E.onerror();A.update(1,4,true);const offline=A.stats;A.play();A.update(1,4,true);return {live,gated,far,offline,connecting:A.stats};})()`);
+  await b.sleep(50);await step();
+  record("DSB radio correction: live/fallback are exclusive and the shared gate silences HTML audio immediately",audio.live.liveAudible&&audio.gated&&audio.far&&audio.offline.fallbackLevel>0&&!audio.offline.liveAudible&&audio.connecting.fallbackLevel===0,JSON.stringify(audio));
+  record("DSB radio correction: recovery returns to one live stream",await b.evaluate('__correction.audio.stats.mode==="live"&&__correction.audio.stats.fallbackLevel===0'));
+  await b.evaluate('__ooga.go("bifrost",null,true);__ooga.advance(.05)');
+  record("DSB radio correction: scene disposal stops stream, fallback and TV timers",await b.evaluate('__correction.audio.stats.disposed&&__correction.audio.stats.sources===0&&__correction.audio.stats.timers===0&&__correction.audio.stats.fallbackSources===0&&__correction.tv.stats.disposed&&__correction.tv.stats.timers===0&&__correction.tv.stats.requests===0'));
+  await b.evaluate('__ooga.go("dsb",null,true);__ooga.advance(.05)');await step();
+  record("DSB radio correction: re-entry creates one fresh station",await b.evaluate('__ooga.dsb.noderunner.audio.stats.starts===1&&__ooga.dsb.noderunner.audio.stats.sources===1'));
+  record("DSB radio correction: console remains clean",b.logs.length===0,b.logs.join(" | "));
+}};
+scene("dsb",{label:"radio TV correction",query:"&view=noderunner&weather=clear&time=1200",steps:[dsbRadioTvCorrection]});
+scene("dsb",{label:"radio TV correction phone",query:"&view=noderunner&weather=clear&time=1200",opts:{w:390,h:844,mobile:true},steps:[dsbRadioTvCorrection]});
+
+const dsbHarborCheckpoint = { name:"dsb harbor checkpoint", why:"rule: normal walking reaches the harbor, and one distance-based exterior station survives weather, rooms and scene changes", run:async b=>{
+  const step=()=>b.evaluate('for(let i=0;i<60;i++)BL.scenes.dsb.update(1/60,i/60)');
+  await b.evaluate('window.__harborStart={...__ooga.dsb.avatar.root.position}');
+  await b.send("Input.dispatchKeyEvent",{type:"keyDown",key:"w",code:"KeyW"});await step();
+  await b.send("Input.dispatchKeyEvent",{type:"keyUp",key:"w",code:"KeyW"});
+  const motion=await b.evaluate('({distance:Math.hypot(__ooga.dsb.avatar.root.position.x-__harborStart.x,__ooga.dsb.avatar.root.position.z-__harborStart.z),controlled:__ooga.pilot.player===__ooga.dsb.avatar})');
+  record("DSB harbor: normal non-overview gameplay walks the selected player",motion.controlled&&motion.distance>.5,JSON.stringify(motion));
+  await b.key("m");await b.key("m");
+  const mix=await b.evaluate(`(()=>{
+    const B=__ooga,D=B.dsb,N=D.noderunner,W=D.weather;const rows=[];
+    const move=p=>{B.pilot.navigate({position:{x:p.x,y:D.land.heightAt(p.x,p.z),z:p.z},yaw:N.building.yaw,pitch:.22,dist:7});for(let i=0;i<240;i++)BL.scenes.dsb.update(1/60,i/60);rows.push({...N.stats});};
+    move({x:-10,z:45});move({x:-38,z:34});move(N.review);move({x:-38,z:34});move({x:-10,z:45});
+    move(N.review);const clear=N.stats.target;W.setMode("storm");for(let i=0;i<480;i++)BL.scenes.dsb.update(1/60,i/60);
+    window.__harborTest={audio:N.audio,source:N.source};
+    return {rows,clear,storm:N.stats.target,rain:W.shared.state.rainLevel,starts:N.audio.stats.starts,sources:N.audio.stats.sources};
+  })()`);
+  record("DSB harbor: proximity fades in/out, is silent far away and never boosts itself over storms",mix.rows[0].level<.001&&mix.rows[1].level>0&&mix.rows[2].level>mix.rows[1].level&&mix.rows[3].level<mix.rows[2].level&&mix.rows[4].level<.001&&mix.clear===mix.storm&&mix.rain>0&&mix.starts===1&&mix.sources===1,JSON.stringify(mix));
+  const road=await b.evaluate(`(()=>{
+    const D=__ooga.dsb,N=D.noderunner,L=D.land;let obstructed=0;
+    for(let i=1;i<L.waterfront.length;i++){
+      const a=L.waterfront[i-1],b=L.waterfront[i],n=Math.ceil(Math.hypot(b[0]-a[0],b[1]-a[1]));
+      for(let j=0;j<=n;j++){const x=a[0]+(b[0]-a[0])*j/n,z=a[1]+(b[1]-a[1])*j/n,y=L.heightAt(x,z);if(!N.clearSegment(x,z,x,z,y,D.avatar.bodyHeight,D.avatar))obstructed++;}
+    }
+    // Flood the existing supported walking surface. No alternate collision or terrain formula.
+    const size=111,step=1.5,min=-90,seen=new Uint8Array(size*size),queue=[];
+    const index=p=>Math.round((p.z-min)/step)*size+Math.round((p.x-min)/step);
+    const start=index(__harborStart);seen[start]=1;queue.push(start);
+    for(let head=0;head<queue.length;head++){
+      const q=queue[head],ix=q%size,iz=(q/size)|0,x=min+ix*step,z=min+iz*step,y=L.heightAt(x,z);
+      for(const [dx,dz] of [[1,0],[-1,0],[0,1],[0,-1]]){
+        const nx=ix+dx,nz=iz+dz,k=nz*size+nx;if(nx<0||nz<0||nx>=size||nz>=size||seen[k])continue;
+        const tx=min+nx*step,tz=min+nz*step;
+        if(L.walkable(x,z,tx,tz,y,D.avatar.bodyHeight,D.avatar)&&N.clearSegment(x,z,tx,tz,y,D.avatar.bodyHeight,D.avatar)){seen[k]=1;queue.push(k);}
+      }
+    }
+    const reachable=p=>{const k=index(p),x=min+(k%size)*step,z=min+((k/size)|0)*step;return !!seen[k]&&L.walkable(x,z,p.x,p.z,L.heightAt(x,z),D.avatar.bodyHeight,D.avatar)&&N.clearSegment(x,z,p.x,p.z,L.heightAt(x,z),D.avatar.bodyHeight,D.avatar);};
+    return {obstructed,visited:queue.length,harbor:reachable(N.review),chora:reachable({x:22,z:41}),meme:reachable(D.interiors.registry.get("meme-factory").entry)};
+  })()`);
+  record("DSB harbor: promenade stays clear and the normal ground graph reaches harbor, Chora and Meme Factory",!road.obstructed&&road.harbor&&road.chora&&road.meme,JSON.stringify(road));
+  await b.evaluate('(()=>{const B=__ooga,d=B.dsb.interiors.registry.get("meme-factory");B.pilot.navigate({position:d.entry,yaw:d.building.yaw,pitch:.22,dist:7});})()');
+  await b.key(" ");await step();
+  const inside=await b.evaluate('({room:!!__ooga.dsb.interiors.active,gate:__ooga.dsb.weather.shared.state.masterLevel,radio:__ooga.dsb.noderunner.stats,indoor:__ooga.dsb.interiors.audio.stats.connected})');
+  await b.key(" ");await step();
+  const outside=await b.evaluate('({room:!!__ooga.dsb.interiors.active,gate:__ooga.dsb.weather.shared.state.masterLevel,radio:__ooga.dsb.noderunner.stats,same:__ooga.dsb.noderunner.audio===__harborTest.audio})');
+  record("DSB harbor: the real interior disconnects all exterior sound and exit uses current listener distance",inside.room&&inside.gate===0&&inside.radio.level===0&&inside.indoor&&!outside.room&&outside.gate>0&&outside.radio.target===0&&outside.same,JSON.stringify({inside,outside}));
+  for(let visit=0;visit<3;visit++){
+    await b.evaluate('__harborTest.old=__ooga.dsb.noderunner;__ooga.go("bifrost",null,true);__ooga.advance(.05)');
+    const released=await b.evaluate('({disposed:__harborTest.old.audio.stats.disposed,sources:__harborTest.old.audio.stats.sources,attached:!!__harborTest.old.group.parent,solids:__harborTest.old.solids.stats.nodes})');
+    await b.evaluate('__ooga.go("dsb",null,true);__ooga.advance(.05)');
+    await step();
+    const fresh=await b.evaluate('({sources:__ooga.dsb.noderunner.audio?.stats.sources,starts:__ooga.dsb.noderunner.audio?.stats.starts})');
+    record("DSB harbor: scene round trip "+(visit+1)+" stops the old station and creates only one new source",released.disposed&&released.sources===0&&!released.attached&&released.solids===0&&fresh.sources===1&&fresh.starts===1,JSON.stringify({released,fresh}));
+  }
+  await b.evaluate('delete window.__harborTest;delete window.__harborStart');
+  record("DSB harbor: runtime console remains clean",b.logs.length===0,b.logs.join(" | "));
+}};
+scene("dsb",{label:"harbor checkpoint",query:"&weather=clear&time=1200",steps:[dsbHarborCheckpoint]});
+scene("dsb",{label:"harbor checkpoint phone",query:"&weather=clear&time=1200",opts:{w:390,h:844,mobile:true},steps:[dsbHarborCheckpoint]});
+
+const dsbInteriorCheckpoint = { name: "dsb interior checkpoint", why: "rule: a real door isolates its room and returns the same player to current exterior weather without accumulating resources", run: async b => {
+  const step=()=>b.evaluate('for(let i=0;i<36;i++)BL.scenes.dsb.update(1/60,i/60)');
+  const tap=async()=>{
+    const p=await b.evaluate('(()=>{const e=document.getElementById("dsb-context"),r=e.getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2,visible:!e.hidden};})()');
+    if(!p.visible)throw new Error("Expected a reachable interior door");
+    // Like browser.click, enqueue release on time instead of turning a tap into
+    // a multi-second hold while a slow Canvas frame delays the start acknowledgement.
+    const pressed=b.send("Input.dispatchTouchEvent",{type:"touchStart",touchPoints:[{x:p.x,y:p.y}],timestamp:Date.now()/1000});
+    await b.sleep(40);
+    const released=b.send("Input.dispatchTouchEvent",{type:"touchEnd",touchPoints:[],timestamp:Date.now()/1000});
+    await Promise.all([pressed,released]);await step();
+  };
+  await b.key(" ");await step();
+  const entry=await b.evaluate(`(()=>{const B=__ooga,D=B.dsb,I=D.interiors,S=D.weather.shared.state;window.__interiorCheck={avatar:D.avatar,land:D.land,nature:D.nature,water:D.water,indoor:I.lighting,read:B.daylight.read};
+    return {active:!!I.active,exterior:D.exterior.visible,drops:S.drops,master:S.masterLevel,feet:D.avatar.root.position.y-D.avatar.baseY,camera:{...B.camera.position},audio:I.audio.stats,label:document.querySelector("#dsb-context").textContent};})()`);
+  record("DSB interior: Space at the exterior door enters, gates weather and starts one workshop graph",entry.active&&!entry.exterior&&entry.drops===0&&entry.master===0&&Math.abs(entry.feet-0)<.001&&Math.abs(entry.camera.x)<2&&entry.audio.connected&&entry.audio.sources===3,JSON.stringify(entry));
+  // Actual held movement, then a supported doorway return through the same controller.
+  const before=await b.evaluate('({...__ooga.dsb.avatar.root.position})');
+  await b.send("Input.dispatchKeyEvent",{type:"keyDown",key:"d",code:"KeyD"});await step();
+  await b.send("Input.dispatchKeyEvent",{type:"keyUp",key:"d",code:"KeyD"});
+  const moved=await b.evaluate(`(()=>{const D=__ooga.dsb,I=D.interiors,p=D.avatar.root.position;return {p:{...p},floor:I.groundAt(p.x,p.z),wall:I.walkable(0,18,0,23,0,2,D.avatar),counter:I.walkable(0,-1,0,-7,0,2,D.avatar),table:I.walkable(0,7,0,3,0,2,D.avatar)};})()`);
+  record("DSB interior: held movement works on the floor and swept collision blocks walls, tables and counter",Math.hypot(moved.p.x-before.x,moved.p.z-before.z)>.2&&moved.floor===0&&!moved.wall&&!moved.counter&&!moved.table,JSON.stringify(moved));
+  await b.evaluate('(()=>{const B=__ooga,I=B.dsb.interiors;B.pilot.navigate({position:I.active.room.spawn,yaw:0,pitch:.22,dist:3});B.dsb.weather.setMode("rain");B.daylight.read=()=>0;for(let i=0;i<480;i++)BL.scenes.dsb.update(1/60,i/60);})()');
+  const isolation=await b.evaluate('({same:BL.scenes.dsb.renderOpts===__interiorCheck.indoor,exterior:__ooga.dsb.weather.state.exterior,drops:__ooga.dsb.weather.shared.state.drops,night:__ooga.renderOpts.day})');
+  await tap();
+  const exit=await b.evaluate(`(()=>{const B=__ooga,D=B.dsb,I=D.interiors,p=D.avatar.root.position,e=I.registry.get("meme-factory").entry;return {active:!!I.active,same:D.avatar===__interiorCheck.avatar&&D.land===__interiorCheck.land&&D.water===__interiorCheck.water&&D.nature===__interiorCheck.nature,distance:Math.hypot(p.x-e.x,p.z-e.z),floor:p.y-D.avatar.baseY-D.land.heightAt(p.x,p.z),cameraClear:D.land.clearAt(B.camera.position.x,B.camera.position.z,.1),weather:D.weather.state.mode,night:B.renderOpts.day,lamps:B.renderOpts.lampFactor,drops:D.weather.shared.state.drops,master:D.weather.shared.state.masterLevel,audio:I.audio.stats};})()`);
+  record("DSB interior: touch exit restores the same player/building and current night rain, not entry weather",isolation.same&&!isolation.exterior&&isolation.drops===0&&isolation.night===0&&!exit.active&&exit.same&&exit.distance<.01&&exit.cameraClear&&Math.abs(exit.floor)<.01&&exit.weather==="rain"&&exit.night===0&&exit.lamps>.9&&exit.drops>0&&exit.master>0&&!exit.audio.connected,JSON.stringify({isolation,exit}));
+  await b.evaluate('__ooga.daylight.read=__interiorCheck.read');
+  const snapshot=()=>b.evaluate(`(()=>{const B=__ooga,I=B.dsb.interiors;let nodes=0;const geometries=new Set();const visit=n=>{nodes++;if(n.geometry)geometries.add(n.geometry);for(const c of n.children)visit(c);};visit(BL.scenes.dsb.root);return {nodes,geometries:geometries.size,rooms:I.rooms.size,targets:BL.scenes.dsb.input.targetCount,audio:I.audio.stats.sources,contexts:I.audio.stats.contexts,radioSources:B.dsb.noderunner.audio?.stats.sources,radioStarts:B.dsb.noderunner.audio?.stats.starts,records:B.renderer.stats.records,room:I.active?.room.id||null,lights:B.renderOpts.lightCount,textures:B.renderer.stats.waterTextures||0,remotes:BL.scenes.dsb.stats().remotePlayers};})()`);
+  const listenerCount=async()=>{
+    const obj=await b.send("Runtime.evaluate",{expression:"document"});
+    const result=await b.send("DOMDebugger.getEventListeners",{objectId:obj.result.result.objectId});
+    await b.send("Runtime.releaseObject",{objectId:obj.result.result.objectId});return result.result.listeners.length;
+  };
+  const base=await snapshot(),listeners=await listenerCount();
+  let cycles=1;
+  for(;cycles<10;cycles++){await tap();await tap();}
+  const end=await snapshot(),listenersEnd=await listenerCount();
+  record("DSB interior: ten complete door cycles retain bounded nodes, geometry, handlers and audio sources",Object.keys(base).every(key=>key==="records"?end[key]<=base[key]:end[key]===base[key])&&listeners===listenersEnd,JSON.stringify({cycles,base,end,listeners,listenersEnd}));
+  await b.evaluate('window.__interiorCheck.old=__ooga.dsb.interiors;__ooga.go("dsb",null,true);__ooga.advance(.05)');
+  const clean=await b.evaluate('({rooms:__interiorCheck.old.rooms.size,audio:__interiorCheck.old.audio.stats.contexts,fresh:__ooga.dsb.interiors.rooms.size,visible:__ooga.dsb.exterior.visible})');
+  record("DSB interior: scene departure releases the room and its AudioContext",clean.rooms===0&&clean.audio===0&&clean.fresh===0&&clean.visible,JSON.stringify(clean));
+  await b.evaluate('delete window.__interiorCheck');
+  record("DSB interior: runtime console remains clean",b.logs.length===0,b.logs.join(" | "));
+}};
+scene("dsb",{label:"interior checkpoint",query:"&view=meme-factory&weather=storm&time=1200",steps:[dsbInteriorCheckpoint]});
+scene("dsb",{label:"interior checkpoint phone",query:"&view=meme-factory&weather=storm&time=1200",opts:{w:390,h:844,mobile:true},steps:[dsbInteriorCheckpoint]});
+
+// Rule: measure the actual rendered shell and real physical-route controller in all supported orientations.
+const dsbVenueMenusCheckpoint={name:"dsb venue menus checkpoint",why:"rule: spatial menus center within the viewport, isolate gameplay and release resources without stale routes",run:async b=>{
+  const step=()=>b.evaluate('for(let i=0;i<30;i++)BL.scenes.dsb.update(1/60,i/60)');
+  await step();
+  const snapshot=async()=>{
+    const obj=await b.send("Runtime.evaluate",{expression:"document"});
+    const result=await b.send("DOMDebugger.getEventListeners",{objectId:obj.result.result.objectId});
+    await b.send("Runtime.releaseObject",{objectId:obj.result.result.objectId});
+    return {listeners:result.result.listeners.length,dom:await b.evaluate('document.querySelectorAll(".dsb-menu-shade").length')};
+  };
+  const baseline=await snapshot();
+  const venues=[
+    ["meme-factory","memeMenu",".meme-menu",[-8,-9.7],"laser","route"],
+    ["without-rulers","shopMenu","#rulers-catalog",[5.3,1.5],"hoodies","section"],
+    ["proof-of-ink","inkMenu","#ink-catalog",[-10.6,1],"fine-arts","tag"],
+    ["big-bitcoin","bigMenu","#big-terminal",[14.2,0],"research","section"]
+  ];
+  const paths=join(root,"untracked","dsb-menu-review");mkdirSync(paths,{recursive:true});
+  for(const [id,controller,selector,point,want,key] of venues){
+    await b.evaluate(`(()=>{const B=__ooga,D=B.dsb,I=D.interiors;if(I.active){I.request(I.active.room.exit);I.update(.4);}I.review(${JSON.stringify(id)},true);I.update(.4);const R=I.active.room;B.pilot.navigate({position:{x:${point[0]},y:R.groundAt(${point[0]},${point[1]}),z:${point[1]}},yaw:0,pitch:.12,dist:3});})()`);await step();
+    if(id==="meme-factory"){
+      for(const view of ["meme-entrance","meme-laser","meme-contributors","meme-production","meme-recording","meme-archive"]){await b.evaluate(`__ooga.pilot.navigate(__ooga.dsb.interiors.active.room.reviews[${JSON.stringify(view)}])`);await step();await reviewShot(b,join(paths,view+".png"));}
+      await b.evaluate(`__ooga.pilot.navigate({position:{x:-8,y:0,z:-9.7},yaw:0,pitch:.12,dist:3})`);await step();
+    }
+    for(const [w,h] of [[1440,900],[390,844],[844,390]]){
+      await b.send("Emulation.setDeviceMetricsOverride",{width:w,height:h,deviceScaleFactor:1,mobile:w!==1440});
+      await b.evaluate('__ooga.dsb.openVenue()');await step();
+      const r=await b.evaluate(`(()=>{const D=__ooga.dsb,m=D[${JSON.stringify(controller)}],p=document.querySelector(${JSON.stringify(selector)})||document.querySelector('.dsb-menu-engaged'),r=p.getBoundingClientRect(),v=visualViewport;return {route:m.stats[${JSON.stringify(key)}],stats:m.stats,cx:Math.abs(r.x+r.width/2-v.offsetLeft-v.width/2),cy:Math.abs(r.y+r.height/2-v.offsetTop-v.height/2),fits:r.x>=v.offsetLeft&&r.y>=v.offsetTop&&r.right<=v.offsetLeft+v.width+.5&&r.bottom<=v.offsetTop+v.height+.5,scroll:p.scrollWidth<=p.clientWidth+1,isolated:document.body.classList.contains('dsb-menu-open')&&BL.dsbMenuShell.count===1,hud:getComputedStyle(document.getElementById('dsb-context')).visibility,overflow:getComputedStyle(p).overflowY};})()`);
+      // Fine Arts is a legitimate main section in this catalog; collections use its tag field.
+      const correct=r.route===want||id==="proof-of-ink"&&r.stats.section===want;
+      record(`DSB menus ${id} ${w}x${h}: contextual route, centered scrolling shell, safe bounds and hidden controls`,correct&&r.cx<1&&r.cy<1&&r.fits&&r.scroll&&r.isolated&&r.hud==="hidden"&&["auto","scroll"].includes(r.overflow),JSON.stringify(r));
+      await reviewShot(b,join(paths,id+"-menu-"+w+".png"));
+      await b.evaluate(`__ooga.dsb[${JSON.stringify(controller)}].close()`);await step();
+      record(`DSB menus ${id} ${w}x${h}: close restores control layer`,await b.evaluate('!document.body.classList.contains("dsb-menu-open")&&BL.dsbMenuShell.count===0&&!document.querySelector(".dsb-menu-shade")'));
+    }
+    await b.evaluate(`(()=>{const D=__ooga.dsb,I=D.interiors;I.request(I.active.room.exit);I.update(.4);I.review(${JSON.stringify(id)},true);I.update(.4);D.openVenue();})()`);await step();
+    const fallback={"meme-factory":"home","without-rulers":"home","proof-of-ink":"featured","big-bitcoin":"overview"}[id];
+    record(`DSB menus ${id}: exit and fresh entrance discard stale route`,await b.evaluate(`(()=>{const s=__ooga.dsb[${JSON.stringify(controller)}].stats;return (s.route||s.section||s.category)===${JSON.stringify(fallback)};})()`));
+    await b.evaluate(`__ooga.dsb[${JSON.stringify(controller)}].close()`);
+  }
+  await b.evaluate('(()=>{const D=__ooga.dsb,I=D.interiors;I.request(I.active.room.exit);I.update(.4);I.review("dsb-studio",true);I.update(.4);__ooga.pilot.navigate({position:I.active.room.jukeboxAt,yaw:Math.PI/2,pitch:.12,dist:3});})()');await step();
+  await b.key(" ");await step();
+  record("DSB Spaces: physical jukebox opens shared centered dialog",await b.evaluate('__ooga.dsb.spaces.isOpen&&document.querySelector(".dsb-spaces").classList.contains("dsb-menu-engaged")'));
+  const spacesLayouts=[];
+  for(const [w,h] of [[1440,900],[390,844],[844,390]]){
+    await b.send("Emulation.setDeviceMetricsOverride",{width:w,height:h,deviceScaleFactor:1,mobile:w!==1440});await step();
+    // Unlike the other venue fixtures, Spaces stays open across resizes. Game
+    // simulation does not deliver browser resize events to the shared shell.
+    // Wait for its viewport inputs, not for the layout assertion to become true.
+    const resized=await b.evaluate('new Promise(resolve=>{const p=document.querySelector(".dsb-spaces"),start=performance.now();const tick=()=>{const v=visualViewport,s=p.style,ready=Math.abs(parseFloat(s.getPropertyValue("--menu-w"))-v.width)<.01&&Math.abs(parseFloat(s.getPropertyValue("--menu-h"))-v.height)<.01&&Math.abs(parseFloat(s.getPropertyValue("--menu-x"))-v.offsetLeft-v.width/2)<.01&&Math.abs(parseFloat(s.getPropertyValue("--menu-y"))-v.offsetTop-v.height/2)<.01;if(ready||performance.now()-start>5000)resolve(ready);else requestAnimationFrame(tick);};requestAnimationFrame(tick);})');
+    const r=await b.evaluate('(()=>{const p=document.querySelector(".dsb-spaces"),r=p.getBoundingClientRect(),v=visualViewport,s=getComputedStyle(p),top=p.scrollTop;p.scrollTop=1;const scrolls=p.scrollHeight<=p.clientHeight||p.scrollTop>0;p.scrollTop=top;return {rect:{x:r.x,y:r.y,width:r.width,height:r.height},viewport:{x:v.offsetLeft,y:v.offsetTop,width:v.width,height:v.height},cx:Math.abs(r.x+r.width/2-v.offsetLeft-v.width/2),cy:Math.abs(r.y+r.height/2-v.offsetTop-v.height/2),margins:[r.x-v.offsetLeft,r.y-v.offsetTop,v.offsetLeft+v.width-r.right,v.offsetTop+v.height-r.bottom],maxHeight:parseFloat(s.maxHeight),scrollHeight:p.scrollHeight,clientHeight:p.clientHeight,scrolls,width:p.scrollWidth<=p.clientWidth+1,overflow:s.overflowY,bodyOverflow:getComputedStyle(document.body).overflowY,isolated:p.open&&document.body.classList.contains("dsb-menu-open")&&BL.dsbMenuShell.count===1&&getComputedStyle(document.getElementById("dsb-context")).visibility==="hidden"};})()');
+    spacesLayouts.push({w,h,resized,...r});
+    record(`DSB Spaces ${w}x${h}: centered and internally scrollable`,resized&&r.cx<1&&r.cy<1&&r.margins.every(n=>n>=11.5)&&r.rect.height<=r.maxHeight+.5&&r.width&&r.scrolls&&r.overflow==="auto"&&r.bodyOverflow==="hidden"&&r.isolated,JSON.stringify(spacesLayouts.at(-1)));
+  }
+  writeFileSync(join(paths,"spaces-layout.json"),JSON.stringify(spacesLayouts,null,2));
+  await b.evaluate('__ooga.dsb.spaces.close();__ooga.dsb.interiors.request(__ooga.dsb.interiors.active.room.exit);__ooga.dsb.interiors.update(.4)');
+  for(const route of ["main","radio","jukebox"])for(const [w,h] of [[1440,900],[390,844],[844,390]]){
+    await b.send("Emulation.setDeviceMetricsOverride",{width:w,height:h,deviceScaleFactor:1,mobile:w!==1440});
+    // Keep all simulation ticks and layout assertions together so a slow exterior
+    // Canvas frame does not add a round-trip wait between each related operation.
+    const r=await b.evaluate(`(()=>{__ooga.dsb.tv.open(${JSON.stringify(route)});for(let i=0;i<30;i++)BL.scenes.dsb.update(1/60,i/60);const D=__ooga.dsb,e=document.getElementById("dsb-tv"),r=e.getBoundingClientRect(),v=visualViewport;return {route:D.tv.stats.route,cx:Math.abs(r.x+r.width/2-v.width/2),cy:Math.abs(r.y+r.height/2-v.height/2),width:e.scrollWidth<=e.clientWidth+1,focus:document.activeElement.id};})()`);
+    record(`Noderunner ${route} ${w}x${h}: centered context and request focus`,r.route===route&&r.cx<1&&r.cy<1&&r.width&&(route!=="jukebox"||r.focus==="dsb-tv-query"),JSON.stringify(r));
+    await reviewShot(b,join(paths,"noderunner-"+route+"-"+w+".png"));await b.evaluate('__ooga.dsb.tv.close()');
+  }
+  await b.evaluate('for(let i=0;i<12;i++){__ooga.dsb.tv.open("radio");__ooga.dsb.tv.close();}');
+  const after=await snapshot();record("DSB menu lifecycle: repeated openings release shared listeners and shade",after.listeners===baseline.listeners&&after.dom===baseline.dom,JSON.stringify({baseline,after}));
+  record("DSB contextual menus: runtime console remains clean",b.logs.length===0,b.logs.join(" | "));
+}};
+scene("dsb",{label:"venue menus checkpoint",query:"&interior=meme-factory&view=meme-entrance&weather=clear&time=1200",steps:[dsbVenueMenusCheckpoint]});
+
+const dsbNatureCheckpoint = { name: "dsb nature checkpoint", why: "rule: terrain contact, deterministic layout, clear routes and bounded tier populations survive scene re-entry", run: async b => {
+  const exterior=await b.evaluate(`(()=>{
+    const D=__ooga.dsb,L=D.land,E=D.detail;let floating=0,buried=0,blocked=0,invalid=0;
+    const geometries=new Set(),visit=n=>{if(n.geometry)geometries.add(n.geometry);for(const c of n.children)visit(c);};visit(E.group);
+    for(const n of E.group.children)if(n.instanceData){const a=n.instanceData,v=n.geometry.verts;for(let o=0;o<a.length;o+=20){let top=-Infinity;for(let j=0;j<v.length;j+=3){const x=a[o]*v[j]+a[o+8]*v[j+2]+a[o+12],y=a[o+1]*v[j]+a[o+5]*v[j+1]+a[o+9]*v[j+2]+a[o+13],z=a[o+2]*v[j]+a[o+10]*v[j+2]+a[o+14];if(![x,y,z].every(Number.isFinite))invalid++;if(Math.abs(v[j+1])<.001&&y>L.heightAt(x,z)+.005)floating++;top=Math.max(top,y);}if(top<L.heightAt(a[o+12],a[o+14])+.06)buried++;}}
+    for(const p of E.placements)if(p.region!=="pier")for(const line of [L.trail,L.waterfront,...L.lanes])for(let i=1;i<line.length;i++){const a=line[i-1],b=line[i],n=Math.ceil(Math.hypot(b[0]-a[0],b[1]-a[1])*2);for(let j=0;j<=n;j++)if(Math.hypot(p.x-a[0]-(b[0]-a[0])*j/n,p.z-a[1]-(b[1]-a[1])*j/n)<p.r+1.5)blocked++;}
+    window.__exteriorCheck={signature:JSON.stringify(E.placements),old:E};
+    return {floating,buried,blocked,invalid,geometries:geometries.size,facades:E.facades.length,coast:E.placements.filter(p=>p.region==="coast").length,rear:E.placements.some(p=>p.region==="coast"&&p.x<0&&p.z<-28)};
+  })()`);
+  record("DSB exterior: seated props leave routes and rear Olympus clear with seven bounded facades",!exterior.floating&&!exterior.buried&&!exterior.blocked&&!exterior.invalid&&!exterior.rear&&exterior.facades===7&&exterior.coast>10&&exterior.geometries<65,JSON.stringify(exterior));
+  const r=await b.evaluate(`(() => {
+    const B=__ooga,D=B.dsb,N=D.nature,L=D.land;
+    const signature=JSON.stringify(N.placements),counts={};let floating=0,buried=0,blocked=0,invalid=0;
+    for(const f of N.fields) {
+      counts[f.kind]=f.list.length;
+      const v=f.node.geometry.verts,a=f.source;
+      for(let i=0;i<f.list.length;i++) {
+        const o=i*20,p=f.list[i];let top=-Infinity;
+        for(let j=0;j<v.length;j+=3) {
+          const x=a[o]*v[j]+a[o+8]*v[j+2]+a[o+12];
+          const y=a[o+1]*v[j]+a[o+5]*v[j+1]+a[o+9]*v[j+2]+a[o+13];
+          const z=a[o+2]*v[j]+a[o+10]*v[j+2]+a[o+14];
+          if(![x,y,z].every(Number.isFinite))invalid++;
+          if(Math.abs(v[j+1])<.001&&y>L.heightAt(x,z)+.005)floating++;
+          top=Math.max(top,y);
+        }
+        if(top<L.heightAt(p.x,p.z)+.08)buried++;
+        // Sample actual road/trail centre lines; no large silhouette can cross their walking surface.
+        if(f.kind!=="bougainvillea"&&f.kind!=="planter")for(const line of [L.trail,L.waterfront,...L.lanes]) {
+          for(let k=1;k<line.length;k++) {
+            const from=line[k-1],to=line[k],steps=Math.ceil(Math.hypot(to[0]-from[0],to[1]-from[1])*2);
+            for(let q=0;q<=steps;q++)if(Math.hypot(p.x-from[0]-(to[0]-from[0])*q/steps,p.z-from[1]-(to[1]-from[1])*q/steps)<f.spec.r*p.scale+1.5)blocked++;
+          }
+        }
+      }
+    }
+    const originalTier=B.renderer.quality,tiers={};
+    for(const tier of ["high","medium","low"]) {
+      B.renderer.setQuality(tier);N.update(0,0);
+      tiers[tier]={visible:N.stats.visible,gulls:N.stats.gulls,trees:N.fields.slice(0,2).reduce((n,f)=>n+f.node.instanceCount,0)};
+    }
+    B.renderer.setQuality("high");N.update(0,0);const calm=N.stats.sway;
+    D.weather.setMode("storm");for(let i=0;i<240;i++)BL.scenes.dsb.update(1/60,i/60);
+    const windy=N.stats.sway>calm;
+    D.weather.setMode("clear");B.renderer.setQuality(originalTier);
+    // Rebuilding over a translated surface must translate roots, not retain fixed-Y scenery.
+    const root=BL.scene.createNode(),raised={...L,heightAt:(x,z)=>L.heightAt(x,z)+2};
+    const extra=BL.dsbNature.create({root,land:raised,renderer:B.renderer,camera:B.camera,weather:D.weather});
+    const originals=new Map(N.placements.map(p=>[p.kind+":"+p.x+":"+p.z,p]));let matched=0,shifted=0;
+    for(const p of extra.placements){const old=originals.get(p.kind+":"+p.x+":"+p.z);if(old){matched++;if(Math.abs(p.y-old.y-2)<1e-6)shifted++;}}
+    extra.dispose();extra.dispose();
+    window.__natureCheck={signature,old:N,oldRoot:BL.scenes.dsb.root};
+    return {counts,floating,buried,blocked,invalid,tiers,windy,matched,shifted,disposed:root.children.length===0&&extra.group.children.length===0};
+  })()`);
+  record("DSB nature: every contact vertex is grounded, paths stay clear and transformed geometry stays finite",!r.floating&&!r.buried&&!r.blocked&&!r.invalid,JSON.stringify(r));
+  record("DSB nature: surface changes move roots and disposal removes the whole bounded field",r.matched>500&&r.matched===r.shifted&&r.disposed,JSON.stringify(r));
+  record("DSB nature: low tier retains trees, reduces detail and shares storm wind",r.tiers.high.visible>r.tiers.medium.visible&&r.tiers.medium.visible>r.tiers.low.visible&&r.tiers.low.trees>40&&r.tiers.low.gulls===0&&r.windy,JSON.stringify(r));
+  for(let visit=0;visit<2;visit++) {
+    await b.evaluate('__ooga.go("dsb",null,true);__ooga.advance(.05)');
+    const state=await b.evaluate(`(()=>{const p=window.__natureCheck,n=__ooga.dsb.nature;return {same:JSON.stringify(n.placements)===p.signature,cleared:p.oldRoot.children.length===0&&p.old.group.children.length===0,fields:n.group.children.length,total:n.stats.total,textures:__ooga.renderer.stats.waterTextures};})()`);
+    record(`DSB nature: visit ${visit+2} preserves seeded layout and releases old scene`,state.same&&state.cleared&&state.fields===10&&state.total>1000&&state.textures===2,JSON.stringify(state));
+    const detail=await b.evaluate('({same:JSON.stringify(__ooga.dsb.detail.placements)===__exteriorCheck.signature,cleared:__exteriorCheck.old.group.children.length===0})');
+    record(`DSB exterior: visit ${visit+2} releases dressing without duplicates`,detail.same&&detail.cleared,JSON.stringify(detail));
+  }
+  await b.evaluate('delete window.__natureCheck;delete window.__exteriorCheck');
+  record("DSB nature: runtime console remains clean",b.logs.length===0,b.logs.join(" | "));
+}};
+scene("dsb",{label:"nature checkpoint",query:"&overview=1&weather=clear&time=1200",steps:[dsbNatureCheckpoint]});
+scene("dsb",{label:"nature checkpoint phone",query:"&overview=1&weather=clear&time=1200",opts:{w:390,h:844,mobile:true},steps:[dsbNatureCheckpoint]});
+
+const dsbStudioCheckpoint = {name:"dsb studio checkpoint",why:"playthrough: Studio seating preserves locomotion lock, aim/fire and throws; archive and environment dispose through repeated visits",run:async b=>{
+  const step=()=>b.evaluate('for(let i=0;i<48;i++)BL.scenes.dsb.update(1/60,i/60)');
+  const tap=async selector=>{
+    const p=await b.evaluate(`(()=>{const e=document.querySelector(${JSON.stringify(selector)});e.scrollIntoView({block:"center"});const r=e.getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2};})()`);
+    await b.send("Input.dispatchTouchEvent",{type:"touchStart",touchPoints:[p]});await b.send("Input.dispatchTouchEvent",{type:"touchEnd",touchPoints:[]});await step();
+  };
+  await b.key(" ");await step();
+  const layout=await b.evaluate(`(()=>{const B=__ooga,D=B.dsb,R=D.interiors.active?.room;return {id:R?.id,seats:R?.seats.length,entry:R?.groundAt(0,17),lower:R?.groundAt(0,-6),stage:R?.groundAt(0,-12),exterior:D.exterior.visible,rain:D.weather.shared.state.drops,master:D.weather.shared.state.masterLevel,lights:R?.lighting.lightCount};})()`);
+  record("Studio: correct door reveals upper entrance, descending room and isolated stage",layout.id==="dsb-studio"&&layout.seats===39&&layout.entry===3&&layout.lower===0&&layout.stage===.6&&!layout.exterior&&layout.rain===0&&layout.master===0&&layout.lights===3,JSON.stringify(layout));
+  const routes=await b.evaluate(`(()=>{const B=__ooga,D=B.dsb,R=D.interiors.active.room,A=D.avatar,clear=(a,b)=>D.interiors.walkable(a[0],a[1],b[0],b[1],3,2,A);return {left:R.jukeboxAt.x<0,booth:clear([0,12],[5,12])&&clear([5,12],[5,15.5]),corridor:clear([0,17],[0,8.5]),balcony:clear([0,8.5],[13.5,8.5])&&clear([13.5,8.5],[12.5,6.8]),seats:R.seats.every(s=>clear([s.walkAt.x,s.walkAt.z],[s.walkAt.x,s.walkAt.z]))};})()`);
+  record("Studio: left archive, enterable right booth, corridor and balcony approaches stay clear",Object.values(routes).every(Boolean),JSON.stringify(routes));
+  const seatRoundTrip=await b.evaluate(`(()=>{const B=__ooga,R=B.dsb.interiors.active.room;return R.seats.every(s=>{B.pilot.navigate({position:{x:s.walkAt.x,y:s.floor,z:s.walkAt.z},yaw:s.viewYaw??0,pitch:.12,dist:3});return B.crew.sitPlayer(s)&&B.crew.standPlayer()&&!s.sitter;});})()`);
+  record("Studio: every audience, balcony and stage seat sits and stands safely",seatRoundTrip);
+  await b.evaluate('__ooga.pilot.navigate({position:{x:0,y:3,z:13},yaw:0,pitch:.12,dist:3})');
+  await b.send("Input.dispatchKeyEvent",{type:"keyDown",key:"w",code:"KeyW"});await step();await b.send("Input.dispatchKeyEvent",{type:"keyUp",key:"w",code:"KeyW"});
+  await tap("#act");await step();await step();
+  const cues=await b.evaluate('__ooga.dsb.interiors.audio.stats');
+  record("Studio: walking and jumping add no Studio-specific audio sources",cues.sources===3&&cues.contexts===1&&!cues.cues,JSON.stringify(cues));
+  // Playback is deterministic here; a separate live smoke checks the real public source and media.
+  await b.evaluate(`(()=>{
+    window.__studioCheck={fetch:window.fetch,play:HTMLMediaElement.prototype.play,pause:HTMLMediaElement.prototype.pause,requests:0,plays:0,active:new Set()};
+    const check=window.__studioCheck;
+    window.fetch=(url,opts)=>{if(String(url).startsWith("https://hodlerhiq.net/")){check.requests++;return Promise.resolve(new Response(JSON.stringify({content:{rendered:[1,2,3].map(i=>'<div data-mediafile="https://hodlerhiq.net/wp-content/uploads/2026/fixture-'+i+'.mp3"><span class="player_song_name" data-albumname="2026-01-0'+i+'">Space '+i+'</span></div>').join("")}})));}return check.fetch(url,opts);};
+    HTMLMediaElement.prototype.play=function(){Object.defineProperty(this,"paused",{configurable:true,value:false});check.plays++;check.active.add(this);this.dispatchEvent(new Event("play"));return Promise.resolve();};
+    HTMLMediaElement.prototype.pause=function(){Object.defineProperty(this,"paused",{configurable:true,value:true});check.active.delete(this);this.dispatchEvent(new Event("pause"));};
+  })()`);
+  const listeners=async()=>{const a=await b.send("Runtime.evaluate",{expression:"document"}),r=await b.send("DOMDebugger.getEventListeners",{objectId:a.result.result.objectId});await b.send("Runtime.releaseObject",{objectId:a.result.result.objectId});return r.result.listeners.length;};
+  const startListeners=await listeners();let baseline=null;
+  for(let cycle=0;cycle<3;cycle++){
+    if(cycle){await tap("#dsb-context");await step();}
+    await b.evaluate(`(()=>{const B=__ooga,s=B.dsb.interiors.active.room.stageSeats[${cycle}];B.pilot.navigate({position:{x:s.walkAt.x,y:s.floor,z:s.walkAt.z},yaw:0,pitch:.12,dist:3});})()`);await step();await tap("#dsb-context");
+    const seated=await b.evaluate('({seat:!!__ooga.dsb.avatar.camp.seat,leg:__ooga.dsb.avatar.parts.legL.rotation.x,p:{...__ooga.dsb.avatar.root.position},close:__ooga.pilot.closeWanted,yaw:__ooga.dsb.avatar.root.rotation.y})');
+    await b.send("Input.dispatchKeyEvent",{type:"keyDown",key:"w",code:"KeyW"});await step();await b.send("Input.dispatchKeyEvent",{type:"keyUp",key:"w",code:"KeyW"});
+    await tap("#weapon-hud");await tap("#weapon-hud");await tap(".dsb-studio-tools button");
+    await b.evaluate('if(!__ooga.dsb.avatar.weapon.aiming)__ooga.pilot.modeAction("mode-toggle");__ooga.crew.look(2.7,.1,1)');await step();
+    const fired=await b.evaluate('({seat:!!__ooga.dsb.avatar.camp.seat,p:{...__ooga.dsb.avatar.root.position},yaw:__ooga.dsb.avatar.root.rotation.y,shots:__ooga.dsb.avatar.weapon.shotsFired,throws:__ooga.crew.stats().tomatoesThrown,aim:__ooga.dsb.avatar.weapon.aiming,audio:__ooga.dsb.interiors.audio.stats})');
+    record("Studio: seat "+cycle+" locks walking with seated pose and allows gun/throw controls",seated.seat&&seated.close&&seated.leg<-1.5&&Math.cos(seated.yaw)>.9&&fired.seat&&Math.hypot(fired.p.x-seated.p.x,fired.p.z-seated.p.z)<.001&&fired.shots>cycle&&fired.throws===cycle+1&&fired.aim&&fired.audio.sources===3&&!fired.audio.cues,JSON.stringify({seated,fired}));
+    const standControls=await b.evaluate('Array.from(document.querySelectorAll("button")).filter(e=>/stand up/i.test(e.textContent)&&e.getClientRects().length&&getComputedStyle(e).visibility!=="hidden").length');
+    record("Studio: seated control "+cycle+" has one stand action and no lighting button",standControls===1&&!await b.evaluate('Array.from(document.querySelectorAll("button")).some(e=>/stage lights|studio lights/i.test(e.textContent))'));
+    await tap("#act");
+    const stood=await b.evaluate('({seat:!!__ooga.dsb.avatar.camp.seat,close:__ooga.pilot.closeWanted,clear:__ooga.dsb.interiors.walkable(__ooga.dsb.avatar.root.position.x,__ooga.dsb.avatar.root.position.z,__ooga.dsb.avatar.root.position.x,__ooga.dsb.avatar.root.position.z,0,2,__ooga.dsb.avatar)})');
+    record("Studio: touch stand "+cycle+" restores clear ground and follow camera",!stood.seat&&!stood.close&&stood.clear,JSON.stringify(stood));
+    await b.evaluate('__ooga.pilot.navigate({position:__ooga.dsb.interiors.active.room.jukeboxAt,yaw:-Math.PI/2,pitch:.12,dist:3})');await step();await tap("#dsb-context");await b.sleep(80);
+    await tap(".spaces-item");await tap(".dsb-spaces [data-next]");await tap(".dsb-spaces [data-prev]");await tap(".dsb-spaces [data-play]");
+    const paused=await b.evaluate('!__ooga.dsb.spaces.stats.playing');await tap(".dsb-spaces [data-play]");await tap(".dsb-spaces [data-close]");
+    await tap("#dsb-context");await tap(".dsb-spaces [data-close]");
+    const audio=await b.evaluate('({stats:__ooga.dsb.spaces.stats,active:__studioCheck.active.size,requests:__studioCheck.requests})');
+    record("Studio: archive "+cycle+" browses, pauses, resumes and reuses one player/cache",paused&&audio.stats.items===3&&audio.stats.playing&&audio.active===1&&audio.requests===cycle+1,JSON.stringify(audio));
+    const localized=await b.evaluate(`(()=>{const B=__ooga,D=B.dsb,R=D.interiors.active.room,plays=__studioCheck.plays,near=D.spaces.stats.gain;B.pilot.navigate({position:{x:0,y:3,z:8.5},yaw:0,pitch:.12,dist:3});BL.scenes.dsb.update(1/60,0);const far=D.spaces.stats;B.pilot.navigate({position:R.jukeboxAt,yaw:Math.PI/2,pitch:.12,dist:3});BL.scenes.dsb.update(1/60,0);return {near,far,back:D.spaces.stats,plays:__studioCheck.plays-plays};})()`);
+    record("Studio: archive "+cycle+" fades to silence in theater and returns without replay",localized.near>.9&&localized.far.gain===0&&localized.far.muted&&localized.far.playing&&localized.back.gain>.9&&!localized.back.muted&&localized.plays===0,JSON.stringify(localized));
+    await b.evaluate('__ooga.pilot.navigate({position:__ooga.dsb.interiors.active.room.spawn,yaw:0,pitch:.22,dist:3})');await step();await tap("#dsb-context");
+    const end=await b.evaluate(`(()=>{const B=__ooga,D=B.dsb;return {indoor:!!D.interiors.active,seat:!!D.avatar.camp.seat,spaces:D.spaces.stats,active:__studioCheck.active.size,weather:D.weather.state.exterior,trigger:D.avatar.weapon.triggerHeld,projectiles:B.crew.stats().projectiles,rooms:D.interiors.rooms.size,dom:document.querySelectorAll(".dsb-spaces").length,records:B.renderer.stats.records};})()`);
+    record("Studio: exit "+cycle+" disposes playback, seat, projectiles and restores exterior",!end.indoor&&!end.seat&&end.spaces.media===0&&end.spaces.cached===0&&end.active===0&&end.weather&&!end.trigger&&end.projectiles===0&&end.dom===1,JSON.stringify(end));
+    if(cycle===1)baseline=end;else if(cycle===2)record("Studio: warmed room records remain bounded",end.records<=baseline.records,JSON.stringify({baseline,end}));
+  }
+  record("Studio: repeated cycles retain one listener set",await listeners()===startListeners);
+  const seats=await b.evaluate(`(()=>{const B=__ooga,R=B.dsb.interiors.rooms.get("dsb-studio");return R.seats.every(s=>!s.sitter);})()`);record("Studio: every seat releases occupancy",seats);
+  await b.evaluate('window.fetch=__studioCheck.fetch;HTMLMediaElement.prototype.play=__studioCheck.play;HTMLMediaElement.prototype.pause=__studioCheck.pause;__studioCheck.old=__ooga.dsb.spaces;__ooga.go("bifrost",null,true);__ooga.advance(.05);__ooga.go("dsb",null,true);__ooga.advance(.05)');
+  const fresh=await b.evaluate('({old:__studioCheck.old.stats,dialogs:document.querySelectorAll(".dsb-spaces").length,rooms:__ooga.dsb.interiors.rooms.size,seat:!!__ooga.dsb.avatar.camp.seat})');
+  record("Studio: leaving DSB and reentering creates one clean archive controller",!fresh.old.active&&fresh.old.media===0&&fresh.dialogs===1&&fresh.rooms===0&&!fresh.seat,JSON.stringify(fresh));
+  await b.evaluate('delete window.__studioCheck');
+}};
+scene("dsb",{label:"studio checkpoint",query:"&view=studio-door&weather=storm&time=1200",steps:[dsbStudioCheckpoint]});
+scene("dsb",{label:"studio checkpoint phone",query:"&view=studio-door&weather=storm&time=1200",opts:{w:390,h:844,mobile:true},steps:[dsbStudioCheckpoint]});
+
+
+const dsbIntegrationCheckpoint={name:"dsb integration checkpoint",why:"contract: global account UI, venue zones and direct return survive desktop and mobile scene transitions",run:async b=>{
+  const step=()=>b.evaluate('for(let i=0;i<36;i++)BL.scenes.dsb.update(1/60,i/60)');
+  const read=()=>b.evaluate('({zone:BL.net.state.zone,body:__ooga.dsb?.presence.body,backend:BL.net.state.backend,room:BL.net.state.room,hidden:document.getElementById("sheet").hidden,open:document.getElementById("sheet").dataset.open})');
+  let state=await read();
+  record("DSB integration: static scene exposes global sheet without backend room",state.zone==="dsb-outside"&&!state.hidden&&!state.backend&&state.room==="off",JSON.stringify(state));
+  await b.evaluate('document.getElementById("sheet-toggle").click()');
+  record("DSB integration: global roster opens and persists",await b.evaluate('document.getElementById("sheet").dataset.open==="true"&&JSON.parse(localStorage.getItem("oogaboogaland.sheet.v1")).open'));
+  const focus=await b.evaluate('(()=>{document.getElementById("sheet-toggle").focus();return {x:__ooga.dsb.avatar.root.position.x,z:__ooga.dsb.avatar.root.position.z};})()');
+  await b.send("Input.dispatchKeyEvent",{type:"keyDown",key:"w",code:"KeyW"});await step();await b.send("Input.dispatchKeyEvent",{type:"keyUp",key:"w",code:"KeyW"});
+  const moved=await b.evaluate('({x:__ooga.dsb.avatar.root.position.x,z:__ooga.dsb.avatar.root.position.z})');
+  record("DSB integration: focused global sheet isolates movement",Math.hypot(focus.x-moved.x,focus.z-moved.z)<.001,JSON.stringify({focus,moved}));
+  await b.evaluate('document.activeElement.blur()');
+  const zones={"dsb-studio":"dsb-studio","maxis-club":"dsb-maxis","without-rulers":"dsb-without-rulers","proof-of-ink":"dsb-proof-of-ink","big-bitcoin":"dsb-big-bitcoin","meme-factory":"dsb-meme-factory","stackchain-magazine":"dsb-stackchain","svrn-society":"dsb-svrn"};
+  for(const [id,zone] of Object.entries(zones)){
+    await b.evaluate(`__ooga.dsb.interiors.review(${JSON.stringify(id)},true)`);await step();state=await read();
+    record("DSB integration: "+id+" immediately selects its voice zone",state.zone===zone&&!!state.body,JSON.stringify(state));
+    if(id==="svrn-society"){
+      await b.evaluate('__ooga.dsb.svrnMenu.open("home")');
+      record("DSB integration: venue modal isolates the global sheet and owns focus",await b.evaluate('(()=>{const s=document.getElementById("sheet");return !!s.closest("[inert]")&&document.activeElement.closest(".svrn-menu")!==null&&BL.dsbMenuShell.count===1;})()'));
+      await b.key("Escape");
+      record("DSB integration: closing venue restores global menu without changing saved state",await b.evaluate('!document.getElementById("sheet").closest("[inert]")&&document.getElementById("sheet").dataset.open==="true"&&BL.dsbMenuShell.count===0'));
+    }
+    await b.evaluate('__ooga.dsb.interiors.request(__ooga.dsb.interiors.active.room.exit)');await step();
+    record("DSB integration: exit "+id+" restores exterior voice",await b.evaluate('BL.net.state.zone==="dsb-outside"&&!__ooga.dsb.interiors.active'));
+  }
+  await b.evaluate('__ooga.go("bifrost");__ooga.advance(.6,.3)');
+  record("DSB integration: short direct return clears DSB presence and keeps global sheet",await b.evaluate('__ooga.scene==="bifrost"&&BL.net.state.zone==="scene-bifrost"&&!document.querySelector(".dsb-entry")&&document.getElementById("sheet").dataset.open==="true"'));
+  await b.evaluate('__ooga.go("dsb");__ooga.advance(.6,.3)');
+  record("DSB integration: outbound Bifrost journey uses special tunnel without island voice",await b.evaluate('__ooga.dsb.entrance.phase==="tunnel"&&BL.net.state.zone==="dsb-transit"&&document.getElementById("sheet").dataset.open==="true"'));
+  await b.evaluate('__ooga.dsb.entrance.skip();__ooga.advance(.1,.1)');
+  record("DSB integration: arrival restores exterior and rectangular membrane",await b.evaluate('BL.net.state.zone==="dsb-outside"&&__ooga.dsb.gate.horizon.geometry.portalRect'));
+}};
+scene("dsb",{label:"integration checkpoint",query:"&weather=clear&time=1200",steps:[dsbIntegrationCheckpoint]});
+scene("dsb",{label:"integration checkpoint phone",query:"&weather=clear&time=1200",opts:{w:390,h:844,mobile:true},steps:[dsbIntegrationCheckpoint]});
 
 const runTasks = async () => {
   const picked = tasks.filter((t) => (t.perf ? PERF : PICKED.includes(t.scene)));

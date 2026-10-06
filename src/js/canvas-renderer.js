@@ -392,7 +392,7 @@
       const mirrorFace = !!(node.mirror || node.mirrorPortal || node.mirrorShard || node.mirrorRippleOnly || node.geometry.reflector);
       const portalFace = !!node.mirrorPortal || !!node.mirrorWalkThrough && mirrorDebug.portal;
       const localMatrixGlyph = !!node.geometry.matrixGlyph;
-      const liquid = !!node.geometry.portalSurface, projective = !!node.geometry.projective;
+      const liquid = !!node.geometry.portalSurface, rectangular = !!node.geometry.portalRect, projective = !!node.geometry.projective;
       const waterBody = node.geometry.lakeBody;
       // Every voxel face in a glyph shares this instance plane and basis.
       const glyphLength = localMatrixGlyph ? Math.hypot(w[8], w[9], w[10]) : 1;
@@ -421,7 +421,9 @@
             // Portal faces are radial strips. Skip those beyond the reveal,
             // then trim only the crossing strip; the interior keeps its scale.
             const a = idx[0] * 3, b = idx[1] * 3;
-            if (Math.min(Math.hypot(verts[a], verts[a + 2]), Math.hypot(verts[b], verts[b + 2])) >= node.portalReveal) continue;
+            const ra=rectangular?Math.max(Math.abs(verts[a]),Math.abs(verts[a+2])):Math.hypot(verts[a],verts[a+2]);
+            const rb=rectangular?Math.max(Math.abs(verts[b]),Math.abs(verts[b+2])):Math.hypot(verts[b],verts[b+2]);
+            if (Math.min(ra,rb) >= node.portalReveal) continue;
           }
           let centerX = 0, centerY = 0, centerZ = 0, liquidX = 0, liquidZ = 0;
           for (let k = 0; k < count; k++) {
@@ -432,11 +434,11 @@
               x = waterBodyPoint[0]; y = waterBodyPoint[1]; z = waterBodyPoint[2];
             }
             if (liquid) {
-              const radius = Math.hypot(x, z);
+              const radius = rectangular?Math.max(Math.abs(x),Math.abs(z)):Math.hypot(x, z);
               if (radius > node.portalReveal) { const clip = node.portalReveal / radius; x *= clip; z *= clip; }
               liquidX += x / count; liquidZ += z / count;
             }
-            const displacement = liquid ? BL.oogaPortalModels.liquidHeight(x, z, node.portalTime, node.portalSurge) : 0;
+            const displacement = liquid ? BL.oogaPortalModels.liquidHeight(x, z, node.portalTime, node.portalSurge, rectangular) : 0;
             mat4.transformPoint(V[k], w, x, y + displacement, z);
             if (face.lake && node.geometry.lakeWaves) {
               BL.poolWater.sampleWaves(waterWave, V[k][0], V[k][2], node.geometry.lakeWaves, node.geometry.lakeWaveEnd);
@@ -777,7 +779,7 @@
                 }
               }
               if (liquid) {
-                const time = node.portalTime, radius = Math.hypot(liquidX, liquidZ);
+                const time = node.portalTime, radius = rectangular?Math.max(Math.abs(liquidX),Math.abs(liquidZ)):Math.hypot(liquidX, liquidZ);
                 const interference = Math.sin(Math.hypot(liquidX - 0.22, liquidZ + 0.17) * 32 - time * 4)
                   + Math.sin(Math.hypot(liquidX + 0.31, liquidZ - 0.24) * 25 - time * 3);
                 const crest = smooth((interference - 0.8) / 1.1), pulse = (0.5 + 0.5 * Math.sin(radius * 20 - time * 2)) ** 12;
@@ -1836,7 +1838,7 @@
         return "low";
       },
       get stats() {
-        return { records: 0, active: 0, mirrorResources: mirrorDebug.resources, imageTextures: 0, rippleBodyTextures: 0, shadowResources: 0, shadowSize: 0, shadowPassCount: 0, shadowFinite: true, culled: matrixCulled, drawn: 0, suppressed, rippleSurfaces, rippleWaves, matrixSurfaces, matrixLivingSurfaces, matrixSamples, matrixSampleStep, matrixSampleBudget: MATRIX_SAMPLE_BUDGET, matrixTileBytes: matrixPixels.byteLength };
+        return { waterTextures: 0, records: 0, active: 0, mirrorResources: mirrorDebug.resources, imageTextures: 0, rippleBodyTextures: 0, shadowResources: 0, shadowSize: 0, shadowPassCount: 0, shadowFinite: true, culled: matrixCulled, drawn: 0, suppressed, rippleSurfaces, rippleWaves, matrixSurfaces, matrixLivingSurfaces, matrixSamples, matrixSampleStep, matrixSampleBudget: MATRIX_SAMPLE_BUDGET, matrixTileBytes: matrixPixels.byteLength };
       },
       get mirror() {
         return mirrorDebug;

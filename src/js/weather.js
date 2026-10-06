@@ -194,18 +194,26 @@
   // The flash strobes twice, then decays: full, dip, second bright, tail.
   const flashAt = (t) => t < 0.08 ? 1 : t < 0.14 ? 0.25 : t < 0.22 ? 0.85 : 0.85 * Math.exp(-(t - 0.22) / FLASH_TAU);
 
-  const create = ({ root, renderer, camera, heightAt, fx = null, onRain = null, centre }) => {
+  const create = ({ root, renderer, camera, heightAt, fx = null, onRain = null, centre, presentation = null, random = Math.random, audioFactory = null }) => {
+    // Optional presentation keeps the shared state, pool, clouds and sound reusable by large worlds.
+    const field = presentation ? presentation.field : centre;
+    const cloudCentre = presentation ? presentation.cloudCentre : centre;
+    const cloudRadius = presentation ? presentation.cloudRadius : CLOUD_R;
+    const cloudScale = presentation ? presentation.cloudScale : 1;
+    const cloudFloor = presentation ? 0 : CLOUD_FLOOR;
+    let exterior = true;
     const canvas2d = renderer.kind === "canvas2d";
     const cap = canvas2d ? CAP_CANVAS : (CAP[renderer.quality] || CAP.medium);
     const node = createNode({ geometry: rainDrop(), instanceData: new Float32Array(cap * 20), instanceCount: 0, drawInstanceCount: 0, instanceVersion: 0, fixedInstanceCapacity: true });
     const x = new Float32Array(cap), y = new Float32Array(cap), z = new Float32Array(cap);
     const w = new Float32Array(cap), h = new Float32Array(cap), vy = new Float32Array(cap);
     let count = 0;
-    let flash = 0, flashT = -1, boltT = -1, thunderAt = -1, strikes = 0, boltVariant = -1;
+    let flash = 0, flashT = -1, boltT = -1, thunderAt = -1, strikes = 0, thunders = 0, boltVariant = -1;
     // Everything the feed sets is a target; the live value walks there so nothing snaps.
     // `reading` is the arrivals as last heard, `heardAt` when; `storm` is their average and `gale` the wind.
     let storm = 0, reading = 0, heardAt = 0, inflow = 0, fresh = false, gale = 0, wet = 0, shelter = 0;
-    let cloud = 0, near = 0, heard = 0, windAngle = Math.random() * Math.PI * 2, windX = 0, windZ = 0;
+    let cloud = 0, near = 0, heard = 0, windAngle = random() * Math.PI * 2, windX = 0, windZ = 0;
+    let soakTarget = 0, galeTarget = 0, manual = false;
     let stepAt = 0, state = STEPS[0], applied = false;
     const fog = new Float32Array(3);
     const variants = bolts();
@@ -218,14 +226,14 @@
     const cloudN = canvas2d ? CLOUD_CANVAS : (CLOUD[renderer.quality] || CLOUD.medium);
     const clouds = [], cloudX = new Float32Array(cloudN), cloudZ = new Float32Array(cloudN), cloudBase = new Float32Array(cloudN);
     for (let i = 0; i < cloudN; i++) {
-      const a = cloudRand() * Math.PI * 2, r = Math.sqrt(cloudRand()) * CLOUD_R;
+      const a = cloudRand() * Math.PI * 2, r = Math.sqrt(cloudRand()) * cloudRadius;
       cloudX[i] = Math.cos(a) * r;
       cloudZ[i] = Math.sin(a) * r;
       cloudBase[i] = 0.7 + cloudRand() * 0.85;
       // Three loose tiers so the deck has depth instead of reading as one flat lid.
       const tier = i % CLOUD_TIERS;
       const cloud = createNode({
-        position: { x: centre.x + cloudX[i], y: centre.y + FIELD_TOP + CLOUD_LIFT + tier * 2.6 + cloudRand() * 1.8, z: centre.z + cloudZ[i] },
+        position: { x: cloudCentre.x + cloudX[i], y: cloudCentre.y + FIELD_TOP + CLOUD_LIFT + tier * 2.6 + cloudRand() * 1.8, z: cloudCentre.z + cloudZ[i] },
         rotation: { x: 0, y: cloudRand() * Math.PI * 2, z: 0 },
         geometry: CLOUD_FAIR(), scale: { x: 0.01, y: 0.01, z: 0.01 }, visible: false
       });
@@ -235,17 +243,18 @@
     let cloudCover = 0, cloudForm = "fair";
 
     // Sound: the context opens only after a real gesture, so weather on a fresh page stays silent.
-    let ctx = null, master = null, noise = null, rainGain = null, windGain = null, muted = false;
+    let audioLayer = null;
+    let ctx = null, master = null, noise = null, rainGain = null, windGain = null, surfGain = null, thunderGain = null, thunderFilter = null, muted = false, audioConnected = false;
     try {
       muted = localStorage.getItem(STORAGE_KEY) === "off";
     } catch {
     }
     const initAudio = () => {
-      if (ctx || typeof AudioContext === "undefined" || navigator.userActivation && !navigator.userActivation.hasBeenActive) return false;
+      if (!exterior || ctx || typeof AudioContext === "undefined" || navigator.userActivation && !navigator.userActivation.hasBeenActive) return false;
       ctx = new AudioContext();
       master = ctx.createGain();
-      master.gain.value = muted ? 0 : MASTER;
-      master.connect(ctx.destination);
+      master.gain.value = muted || !exterior ? 0 : MASTER;
+      master.connect(ctx.destination); audioConnected = true;
       const buffer = ctx.createBuffer(1, Math.floor(ctx.sampleRate * NOISE_SECONDS), ctx.sampleRate);
       const data = buffer.getChannelData(0);
       for (let i = 0; i < data.length; i++) data[i] = Math.random() * 2 - 1;
@@ -271,53 +280,57 @@
       noise.connect(howl);
       howl.connect(windGain);
       windGain.connect(master);
+      // One reusable thunder voice, never a timeout or a new graph per strike.
+      thunderFilter = ctx.createBiquadFilter(); thunderFilter.type = "lowpass"; thunderFilter.Q.value = 1.2;
+      thunderGain = ctx.createGain(); thunderGain.gain.value = 0;
+      noise.connect(thunderFilter); thunderFilter.connect(thunderGain); thunderGain.connect(master);
+      if (presentation) {
+        const surf = ctx.createBiquadFilter(); surf.type = "lowpass"; surf.frequency.value = 580;
+        surfGain = ctx.createGain(); surfGain.gain.value = 0;
+        noise.connect(surf); surf.connect(surfGain); surfGain.connect(master);
+      }
       noise.start();
-      if (ctx.state === "suspended") ctx.resume();
+      // Optional scene source shares this context and the exact exterior master gate.
+      if (audioFactory) { audioLayer = audioFactory(ctx, master); audioLayer.setEnabled?.(exterior && !muted); }
+      if (ctx.state === "suspended") ctx.resume().catch(() => {});
       return true;
     };
     // The listener's own distance, read when a roll arrives rather than when its bolt was lit.
     const heardNow = () => {
+      if (presentation) return exterior ? 1 : 0;
       const dx = camera.target.x - centre.x, dz = camera.target.z - centre.z;
       const k = clamp((HEARD_NONE - Math.sqrt(dx * dx + dz * dz)) / (HEARD_NONE - HEARD_FULL), 0, 1);
       return k * k * (1 - SHELTER_THUNDER * shelter);
     };
     const rumble = () => {
-      if (!initAudio() && !ctx) return;
+      if (!exterior || muted || (!initAudio() && !ctx)) return;
+      thunders++;
       const t = ctx.currentTime;
       // Distance takes the crack off a strike before it takes the roll: the opening band falls toward
       // the tail's own frequency as you walk away, so thunder from across the water is a low rumble
       // while thunder overhead still snaps. `near` is read when the roll arrives, not when it was lit.
       const level = lerp(DISTANT_THUNDER, 1, heardNow());
-      const low = ctx.createBiquadFilter();
-      low.type = "lowpass";
+      const low = thunderFilter, g = thunderGain;
+      low.frequency.cancelScheduledValues(t); g.gain.cancelScheduledValues(t);
       low.frequency.setValueAtTime(lerp(140, 420, level), t);
       low.frequency.exponentialRampToValueAtTime(90, t + 2.8);
-      low.Q.value = 1.2;
-      const g = ctx.createGain();
       g.gain.setValueAtTime(0.0001, t);
       g.gain.exponentialRampToValueAtTime(0.28 * level, t + 0.06);
       g.gain.exponentialRampToValueAtTime(0.11 * level, t + 0.5);
       g.gain.exponentialRampToValueAtTime(0.2 * level, t + 0.9);
       g.gain.exponentialRampToValueAtTime(0.0001, t + 3.2);
-      noise.connect(low);
-      low.connect(g);
-      g.connect(master);
-      window.setTimeout(() => {
-        low.disconnect();
-        g.disconnect();
-      }, 3400);
     };
 
     // One particle placed at the top of the field, in a disk around the camera target.
     const seed = (i, fromTop) => {
-      const t = centre;
-      const a = Math.random() * Math.PI * 2, r = Math.sqrt(Math.random()) * FIELD_R;
+      const t = field;
+      const a = random() * Math.PI * 2, r = Math.sqrt(random()) * FIELD_R;
       x[i] = t.x + Math.cos(a) * r;
       z[i] = t.z + Math.sin(a) * r;
-      y[i] = fromTop ? t.y + FIELD_TOP + Math.random() * FIELD_SPREAD : t.y + Math.random() * (FIELD_TOP + FIELD_SPREAD) - RECYCLE_BELOW;
-      const size = clamp(DROP_MIN + Math.random() * 1.1 + wet * DROP_LIFT, DROP_MIN, DROP_MAX);
-      w[i] = size;
-      h[i] = 0.8 + size * 0.35;
+      y[i] = fromTop ? t.y + FIELD_TOP + random() * FIELD_SPREAD : t.y + random() * (FIELD_TOP + FIELD_SPREAD) - RECYCLE_BELOW;
+      const size = clamp(DROP_MIN + random() * 1.1 + wet * DROP_LIFT, DROP_MIN, DROP_MAX);
+      w[i] = presentation ? size * .45 : size;
+      h[i] = (0.8 + size * 0.35) * (presentation ? .55 : 1);
       vy[i] = RAIN_FALL + RAIN_FALL_PER_SIZE * size;
     };
     // The feed's standing view of the chain. Targets only; `update` walks the live values there, and judges
@@ -327,6 +340,9 @@
       reading = clamp(snapshot.gale, 0, 1);
       heardAt = snapshot.socketAt || 0;
       inflow = snapshot.inflow || 0;
+      manual = !!presentation && snapshot.presentation === true;
+      soakTarget = clamp(Number.isFinite(snapshot.soak) ? snapshot.soak : 0, 0, 1);
+      galeTarget = clamp(Number.isFinite(snapshot.gale) ? snapshot.gale : 0, 0, 1);
       if (!applied) {
         applied = true;
         storm = gale = heardAt > 0 && now - heardAt < ARRIVALS_FRESH_MS ? reading : 0;
@@ -336,20 +352,20 @@
       strikes++;
       flashT = 0;
       boltT = 0;
-      thunderAt = THUNDER_DELAY_MIN + Math.random() * THUNDER_DELAY_SPREAD;
-      const a = Math.random() * Math.PI * 2, r = 6 + Math.random() * (BOLT_RANGE - 6), t = centre;
+      thunderAt = exterior ? THUNDER_DELAY_MIN + random() * THUNDER_DELAY_SPREAD : -1;
+      const a = random() * Math.PI * 2, r = 6 + random() * (BOLT_RANGE - 6), t = centre;
       const bx = landing ? landing.x : t.x + Math.cos(a) * r, bz = landing ? landing.z : t.z + Math.sin(a) * r;
       // A bolt that finds no ground under it strikes down to the island's own datum.
       const found = landing ? landing.y : heightAt(bx, bz), ground = found > -Infinity ? found : t.y;
-      boltVariant = (Math.random() * variants.length) | 0;
+      boltVariant = (random() * variants.length) | 0;
       boltNode.geometry = variants[boltVariant];
       boltNode.position.x = bx;
       boltNode.position.z = bz;
       boltNode.position.y = ground;
-      boltNode.rotation.y = Math.random() * Math.PI * 2;
+      boltNode.rotation.y = random() * Math.PI * 2;
       // A mirrored x flips the fork side, doubling the variants for free.
-      boltNode.scale.x = (4 + Math.random() * 3) * (Math.random() < 0.5 ? -1 : 1);
-      boltNode.scale.z = 4 + Math.random() * 3;
+      boltNode.scale.x = (4 + random() * 3) * (random() < 0.5 ? -1 : 1);
+      boltNode.scale.z = 4 + random() * 3;
       boltNode.scale.y = t.y + FIELD_TOP + BOLT_HEIGHT - ground;
       boltNode.visible = true;
     };
@@ -358,6 +374,9 @@
 
     const update = (dt, opts, sheltered = 0, now = Date.now()) => {
       const previousCount = node.instanceCount;
+      const tierCap = Math.min(cap, canvas2d ? CAP_CANVAS : (CAP[renderer.quality] || CAP.medium));
+      const tierClouds = Math.min(cloudN, canvas2d ? CLOUD_CANVAS : (CLOUD[renderer.quality] || CLOUD.medium));
+      if (presentation) initAudio();
       const step = dt / EASE;
       shelter = sheltered;
       // Arrivals no socket has vouched for lately say nothing: the storm eases to calm, it does not read zero.
@@ -372,9 +391,11 @@
       // Loudness on its own shorter curve, then squared: audible only around the rainforest, already
       // almost gone halfway back over the bridge, and exactly zero anywhere else in the world.
       const reach = clamp((HEARD_NONE - away) / (HEARD_NONE - HEARD_FULL), 0, 1);
-      heard = reach * reach * (1 - SHELTER_SOUND * shelter);
-      storm += (arriving - storm) * (1 - Math.exp(-dt / STORM_TAU));
-      if (Math.abs(gale - arriving) > DEAD_BAND) gale = walk(gale, arriving, step); else gale = arriving;
+      heard = presentation ? (exterior ? 1 : 0) : reach * reach * (1 - SHELTER_SOUND * shelter);
+      if (manual) storm = walk(storm, soakTarget, step);
+      else storm += (arriving - storm) * (1 - Math.exp(-dt / STORM_TAU));
+      const windTarget = manual ? galeTarget : arriving;
+      if (Math.abs(gale - windTarget) > DEAD_BAND) gale = walk(gale, windTarget, step); else gale = windTarget;
       state = STEPS[stepAt = stepFor(storm, stepAt)];
       wet = wetAt(storm);
 
@@ -385,7 +406,7 @@
       windZ = Math.sin(windAngle) * windSpeed;
 
       // The deck above: how much of it is there, what colour, and how hard it is lit from below.
-      const wantCover = clamp(wet * 0.55 + storm * 0.45, 0, 1);
+      const wantCover = presentation ? presentation.cloud : clamp(wet * 0.55 + storm * 0.45, 0, 1);
       cloudCover += (wantCover - cloudCover) * Math.min(1, dt / CLOUD_EASE);
       const wantForm = cloudCover < 0.18 ? "fair" : "grey";
       if (wantForm !== cloudForm) {
@@ -393,7 +414,7 @@
         const geometry = wantForm === "fair" ? CLOUD_FAIR() : CLOUD_GREY();
         for (let i = 0; i < cloudN; i++) clouds[i].geometry = geometry;
       }
-      const shown = Math.round(cloudN * clamp(CLOUD_FLOOR + cloudCover * (1 - CLOUD_FLOOR), 0, 1));
+      const shown = Math.round(tierClouds * clamp(cloudFloor + cloudCover * (1 - cloudFloor), 0, 1));
       for (let i = 0; i < cloudN; i++) {
         const cloud = clouds[i];
         if (i >= shown) {
@@ -405,13 +426,13 @@
         cloudZ[i] += windZ * CLOUD_DRIFT * dt;
         // Wrap across the cell rather than drifting away, so the deck never leaves and never grows.
         const cr = Math.hypot(cloudX[i], cloudZ[i]);
-        if (cr > CLOUD_R) {
-          cloudX[i] = -cloudX[i] / cr * CLOUD_R;
-          cloudZ[i] = -cloudZ[i] / cr * CLOUD_R;
+        if (cr > cloudRadius) {
+          cloudX[i] = -cloudX[i] / cr * cloudRadius;
+          cloudZ[i] = -cloudZ[i] / cr * cloudRadius;
         }
-        cloud.position.x = centre.x + cloudX[i];
-        cloud.position.z = centre.z + cloudZ[i];
-        const k = cloudBase[i] * (0.8 + cloudCover * 0.6);
+        cloud.position.x = cloudCentre.x + cloudX[i];
+        cloud.position.z = cloudCentre.z + cloudZ[i];
+        const k = cloudBase[i] * (0.8 + cloudCover * 0.6) * cloudScale;
         cloud.scale.x = cloud.scale.z = k;
         cloud.scale.y = k * 0.6;
         // Lightning lights the deck from inside before it lights anything else.
@@ -420,14 +441,16 @@
 
       // The population is the weather: hold `target` particles alive and the rain lasts as long as
       // the backlog stands, instead of stopping the moment a transaction stops arriving.
-      const target = Math.min(cap, Math.round(cap * clamp(wet * (0.65 + 0.35 * storm), 0, 1)));
+      const target = exterior ? Math.min(tierCap, Math.round(tierCap * clamp(wet * (0.65 + 0.35 * storm), 0, 1))) : 0;
+      if (!exterior) count = 0;
+      count = Math.min(count, tierCap);
       if (count < target) {
         // Fill over about a second so a change eases in rather than popping a full field.
         const room = Math.min(target - count, Math.max(1, Math.ceil(cap * dt)));
         for (let n = 0; n < room; n++, count++) seed(count, !applied || previousCount > 0);
       }
 
-      const t = centre, data = node.instanceData;
+      const t = field, data = node.instanceData;
       const floorY = t.y - RECYCLE_BELOW;
       for (let i = 0; i < count; i++) {
         y[i] -= vy[i] * dt;
@@ -455,8 +478,9 @@
       }
       node.instanceCount = node.drawInstanceCount = count;
       if (count || previousCount) node.instanceVersion++;
+      if (surfGain) surfGain.gain.setTargetAtTime(presentation.surf * heard * 0.09, ctx.currentTime, 0.3);
       if (rainGain) {
-        rainGain.gain.setTargetAtTime(Math.min(1, count / (cap * 0.6)) * 0.09 * heard, ctx.currentTime, 0.25);
+        rainGain.gain.setTargetAtTime(Math.min(1, count / (tierCap * 0.6)) * 0.09 * heard, ctx.currentTime, 0.25);
         windGain.gain.setTargetAtTime(gale * (wet > 0 ? 0.07 : 0.02) * heard, ctx.currentTime, 0.4);
       }
 
@@ -513,17 +537,37 @@
     };
 
     const setMuted = (on) => {
+      if (muted === !!on) return;
       muted = !!on;
-      if (master) master.gain.setTargetAtTime(muted ? 0 : MASTER, ctx.currentTime, 0.05);
+      audioLayer?.setEnabled?.(exterior && !muted);
+      if (master) master.gain.setTargetAtTime(muted || !exterior ? 0 : MASTER, ctx.currentTime, 0.05);
+    };
+    const setExterior = (on) => {
+      if (exterior === !!on) return;
+      exterior = !!on;
+      audioLayer?.setEnabled?.(exterior && !muted);
+      if (!exterior) {
+        thunderAt = -1; count = 0; node.instanceCount = node.drawInstanceCount = 0; node.instanceVersion++;
+        if (thunderGain) { thunderGain.gain.cancelScheduledValues(ctx.currentTime); thunderGain.gain.setValueAtTime(0, ctx.currentTime); }
+      }
+      if (master) {
+        // Disconnect the one exterior bus as well as zeroing its envelope. AudioParam.value
+        // can lag a render quantum; a closed gate must not depend on that clock boundary.
+        if (!exterior && audioConnected) { master.disconnect(); audioConnected = false; }
+        if (exterior && !audioConnected) { master.connect(ctx.destination); audioConnected = true; }
+        master.gain.cancelScheduledValues(ctx.currentTime);
+        master.gain.setValueAtTime(muted || !exterior ? 0 : MASTER, ctx.currentTime);
+      }
     };
     const dispose = () => {
       removeChild(root, node);
       removeChild(root, boltNode);
       for (const cloud of clouds) removeChild(root, cloud);
       clouds.length = 0;
-      count = 0;
-      if (ctx) ctx.close();
-      ctx = master = noise = rainGain = windGain = null;
+      count = 0; audioConnected = false;
+      if (audioLayer) { audioLayer.dispose(); audioLayer = null; }
+      if (ctx) { noise.stop(); ctx.close().catch(() => {}); }
+      ctx = master = noise = rainGain = windGain = surfGain = thunderGain = thunderFilter = null;
     };
     const state_ = {
       get name() { return state.name; },
@@ -535,6 +579,8 @@
       get boltVariants() { return variants.length; },
       get thunderPending() { return thunderAt >= 0; },
       get strikes() { return strikes; },
+      get thunders() { return thunders; },
+      get soak() { return storm; },
       get storm() { return storm; },
       // What is arriving, in vB/s as last heard, and whether a live socket still vouches for it.
       get inflow() { return inflow; },
@@ -567,10 +613,12 @@
       get applied() { return applied; },
       get audio() { return !!ctx; },
       get muted() { return muted; },
+      get exterior() { return exterior; },
+      get masterLevel() { return master && audioConnected ? master.gain.value : 0; },
       drop: (i) => i < count ? { x: x[i], y: y[i], z: z[i], size: w[i], fall: vy[i] } : null
     };
     return {
-      apply, strike, update, setMuted, dispose, state: state_,
+      apply, strike, update, setMuted, setExterior, dispose, state: state_,
       get active() { return count > 0 || flashT >= 0 || boltT >= 0 || thunderAt >= 0; },
       stats: () => ({ rainDrops: count, strikes })
     };

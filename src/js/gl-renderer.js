@@ -70,11 +70,14 @@ uniform vec4 uViewDirection;
 vec3 viewTowardEye(vec3 p) {
   return uViewDirection.w * (uEye - p) + uViewDirection.xyz;
 }`;
-  // Portal mode 6 uses the instance parameters for time, surge and reveal radius.
+  // Portal modes 6 (circle) and 7 (DSB rectangle) share time, surge and reveal parameters.
   // Keep the wave equation in sync with oogaPortalModels.liquidHeight (Canvas).
   const PORTAL_LIQUID_GLSL = `
-float portalHeight(vec2 p, float time, float surge) {
-  float envelope = max(0.0, 1.0 - dot(p, p));
+float portalDistance(vec2 p, float rectangular) {
+  return mix(length(p), max(abs(p.x), abs(p.y)), rectangular);
+}
+float portalHeight(vec2 p, float time, float surge, float rectangular) {
+  float envelope = max(0.0, 1.0 - mix(dot(p, p), max(p.x * p.x, p.y * p.y), rectangular));
   float a = length(p - vec2(0.22, -0.17)), b = length(p - vec2(-0.31, 0.24));
   return envelope * (0.016 * sin(a * 32.0 - time * 4.0) + 0.01 * sin(b * 25.0 - time * 3.0)
     + 0.008 * sin(p.x * 18.0 + p.y * 12.0 + time * 2.0) - surge * 0.32 * envelope);
@@ -179,7 +182,7 @@ void main() {
   vec3 pos = waterBody ? lakeBodyWarp(aPos) : aPos;
   vPortalUV = aPos.xz;
   vPortalView = vec4(0.0);
-  if (params.z > 5.5) pos.y += portalHeight(aPos.xz, params.x, params.y);
+  if (params.z > 5.5) pos.y += portalHeight(aPos.xz, params.x, params.y, step(6.5, params.z));
   vec4 w = m * vec4(pos, 1.0);
   if (params.z > 5.5) {
     vec3 toward = viewTowardEye(w.xyz);
@@ -659,6 +662,7 @@ vec3 waterShade(vec3 lit, vec3 n, out vec3 bright) {
   bright = uSun * glint * 1.2 + vec3(foam * (fall ? 0.15 : 0.05));
   return col;
 }
+${BL.dsbWater.shader}
 // The pool uses the waterfall's luminous blue blocks and small square foam flecks.
 // World-space cells continue across the lake/stream join; wave geometry still changes their lighting.
 vec3 lakeShade(vec3 lit, out vec3 bright, out float alpha) {
@@ -759,11 +763,12 @@ void main() {
   }
   if (vParams.z > 5.5) {
     vec2 p = vPortalUV;
-    float time = vParams.x, surge = vParams.y, radius = length(p);
+    float rectangular = step(6.5, vParams.z);
+    float time = vParams.x, surge = vParams.y, radius = portalDistance(p, rectangular);
     if (radius > vParams.w) discard;
-    float height = portalHeight(p, time, surge);
-    vec2 gradient = vec2(portalHeight(p + vec2(0.003, 0.0), time, surge) - height,
-      portalHeight(p + vec2(0.0, 0.003), time, surge) - height) / (0.003 * vPortalView.w);
+    float height = portalHeight(p, time, surge, rectangular);
+    vec2 gradient = vec2(portalHeight(p + vec2(0.003, 0.0), time, surge, rectangular) - height,
+      portalHeight(p + vec2(0.0, 0.003), time, surge, rectangular) - height) / (0.003 * vPortalView.w);
     vec3 normal = normalize(vec3(-gradient.x, 1.0, -gradient.y));
     vec3 eye = normalize(vPortalView.xyz);
     if (eye.y < 0.0) normal = -normal;
@@ -924,7 +929,8 @@ void main() {
   float nl = dot(vLocalNormal, vLocalNormal);
   float lakeAlpha = 1.0;
   bool lake = nl > 30.0 && nl < 42.0;
-  if (lake) col = lakeShade(col, surfaceBright, lakeAlpha);
+  if (nl > 45.0 && nl < 55.0) col = dsbWaterShade(surfaceBright);
+  else if (lake) col = lakeShade(col, surfaceBright, lakeAlpha);
   else if (nl > 12.0 && nl < 20.0) col = lavaShade(surfaceBright);
   else if (nl > 6.0 && nl < 12.0) col = waterShade(col, n, surfaceBright);
   vec3 normalColor = clamp(mix(col, uFog, fog), 0.0, 1.0);
@@ -1549,6 +1555,9 @@ void main() {
     // Refilled in place every frame (`activeCount` during collect), so its backing store is never dropped and regrown.
     const activeRecords = [];
     let activeCount = 0;
+    let dsbGPU=null;
+    // PROTOTYPE: a scene at sea level can switch off the hub's dropped haze horizon (`hazeDrop: 0`).
+    let skyHaze=1;
     const res = { programs: {}, fbo: null, shadow: null, bloom: null, quadVao: null, matrixTexture: null };
     const mirror = { node: null, record: null, geometry: null, program: null, programReady: false, fb: null, tex: null, depth: null, width: 0, height: 0, renderWidth: 0, renderHeight: 0, portal: false, reveal: 0, frontFacing: false, walkThrough: false, captureValid: false, bodyTex: null, bodyState: null, bodyVersion: -1, shards: 0 };
     const environment = { program: null, ready: false, fb: null, tex: null, depth: null, size: 0, next: 0, valid: 0, frame: 0, origin: new Float32Array(3) };
@@ -1630,7 +1639,7 @@ void main() {
       const meshFragment = matrixSampling ? ORDINARY_MESH_FS.replace("#version 300 es", "#version 300 es\n#extension GL_OES_shader_multisample_interpolation : require\n#define MATRIX_SAMPLE_INTERPOLATION") : ORDINARY_MESH_FS;
       res.programs = {
         image: compile(IMAGE_VS, IMAGE_FS, ["uViewProj", "uRect", "uImage", "uReady", "uClipMaxY"]),
-        mesh: compile(ORDINARY_MESH_VS, meshFragment, ["uRigCount", "uRigPass", "uRigMatrices", "uRigParams", "uRigVoxels", "uRigVisibility", "uViewProj", "uLightViewProj", "uEye", "uViewDirection", "uLightDir", "uSky", "uGround", "uSun", "uDirectStrength", "uAmbientFloor", "uDiffuseFloor", "uShadowStrength", "uShadowFloor", "uShadowBias", "uShadow", "uShadowTexel", "uLights", "uLightCount", "uSpotLight", "uFog", "uFogRange", "uMatrixParams", "uMatrixOrigin", "uMatrixGlyph", "uMatrixCave", "uMatrixCaves", "uMatrixCaveBounds", "uMatrixCaveNear", "uMatrixPermanentCave", "uMatrixPermanentPlane", "uMatrixPermanentAperture", "uMatrixLivingGlobal", "uMatrixGlyphTex", "uMatrixSamples", "uClipMinY", "uClipMaxY", "uObjectClip", "uObjectSlab", "uProjective", "uMatrixGlyphOpacity", "uGlassOpacity", "uVoxel", "uWindTime", "uSway", "uSwing", "uGlass", "uLightBeam", "uLakeWaveCount", "uLakeWaves", "uLakeSurface", "uLakeSuction", "uLakeFlowEnabled", "uLakeFlowU", "uLakeFlowV", "uLakeCharge", "uLakeChargeRise", "uLakeChargeCenter", "uLakeOcclude", "uLakeWaveEnd", "uLakeBodyShape", "uLakeBodyBend"]),
+        mesh: compile(ORDINARY_MESH_VS, meshFragment, ["uRigCount", "uRigPass", "uRigMatrices", "uRigParams", "uRigVoxels", "uRigVisibility", "uViewProj", "uLightViewProj", "uEye", "uViewDirection", "uLightDir", "uSky", "uGround", "uSun", "uDirectStrength", "uAmbientFloor", "uDiffuseFloor", "uShadowStrength", "uShadowFloor", "uShadowBias", "uShadow", "uShadowTexel", "uLights", "uLightCount", "uSpotLight", "uFog", "uFogRange", "uMatrixParams", "uMatrixOrigin", "uMatrixGlyph", "uMatrixCave", "uMatrixCaves", "uMatrixCaveBounds", "uMatrixCaveNear", "uMatrixPermanentCave", "uMatrixPermanentPlane", "uMatrixPermanentAperture", "uMatrixLivingGlobal", "uMatrixGlyphTex", "uMatrixSamples", "uClipMinY", "uClipMaxY", "uObjectClip", "uObjectSlab", "uProjective", "uMatrixGlyphOpacity", "uGlassOpacity", "uVoxel", "uWindTime", "uSway", "uSwing", "uGlass", "uLightBeam", "uLakeWaveCount", "uLakeWaves", "uLakeSurface", "uLakeSuction", "uLakeFlowEnabled", "uLakeFlowU", "uLakeFlowV", "uLakeCharge", "uLakeChargeRise", "uLakeChargeCenter", "uLakeOcclude", "uLakeWaveEnd", "uLakeBodyShape", "uLakeBodyBend", "uDSBSurface", "uDSBDepth", "uDSBEnvironment"]),
         shadow: compile(ORDINARY_SHADOW_VS, SHADOW_FS, ["uRigCount", "uRigPass", "uRigMatrices", "uRigVisibility", "uLightViewProj", "uClipMinY", "uClipMaxY", "uObjectClip"]),
         line: compile(LINE_VS, LINE_FS, ["uViewProj", "uViewport", "uWidth", "uClipMaxY", "uObjectClip"]),
         sky: compile(QUAD_VS, SKY_FS, ["uInvViewProj", "uHorizon", "uZenith", "uSun", "uSunDir", "uMoonDir", "uMoonSunDir", "uStarMatrix", "uStars", "uTime", "uHazeDrop", "uClouds", "uSea", "uSeaEye"]),
@@ -2120,7 +2129,7 @@ void main() {
         ny /= len;
         nz /= len;
         // Water, lava, roads and transparent lake water: three, four, five and six times over.
-        const surface = f.lake ? 6 : f.water === "lava" ? 4 : f.water ? 3 : f.road ? 5 : 0;
+        const surface = f.water === "aegean" ? 7 : f.lake ? 6 : f.water === "lava" ? 4 : f.water ? 3 : f.road ? 5 : 0;
         if (surface) {
           nx *= surface;
           ny *= surface;
@@ -2433,7 +2442,7 @@ void main() {
         // mode = -1 - smokeOpacity.
         const portal = !!rec.geometry.portalSurface;
         const glow = Math.fround(portal ? n.portalTime : n.ember > 0 ? -n.ember : n.glow), highlight = Math.fround(portal ? n.portalSurge : n.scorch > 0 ? -n.scorch : n.highlight);
-        const mode = portal ? 6 : Math.fround(n.smokeOpacity === undefined ? matrixModeOf(n) : -1 - n.smokeOpacity);
+        const mode = portal ? (rec.geometry.portalRect ? 7 : 6) : Math.fround(n.smokeOpacity === undefined ? matrixModeOf(n) : -1 - n.smokeOpacity);
         if (d[o + 16] !== glow) { d[o + 16] = glow; dirty = true; }
         if (d[o + 17] !== highlight) { d[o + 17] = highlight; dirty = true; }
         if (d[o + 18] !== mode) { d[o + 18] = mode; dirty = true; }
@@ -2664,6 +2673,7 @@ void main() {
       forgetMirror();
     };
     const onRestored = () => {
+      dsbGPU=null;
       records.clear();
       activeRecords.length = 0;
       res.fbo = null;
@@ -2914,7 +2924,7 @@ void main() {
       const p = programs.sky;
       gl.useProgram(p.prog);
       gl.uniformMatrix4fv(p.u.uInvViewProj, false, inv);
-      gl.uniform1f(p.u.uHazeDrop, BL.daylight.hazeDropAt(eyeHeight));
+      gl.uniform1f(p.u.uHazeDrop, BL.daylight.hazeDropAt(eyeHeight) * skyHaze);
       gl.depthFunc(gl.LEQUAL);
       gl.depthMask(false);
       gl.bindVertexArray(res.quadVao);
@@ -3301,6 +3311,13 @@ void main() {
         clouds = 0,
         sea = null
       } = opts;
+      skyHaze=opts.hazeDrop===undefined?1:opts.hazeDrop;
+      if(dsbGPU && dsbGPU.state!==opts.dsbWater){dsbGPU.dispose();dsbGPU=null;}
+      if(opts.dsbWater && !dsbGPU)dsbGPU=BL.dsbWater.gpu(gl,opts.dsbWater);
+      if(dsbGPU)dsbGPU.bind(res.programs.mesh);
+      gl.useProgram(programs.mesh.prog);
+      gl.uniform1i(programs.mesh.u.uDSBSurface,7);
+      gl.uniform1i(programs.mesh.u.uDSBDepth,8);
       const fogColor = fog || NO_FOG, fogA = fog ? fogNear : FOG_OFF, fogB = fog ? fogFar : FOG_OFF + 1;
       gl.useProgram(programs.mesh.prog);
       gl.uniform1f(programs.mesh.u.uWindTime, performance.now() * 0.001 % 3600);
@@ -3660,6 +3677,7 @@ void main() {
       resize();
     };
     const dispose = () => {
+      if(dsbGPU){dsbGPU.dispose();dsbGPU=null;}
       canvas.removeEventListener("webglcontextlost", onLost);
       canvas.removeEventListener("webglcontextrestored", onRestored);
       destroyRecords();
@@ -3687,6 +3705,7 @@ void main() {
     // Drop unreferenced buffers; they are rebuilt on demand.
     const releaseUnused = (live) => {
       let released = 0;
+      if(dsbGPU && !live.has(dsbGPU.state.geometry)){dsbGPU.dispose();dsbGPU=null;}
       if (mirror.geometry && !live.has(mirror.geometry)) destroyMirror();
       else if (!mirror.geometry && mirror.program) {
         let rippleLive = false;
@@ -3729,7 +3748,7 @@ void main() {
       get stats() {
         let shadowFinite = true;
         for (let i = 0; i < 16; i++) if (!Number.isFinite(lightViewProj[i])) shadowFinite = false;
-        return { records: records.size, active: activeRecords.length, mirrorResources: mirrorDebug.resources, imageTextures, rippleBodyTextures, shadowResources: res.shadow ? 4 : 0, shadowSize: res.shadow ? res.shadow.size : 0, shadowPassCount, shadowFinite, shadowDraws, shadowStatic: shadowStaticValid ? shadowBakedCount : 0, shadowStaticRebuilds, culled, drawn, suppressed, rippleSurfaces, rippleWaves };
+        return { waterTextures: dsbGPU?2:0, records: records.size, active: activeRecords.length, mirrorResources: mirrorDebug.resources, imageTextures, rippleBodyTextures, shadowResources: res.shadow ? 4 : 0, shadowSize: res.shadow ? res.shadow.size : 0, shadowPassCount, shadowFinite, shadowDraws, shadowStatic: shadowStaticValid ? shadowBakedCount : 0, shadowStaticRebuilds, culled, drawn, suppressed, rippleSurfaces, rippleWaves };
       },
       get mirror() {
         return mirrorDebug;

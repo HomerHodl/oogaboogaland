@@ -88,6 +88,7 @@
     rec.login = String(p.login);
     rec.display = String(p.display || p.login);
     rec.body = typeof p.body === "string" ? p.body : null;
+    rec.zone = typeof p.zone === "string" ? p.zone : "outside";
     rec.x = +p.x || 0; rec.y = +p.y || 0; rec.z = +p.z || 0; rec.yaw = +p.yaw || 0;
     remotes.set(p.id, rec);
   };
@@ -142,6 +143,9 @@
     } else if (msg.t === "body") {
       const rec = remotes.get(msg.id);
       if (rec) rec.body = typeof msg.name === "string" ? msg.name : null;
+    } else if (msg.t === "zone") {
+      const rec = remotes.get(msg.id);
+      if (rec && typeof msg.name === "string") rec.zone = msg.name;
     } else if (msg.t === "host") {
       state.hostId = Number.isSafeInteger(msg.id) ? msg.id : 0;
       state.followers = Number.isSafeInteger(msg.followers) ? msg.followers : 0;
@@ -248,6 +252,8 @@
   const setZone = (name) => {
     if (name === zone) return;
     zone = state.zone = name;
+    poseAt = 0; px = NaN;
+    BL.voice.setPeers([]);
     sendZone();
   };
 

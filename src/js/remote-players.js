@@ -17,7 +17,8 @@
 
   // `posed(cave, feetY)` lets the scene finish a body's pose once it stands where the room says: the hub sets a
   // swimmer's arms by it, from the position the pose transport already carries, with no simulation of its own.
-  const create = ({ root, crew, posed = null }) => {
+  const hubZone = rec => rec.zone === "outside" || rec.zone === "hq" || rec.zone?.startsWith("cave-");
+  const create = ({ root, crew, posed = null, visible = hubZone }) => {
     const net = BL.net;
     const bodies = new Map();
     const actorPool = Array.from({ length: MAX }, () => ({ x: 0, y: 0, z: 0 }));
@@ -107,6 +108,8 @@
         if (far) entry.dx = entry.dz = 0;
         pose(entry, dt);
         if (posed) posed(entry.cave, entry.cave.root.position.y - entry.baseY);
+        entry.cave.root.visible = visible(rec) && crew.player?.traits.name !== entry.name;
+        if (!entry.cave.root.visible) continue;
         const actor = actorPool[n++];
         actor.x = entry.x; actor.y = entry.y; actor.z = entry.z;
       }
@@ -126,7 +129,7 @@
       ctx.fillStyle = "#f3efe4";
       for (const entry of bodies.values()) {
         const rec = net.remotes.get(entry.id);
-        if (!rec) continue;
+        if (!rec || !entry.cave.root.visible) continue;
         const pos = project(entry.x, entry.y + entry.cave.traits.height * 2 + 0.35, entry.z);
         if (!pos) continue;
         ctx.strokeText(rec.display, pos.x, pos.y);
@@ -138,7 +141,7 @@
       for (const entry of bodies.values()) set.add(entry.cave.headOpen).add(entry.cave.headClosed);
     };
 
-    const stats = () => ({ remotePlayers: bodies.size });
+    const stats = () => ({ remotePlayers: actorList.length, reservedPlayers: bodies.size });
 
     const dispose = () => {
       for (const entry of [...bodies.values()]) drop(entry);

@@ -61,7 +61,7 @@ export class Room extends DurableObject {
   }
 
   view(p) {
-    return { id: p.id, login: p.login, display: p.display, body: p.body, x: p.x, y: p.y, z: p.z, yaw: p.yaw };
+    return { id: p.id, login: p.login, display: p.display, body: p.body, zone: p.zone, x: p.x, y: p.y, z: p.z, yaw: p.yaw };
   }
 
   send(ws, msg) {
@@ -148,6 +148,7 @@ export class Room extends DurableObject {
     } else if (msg.t === "zone") {
       if (msg.name === p.zone) return;
       p.zone = msg.name;
+      this.broadcast({ t: "zone", id: p.id, name: p.zone });
       this.updateVoice();
     } else if (msg.t === "body") {
       if (msg.name === p.body) return;
