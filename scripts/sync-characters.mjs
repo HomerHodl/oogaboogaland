@@ -1,11 +1,13 @@
 // OBL merges only: materialize missing Oogatron contributors before the site build.
 // Existing handles AND GitHub aliases always win, including a just-merged custom file.
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { readCharacters } from "./characters.mjs";
 import { MAX_CHARACTERS, contributorRows, readContributorSnapshot } from "../worker/src/contributor-policy.js";
 import { checkCharacterIdentities, mergedPull } from "./contributor-pr.mjs";
+import { declaredIdentity } from "./character-identity.mjs";
+import { parseSafeCharacter } from "./character-safety.mjs";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 export const missingCharacters = (rows, existing) => {
@@ -47,8 +49,12 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
   if (process.argv[2] === "--retired-artifact") {
     if (!existsSync(retirement)) process.exit(0);
     const records = JSON.parse(readFileSync(retirement, "utf8"));
-    const allowed = retiredCharacters(readCharacters(), sourceFor);
-    if (!Array.isArray(records) || records.some((r) => !allowed.some((a) => a.file === r?.file && a.source === r.source))) throw new Error("Retired character artifact does not match an untouched confirmed alias");
+    if (!Array.isArray(records) || records.length > MAX_CHARACTERS || new Set(records.map((r) => r?.file)).size !== records.length) throw new Error("Invalid retired character artifact");
+    if (!records.length) process.exit(0);
+    // The writer holds credentials: parse declarations as text, never run them.
+    const identities = readdirSync(join(root, "src", "characters")).filter((file) => file.endsWith(".js")).map((file) => declaredIdentity(sourceFor(file)));
+    const allowed = retiredCharacters([...records.map((r) => parseSafeCharacter(r.source)), ...identities], sourceFor);
+    if (records.some((r) => !allowed.some((a) => a.file === r.file && a.source === r.source))) throw new Error("Retired character artifact does not match an untouched confirmed alias");
     for (const row of records) rmSync(join(root, "src", "characters", row.file));
     process.exit(0);
   }
