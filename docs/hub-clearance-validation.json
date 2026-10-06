@@ -69,5 +69,6 @@
     "verification/claim-clearance-oracle.log",
     "verification/dsb-aabb-unit.log",
     "verification/dsb-aabb-build.log"
-  ]
+  ],
+  "recordStatus": "Historical diagnostic, not current follow-up acceptance; see acceptance-followup-evidence.json"
 }

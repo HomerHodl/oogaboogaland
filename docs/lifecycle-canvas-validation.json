@@ -79,5 +79,6 @@
       "allSixVisitSubscriptions": "released"
     }
   },
-  "limits": "Browser workloads passed before the final exclusive-runner and non-affine safety guard were added. Final source build/unit/syntax and VM guard/scheduler checks passed afterward. The central owner must run the complete integrated final browser suite. No claim of physical low-end device performance, broad engine slowdown repair, merge or deployment."
+  "limits": "Browser workloads passed before the final exclusive-runner and non-affine safety guard were added. Final source build/unit/syntax and VM guard/scheduler checks passed afterward. The central owner must run the complete integrated final browser suite. No claim of physical low-end device performance, broad engine slowdown repair, merge or deployment.",
+  "recordStatus": "Historical diagnostic, not current follow-up acceptance; see acceptance-followup-evidence.json"
 }
