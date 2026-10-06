@@ -3,10 +3,34 @@
   "use strict";
   const BL = window.BL = window.BL || {}, { mat4 } = BL.math, { boundsOf } = BL.scene;
   const UP = { x: 0, y: 1, z: 0 }, VERTICES = 64, FRAGMENTS = 1024, EPS = 1e-10;
-  const meshes = new WeakMap();
-  const meshOf = (geometry) => {
+  const meshes = new WeakMap(), sourceVertices = new WeakMap();
+  const meshOf = (geometry, trackSource = false) => {
     let mesh = meshes.get(geometry);
     if (mesh) return mesh;
+    // Cave ownership changes material tags, not triangle topology. Reuse the
+    // immutable source bake across visits only when every index array agrees.
+    const source = geometry.matrixSourceGeometry;
+    if (source && !source.matrixSourceGeometry && source !== geometry && source.verts === geometry.verts && source.faces.length === geometry.faces.length) {
+      let same = true;
+      for (let i = 0; i < source.faces.length; i++) if (source.faces[i].i !== geometry.faces[i].i) { same = false; break; }
+      if (same) {
+        mesh = meshOf(source, true);
+        const snapshot = sourceVertices.get(source);
+        same = !!snapshot && snapshot.length === source.verts.length;
+        for (let i = 0; same && i < snapshot.length; i++) if (snapshot[i] !== source.verts[i]) same = false;
+        // A source's faces can be replaced between visits. Do not alias an old
+        // bake merely because the new wrapper agrees with the new source.
+        let at = 0;
+        for (let f = 0; same && f < source.faces.length; f++) {
+          const indices = source.faces[f].i;
+          for (let i = 1; same && i + 1 < indices.length; i++) {
+            same = mesh.indices[at++] === indices[0] * 3
+              && mesh.indices[at++] === indices[i] * 3 && mesh.indices[at++] === indices[i + 1] * 3;
+          }
+        }
+        if (same && at === mesh.indices.length && mesh.vertices === source.verts) { meshes.set(geometry, mesh); return mesh; }
+      }
+    }
     const vertices = geometry.verts, nodes = [];
     let count = 0;
     for (const face of geometry.faces) if (face.i.length > 2) count += face.i.length - 2;
@@ -45,6 +69,7 @@
     };
     if (count) build(0, count, -1);
     mesh = { vertices, indices, order, nodes };
+    if (trackSource) sourceVertices.set(geometry, new Float64Array(vertices));
     meshes.set(geometry, mesh); return mesh;
   };
   const create = ({ root, renderer, camera, occluded = null, renderOpts = null }) => {
