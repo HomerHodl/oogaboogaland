@@ -94,7 +94,7 @@
   const CHANNEL_ROUTE = [
     ...ROUTE.slice(0, 4), [-4.8, 0, 9], [-4.8, 0, 5.8], [-4.8, 0, 7.5],
     [-4.8, 5, 1.3], [-4.8, 5, 0.1], [-5.6, 5, -1.6], [-6.1, 5, -3.9],
-    [-6.4, 5, -4], [-8.5, 5, -2.5]
+    [-6.45, 5, -3.95], [-8.5, 5, -2.5]
   ];
   const TOURS = {
     payments: { title: "PAYMENTS", follow: "follow", route: ROUTE,
@@ -473,6 +473,7 @@
     registerDetail(blades, "blades");
     for (const node of head.children) for (const key of ["lens", "housing", "armor", "irisMarks"])
       if (node.geometry === meshes[key]) registerDetail(node, key);
+    for (const node of optics.children) if (node.geometry === meshes.glints) registerDetail(node, "glints");
     let detailed = false;
     addChild(parent, body);
     input.add(head, { kind: "greeter" }, { radius: HEIGHT * 7 / 32 });

@@ -5570,7 +5570,10 @@ const factoryGreeter = { name: "factory greeter", why: "rule: Talk opens the gui
   })()`);
   await b.key(" ");
   const menu = await b.evaluate(`(() => ({ open: !document.querySelector(".greeter-menu").hidden,
-    choices: document.querySelectorAll(".greeter-choice").length, phase: __ooga.factory.greeter.state.phase }))()`);
+    choices: document.querySelectorAll(".greeter-choice").length, phase: __ooga.factory.greeter.state.phase,
+    fits: [...document.querySelectorAll(".greeter-choice")].every(button => {
+      const r = button.getBoundingClientRect(); return r.left >= 0 && r.top >= 0 && r.right <= innerWidth && r.bottom <= innerHeight;
+    }) }))()`);
   await b.key("ArrowDown");
   const selected = await b.evaluate(`__ooga.factory.greeter.state.selection`);
   await b.key("Escape");
@@ -5584,10 +5587,52 @@ const factoryGreeter = { name: "factory greeter", why: "rule: Talk opens the gui
     return { phase: __ooga.factory.greeter.state.phase, scene: __ooga.scene };
   })()`);
   record("factory greeter: the act button opens four tours, arrows select, Escape closes the menu, and End tour returns Tess without leaving the cave",
-    near.scene === "factory" && near.label === "TALK TO TESS" && menu.open && menu.choices === 4 && menu.phase === "menu"
+    near.scene === "factory" && near.label === "TALK TO TESS" && menu.open && menu.choices === 4 && menu.fits && menu.phase === "menu"
       && selected === 1 && dismissed.scene === "factory" && dismissed.hidden && started.phase === "walk"
       && started.tour === "payments" && started.stop && ended.phase === "idle" && ended.scene === "factory",
     JSON.stringify({ near, menu, selected, dismissed, started, ended }));
+  const tours = await b.evaluate(`(() => {
+    const B = __ooga, g = B.factory.greeter, a = B.crew.player, rows = [];
+    const follow = () => {
+      // Keep the visitor beside the guide without occupying her next step. Existing floor checks
+      // independently prove the widest visitor can reach these stairs, bridges and landings.
+      a.root.position.x = g.root.position.x + 2;
+      a.root.position.z = g.root.position.z;
+      a.root.position.y = g.root.position.y - 1.05 + a.baseY;
+    };
+    let elapsed = 0;
+    for (const id of Object.keys(BL.factoryGreeter.TOURS)) {
+      follow(); g.greet();
+      const choices = [...document.querySelectorAll(".greeter-choice")];
+      choices.find(button => button.textContent === BL.factoryGreeter.TOURS[id].title).click();
+      const stops = new Set(), lines = new Set(); let returned = false;
+      for (let i = 0; i < 18000; i++) {
+        follow(); g.update(0.04, elapsed += 0.04);
+        if (g.state.phase === "talk") stops.add(g.state.waypoint);
+        lines.add(g.state.spoken);
+        if (g.state.phase === "idle") { returned = true; break; }
+      }
+      rows.push({ id, returned, stops: [...stops], expected: Object.keys(BL.factoryGreeter.TOURS[id].stops).map(Number),
+        blocked: lines.has("blocked"), position: { x: g.root.position.x, z: g.root.position.z } });
+    }
+    return rows;
+  })()`);
+  record("factory greeter: all four tours advance hands-free through every stop and return along stairs and bridges to the entrance post",
+    tours.length === 4 && tours.every(row => row.returned && !row.blocked && row.expected.every(stop => row.stops.includes(stop))
+      && Math.hypot(row.position.x + 2, row.position.z - 23.6) < 0.025), JSON.stringify(tours));
+  const detail = await b.evaluate(`(() => {
+    const B = __ooga, g = B.factory.greeter, camera = B.camera, head = g.root.children[0].children[0];
+    const original = { ...camera.position }, set = new Set(); g.liveGeometry(set);
+    const at = distance => { camera.position.x = g.root.position.x; camera.position.y = g.root.position.y;
+      camera.position.z = g.root.position.z + distance; g.update(0, 0); return head.geometry; };
+    const far = at(8), near = at(5), heldNear = at(6.5), farAgain = at(8), heldFar = at(6.5);
+    const geometry = []; const collect = node => { if (node.geometry) geometry.push(node.geometry); for (const child of node.children) collect(child); }; collect(g.root);
+    Object.assign(camera.position, original);
+    return { nearFaces: near.faces.length, farFaces: far.faces.length, switched: near !== far,
+      stable: heldNear === near && farAgain === far && heldFar === far, retained: geometry.every(mesh => set.has(mesh) || mesh === BL.factoryModels.forgeWave().gold), count: set.size };
+  })()`);
+  record("factory greeter: close-up detail switches with hysteresis and every animated tier remains in the visit's live geometry set",
+    detail.switched && detail.stable && detail.retained && detail.nearFaces > detail.farFaces, JSON.stringify(detail));
 } };
 const factoryLadders = { name: "factory ladders", why: "rule: Oogas must climb the rebalancer and lighthouse ladders through real controls, hold their height at rest, walk off both landings and jump away without snapping back", run: async (b) => {
   const r = await b.evaluate(`(() => {
@@ -7508,7 +7553,7 @@ scene("orbit", { steps: [{ name: "orbit flow", why: "regression: the spacewalk a
 scene("mine", { steps: [mineResume, trip("mine"), mineControls] });
 scene("factory", { query: "character=portlandhodl", steps: [factoryWalking, factoryGreeter, factoryLadders, factoryRailingJump, factoryWeapons, factoryForward, factoryForge, factoryShields, trip("factory")] });
 scene("factory", { label: "entrance", url: hubPage(src, "character=portlandhodl"), steps: [factoryFloor, factoryEntrance] });
-scene("factory", { label: "canvas2d", query: "canvas2d=1", steps: [factoryCanvas] });
+scene("factory", { label: "canvas2d", query: "canvas2d=1&character=portlandhodl", steps: [factoryCanvas, factoryGreeter] });
 scene("bifrost", { url: hubPage(src, "solo=1&character=portlandhodl"), steps: [bifrostEntrance, bifrostWalking, bifrostExit, trip("bifrost")] });
 scene("bifrost", { label: "dsb round trip", query: "character=portlandhodl", steps: [bifrostDsb] });
 scene("bifrost", { label: "poker round trip", query: "character=portlandhodl", steps: [bifrostPoker] });
@@ -7606,7 +7651,7 @@ scene("race", { query: "pos=0&rain=0", opts: PHONE_SIZE, steps: [phone("race", {
 scene("drop", { query: "pos=0", opts: PHONE_SIZE, steps: [phone("drop", { card: '[data-intro="drop"]', play: "window.__ooga.drop.start()", required: ["#joy-move", "#joy-look", "#act", ".leave"] })] });
 scene("orbit", { query: "pos=0", opts: PHONE_SIZE, steps: [phone("orbit", { card: '[data-intro="orbit"]', play: "window.__ooga.orbit.launch()", required: ["#joy-move", "#act", ".leave"] })] });
 scene("mine", { query: "pos=0", opts: PHONE_SIZE, steps: [phone("mine", { card: "#mine-intro", required: ["#joy-move", "#joy-look", "#act", "#mine-view-btn", "#mine-pause-btn", "#mine-mute", ".leave"] })] });
-scene("factory", { query: "pos=0", opts: PHONE_SIZE, steps: [phone("factory", { required: ["#joy-move", "#joy-look", ".leave"] })] });
+scene("factory", { query: "pos=0&character=portlandhodl", opts: PHONE_SIZE, steps: [phone("factory", { required: ["#joy-move", "#joy-look", ".leave"] }), factoryGreeter] });
 scene("bifrost", { query: "pos=0", opts: PHONE_SIZE, steps: [phone("bifrost", { required: ["#joy-move", "#joy-look", ".leave"] })] });
 scene("arcade", { query: "pos=0", opts: PHONE_SIZE, steps: [phone("arcade", { required: ["#joy-move", "#joy-look", ".leave"] })] });
 
