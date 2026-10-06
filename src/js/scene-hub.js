@@ -1457,15 +1457,15 @@
         l.debug.approximated = false;
       }
     }
-    // Fill each tier with the lamps nearest the view, so a lantern beside the player
-    // is never dropped just because distant cave lights were registered first.
+    // Keep the three central pile posts in every tier; fill the remaining slots
+    // with the lamps nearest the view.
     for (; count < limit; count++) {
       let nearest = null, distance = Infinity;
       for (let i = 0; i < lamps.length; i++) {
         const l = lamps[i];
         if (!l.lit || !l.light || l.selected || l.far) continue;
         const dx = l.x - camera.target.x, dy = l.y - camera.target.y, dz = l.z - camera.target.z;
-        const score = dx * dx + dy * dy + dz * dz - (l.centerLight ? 16 : 0);
+        const score = l.pileProfile ? -32 : dx * dx + dy * dy + dz * dz - (l.centerLight ? 16 : 0);
         if (score < distance) { nearest = l; distance = score; }
       }
       if (!nearest) break;
@@ -1778,7 +1778,7 @@
       }
       const light = postDressing.lights, pick = postDressing.picks;
       const lamp = addLamp(glow, DRESSING_LAMPS[light[3]], 0, 0, 0, true, 0, `pile-post:${i}`);
-      lamp.nightOnly = true;
+      lamp.always = true;
       lamp.centerLight = true;
       lamp.pileProfile = true;
       const pickNode = createNode({ geometry: PICK_GEOMETRY });
