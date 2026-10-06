@@ -2179,6 +2179,17 @@ const session = (url, steps, opts, final) => output.run({ lines: [], results: []
     // Watchdog kills Chrome so a wedged session never holds its lane; the longest healthy session is ~20 s.
     const browser = b;
     watchdog = setTimeout(() => { overran = true; browser.close(); }, SESSION_MS);
+    // Record the actual guide-entry policy inputs before boot; current quality may downgrade later.
+    if (steps.some(([name]) => name === "factory greeter")) await b.send("Page.addScriptToEvaluateOnNewDocument", { source: `(() => {
+      window.BL = {}; let module;
+      Object.defineProperty(BL, "factoryGreeter", { configurable: true, get: () => module, set: next => {
+        module = next; const create = next.create;
+        next.create = options => {
+          window.__factoryGreeterEntry = { coarse: !!options.coarse, quality: options.quality ? options.quality() : "high" };
+          return create(options);
+        };
+      } });
+    })()` });
     // Install before scripts/boot: observe every DSB runtime factory and prohibit live requests.
     if (steps.some(([name]) => name.startsWith("Ooga Portal"))) await b.send("Page.addScriptToEvaluateOnNewDocument", { source: `(() => {
       const counts = window.__gateDormancy = { enter: 0, land: 0, zuzu: 0, data: 0, tv: 0, audio: 0, chat: 0, fetch: 0, socket: 0, radio: 0 };
@@ -5623,8 +5634,9 @@ const factoryGreeter = { name: "factory greeter", why: "rule: the guide's four t
   const detail = await b.evaluate(`(() => {
     const B = __ooga, g = B.factory.greeter, camera = B.camera, head = g.root.children[0].children[0];
     const original = { ...camera.position }, quality = B.renderer.quality, set = new Set(); g.liveGeometry(set);
-    const expectedDetail = set.size === 24 && quality !== "low";
-    const lighterDevice = matchMedia("(pointer: coarse)").matches || B.renderer.quality === "low" && set.size === 12;
+    const entry = window.__factoryGreeterEntry, expectedDetail = !entry.coarse && entry.quality !== "low";
+    // Explicit Medium exercises an eligible visit even if the automatic tier fell while other checks ran.
+    if (expectedDetail) B.renderer.setQuality("medium");
     const at = distance => { camera.position.x = g.root.position.x; camera.position.y = g.root.position.y;
       camera.position.z = g.root.position.z + distance; g.update(0, 0); return head.geometry; };
     const far = at(8), near = at(5), heldNear = at(6.5), farAgain = at(8), heldFar = at(6.5);
@@ -5633,11 +5645,11 @@ const factoryGreeter = { name: "factory greeter", why: "rule: the guide's four t
     const geometry = []; const collect = node => { if (node.geometry) geometry.push(node.geometry); for (const child of node.children) collect(child); }; collect(g.root);
     Object.assign(camera.position, original);
     return { nearFaces: near.faces.length, farFaces: far.faces.length, switched: near !== far, expectedDetail,
-      lowCoarse: lowNear === far, lighterVisit: !lighterDevice || set.size === 12,
+      lowCoarse: lowNear === far, entry, prepared: set.size === (expectedDetail ? 24 : 12),
       stable: heldNear === near && farAgain === far && heldFar === far, retained: geometry.every(mesh => set.has(mesh) || mesh === BL.factoryModels.forgeWave().gold), count: set.size };
   })()`);
   record("factory greeter: close-up detail switches with hysteresis and every animated tier remains in the visit's live geometry set",
-    detail.switched === detail.expectedDetail && detail.stable && detail.retained && detail.lowCoarse && detail.lighterVisit
+    detail.switched === detail.expectedDetail && detail.stable && detail.retained && detail.lowCoarse && detail.prepared
       && (detail.expectedDetail ? detail.nearFaces > detail.farFaces : detail.nearFaces === detail.farFaces), JSON.stringify(detail));
 } };
 const factoryLadders = { name: "factory ladders", why: "rule: Oogas must climb the rebalancer and lighthouse ladders through real controls, hold their height at rest, walk off both landings and jump away without snapping back", run: async (b) => {
