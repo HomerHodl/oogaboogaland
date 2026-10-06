@@ -2701,6 +2701,20 @@
     for (const stop of paintings.stops) {
       stop.owner = addProp("poolpainting", stop.node, worldX(stop.x, stop.z), worldZ(stop.x, stop.z), 2.6);
       stop.owner.stop = stop;
+      stop.owner.pickRay = ray => {
+        const m = stop.node.world;
+        const facing = ray.dx * m[8] + ray.dy * m[9] + ray.dz * m[10];
+        if (facing >= -1e-6) return -1;
+        const t = ((m[12] - ray.ox) * m[8] + (m[13] - ray.oy) * m[9] + (m[14] - ray.oz) * m[10]) / facing;
+        if (t <= 0) return -1;
+        const x = ray.ox + ray.dx * t, y = ray.oy + ray.dy * t, z = ray.oz + ray.dz * t;
+        const dx = x - m[12], dy = y - m[13], dz = z - m[14];
+        const across = dx * m[0] + dy * m[1] + dz * m[2];
+        const up = dx * m[4] + dy * m[5] + dz * m[6];
+        if (across < 0 || across > stop.width || up < 0 || up > stop.height) return -1;
+        return guideSegmentClear(ray.ox, ray.oy, ray.oz, x, y, z)
+          && mempoolIsland.sightClear(ray.ox, ray.oy, ray.oz, x, y, z) ? t : -1;
+      };
     }
     // The islet and the rim-to-bridge-head walk are claimed after the home scatter, not before it.
     // Claiming first made the scatter's seeded retries draw different numbers, reshuffling trees all
