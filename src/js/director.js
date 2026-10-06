@@ -7,7 +7,6 @@
   const { clearTweens, tweenCount } = scene;
   const params = new URLSearchParams(location.search);
   const DEBUG = params.has("debug");
-  if (DEBUG) window.BL.contributors.seedDebugActivity();
   // A game still being built sets `wip: true` on its scene and stays unregistered, so nothing can enter it
   // and its cave seals, unless the page opts in: ?wip=<scene id> opens that game and lands in it, wip=1 opens
   // every one. No debug needed, so anyone can play a shared link. Its saves are left alone for the day it opens.

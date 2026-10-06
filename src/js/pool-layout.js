@@ -63,8 +63,8 @@
   const NEST = { r: 16.5, halfR: 3.1, halfT: 2.6 };
   const NESTS = [170, 205, 240, 275, 310].map((deg) => ({ bearing: deg * DEG }));
   const CHANNEL = { bed: 0.3, bank: 0.45, low: 0.65, lip: 1 };
-  // Leave room for the one-metre fall and a voxel corner, without opening a full extra cell on each bank.
-  const FALL_GAP_MARGIN = 0.21;
+  // Clear the projecting outer ledge on both sides of each fall, with a voxel corner beyond the smooth floor cut.
+  const FALL_OPENING_HALF = 2.2, FALL_GAP_MARGIN = 0.21;
   // Ten evenly spaced bearings, omitting the bridge-facing slot at 7.5 degrees.
   // The first four enter the raised forest wall and spill down the descent's inner wall.
   const CHANNELS = Array.from({ length: 9 }, (_, i) => {
@@ -216,7 +216,7 @@
   };
   // Keep the fall's opening clear while letting the shelf reach its banks on either side.
   const fallGap = (bearing, r = edgeAt(bearing), margin = 0) => {
-    for (const channel of CHANNELS) if (channel.falls && Math.abs(turn(bearing, channel.bearing)) * r < CHANNEL.low + margin) return true;
+    for (const channel of CHANNELS) if (channel.falls && Math.abs(turn(bearing, channel.bearing)) * r < FALL_OPENING_HALF + margin) return true;
     return false;
   };
   const lipAt = (bearing, r = edgeAt(bearing)) => {
@@ -489,7 +489,7 @@
 
   BL.poolLayout = {
     UNIT, R, LAKE_R, CHAMBER_R, SHAFT_R, FLOOR, MEMBRANE_DEPTH, LEVEL, WATER, RING, RAMP, DOORS, DOOR, BAYS, WINDOW, JUNCTION, LEDGE, LINK, LINKS, linkAt, lipAt, STOPS, STOP, COURT, BRIDGE, NEST, NESTS,
-    CHANNEL, CHANNELS, channelOutlet, fallGap, FALL_GAP_MARGIN, RILL, rillRadius, rillInner, RILL_STATIONS, RILL_TAIL, rillTailPoint, rillTailDistance, rillJunctionY, HILLS, SLOT_GRID: SLOT, SLOTS, ORIGIN, SX, SY, SZ, M, PALETTE,
+    CHANNEL, CHANNELS, channelOutlet, fallGap, FALL_OPENING_HALF, FALL_GAP_MARGIN, RILL, rillRadius, rillInner, RILL_STATIONS, RILL_TAIL, rillTailPoint, rillTailDistance, rillJunctionY, HILLS, SLOT_GRID: SLOT, SLOTS, ORIGIN, SX, SY, SZ, M, PALETTE,
     wrap, turn, edgeAt, membraneY, waterRadius, rampAngle, rampY, rampHalf, stepUnder, roofUnder, onLedge, ledgeWidth, ledgeY, ridgeTop, column, body,
     groundAt, solidAt, covered, sightClear, boxSolid, boxClear, onIsland, keptClear, rampPoint
   };

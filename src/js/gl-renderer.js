@@ -3314,7 +3314,7 @@ void main() {
       skyHaze=opts.hazeDrop===undefined?1:opts.hazeDrop;
       if(dsbGPU && dsbGPU.state!==opts.dsbWater){dsbGPU.dispose();dsbGPU=null;}
       if(opts.dsbWater && !dsbGPU)dsbGPU=BL.dsbWater.gpu(gl,opts.dsbWater);
-      if(dsbGPU)dsbGPU.bind(res.programs.mesh);
+      if(dsbGPU)dsbGPU.bind(programs.mesh);
       gl.useProgram(programs.mesh.prog);
       gl.uniform1i(programs.mesh.u.uDSBSurface,7);
       gl.uniform1i(programs.mesh.u.uDSBDepth,8);
