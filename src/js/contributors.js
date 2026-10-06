@@ -1,13 +1,13 @@
 // The roster, built from the character registry, with bounded repository activity from oogatron snapshots
 // (schemas 1-3; a schema-3 snapshot's `repos[].contributors` fans last-seen onto per-repository keys so
 // work routes pick the matching cave). It gives each contributor a working (<1h), chilling (<24h) or
-// sleeping state, the active solo roster, and hashed traits with each character's `look` laid over them.
+// sleeping (through 30 days) or away state, the active solo roster, and hashed traits with each character's `look` laid over them.
 (() => {
   "use strict";
   const BL = window.BL = window.BL || {};
   // Clanking (working) within one hour, chillin until a day has passed,
-  // asleep after that. The 60s hub interval re-samples these thresholds.
-  const MINUTE = 60 * 1e3, HOUR = 60 * MINUTE, WORK_WINDOW = HOUR, CHILL_WINDOW = 24 * HOUR;
+  // asleep through 30 days, then away. The 60s hub interval re-samples these thresholds.
+  const MINUTE = 60 * 1e3, HOUR = 60 * MINUTE, WORK_WINDOW = HOUR, CHILL_WINDOW = 24 * HOUR, AWAY_WINDOW = 30 * 24 * HOUR;
   const ENTROPY = "oogaboogax/entropylab", MAX_REPOS = 64;
   const ISO_TIME = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/;
   // Historical EntropyLab activity; a backend can refresh it with applyActivity.
@@ -28,13 +28,25 @@
   const activeRoster = solo ? roster.filter((entry) => entry.name.toLowerCase() === character) : roster;
   const byName = new Map(roster.map((contributor) => [contributor.name.toLowerCase(), contributor]));
   characters.forEach((c, i) => { if (c.github) byName.set(c.github.toLowerCase(), roster[i]); });
-  const listeners = new Set(), snapshotRepos = new Set();
-  const repositoryOf = (repo) => {
-    if (typeof repo !== "string") return null;
-    const key = repo.toLowerCase();
-    if (key === "w-s-bitcoin/entropylab") return ENTROPY;
-    return /^oogaboogax\/[a-z0-9_.-]{1,100}$/.test(key) ? key : null;
+  // One server-vouched-for default per page, installed before the first scene.
+  // Append rather than reorder: the bundled crew keeps its indices and NPC signature.
+  let temporary = null;
+  const addTemporary = (row, login) => {
+    if (temporary || !row || typeof row.handle !== "string" || typeof login !== "string"
+      || row.handle !== login.toLowerCase() || !/^[a-z0-9](?:[a-z0-9-]{0,37}[a-z0-9])?$/.test(row.handle)
+      || row.handle.includes("--") || BL.characters.get(row.handle)
+      || !Number.isSafeInteger(row.joined) || !Number.isSafeInteger(row.lastCommit)
+      || row.joined <= 0 || row.lastCommit < row.joined || row.lastCommit * 1000 > Date.now()) return false;
+    BL.characters.add({ handle: row.handle, joined: row.joined, lastCommit: row.lastCommit, temporary: true });
+    temporary = { name: row.handle, display: row.handle, lastCommitAt: row.lastCommit * 1000,
+      lastContributionAt: row.lastCommit * 1000, activity: new Map(), maintainer: false, temporary: true };
+    roster.push(temporary);
+    if (solo && character === row.handle) activeRoster.push(temporary);
+    byName.set(row.handle, temporary);
+    return true;
   };
+  const listeners = new Set(), snapshotRepos = new Set();
+  const repositoryOf = BL.activityRepos.keyOf;
   // Repeatable debug-only fixture: ooga=handle:clank:lab,obl,lf (or chill/sleep).
   // Unlisted owners sleep; explicit caves replace both activity and maintainer defaults.
   // Resolve handles and cave aliases once, keeping state/site reads allocation-free.
@@ -47,6 +59,10 @@
       repos.set(slot.name.toLowerCase(), slot.repo);
       repos.set(slot.repo, slot.repo);
       repos.set(slot.repo.slice(slot.repo.indexOf("/") + 1), slot.repo);
+      if (slot.additionalRepo) {
+        repos.set(slot.additionalRepo, slot.repo);
+        repos.set(slot.additionalRepo.slice(slot.additionalRepo.indexOf("/") + 1), slot.repo);
+      }
       repos.set(slot.scene === "factory" ? "lf" : slot.status === "mirror" ? "obl" : slot.scene || slot.status, slot.repo);
     }
     for (const value of params.getAll("ooga")) {
@@ -55,7 +71,7 @@
       if (!contributor) continue;
       const sites = new Set();
       if (mode?.trim() === "clank") for (const cave of caves.split(",", MAX_REPOS)) {
-        const key = cave.trim(), repo = repos.get(key) || repos.get(repositoryOf(key));
+        const key = cave.trim(), repo = repos.get(key) || repos.get(repositoryOf(key.includes("/") ? key : `oogaboogax/${key}`));
         if (repo) sites.add(repo);
       }
       const state = mode?.trim() === "clank" && sites.size ? "working" : mode?.trim() === "chill" ? "chilling" : "sleeping";
@@ -74,15 +90,16 @@
     const age = at - stamp;
     if (!Number.isFinite(age) || stamp <= 0 || age < 0) return "sleeping";
     if (age < WORK_WINDOW) return "working";
-    return age < CHILL_WINDOW ? "chilling" : "sleeping";
+    return age < CHILL_WINDOW ? "chilling" : age <= AWAY_WINDOW ? "sleeping" : "away";
   };
+  const contributionAt = (contributor) => contributor.lastContributionAt > 0 ? contributor.lastContributionAt : contributor.lastCommitAt;
   const stateFor = (contributor, at = Date.now()) => {
     if (debugRoster) return debugModes.get(contributor)?.state || "sleeping";
     if (debugState) return debugState;
-    if (contributor.maintainer) return "working";
-    return stateAt(contributor.lastCommitAt, at);
+    const state = stateAt(contributionAt(contributor), at);
+    return contributor.maintainer && state !== "away" ? "working" : state;
   };
-  const contributionStateFor = (contributor, at = Date.now()) => stateAt(contributor.lastContributionAt, at);
+  const contributionStateFor = (contributor, at = Date.now()) => stateAt(contributionAt(contributor), at);
   const ageAt = (stamp, at) => {
     if (!Number.isFinite(stamp) || stamp <= 0) return "no activity";
     const minutes = Math.max(0, Math.floor((at - stamp) / MINUTE));
@@ -92,7 +109,7 @@
     return `${Math.floor(hours / 24)}d ago`;
   };
   const ageLabel = (contributor, at = Date.now()) => contributor.maintainer ? "building" : ageAt(contributor.lastCommitAt, at);
-  const contributionAgeLabel = (contributor, at = Date.now()) => ageAt(contributor.lastContributionAt, at);
+  const contributionAgeLabel = (contributor, at = Date.now()) => ageAt(contributionAt(contributor), at);
   const recordContribution = (contributor, stamp) => {
     if (stamp <= contributor.lastContributionAt) return false;
     contributor.lastContributionAt = stamp;
@@ -132,7 +149,8 @@
     // One sub-snapshot per repository key, so the per-key first-snapshot
     // bookkeeping below stays uniform across all three intake shapes.
     const intakes = [];
-    for (const snapshot of Array.isArray(snapshots) ? snapshots : [snapshots]) {
+    for (const input of Array.isArray(snapshots) ? snapshots : [snapshots]) {
+      const snapshot = BL.contributorIdentities.normalizeStats(input, at);
       if (!snapshot || !snapshot.meta) continue;
       const version = snapshot.meta.schema_version;
       if (version === 1) {
@@ -197,6 +215,7 @@
       const contributor = roster[i];
       const age = i < 3 ? i * 30000 : i < 6 ? 8 * HOUR + i * 60000 : CHILL_WINDOW;
       contributor.lastCommitAt = at - age;
+      contributor.lastContributionAt = contributor.lastCommitAt;
       contributor.activity.clear();
       contributor.activity.set(ENTROPY, contributor.lastCommitAt);
     }
@@ -235,5 +254,5 @@
     if (look.height) traits.height = look.height;
     return traits;
   };
-  BL.contributors = { roster, activeRoster, solo, debugState, debugRoster, stateFor, ageLabel, contributionStateFor, contributionAgeLabel, traitsFor, voiceFor, hasRecentActivity, applyActivity, applySnapshot, subscribe, seedDebugActivity };
+  BL.contributors = { roster, activeRoster, solo, debugState, debugRoster, addTemporary, stateFor, ageLabel, contributionStateFor, contributionAgeLabel, traitsFor, voiceFor, hasRecentActivity, applyActivity, applySnapshot, subscribe, seedDebugActivity };
 })();

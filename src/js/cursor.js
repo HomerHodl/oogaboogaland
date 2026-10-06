@@ -245,7 +245,9 @@
     const onMouseMove = (e) => {
       if (dispatching || !active || !locked() || e.sourceCapabilities?.firesTouchEvents) return;
       e.stopImmediatePropagation();
-      x += e.movementX; y += e.movementY;
+      // The hidden overhead cursor is positioned by the pilot's constrained
+      // reticle. Raw deltas must not send hover or the next click off that line.
+      if (visible) { x += e.movementX; y += e.movementY; }
       paint();
       const source = pendingMove || e;
       pendingMove = null;

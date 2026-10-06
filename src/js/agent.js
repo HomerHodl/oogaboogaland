@@ -51,6 +51,9 @@
   const MANAGED_MOTION_RADIUS = 2.25, MANAGED_MOTION_HEIGHT = 2.8;
   const MANAGED_SMASH_RADIUS = 2.9;
   const TAU = Math.PI * 2;
+  // Afloat it dog-paddles: forearms reaching forward and down in turn, hind legs trailing, the chest held level.
+  // The reach stays inside the gallop's own footprint, so the body still measures `compact` in the water.
+  const SWIM = { rate: 3.2, reach: 0.28, stroke: 0.26, legs: 0.45, kick: 0.12 };
   const wave = (phase, offset) => Math.sin(TAU * (phase + offset));
   const QUAD_RADIUS = 0.85, QUAD_CENTERS = [0.05, 0.7, 1.35];
   let walkPadPoints = null;
@@ -477,7 +480,7 @@
       pace: null, driven: false, walkStyle: "knuckle", inX: 0, inZ: 0, inRun: false,
       vy: 0, air: false, jumps: 0, revealFor: 0, pound: 0, chewing: 0, biped: false, lounge: "", hipHeight: HIP,
       poundCharge: 0, takeoff: 0, landing: 0, crouch: 0, roll: 0, rollBlend: 0, rollAngle: 0, rollTarget: 0, rollSide: 0,
-      smash: false, dragging: false, throwProgress: 0, hipOffsetZ: 0, sideAngle: 0,
+      smash: false, dragging: false, throwProgress: 0, hipOffsetZ: 0, sideAngle: 0, swim: 0, swimBlend: 0,
       climb: 0, climbBlend: 0, climbPose: NaN, climbStride: 0, climbDirection: 0, climbSide: 0,
       climbArmBaseL: 0, climbArmBaseR: 0, climbFitArms: 0,
       climbGripX: NaN, climbGripY: NaN, climbGripZ: NaN, climbGripRelease: 0,
@@ -675,9 +678,11 @@
         // separate mount or over-the-edge animation.
         state.climbBlend = Number.isFinite(state.climbPose) ? state.climbPose : state.climb;
         state.groomBlend = damp(state.groomBlend, state.groom, 8, dt);
+        state.swimBlend = damp(state.swimBlend, state.swim, 5, dt);
         state.groomTime += dt;
       }
       const crouch = managed ? state.crouch : 0, rolling = managed ? state.rollBlend : 0, climbing = managed ? state.climbBlend : 0;
+      const swimming = managed && state.swimBlend > 0.001 ? state.swimBlend : 0, swimPhase = state.labPhase * SWIM.rate;
       const grooming = lounge === "sit" ? state.groomBlend : 0, sitLook = lounge === "sit" ? state.sitLook : 0;
       const sitShift = lounge === "sit" ? state.sitShift : 0, climbPhase = managed ? state.climbStride / 1.2 : 0;
       // Seated rests have frequent, gentle glances and alternating hand lifts.
@@ -699,6 +704,7 @@
         pitch += 0.12 * wave(state.phase, 0.25) * moving;
         bob = 0.08 * Math.max(0, wave(state.phase, 0.25)) * moving;
       } else if (moving > 0) bob = 0.02 * Math.abs(wave(state.phase, 0)) * moving;
+      if (swimming) { pitch += (QUAD - pitch) * swimming; bob *= 1 - swimming; }
       let poundLift = 0, slamDrive = 0;
       if (managed && state.poundCharge > 0 && state.pound <= 0) {
         poundLift = state.poundCharge;
@@ -773,6 +779,8 @@
         if (state.speed <= 0.1) legAngle -= 0.42 * slamDrive;
         legAngle += (-1.25 - legAngle) * rolling;
         legAngle += (-0.16 + 0.06 * climbStroke - legAngle) * climbing;
+        const paddle = swimming ? Math.sin(swimPhase + (l.side < 0 ? 0 : Math.PI)) : 0;
+        legAngle += (SWIM.legs + SWIM.kick * paddle - legAngle) * swimming;
         // The pelvis follows the rectangle's front-to-back grade. Keep the
         // rear feet beneath it while the front knuckles reach the higher pad.
         legAngle -= groundPitch;
@@ -846,6 +854,7 @@
         } else {
           let armAngle = -state.pitch - groundPitch - (jumping ? state.biped ? 0.2 : 0.7 - takeoff * 0.85 : o && !squeeze ? (labSqueeze ? 0.08 : labWalking ? 0.1 : g.arms) * moving * wave(state.phase, o[l.arm]) : 0);
           armAngle += (-state.pitch - 1 - armAngle) * crouch;
+          armAngle += (-state.pitch - SWIM.reach - SWIM.stroke * paddle - armAngle) * swimming;
           limb(arm, armAngle, dt, managed && state.landing > 0 ? 32 : 18);
           arm.rotation.z = damp(arm.rotation.z, state.gait === "hunch" ? l.side * 0.12 : 0, 8, dt);
         }
@@ -1247,6 +1256,8 @@
       if (state.roll > 0 || airborne || state.climb > 0) state.lounge = "";
       if (state.lounge || state.roll > 0 || airborne && !state.smash || state.climb > 0) state.pound = state.beat = state.chewing = 0;
       if (state.speed > 0.1 || airborne) state.beat = 0;
+      // Swimming is the hub's word (`motion.swim`, afloat in the Mempool island's water), and gives way to every pose of its own.
+      state.swim = motion && motion.swim && !airborne && !lounge && !state.climb && !state.roll && !lab && !biped && !state.dragging && !state.poundCharge && !state.pound && !state.beat ? 1 : 0;
       state.groundPlane = !!(groundPlaneAt && !airborne && !lab && !lounge && !state.climb && !state.roll
         && !state.beat && !state.pound && groundPlaneAt(px, py, pz, facing, state, motion));
       state.gait = state.beat > 0 ? "beat" : state.biped ? "upright" : state.speed <= 0.01 ? "idle"
@@ -1917,6 +1928,7 @@
         get revealed() { return state.revealFor > 0; },
         get airborne() { return state.air; },
         get climbing() { return state.climbBlend; },
+        get swimming() { return state.swimBlend; },
         get lounge() { return state.lounge; },
         get grooming() { return state.groomBlend; },
         get groomTime() { return state.groomTime; },

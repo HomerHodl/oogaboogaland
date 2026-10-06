@@ -468,6 +468,7 @@
     hud.onAction((action) => {
       if (action === "leave") leaveChamber();
       else if (action === "reset-view") pilot.goPreset("entrance");
+      else if (action === "mode-retake") pilot.modeAction(action);
     });
     fx = fxMod.create({ root, input, hooks, hud, game, world, renderer, camera, overlay: ctx.overlay, tickerAt: { x: 0, y: 7, z: 0 } });
     dust = BL.dressing.motes({ count: 160, span: 14, low: 0.5, high: 9 });

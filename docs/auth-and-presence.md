@@ -2,6 +2,10 @@
 
 How a visitor becomes a player on the Cloudflare-hosted island. Everything here lives in `worker/` and `src/js/net.js`; the page served anywhere else (GitHub Pages, a file, `npm run serve`) finds no backend and behaves exactly as before.
 
+New Oogatron contributors can receive a server-verified default character before
+their file reaches a deployed bundle. Eligibility, merge-time generation and the
+PR ownership check are described in [Contributor onboarding](contributor-onboarding.md).
+
 ## Pieces
 
 | Piece | Where | Job |
@@ -65,7 +69,7 @@ On the island (`src/js/remote-players.js`), each remote visitor driving an Ooga 
 
 Every Ooga belongs to a contributor, and ownership keys on the GitHub login alone: a character's `github`, or its handle when it has none (`bc1gui` is owned by `ottoz0r`; a different GitHub account that happens to be called `bc1gui` owns nothing).
 
-- A signed-in contributor drives **only their own** Ooga, and while they are signed in **nobody else** can drive it. The hub hands it to them on arrival (`claimOwnOoga`), once a visit, unless they already drive another; letting go keeps it let go until the next visit.
+- A signed-in contributor drives **only their own** Ooga, and while they are signed in **nobody else** can drive it. The hub hands it to them on arrival (`claimOwnOoga`), once a visit, unless they already drive another. Letting go stays detached until they take control again or revisit; their face beside the location button uses the same possession path as double-clicking their Ooga.
 - Everyone else, signed in or not, drives an Ooga only when its owner is **not signed in**, **nobody else** holds it, and it is **not working** (by its real activity; the hub's temporary overrides do not count).
 - An owner arriving takes their Ooga back: the room frees it and the driver's page lets go with a notice.
 

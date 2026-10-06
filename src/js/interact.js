@@ -17,6 +17,7 @@
     const C = new Float32Array(3);
     const aimView = BL.math.mat4.create(), aimInverse = BL.math.mat4.create(), aimUp = { x: 0, y: 1, z: 0 };
     let hoverX = -1, hoverY = -1, hoverDirty = false, hovered = null;
+    let hoverIgnored = null;
     let gesture = null;
     let pinchDist = 0;
     let zoomGesture = 0, wheelAt = -Infinity, wheelDirection = 0;
@@ -83,11 +84,12 @@
       }
       return best ? { node: best.node, owner: best.owner, t: bestT } : null;
     };
+    const acceptHover = owner => !hoverIgnored || owner.cave !== hoverIgnored;
     const pickHover = (px, py) => {
-      if (!preciseHover) return pick(px, py);
+      if (!preciseHover) return pick(px, py, hoverIgnored);
       renderer.ray(px, py, camera, ray);
       return weaponTargets.ray(hoverHit, ray.ox, ray.oy, ray.oz, ray.dx, ray.dy, ray.dz,
-        camera.far, null, null, true) ? hoverHit : null;
+        camera.far, null, acceptHover, true) ? hoverHit : null;
     };
     const aimPoint = (px, py, out, ignoreCave = null) => {
       // A one-off aim entry must use the current eye, not the renderer's
@@ -321,6 +323,9 @@
     canvas.addEventListener("wheel", onWheel, { passive: false });
     canvas.addEventListener("contextmenu", onContextMenu);
     const update = () => {
+      // A view change can hide our own name without any pointer movement.
+      const ignored = call("hoverIgnore") || null;
+      if (ignored !== hoverIgnored) { hoverIgnored = ignored; hoverDirty = true; }
       if (!hoverDirty) return;
       hoverDirty = false;
       const busy = gesture && gesture.mode !== "pending";
@@ -345,6 +350,7 @@
       lastTap.node = lastTap.owner = null;
       hoverX = hoverY = -1;
       hoverDirty = false;
+      hoverIgnored = null;
       if (hovered) call("onHover", null, { x: -1, y: -1 });
       hovered = null;
       canvas.style.cursor = "grab";

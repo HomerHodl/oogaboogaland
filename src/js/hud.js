@@ -4,7 +4,8 @@
   const { canvasRenderer } = BL;
   const { formatLarge } = BL.game;
   const { createNode, addChild, createCamera, boundsOf } = BL.scene;
-  const STATE_LABELS = { working: "clank", chilling: "chill", sleeping: "sleep", away: "chill", online: "online" };
+  const STATE_LABELS = { working: "clank", chilling: "chill", sleeping: "sleep", away: "away", online: "online" };
+  const ROSTER_ORDER = { working: 0, chilling: 1, sleeping: 2, away: 3 };
   // Tooltip dots retain their human-presence color without changing NPC activity.
   const statusFor = (cave) => {
     const actor = cave.tooltipOwner || cave;
@@ -193,6 +194,10 @@
       modeFace: $("mode-face-icon"),
       modeHealth: $("mode-health"),
       modeHealthFill: $("mode-health-fill"),
+      ownOoga: $("own-ooga-hud"),
+      ownOogaFace: $("own-ooga-face-icon"),
+      ownOogaHealth: $("own-ooga-health"),
+      ownOogaHealthFill: $("own-ooga-health-fill"),
       modeDestinations: $("detached-destinations"),
       modeDestinationName: $("detached-destination-name"),
       modeDestinationDots: [...document.querySelectorAll("[data-detached-preset]")],
@@ -277,6 +282,7 @@
     el.primary.hidden = true;
     el.gorillaSmash.hidden = true;
     el.mode.hidden = true;
+    el.ownOoga.hidden = true;
     el.weapon.hidden = true;
     el.magazine.hidden = true;
     el.jetpack.hidden = true;
@@ -287,7 +293,19 @@
     };
     let toastTimer = 0, toastHideTimer = 0, hintTimer = 0, hintHideTimer = 0, copyTimer = 0;
     const rosterRows = new Map();
-    const orderedRoster = [...roster].sort((a, b) => b.lastContributionAt - a.lastContributionAt);
+    let showAway = false, awayCount = 0;
+    const awayRow = document.createElement("li"), awayButton = document.createElement("button");
+    awayRow.className = "roster-away";
+    awayButton.type = "button";
+    awayButton.setAttribute("aria-expanded", "false");
+    awayRow.append(awayButton);
+    const updateAwayButton = () => {
+      awayRow.hidden = awayCount === 0;
+      awayButton.textContent = `${showAway ? "Hide" : "Show"} away (${awayCount})`;
+    };
+    const orderedRoster = [...roster].sort((a, b) =>
+      ROSTER_ORDER[BL.contributors.contributionStateFor(a)] - ROSTER_ORDER[BL.contributors.contributionStateFor(b)] ||
+      (b.lastContributionAt || b.lastCommitAt) - (a.lastContributionAt || a.lastCommitAt));
     for (let rosterIndex = 0; rosterIndex < orderedRoster.length; rosterIndex++) {
       const contributor = orderedRoster[rosterIndex];
       const li = document.createElement("li");
@@ -309,17 +327,31 @@
       const activity = BL.contributors.contributionStateFor(contributor);
       state.dataset.state = activity;
       state.append(STATE_LABELS[activity]);
+      if (activity === "away") {
+        if (!awayRow.parentElement) el.roster.append(awayRow);
+        li.hidden = true; awayCount++;
+      }
       li.append(presence, name, age, state);
       el.roster.append(li);
       rosterRows.set(contributor.name, { li, presence, state, age, contributor, rosterIndex, online: false });
     }
+    if (!awayRow.parentElement) el.roster.append(awayRow);
+    updateAwayButton();
+    on(awayButton, "click", () => {
+      showAway = !showAway;
+      awayButton.setAttribute("aria-expanded", String(showAway));
+      for (const row of rosterRows.values()) if (row.state.dataset.state === "away") row.li.hidden = !showAway;
+      updateAwayButton();
+    });
     const placeRosterRow = (row) => {
-      let before = null;
+      const rank = ROSTER_ORDER[row.state.dataset.state], stamp = row.contributor.lastContributionAt || row.contributor.lastCommitAt;
+      let before = rank === ROSTER_ORDER.away ? null : awayRow;
       for (const sibling of el.roster.children) {
-        if (sibling === row.li) continue;
+        if (sibling === row.li || sibling === awayRow) continue;
         const other = rosterRows.get(sibling.dataset.name);
-        if (other.contributor.lastContributionAt < row.contributor.lastContributionAt ||
-          other.contributor.lastContributionAt === row.contributor.lastContributionAt && other.rosterIndex > row.rosterIndex) { before = sibling; break; }
+        const otherRank = ROSTER_ORDER[other.state.dataset.state], otherStamp = other.contributor.lastContributionAt || other.contributor.lastCommitAt;
+        if (otherRank > rank) { before = otherRank === ROSTER_ORDER.away ? awayRow : sibling; break; }
+        if (otherRank === rank && (otherStamp < stamp || otherStamp === stamp && other.rosterIndex > row.rosterIndex)) { before = sibling; break; }
       }
       if (before) {
         if (row.li.nextElementSibling !== before) el.roster.insertBefore(row.li, before);
@@ -333,8 +365,12 @@
       const activity = BL.contributors.contributionStateFor(row.contributor);
       const ageText = BL.contributors.contributionAgeLabel(row.contributor);
       if (row.state.dataset.state !== activity) {
+        if (row.state.dataset.state === "away") awayCount--;
+        if (activity === "away") awayCount++;
         row.state.dataset.state = activity;
         row.state.firstChild.data = STATE_LABELS[activity] || activity;
+        row.li.hidden = activity === "away" && !showAway;
+        updateAwayButton();
       }
       if (row.age.firstChild.data !== ageText) row.age.firstChild.data = ageText;
       if (row.online !== online) {
@@ -377,8 +413,8 @@
       el.act.textContent = label;
     };
     let actionHandler = null;
-    const DETACHED_PRESETS = ["pile", "lab", "mirror", "underground", "basement"];
-    const DETACHED_NAMES = { pile: "Pile", lab: "Lab", mirror: "Mirror", underground: "HQ", basement: "Basement" };
+    const DETACHED_PRESETS = ["pile", "lab", "mirror", "underground", "basement", "mempool"];
+    const DETACHED_NAMES = { pile: "Pile", lab: "Lab", mirror: "Mirror", underground: "HQ", basement: "Basement", mempool: "Mempool" };
     let detachedPreset = "pile", detachedNameShown = false, detachedSelectionShown = false, areaLabel = "";
     let destinationAnchored = false, destinationX = 0, destinationY = 0, destinationZ = 0;
     const showAreaLabel = () => {
@@ -417,8 +453,49 @@
     const nextDetachedView = () => DETACHED_PRESETS[(DETACHED_PRESETS.indexOf(detachedPreset) + 1) % DETACHED_PRESETS.length];
     let gorillaEntry = null, gorillaView = "orbit", gorillaCombat = false;
     let modeName = "", modeGeometry = null, modeSelected = false, modeCombat = false, modeView = "detached", modeHealth = -1, modeHealthMax = 0, modeGorilla = false;
+    let modeCave = null, modeVisible = true, ownOoga = null, ownPortraitCave = null, ownGeometry = null, ownPortraitGeometry = null, ownHealth = -1, ownHealthMax = 0;
+    const syncOwnOoga = () => {
+      const shown = modeVisible && !!ownOoga && ownOoga !== modeCave;
+      if (el.ownOoga.hidden === shown) el.ownOoga.hidden = !shown;
+      if (!shown) return;
+      const geometry = ownOoga.parts.head.geometry, portraitGeometry = ownOoga.portraitHead;
+      if (ownOoga !== ownPortraitCave || geometry !== ownGeometry || portraitGeometry !== ownPortraitGeometry) {
+        renderFaceIcon(el.ownOogaFace, ownOoga);
+        el.ownOoga.dataset.portrait = "face-crop";
+        if (ownOoga !== ownPortraitCave) {
+          const label = `Return to ${ownOoga.traits.display}, your Ooga`;
+          el.ownOoga.setAttribute("aria-label", label);
+          el.ownOoga.title = label;
+        }
+        ownPortraitCave = ownOoga;
+        ownGeometry = geometry;
+        ownPortraitGeometry = portraitGeometry;
+      }
+      const source = ownOoga.health, max = source ? source.max : BL.crew.HEALTH_MAX;
+      const health = source ? Math.max(0, Math.min(max, source.value)) : max;
+      if (health !== ownHealth || max !== ownHealthMax) {
+        ownHealth = health; ownHealthMax = max;
+        el.ownOogaHealthFill.style.transform = `scaleY(${health / max})`;
+        el.ownOogaHealth.setAttribute("aria-valuemax", String(max));
+        el.ownOogaHealth.setAttribute("aria-valuenow", String(Math.ceil(health)));
+      }
+    };
+    const setOwnOoga = (cave) => {
+      if (cave !== ownOoga) {
+        ownOoga = cave;
+        if (!cave) {
+          ownPortraitCave = ownGeometry = ownPortraitGeometry = null;
+          ownHealth = -1; ownHealthMax = 0;
+          el.ownOogaFace.width = ICON_PX;
+        }
+      }
+      syncOwnOoga();
+    };
     const setMode = (cave, combat = false, view = cave ? "orbit" : "detached", visible = true) => {
       const gorilla = gorillaEntry ? gorillaEntry.gorilla : null;
+      modeCave = gorilla ? null : cave;
+      modeVisible = visible;
+      syncOwnOoga();
       if (gorilla) { cave = gorillaEntry.owner; combat = gorillaCombat; view = gorillaView; visible = true; }
       const selected = !!cave, name = selected ? cave.traits.name : "", shown = selected ? cave.traits.display : "";
       if (!visible) fadeDetachedName(true);
@@ -682,7 +759,7 @@
       el.jetpackFuelValue.firstChild.data = `${percent}%`;
     };
     const setGorilla = (entry, view = "orbit", combat = false) => {
-      if (entry === gorillaEntry && view === gorillaView && combat === gorillaCombat) return;
+      if (entry === gorillaEntry && view === gorillaView && combat === gorillaCombat) { syncOwnOoga(); return; }
       if (entry !== gorillaEntry) finishPrimary(true);
       gorillaEntry = entry;
       gorillaView = view;
@@ -752,7 +829,7 @@
         boardFilterRepos: "board-filter-repos", boardFilterUsers: "board-filter-users", boardFilterTypes: "board-filter-types"
       };
       for (const key in ids) el[key] = node.querySelector(`[id="${ids[key]}"]`);
-      const boardNav = node.querySelector(".board-nav");
+      const boardNav = node.querySelector(".board-nav"), boardCenter = node.querySelector(".board-center");
       if (floatingId) {
         node.id += `-${floatingId}`;
         for (const child of node.querySelectorAll("[id]")) child.id += `-${floatingId}`;
@@ -769,7 +846,7 @@
       };
       // Each window copies a readable board's canvas and owns its controls.
       // A board is any object with `title`, `help`, `canvas`, `count`, `index`, `caption`, `note`, `version` and
-      // `go(index)`, plus an optional `wide`, which widens the dialog on desktop. The dialog copies the canvas, captions the page, lays one dot per page and pages with the
+      // `go(index)`, plus optional `wide` and `captionAbove` layouts. The dialog copies the canvas, captions the page, lays one dot per page and pages with the
       // chevrons, the dots and the arrow keys; it never learns what a board shows, so a board can change freely.
       // `updateBoard` repaints whenever the open board's version moves.
       // A `floating` board also supplies `paused` and `setPaused`, and keeps island input available.
@@ -945,8 +1022,8 @@
         el.boardCaption.textContent = board.caption;
         el.boardNote.textContent = board.note || "";
         el.boardNote.hidden = !!board.floating || !board.note;
+        if (board.floating || board.carousel) paintBoardPause();
         if (board.floating) {
-          paintBoardPause();
           el.boardRollup.checked = board.rollup;
           el.boardFilter.dataset.active = String(board.rollup || board.filters.repos !== null || board.filters.users !== null || board.filters.types !== null);
           if (!el.boardFilterMenu.hidden && filterShown !== board.filterVersion) paintFilters();
@@ -978,13 +1055,28 @@
         letterSign(el.boardTitle, board.title);
         el.board.classList.toggle("board-wide", !!board.wide);
         el.board.classList.toggle("board-floating", !!board.floating);
-        if (board.floating) el.boardHead.insertBefore(el.boardDots, el.boardHead.lastElementChild);
-        else boardNav.after(el.boardDots);
-        el.boardCaption.hidden = !!board.floating;
-        el.boardPause.hidden = el.boardResize.hidden = !board.floating;
+        el.board.classList.toggle("board-caption-above", !!board.captionAbove);
+        el.board.classList.toggle("board-carousel", !!board.carousel);
+        if (board.floating) {
+          boardCenter.prepend(el.boardCaption);
+          el.boardHead.insertBefore(el.boardDots, el.boardHead.lastElementChild);
+        } else if (board.carousel) {
+          el.boardScreen.before(el.boardCaption);
+          boardCenter.prepend(el.boardPause);
+          el.boardHead.insertBefore(el.boardDots, el.boardHead.lastElementChild);
+        } else if (board.captionAbove) {
+          el.boardScreen.before(el.boardCaption);
+          boardCenter.prepend(el.boardDots);
+        } else {
+          boardCenter.prepend(el.boardCaption);
+          boardNav.after(el.boardDots);
+        }
+        el.boardCaption.hidden = !!board.floating || !!board.hideCaption;
+        el.boardPause.hidden = !board.floating && !board.carousel;
+        el.boardResize.hidden = !board.floating;
         el.boardFilter.hidden = !board.floating;
         showFilters(false);
-        el.boardHelp.hidden = !!board.floating;
+        el.boardHelp.hidden = !!board.floating || !board.help;
         el.boardHelp.textContent = board.help;
         if (board.floating) {
           if (!boardWindow.placed) {
@@ -1107,7 +1199,7 @@
         else if (button.dataset.action === "board-next") pageBoard(1);
         else if (button.dataset.action === "board-filter") showFilters(el.boardFilterMenu.hidden);
         else if (button.dataset.action === "board-filter-done") showFilters(false);
-        else if (button.dataset.action === "board-pause" && board?.floating) {
+        else if (button.dataset.action === "board-pause" && (board?.floating || board?.carousel)) {
           board.setPaused(!board.paused);
           paintBoardPause();
           scheduleBoardSave();
@@ -1627,6 +1719,7 @@
       tooltip.hide();
       clearModeHold();
       modePointer = -1;
+      setOwnOoga(null);
       setGorilla(null);
       setMode(null, false, "detached", false);
       setPrimary(false, false, null);
@@ -1642,7 +1735,7 @@
       el.board.classList.remove("board-floating");
       el.board.removeAttribute("style");
     };
-    return { el, openFeed, closeFeed, openRecipe, closeRecipe, dismissOutside, openBoard, closeBoard, updateBoard, restoreBoards, setRosterRow, setMeter, setStats, setAct, setMode, setGorilla, setGorillaSmashPower, setDetachedView, fadeDetachedName, setAreaLabel, setPrimary, setWeapon, setMagazine, setJetpack, setSubtitle, onAction, toast, tooltip, hint, hideHint, letterSign, selectTab, onPreset, onIdentityChange, setIdentity, setDonationUrl, onAssign, onUnassign, renderInventory, dispose };
+    return { el, openFeed, closeFeed, openRecipe, closeRecipe, dismissOutside, openBoard, closeBoard, updateBoard, restoreBoards, setRosterRow, setMeter, setStats, setAct, setMode, setOwnOoga, setGorilla, setGorillaSmashPower, setDetachedView, fadeDetachedName, setAreaLabel, setPrimary, setWeapon, setMagazine, setJetpack, setSubtitle, onAction, toast, tooltip, hint, hideHint, letterSign, selectTab, onPreset, onIdentityChange, setIdentity, setDonationUrl, onAssign, onUnassign, renderInventory, dispose };
   };
   // The account line in the sheet's foot is page-level: shown only when a backend answered, and
   // the director hands every change of `BL.net.state` here, whichever scene is active.

@@ -16,7 +16,7 @@
 // Nothing here allocates per frame: the snapshot is one object mutated in place and the fee ladder is
 // a fixed typed array. Weather reads the two derived axes at the foot of the snapshot.
 //
-// The snapshot is the standing view behind the weather and the Mempool cave: backlog, the fee ladder
+// The snapshot is the standing view behind the weather, the lake and the Mempool chamber's paintings: backlog, the fee ladder
 // in fixed rungs, tip, block pace, difficulty epoch, hashrate and price. The socket's `stats` and
 // `fees` land in it (coalesced into one announce a tick later) and stamp `socketAt`, never
 // `succeeded`, so a REST provider's backoff and Retry-After stand; while they are fresh, REST
@@ -25,10 +25,12 @@
 // poll. Three consecutive failures swap the base URL to Esplora; the preferred provider is probed
 // every fifteen minutes.
 //
-// `derive` sets the weather axes. `soak` comes from the paying backlog: `paying` is the vsize at
-// 1 sat/vB or more (the fee ladder's first rung before normalizing), `payEma` its ten-minute average
-// by elapsed time, cached for reloads, and `paySoak` maps it on a log scale from PAY_DRY to PAY_FULL
-// MvB. `gale` comes from the socket's inflow and is zero once the socket is stale.
+// `derive` sets two derived readings. `gale` comes from the socket's inflow, the arriving volume, and is zero once
+// the socket is stale: it is what makes the Mempool island's weather (rain, cloud and wind; weather.js judges
+// its age for itself between derives). `soak` comes from the paying backlog and is kept as data: `paying` is the
+// vsize at 1 sat/vB or more (the fee ladder's first rung before normalizing), `payEma` its ten-minute average by
+// elapsed time, cached for reloads, and `paySoak` maps it on a log scale from PAY_DRY to PAY_FULL MvB. The whole
+// backlog, `vsize`, fills the island's lake (pool-water.js).
 //
 // The live price is Coinbase Exchange's public `ticker_batch` socket (`readTicker`: `type:
 // "ticker"`, strings parsed, `open_24h` as `priceOpenUsd`), subscribed in `onopen` because the feed
@@ -57,8 +59,8 @@
   // Socket readings count as live for as long as a REST backlog poll would.
   const FRESH_MS = BACKLOG_MS * 3;
   // Soak is the backlog that pays: vB waiting at 1 sat/vB or more, in MvB, smoothed over ten minutes
-  // so the block-by-block sawtooth does not flick the rain between steps, on a log scale from dry to
-  // downpour. The sub-sat pool beneath it sat at ~40 MvB for months and says nothing about pressure.
+  // so the block-by-block sawtooth does not flick it, on a log scale. It no longer makes the rain; it stays
+  // a reading. The sub-sat pool beneath it sat at ~40 MvB for months and says nothing about pressure.
   const PAY_DRY = 0.3, PAY_FULL = 4, PAY_TAU = 600000;
   // Gale is the socket's inflow in vB/s, calm below the first and full at the second.
   const INFLOW_CALM = 1000, INFLOW_FULL = 3500;
@@ -100,7 +102,7 @@
     // Chain
     height: 0, lastTxCount: 0, lastWeight: 0, lastSize: 0, lastBlockAt: 0, pace: TARGET_BLOCK,
     // Mining and market
-    progressPercent: 0, difficultyChange: 0, remainingBlocks: 0, remainingTime: 0,
+    progressPercent: 0, difficultyChange: 0, remainingBlocks: 0, remainingTime: 0, avgBlockMs: 0,
     hashrate: 0, difficulty: 0, priceUsd: 0, priceOpenUsd: 0, priceSource: null,
     // Derived weather axes, 0..1
     soak: 0, gale: 0
@@ -309,6 +311,8 @@
     snapshot.difficultyChange = Number(d.difficultyChange) || 0;
     snapshot.remainingBlocks = d.remainingBlocks | 0;
     snapshot.remainingTime = Number(d.remainingTime) || 0;
+    const avg = Number(d.timeAvg);
+    snapshot.avgBlockMs = Number.isFinite(avg) && avg > 0 ? avg : 0;
   };
   const readHashrate = (h) => {
     if (!h || typeof h !== "object") return;
@@ -466,6 +470,8 @@
       snapshot.heightAt = Number.isInteger(Number(event.height)) && Number(event.height) > 0 ? Date.now() : 0;
       snapshot.height = event.height | 0;
       snapshot.lastTxCount = event.txCount | 0;
+      snapshot.lastWeight = 0;
+      snapshot.lastSize = 0;
       snapshot.lastBlockAt = Date.now();
       // A new block empties part of the pool and replaces the tip, so both are refreshed rather than
       // left to their intervals: the socket gives the height at once, but the size, weight and pace
@@ -497,7 +503,7 @@
   const CACHED = [
     "count", "vsize", "totalFee", "deep", "floor", "nextFee", "fastestFee", "halfHourFee", "hourFee",
     "economyFee", "minimumFee", "height", "lastTxCount", "lastWeight", "lastSize", "lastBlockAt",
-    "pace", "progressPercent", "difficultyChange", "remainingBlocks", "remainingTime", "hashrate",
+    "pace", "progressPercent", "difficultyChange", "remainingBlocks", "remainingTime", "avgBlockMs", "hashrate",
     "difficulty", "priceUsd", "priceOpenUsd", "paying", "payEma", "payAt"
   ];
   const save = () => {

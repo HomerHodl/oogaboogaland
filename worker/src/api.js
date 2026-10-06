@@ -4,12 +4,14 @@
 import { cookieNames, isSecureOrigin, serializeCookie } from "./cookies.js";
 import { deletePlayer, getPlayer, publicPlayer, sanitizeDisplay, updateDisplay } from "./db.js";
 import { fromSite, getSessionFromRequest, json, text } from "./http.js";
+import { contributorFor } from "./contributor-access.js";
 
 const BODY_MAX = 1024;
 
 const me = async (request, env) => {
   const found = await getSessionFromRequest(request, env);
-  if (request.method === "GET") return json({ player: found ? publicPlayer(found.player) : null });
+  if (request.method === "GET") return json({ player: found ? publicPlayer(found.player) : null,
+    character: found ? await contributorFor(found.player.login) : null });
   if (!fromSite(request, env.SITE_ORIGIN)) return json({ error: "forbidden" }, 403);
   if (!found) return json({ error: "unauthenticated" }, 401);
 

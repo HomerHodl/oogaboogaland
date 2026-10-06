@@ -202,12 +202,13 @@
     state.started = true;
     if (location.protocol !== "https:" && location.protocol !== "http:") return;
     try {
-      const res = await fetch("/api/me", { credentials: "same-origin", headers: { accept: "application/json" } });
+      const res = await fetch("/api/me", { credentials: "same-origin", headers: { accept: "application/json" }, signal: AbortSignal.timeout(6000) });
       if (!res.ok || !(res.headers.get("content-type") || "").startsWith("application/json")) return;
       const data = await res.json();
       if (!data || !("player" in data)) return;
       state.backend = true;
       state.me = accept(data.player);
+      if (state.me) BL.contributors.addTemporary(data.character, state.me.login);
     } catch {
       return;
     }
@@ -311,6 +312,7 @@
     const owner = BL.characters.get(name);
     if (!owner || owner.handle.toLowerCase() !== String(name).toLowerCase()) return null;
     const who = owner.display || owner.handle;
+    if (owner.temporary && (!state.me || state.me.login.toLowerCase() !== owner.handle)) return "Sign in to drive your Ooga";
     const mine = ownCharacter();
     if (mine) return mine === owner ? null : "Contributors drive only their own Ooga";
     const ownerLogin = loginOf(owner), wanted = owner.handle.toLowerCase();

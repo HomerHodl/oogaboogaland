@@ -14,7 +14,7 @@
     slot("c9", 9),
     slot("c730", 7.25, null, "headquarters", "Headquarters"),
     { ...slot("c1", 1, null, "mirror", "Ooga Booga Land", "oogaboogax/oogaboogaland"), theme: "matrix" },
-    { ...slot("c2", 2, "factory", "open", "Lightning Factory", "drneski/lightning-foundry"), theme: "lightning" },
+    { ...slot("c2", 2, "factory", "open", "Lightning Factory", "oogaboogax/lightningfoundry"), additionalRepo: "oogaboogax/bananapayserver", theme: "lightning" },
     // On the lowest tier the hub's ten point lights are spoken for by the other open mouths and the fire
     // pit, so the arcade's torches and lantern glow without casting light of their own.
     { ...slot("c3", 3, "arcade", "open", "Ooga Arcade"), glowOnly: true, theme: "arcade" },

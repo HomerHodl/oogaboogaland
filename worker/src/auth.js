@@ -75,7 +75,7 @@ const callback = async (request, env, url) => {
     console.error("github sign-in failed", err);
     return text("GitHub did not answer. Try again.", 502, { "set-cookie": clearState });
   }
-  if (!Number.isSafeInteger(profile.id) || typeof profile.login !== "string") {
+  if (!Number.isSafeInteger(profile.id) || typeof profile.login !== "string" || profile.type !== "User") {
     return text("GitHub sent an unexpected profile.", 502, { "set-cookie": clearState });
   }
 

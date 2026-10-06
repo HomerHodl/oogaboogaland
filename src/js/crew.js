@@ -423,15 +423,19 @@
     const workSites = ctx.workSites?.length ? ctx.workSites : ctx.workRoute ? [{ repo: "oogaboogax/entropylab", route: ctx.workRoute, position: ctx.workPosition, target: ctx.workTarget }] : null;
     const workBodyTarget = ctx.workSites?.length ? ctx.workTarget : null;
     const workCompanionTarget = ctx.workCompanionTarget;
-    // A site is eligible when the worker is fresh in its repo, or when it is
+    // A site is eligible when the worker is fresh in either of its repos, or when it is
     // the fallback (namesake) cave and the worker's fresh repo has no cave of
     // its own. An override or maintainer may visit every work cave.
     const siteRepos = new Set();
-    if (workSites) for (const site of workSites) siteRepos.add(site.repo);
+    if (workSites) for (const site of workSites) {
+      siteRepos.add(site.repo);
+      if (site.additionalRepo) siteRepos.add(site.additionalRepo);
+    }
     const siteActive = (cave, site) => {
       if (contributors.debugRoster) return contributors.hasRecentActivity(cave.contributor, site.repo);
       if (cave.override === "working" || cave.traits.maintainer || !contributors.hasRecentActivity) return true;
-      if (contributors.hasRecentActivity(cave.contributor, site.repo)) return true;
+      if (contributors.hasRecentActivity(cave.contributor, site.repo)
+        || site.additionalRepo && contributors.hasRecentActivity(cave.contributor, site.additionalRepo)) return true;
       if (!site.fallback) return false;
       for (const repo of cave.contributor.activity.keys()) {
         if (!siteRepos.has(repo) && contributors.hasRecentActivity(cave.contributor, repo)) return true;
@@ -652,7 +656,10 @@
       cavemen.set(contributor.name, cave);
       crewList.push(cave);
     });
-    const stateOf = (cave) => cave.override || contributors.stateFor(cave.contributor);
+    const stateOf = (cave) => {
+      const activity = contributors.stateFor(cave.contributor);
+      return activity === "away" && !ctx.playerName ? "away" : cave.override || activity;
+    };
     const groundY = (cave) => {
       const p = cave.root.position;
       const feet = p.y - cave.baseY + cave.restLower;
@@ -660,15 +667,26 @@
     };
     const grounded = (cave) => cave.bedTravel.mode === "rest" || cave.hop === 0 && cave.hopV <= 0 && Math.abs(cave.root.position.y + cave.restLower - groundY(cave)) < 1e-6;
     const atPile = (cave) => cave.act.kind === "eat" || cave.act.kind === "rush";
+    const sleepPriority = (a, b) => (b.contributor.lastContributionAt || b.contributor.lastCommitAt) -
+      (a.contributor.lastContributionAt || a.contributor.lastCommitAt) || a.index - b.index;
     // Rooms are reserved only for this nap; the lab keeps its existing bedrolls.
     const claimBedroll = (cave) => {
-      if (cave.bedroll) return true;
+      if (cave.bedroll && !cave.bedroll.outdoor) return true;
       if (ctx.bedRoute) {
         let available = 0;
         for (const bed of bedrolls) if (!bed.sleeper) available++;
-        if (!available) return false;
-        let chosen = randomInt(available);
-        for (const bed of bedrolls) if (!bed.sleeper && chosen-- === 0) { cave.bedroll = bed; bed.sleeper = cave; return true; }
+        // Reserve vacancies for more recent sleepers even when their update
+        // comes later in stable roster order. Never evict an occupied bed.
+        if (available) for (const other of crewList) {
+          if (other !== cave && other !== player && (!other.bedroll || other.bedroll.outdoor) && !other.camp.burning && !other.camp.panic.active
+            && stateOf(other) === "sleeping" && sleepPriority(other, cave) < 0) available--;
+        }
+        if (available > 0) for (const bed of bedrolls) if (!bed.sleeper) {
+          releaseBedroll(cave); cave.bedroll = bed; bed.sleeper = cave; return true;
+        }
+        if (cave.bedroll) return true;
+        for (const bed of ctx.outdoorBedrolls || []) if (!bed.sleeper) { cave.bedroll = bed; bed.sleeper = cave; return true; }
+        return false;
       }
       cave.bedroll = bedrolls.find((bed) => !bed.sleeper) || bedrolls[cave.index % bedrolls.length];
       if (!cave.bedroll.sleeper) cave.bedroll.sleeper = cave;
@@ -681,7 +699,7 @@
       cave.bedroll = null;
     };
     const stateCounts = () => {
-      const counts = { working: 0, chilling: 0, sleeping: 0 };
+      const counts = { working: 0, chilling: 0, sleeping: 0, away: 0 };
       for (let i = 0; i < crewList.length; i++) counts[crewList[i].state]++;
       return counts;
     };
@@ -758,7 +776,7 @@
       removeChild(parts.gun.parent, parts.gun); addChild(rest, parts.gun);
       setVec(rest.position, bed.x, bed.y === undefined ? 0 : bed.y, bed.z);
       setVec(rest.rotation, 0, bed.node ? bed.node.rotation.y : (bed.ry || 0) - Math.PI / 2, 0);
-      rest.visible = cave.root.visible;
+      rest.visible = cave.root.visible && !bed.outdoor;
       rest.matrixLiving = !!cave.root.matrixLiving;
       parts.club.visible = cave.weapon.primaryOwned;
       parts.gun.visible = cave.weapon.secondaryOwned;
@@ -809,6 +827,7 @@
       cave.parts.torso.scale.y = 1;
       cave.parts.club.visible = cave.weapon.primaryOwned;
       for (const node of cave.sleepParts.equipment) node.visible = true;
+      for (const node of cave.swagNodes) node.visible = true;
       if (builtInJetpack(cave)) cave.parts.jetpack.visible = !!cave.jet || cave.rocketJumpTime > 0;
       cave.parts.snack.visible = false;
       cave.parts.gun.visible = false;
@@ -860,6 +879,7 @@
       const magazineHandRotation = magazineModel.handRotation, magazineArmRotation = magazineModel.armRotation;
       const magazineArmStart = magazineModel.armStart, magazineArmRest = magazineModel.armRest;
       const node = magazineModel.node, loading = reloadingSpare(holder) && holder.weapon.reloadMagazine === index;
+      node.visible = !(holder.state === "sleeping" && holder.bedroll?.outdoor);
       const swapping = holder.weapon.swapTime > 0 && holder.weapon.swapMagazine === index;
       const parent = swapping ? holder.root : loading ? holder.parts.armR : holder.parts.torso;
       const attached = !node.parent;
@@ -1023,6 +1043,9 @@
         if (step.done) { planQueue.shift(); finishBedRoute(cave, step.value); }
       }
     };
+    // Feet below the home island's surface mean its headquarters only over the home island itself: a scene with
+    // ground lower than that elsewhere (the Mempool island's chamber) says where through `ctx.underHome`.
+    const underHome = (x, z) => !ctx.underHome || ctx.underHome(x, z);
     const startBedRoute = (cave, bed, toBed) => {
       const travel = cave.bedTravel;
       cave.avoidance.tx = NaN;
@@ -1087,7 +1110,7 @@
       r.visible = true;
       if (!visible && !settle) setVec(r.position, walkIn.x, cave.baseY + groundAt(walkIn.x, walkIn.z, Infinity, Infinity, cave), walkIn.z);
       if (claimBedroll(cave)) {
-        if (settle) {
+        if (settle || cave.bedroll.outdoor) {
           // An existing sleeper is already in bed on entry. Reuse the final
           // lie-down pose without planning or animating a trip from the pile.
           cave.walk = null;
@@ -1099,7 +1122,19 @@
           runBed(cave, 0);
         } else startBedRoute(cave, cave.bedroll, true);
       }
-      else { cave.bedTravel.mode = "waiting"; cave.bedTravel.toBed = true; cave.bedTravel.retry = 1; }
+      else {
+        // A full HQ must not leave new sleepers at the model origin inside the pile.
+        // Reuse the scene's collision- and occupancy-checked recovery spots; if all
+        // are occupied, remain hidden and retry instead of stacking at a fallback.
+        cave.walk = null;
+        cave.act.kind = "bed";
+        if (!visible || settle) {
+          r.visible = !!ctx.npcRecoverySpot && ctx.npcRecoverySpot(cave, NPC_RECOVERY_SPOT);
+          if (r.visible) setVec(r.position, NPC_RECOVERY_SPOT.x, cave.baseY + NPC_RECOVERY_SPOT.y, NPC_RECOVERY_SPOT.z);
+          cave.hop = cave.hopV = 0;
+        }
+        cave.bedTravel.mode = "waiting"; cave.bedTravel.toBed = true; cave.bedTravel.retry = 1;
+      }
       refreshRosterRow(cave);
     };
     const applyState = (cave, state, settle = false) => {
@@ -1157,7 +1192,14 @@
     };
     const beginWalk = (cave, state = "working") => {
       if (cave === player && cave.bedTravel.manual && cave.state === "sleeping") { wakePlayer(); return; }
+      if (cave.state === "away") { applyState(cave, state, true); return; }
       if (ctx.bedRoute && cave.state === "sleeping") {
+        // An overflow sleeper may have neither a bed nor a visible waiting spot.
+        // Settle a newly active Ooga normally instead of routing from an absent bed.
+        if (!cave.bedroll || cave.bedroll.outdoor) {
+          standFromBed(cave); releaseBedroll(cave);
+          cave.state = "away"; applyState(cave, state, true); return;
+        }
         const bed = cave.bedroll;
         standFromBed(cave);
         releaseBedroll(cave);
@@ -1294,8 +1336,12 @@
       const next = new Map(entries.map((cave) => [cave, stateOf(cave)]));
       fanRadius = wantedFanRadius();
       assignFanSlots(entries, (cave) => next.get(cave) === "working");
+      // Waking/away actors release beds first; sleepers then claim newest-first.
+      entries.sort((a, b) => Number(next.get(a) === "sleeping") - Number(next.get(b) === "sleeping") ||
+        (next.get(a) === "sleeping" ? sleepPriority(a, b) : a.index - b.index));
       for (const cave of entries) {
         const target = next.get(cave);
+        if (target === "away") { applyState(cave, target, settle); refreshRosterRow(cave); continue; }
         if (cave === player) {
           if (target !== "sleeping" && !cave.bedTravel.manual) cave.state = target;
           refreshRosterRow(cave);
@@ -1875,7 +1921,8 @@
       }
       gun.ammoReloading = w.reloading;
       if (cave.sleepWeapons.visible || gun.parent === cave.sleepWeapons) {
-        cave.sleepWeapons.visible = cave.root.visible;
+        cave.sleepWeapons.visible = cave.root.visible && !cave.bedroll?.outdoor;
+        if (cave.bedroll?.outdoor) for (const node of cave.swagNodes) node.visible = false;
         parts.gunFlash.visible = false;
         w.carry = "bed";
         return;
@@ -2756,7 +2803,7 @@
       cave.act.until = elapsed + (cave.state === "chilling" ? chillPause(cave) : 1.5);
       cave.act.said = true;
       const p = cave.root.position, feet = p.y - cave.baseY;
-      if (ctx.bedRoute && feet < -0.5 && (!ctx.abyssAt || !ctx.abyssAt(p.x, p.z, feet, cave))) startBedRoute(cave, null, false);
+      if (ctx.bedRoute && feet < -0.5 && underHome(p.x, p.z) && (!ctx.abyssAt || !ctx.abyssAt(p.x, p.z, feet, cave))) startBedRoute(cave, null, false);
       else if (resumeWalk) {
         cave.walk = resumeWalk;
         cave.act.kind = resumeWalk.to === "spot" ? "wander" : "rush";
@@ -3131,6 +3178,20 @@
       else setVec(r.rotation, -Math.PI / 2, 0, 0);
       math.quat.fromEuler(SLEEP_BASE, r.rotation.x, r.rotation.y, r.rotation.z);
       measureSleepPitch(cave, 0);
+      if (bed.outdoor) {
+        // Bare rock supports the whole body: no mattress compression or pillow.
+        travel.pitch = travel.restZ = travel.compression = 0;
+        travel.restY = 0.03 - Math.min(SLEEP_BOUNDS.min, SLEEP_BOUNDS.headMin);
+        math.quat.fromAxisAngle(SLEEP_TILT, 0, 1, 0, bed.node.rotation.y);
+        math.quat.multiply(cave.sleepTargetRotation, SLEEP_TILT, cave.sleepTargetRotation);
+        setVec(r.position, px, py, pz);
+        cave.parts.head.position.x = hx; cave.parts.head.position.y = hy; cave.parts.head.position.z = hz;
+        cave.parts.armR.position.x = ax; cave.parts.armL.position.x = bx;
+        cave.parts.armR.rotation.z = az; cave.parts.armL.rotation.z = bz;
+        r.quaternion = cave.sleepRotation;
+        travel.pose = pose;
+        return;
+      }
       let pitch = 0;
       if (side) {
         // Neck and legs share one rigid body transform; solve pitch from the real pillow face and supporting foot.
@@ -3196,6 +3257,10 @@
       resetPose(cave);
       cave.parts.club.visible = false;
       for (const node of cave.sleepParts.equipment) node.visible = false;
+      if (cave.bedroll.outdoor) {
+        for (const node of cave.swagNodes) node.visible = false;
+        for (const model of cave.magazineModels) if (model) model.node.visible = false;
+      }
       stopBurst(cave);
       stopReload(cave, true);
       putBedWeapons(cave);
@@ -3774,6 +3839,11 @@
     };
     const runBed = (cave, dt) => {
       const travel = cave.bedTravel, p = cave.root.position;
+      if (travel.mode === "rest" && cave.bedroll?.outdoor && cave !== player && (travel.retry -= dt) <= 0) {
+        travel.retry = 1;
+        const previous = cave.bedroll;
+        if (claimBedroll(cave) && cave.bedroll !== previous) { startSleep(cave, true); return; }
+      }
       if (travel.mode === "landing") {
         runPlayer(cave, dt, false);
         if (ctx.abyssAt && ctx.abyssAt(p.x, p.z, p.y - cave.baseY, cave) && p.y - cave.baseY < ctx.abyssRespawnY) {
@@ -3785,6 +3855,15 @@
         return;
       }
       if (travel.mode === "waiting") {
+        if (travel.toBed && !cave.bedroll) {
+          travel.retry -= dt;
+          if (travel.retry <= 0) {
+            if (!cave.root.visible) startSleep(cave, true);
+            else if (claimBedroll(cave)) startSleep(cave, !!cave.bedroll.outdoor);
+            else travel.retry = 1;
+          }
+          return;
+        }
         if (!grounded(cave)) { startBedRoute(cave, travel.toBed ? cave.bedroll : travel.bed, travel.toBed); return; }
         if (travel.plan) return;
         travel.retry -= dt;
@@ -5204,7 +5283,7 @@
       cave.act.until = elapsed + (cave.state === "chilling" ? chillPause(cave) : 1.5);
       cave.act.said = true;
       cave.act.trips = 0;
-      if (!cave.camp.burning && ctx.bedRoute && cave.root.position.y - cave.baseY < -0.5 && (!ctx.abyssAt || !ctx.abyssAt(cave.root.position.x, cave.root.position.z, cave.root.position.y - cave.baseY, cave))) startBedRoute(cave, null, false);
+      if (!cave.camp.burning && ctx.bedRoute && cave.root.position.y - cave.baseY < -0.5 && underHome(cave.root.position.x, cave.root.position.z) && (!ctx.abyssAt || !ctx.abyssAt(cave.root.position.x, cave.root.position.z, cave.root.position.y - cave.baseY, cave))) startBedRoute(cave, null, false);
       cave.override = cave.controlOverride;
       if (ctx.playerName) return;
       applyState(cave, stateOf(cave));

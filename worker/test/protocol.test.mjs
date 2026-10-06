@@ -53,7 +53,8 @@ test("spawn slots ring the pile, eight apart, facing it", () => {
 
 test("identity comes only from the Worker's headers, all or nothing", () => {
   const h = (o) => new Headers(o);
-  assert.deepEqual(playerFromHeaders(h({ "x-player-id": "42", "x-player-login": "ooga" })), { id: 42, login: "ooga", display: "ooga" });
+  assert.deepEqual(playerFromHeaders(h({ "x-player-id": "42", "x-player-login": "ooga" })), { id: 42, login: "ooga", display: "ooga", contributor: false });
+  assert.equal(playerFromHeaders(h({ "x-player-id": "42", "x-player-login": "ooga", "x-player-contributor": "1" })).contributor, true);
   assert.equal(playerFromHeaders(h({ "x-player-login": "ooga" })), null);
   assert.equal(playerFromHeaders(h({ "x-player-id": "abc", "x-player-login": "ooga" })), null);
   assert.equal(playerFromHeaders(h({ "x-player-id": "42" })), null);
@@ -80,6 +81,14 @@ test("who may drive which Ooga: owners only their own, others only while the own
   assert.equal(claimRefusal(cast, "visitor", "portlandhodl", room(["visitor", "portlandhodl"])), null);
   assert.equal(claimRefusal(cast, "visitor", "nobody-real", room()), "unknown");
   assert.equal(claimRefusal(cast, "visitor", null, room(["portlandhodl"])), null);
+  // Eligibility is a Worker-vouched flag, persisted in the room's attachment.
+  assert.equal(claimRefusal(cast, "new-ooga", "new-ooga", room()), "unknown");
+  assert.equal(claimRefusal(cast, "new-ooga", "NEW-OOGA", room(), true), null);
+  assert.equal(claimRefusal(cast, "new-ooga", "portlandhodl", room(), true), "not-yours");
+  assert.equal(claimRefusal(cast, "visitor", "new-ooga", room(["new-ooga", "new-ooga"])), "unknown");
+  assert.equal(claimRefusal(cast, "ottoz0r", "ottoz0r", room(), true), "not-yours");
+  assert.equal(claimRefusal(cast, "ottoz0r", "bc1gui", room(), true), null);
+  assert.equal(claimRefusal(cast, "bc1gui", "bc1gui", room(["ottoz0r"]), true), "owner-here");
 });
 
 test("voice: players driving an Ooga hear each other while in the same place; nobody else does", async () => {

@@ -15,7 +15,9 @@
   const WALK_SPEED = 0.35;
   const NAME_FONT = "bold 11px ui-monospace, monospace";
 
-  const create = ({ root, crew }) => {
+  // `posed(cave, feetY)` lets the scene finish a body's pose once it stands where the room says: the hub sets a
+  // swimmer's arms by it, from the position the pose transport already carries, with no simulation of its own.
+  const create = ({ root, crew, posed = null }) => {
     const net = BL.net;
     const bodies = new Map();
     const actorPool = Array.from({ length: MAX }, () => ({ x: 0, y: 0, z: 0 }));
@@ -104,6 +106,7 @@
         entry.yaw += Math.atan2(Math.sin(rec.yaw - entry.yaw), Math.cos(rec.yaw - entry.yaw)) * t;
         if (far) entry.dx = entry.dz = 0;
         pose(entry, dt);
+        if (posed) posed(entry.cave, entry.cave.root.position.y - entry.baseY);
         const actor = actorPool[n++];
         actor.x = entry.x; actor.y = entry.y; actor.z = entry.z;
       }

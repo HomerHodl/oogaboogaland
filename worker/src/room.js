@@ -57,7 +57,7 @@ export class Room extends DurableObject {
   }
 
   attachment(p) {
-    return { id: p.id, login: p.login, display: p.display, body: p.body, x: p.x, y: p.y, z: p.z, yaw: p.yaw, voice: p.voice, zone: p.zone, inHub: p.inHub, joinedAt: p.joinedAt };
+    return { id: p.id, login: p.login, display: p.display, contributor: p.contributor, body: p.body, x: p.x, y: p.y, z: p.z, yaw: p.yaw, voice: p.voice, zone: p.zone, inHub: p.inHub, joinedAt: p.joinedAt };
   }
 
   view(p) {
@@ -151,7 +151,7 @@ export class Room extends DurableObject {
       this.updateVoice();
     } else if (msg.t === "body") {
       if (msg.name === p.body) return;
-      const refusal = claimRefusal(CAST, p.login, msg.name, this.players.values());
+      const refusal = claimRefusal(CAST, p.login, msg.name, this.players.values(), p.contributor);
       if (refusal) {
         this.send(ws, { t: "release", name: msg.name, reason: refusal });
         if (p.body === null) return;

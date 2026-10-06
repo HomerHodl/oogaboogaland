@@ -279,6 +279,10 @@
     else if (name === "dsb-close-shop") { document.getElementById("dsb-shop").hidden = true; syncPlayer(); syncContext(); }
     else if (name === "dsb-stop" && (phase === "boat" || phase === "coaster")) stopRide();
     else if (name === "act") pilot.action();
+    else if (name === "mode-retake" && cameraEnabled()) {
+      pilot.modeAction(name);
+      if (pilot.player === avatar) { avatarView = true; syncPlayer(); }
+    }
     else if (playerEnabled() && (name.startsWith("weapon-") || name === "magazine-swap")) pilot.weaponAction(name);
     else if (name === "reset-view" && phase === "land") { avatarView = true; previous.x = 0; previous.z = 26; if (!pilot.player) pilot.possess(avatar); syncPlayer(); pilot.enterClose(); pilot.navigate(VIEW); }
     else if (name === "dsb-lookout" && phase === "land") { avatarView = false; syncPlayer(); pilot.goPreset("lookout"); }

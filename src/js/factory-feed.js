@@ -1,5 +1,5 @@
 // The Lightning Factory's reader of a node's event stream. It follows Lightning Foundry's consumer contract
-// (docs/lightning-factory.md in drneski/lightning-foundry): every event is validated strictly and dropped whole
+// (docs/lightning-factory.md in oogaboogax/lightningfoundry): every event is validated strictly and dropped whole
 // if it fails, ordered by `seq` per node and never by `bucket`, a repeated `seq` is one event, a skipped one is
 // counted as a gap and animated as silence, and a `slot`'s line lives for one UTC day only.
 //

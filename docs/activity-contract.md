@@ -57,11 +57,41 @@ Oogatron currently stores `mergedAt` in a pull request event's payload but times
 that event with the pull request's creation time; an older pull request merged today
 therefore still needs an Oogatron-side event/timestamp update to count as activity today.
 
-Repository names normalize to lowercase. Any `OogaBoogaX/<repo>` is accepted, with
-`w-s-bitcoin/entropylab` as the historical alias. GitHub handles match without case;
+Repository names normalize to lowercase through `activity-repos.js`. Any
+`OogaBoogaX/<repo>` is accepted, with `w-s-bitcoin/entropylab` as the historical
+EntropyLab alias. `lightningfactory`, `lightning-foundry`, `lightning-factory`
+and underscore variants normalize to `oogaboogax/lightningfoundry`; the old
+`drneski` owner is also accepted for those Factory/Foundry names. All aliases
+share one activity key, retaining the newest valid timestamp.
+
+The Lightning Factory work site accepts both `oogaboogax/lightningfoundry` and
+`oogaboogax/bananapayserver` during normal play. BananaPayServer remains its own
+repository in the activity data and boards; it shares the Factory work destination.
+An Ooga with recent activity in either repository works at that cave, and its
+Clanker follows the same assignment. That activity does not also select the Ooga
+Booga Land fallback cave. The existing activity windows still apply.
+
+The baked and live board readers group historical Factory/Foundry names under
+`lightningfoundry`, including repository filters and recent-event labels. Grouping
+preserves upstream event counts and recent rows, combines weekly and contributor
+leaderboards, and unions contributor identities using their newest timestamps.
+It does not deduplicate Oogatron's stored events: the public snapshot omits event
+IDs, and distinct commits can share a login and timestamp. Any duplicate history
+caused by repository renames must be repaired in Oogatron using those IDs.
+
+Confirmed contribution identities normalize through `contributor-identities.js`
+before repository grouping. Counts, weekly history, recent-event logins and
+activity timestamps roll into the attributed owner without increasing event
+totals. Oogatron user filters show the owner once, and saved alias selections map
+to that owner. This is contribution attribution, not an OAuth identity alias;
+see [Contributor onboarding](contributor-onboarding.md#confirmed-contribution-attribution).
+
+GitHub handles match without case;
 the public aliases `ottoz0r` and `drneski` map to the `bc1gui` and `DrNeski`
 characters (each declared as `github` in its character file). Unknown handles
-do not create new characters. Each character stores at most 64 repositories.
+do not create new characters through the activity adapter. Merge reconciliation
+and the server-verified sign-in fallback handle onboarding separately; see
+[Contributor onboarding](contributor-onboarding.md). Each character stores at most 64 repositories.
 Malformed, future, repeated, and older timestamps do not replace newer activity.
 
 `BL.contributors.hasRecentActivity(contributor, "oogaboogax/entropylab")` is the

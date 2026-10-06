@@ -1,0 +1,30 @@
+name: Check character identities
+
+on:
+  pull_request_target:
+    branches: [rock]
+    types: [opened, synchronize, reopened, ready_for_review, edited]
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  identities:
+    name: Character identity ownership
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          # Trusted checker only. PR sources are fetched as text, never executed.
+          ref: ${{ github.event.pull_request.base.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+          package-manager-cache: false
+      - name: Check new character filenames and GitHub owners
+        run: node scripts/contributor-pr.mjs
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          CHARACTER_BOT_LOGIN: ${{ vars.CHARACTER_BOT_LOGIN || 'github-actions[bot]' }}

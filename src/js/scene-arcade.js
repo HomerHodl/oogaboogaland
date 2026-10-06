@@ -1673,6 +1673,7 @@
     hud.onAction((action) => {
       if (action === "leave") leaveCave();
       else if (action === "reset-view") pilot.goPreset("entrance");
+      else if (action === "mode-retake") pilot.modeAction(action);
       else if (action === "arcade-mute") toggleMute();
     });
     fx = fxMod.create({ root, input, hooks, hud, game, world, renderer, camera, overlay: ctx.overlay, tickerAt: { x: 0, y: 5, z: -6 } });

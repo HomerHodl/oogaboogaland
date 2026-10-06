@@ -155,7 +155,6 @@
         <h1><a class="home-link" href="./" title="Back to the island"><span data-sign>Ooga Booga Land</span></a></h1>
         <p data-scene="hub" id="subtitle">an island of caves</p>
         <p data-scene="lab" hidden>EntropyLab cave</p>
-        <p data-scene="pool" hidden>Mempool cave</p>
         <p data-scene="factory" hidden>Lightning Factory</p>
         <p data-scene="bifrost" hidden>₿IFRÖST</p>
         <p data-scene="arcade" hidden>Ooga Arcade</p>
@@ -177,7 +176,7 @@
         <p data-scene="dash" hidden>Ooga Arcade · Dino Dash</p>
         <p data-scene="stacker" hidden>Ooga Arcade · Stone Stacker</p>
       </div>
-      <time class="world-clock" id="world-clock" aria-label="Local time"></time>
+      <time class="world-clock" id="world-clock"></time>
       <div class="world-block" id="world-block" aria-live="polite" aria-label="Bitcoin block height unavailable">
         <span>Block</span><span id="world-block-height">&mdash;</span>
       </div>
@@ -194,13 +193,6 @@
         <button type="button" data-preset="bunks">Bunks</button>
         <button type="button" data-preset="bench">Bench</button>
         <button type="button" class="leave" data-action="leave" data-scene="lab" hidden>Leave<span> cave</span></button>
-      </nav>
-      <nav class="presets" aria-label="Mempool cave" data-scene="pool" hidden>
-        <button type="button" data-preset="ladder">Ladder</button>
-        <button type="button" data-preset="tiers">Tiers</button>
-        <button type="button" data-preset="chain">Chain</button>
-        <button type="button" data-preset="epoch">Epoch</button>
-        <button type="button" class="leave" data-action="leave">Leave<span> cave</span></button>
       </nav>
       <nav class="presets" aria-label="Lightning Factory" data-scene="factory" hidden>
         <button type="button" data-preset="core">Core</button>
@@ -403,16 +395,23 @@
     <div class="equipment-hud" id="equipment-hud">
       <div class="weapon-equipment-row">
       <button type="button" class="mode-hud" id="destination-hud" data-action="mode-preset" data-selected="false"
-        aria-label="Ooga Booga Land destinations. Select a dot or press to cycle places" title="Ooga Booga Land destinations" hidden>
+        aria-labelledby="detached-destination-name destination-hud-label" title="Ooga Booga Land destinations" hidden>
         <img class="freeroam-icon" id="freeroam-icon" alt="" aria-hidden="true">
-        <span class="detached-destinations" id="detached-destinations" aria-label="Places">
+        <span class="detached-destinations" id="detached-destinations">
           <span class="detached-dot" data-detached-preset="pile" title="Pile"></span>
           <span class="detached-dot" data-detached-preset="lab" title="Lab"></span>
           <span class="detached-dot" data-detached-preset="mirror" title="Mirror"></span>
           <span class="detached-dot" data-detached-preset="underground" title="HQ"></span>
           <span class="detached-dot" data-detached-preset="basement" title="Basement"></span>
+          <span class="detached-dot" data-detached-preset="mempool" title="Mempool"></span>
         </span>
         <span class="detached-destination-name" id="detached-destination-name" aria-live="polite"></span>
+        <span id="destination-hud-label" hidden>Ooga Booga Land destinations. Select a dot or press to cycle places</span>
+      </button>
+      <button type="button" class="mode-hud" id="own-ooga-hud" data-action="mode-retake" data-selected="true"
+        aria-label="Return to your Ooga" title="Return to your Ooga" hidden>
+        <canvas class="mode-face-icon" id="own-ooga-face-icon" width="48" height="48" aria-hidden="true"></canvas>
+        <span class="mode-health" id="own-ooga-health" role="progressbar" aria-label="Your Ooga's health" aria-valuemin="0" aria-valuemax="25" aria-valuenow="25"><span id="own-ooga-health-fill"></span></span>
       </button>
       <button type="button" class="mode-hud" id="mode-hud" data-action="mode-toggle" data-selected="false" data-shooter="false"
         aria-label="Character controls" title="Character controls" hidden>
@@ -1559,6 +1558,8 @@ Then run npm run build and ONLY=characters node test/run.mjs.</pre>
   <script src="js/dressing.js"></script>
   <script src="js/chalkboard.js"></script>
   <script src="js/lifehash.js"></script>
+  <script src="js/contributor-identities.js"></script>
+  <script src="js/activity-repos.js"></script>
   <script src="js/jumbotron-data.js"></script>
   <script src="js/jumbotron.js"></script>
   <script src="js/headquarters-models.js"></script>
@@ -1604,7 +1605,10 @@ Then run npm run build and ONLY=characters node test/run.mjs.</pre>
   <script src="js/drop-models.js"></script>
   <script src="js/rocket.js"></script>
   <script src="js/rocket-models.js"></script>
-    <script src="js/pool-models.js"></script>
+  <script src="js/pool-layout.js"></script>
+  <script src="js/pool-models.js"></script>
+  <script src="js/pool-water.js"></script>
+  <script src="js/pool-paintings.js"></script>
   <script src="js/pool-wildlife.js"></script>
   <script src="js/timechain-models.js"></script>
   <script src="js/timechain-beer.js"></script>
@@ -1623,7 +1627,6 @@ Then run npm run build and ONLY=characters node test/run.mjs.</pre>
   <script src="js/clanker-play.js"></script>
   <script src="js/scene-hub.js"></script>
   <script src="js/scene-lab.js"></script>
-    <script src="js/scene-pool.js"></script>
   <script src="js/factory-feed.js"></script>
   <script src="js/factory-mock.js"></script>
   <script src="js/factory-models.js"></script>

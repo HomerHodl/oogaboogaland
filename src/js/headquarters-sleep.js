@@ -11,6 +11,35 @@
   // The validated waypoint graph depends only on the island's architecture; later visits reuse it and map
   // fresh bed objects onto its nodes.
   const graphs = new WeakMap();
+  // Reserved sleeping rectangles on the actual roofs of open project caves.
+  // Sample the whole footprint, not just its centre, to reject cliff edges and
+  // steep steps. These are floor anchors, with no mattress or rendered items.
+  const outdoorBeds = (island, slots, clear = () => true) => {
+    const beds = [];
+    for (const slot of slots) {
+      if (slot.status !== "open" && slot.status !== "mirror") continue;
+      const mouth = island.mouths.find(m => m.id === slot.id);
+      if (!mouth) continue;
+      const room = mouth.room, sr = Math.sin(mouth.ry), cr = Math.cos(mouth.ry);
+      for (let along = room.from + 1.5; along <= room.to - 1.5; along += 3.2) {
+        for (let across = -room.w / 2 + 0.9; across <= room.w / 2 - 0.9; across += 1.8) {
+          const x = mouth.x - sr * along + cr * across, z = mouth.z - cr * along - sr * across;
+          let low = Infinity, high = -Infinity;
+          for (let a = -0.75; a <= 0.75; a += 0.25) for (let b = -1.5; b <= 1.5; b += 0.25) {
+            const y = island.surfaceAt(x + cr * a + sr * b, z - sr * a + cr * b);
+            low = Math.min(low, y); high = Math.max(high, y);
+          }
+          if (low < mouth.floorY + room.h + 0.25 || high - low > 0.75 || !Number.isFinite(high)) continue;
+          let safe = true;
+          for (let a = -0.75; safe && a <= 0.75; a += 0.25) for (let b = -1.5; safe && b <= 1.5; b += 0.25) {
+            safe = clear(x + cr * a + sr * b, high + 0.03, z - sr * a + cr * b);
+          }
+          if (safe) beds.push({ x, y: high, z, outdoor: true, caveId: slot.id, sleeper: null, node: { rotation: { y: mouth.ry } } });
+        }
+      }
+    }
+    return beds;
+  };
   const create = ({ island, beds, walkable = null, surfaceRoute = null }) => {
     const cached = graphs.get(island), reuse = !!cached && cached.bedIds.length === beds.length;
     const H = island.headquarters, points = reuse ? cached.points : [], edges = reuse ? cached.edges : [], bedNodes = new Map(), surface = [], exits = reuse ? cached.exits : [];
@@ -219,5 +248,5 @@
     };
     return { route, plan, clearSegment: segment, points, radius: RADIUS, height: HEIGHT, nodeCount: size, edgeCount: edges.reduce((sum, list) => sum + list.length, 0) / 2 };
   };
-  BL.headquartersSleep = { create };
+  BL.headquartersSleep = { create, outdoorBeds };
 })();

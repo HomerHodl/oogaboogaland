@@ -30,7 +30,9 @@ export const OUTSIDE = "outside";
 // Close codes: 4000 follows a `kick` (replaced, stale, full); 4400 is a message the room cannot read.
 export const CLOSE_KICK = 4000;
 // NPC frames: the host sends about 4 a second, only while a page follows; a frame of every Ooga's pose is a few kilobytes.
-export const NPC_FRAME_MAX = 16384;
+// Up to 128 bundled Oogas (112 floats each), plus the bounded event tail.
+// The former 16 KiB cap could not carry the org-wide roster after reconciliation.
+export const NPC_FRAME_MAX = 128 * 112 * 4 + 131072;
 export const NPC_HZ = 20;
 export const CLOSE_PROTOCOL = 4400;
 
@@ -82,7 +84,7 @@ export const playerFromHeaders = (headers) => {
   const id = Number(headers.get("x-player-id"));
   const login = headers.get("x-player-login");
   if (!Number.isSafeInteger(id) || id <= 0 || !login) return null;
-  return { id, login, display: headers.get("x-player-display") || login };
+  return { id, login, display: headers.get("x-player-display") || login, contributor: headers.get("x-player-contributor") === "1" };
 };
 
 // Who may drive which Ooga. `cast` is the character rows the build writes from src/characters/
@@ -103,14 +105,17 @@ export const castIndex = (cast) => {
 };
 
 /** null when `login` may drive `body` now; otherwise the refusal reason. `players` iterates { login, body }. */
-export const claimRefusal = (index, login, body, players) => {
+export const claimRefusal = (index, login, body, players, contributor = false) => {
   if (body === null) return null;
   const want = body.toLowerCase();
-  const owner = index.owners.get(want);
-  if (!owner) return "unknown";
   const me = login.toLowerCase();
   const own = index.handleOf.get(me);
   if (own) return own === want ? null : "not-yours";
+  const owner = index.owners.get(want);
+  // Only the Worker can vouch for this fallback. Never shadow a curated alias,
+  // never grant another visitor an unbundled body, and never mutate the shared cast.
+  if (contributor && !index.owners.has(me)) return want === me ? null : "not-yours";
+  if (!owner) return "unknown";
   for (const p of players) {
     if (p.login.toLowerCase() === me) continue;
     if (p.login.toLowerCase() === owner) return "owner-here";

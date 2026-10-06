@@ -4,7 +4,7 @@ The island runs as two Cloudflare Workers in the account `1e5c1e8f7c343bf6cabced
 
 | Worker | Address | Config | Deploys |
 |---|---|---|---|
-| `oogaboogaland-staging` | https://oogaboogaland-staging.wickedsmartbitcoin.workers.dev | `wrangler.staging.jsonc` | every push to `rock` (`cloudflare-staging.yml`) |
+| `oogaboogaland-staging` | https://oogaboogaland-staging.wickedsmartbitcoin.workers.dev | `wrangler.staging.jsonc` | by hand on `rock` (`cloudflare-staging.yml`) |
 | `oogaboogaland-production` | https://oogabooga.land (www redirects there; the workers.dev address serves the page signed out) | `wrangler.production.jsonc` | by hand on `rock` (`cloudflare-production.yml`) |
 
 The two share code and nothing else: each has its own D1 database, room, OAuth App, Realtime app, secrets and rate-limit counters. Everything below is done once per Worker.
@@ -47,7 +47,7 @@ The zone `oogabooga.land` is in this account. Production serves the apex as a Wo
 
 ## Every deploy
 
-`cloudflare-staging.yml` runs on each push to `rock`; `cloudflare-production.yml` runs by hand on `rock` (Actions → Deploy Cloudflare production → Run workflow). Each takes a fresh jumbotron snapshot, runs `npm run build:site` and the Worker's checks, applies D1 migrations and deploys. Every deploy drops live sockets, and clients reconnect on their own. These workflows are the only deploy path: keep Workers Builds (a Worker's Settings → Build) disconnected and don't deploy from the dashboard, or a second deploy on the same push can replace the Worker and drop its secrets. By hand from a laptop: `cd worker && npm run deploy:staging` (or `deploy:production`).
+Both `cloudflare-staging.yml` and `cloudflare-production.yml` run by hand on `rock`: Actions → Deploy Cloudflare staging (or production) → Run workflow. Merging does not deploy either Worker. Each takes a fresh jumbotron snapshot, runs `npm run build:site` and the Worker's checks, applies D1 migrations and deploys. Every deploy drops live sockets, and clients reconnect on their own. These workflows are the normal deploy path: keep Workers Builds (a Worker's Settings → Build) disconnected and don't deploy from the dashboard, or a second deploy can replace the Worker and drop its secrets. If GitHub Actions is unavailable, the README documents the emergency laptop deployment procedure.
 
 ## Local development
 

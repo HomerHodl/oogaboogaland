@@ -161,8 +161,10 @@
     const visit = (node) => {
       if (!node.visible || node.cameraHidden) return;
       const geometry = node.geometry;
-      // Smoke is translucent; guide lines and glyph effects do not cover UI.
-      if (geometry && geometry.faces && geometry.faces.length && !geometry.matrixGlyph && !node.mirrorPortal && !(node.smokeOpacity < 1) && !(renderOpts?.birdsEyeCutaway && geometry.cutawayHide)) {
+      // Smoke and phase fields are translucent; their effects do not cover UI.
+      if (geometry && geometry.faces && geometry.faces.length && !geometry.matrixGlyph
+        && !geometry.mirrorRippleOnly && !node.mirrorRippleOnly && !node.mirrorPortal
+        && !(node.smokeOpacity < 1) && !(renderOpts?.birdsEyeCutaway && geometry.cutawayHide)) {
         if (node.instanceData) {
           const data = node.instanceData, count = node.drawInstanceCount === undefined ? node.instanceCount : Math.min(node.instanceCount, node.drawInstanceCount);
           for (let i = 0; i < count; i++) if (data[i * 20 + 18] >= -1) add(node, data, i * 20, i);
@@ -441,7 +443,8 @@
       const pending = [];
       const collect = (node) => {
         const geometry = node.geometry;
-        if (geometry && geometry.faces && geometry.faces.length && !geometry.matrixGlyph && !node.mirrorPortal && !meshes.has(geometry)) pending.push(geometry);
+        if (geometry && geometry.faces && geometry.faces.length && !geometry.matrixGlyph
+          && !geometry.mirrorRippleOnly && !node.mirrorRippleOnly && !node.mirrorPortal && !meshes.has(geometry)) pending.push(geometry);
         for (const child of node.children) collect(child);
       };
       collect(root);

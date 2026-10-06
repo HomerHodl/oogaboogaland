@@ -28,6 +28,7 @@
     let handoffBefore = false, holdingFollow = false, pinnedFollow = false, viewChanged = false, moving = false;
     let shoulderSide = SHOULDER_SIDE, peek = 0, orbitPitch = 0.42, overheadHeight = 14, headHidden = null, savedHeadHidden = false;
     let pointerX = 0.5, pointerY = 0.5, targetWait = 0, rightAt = -Infinity, rightDownAt = -Infinity, rightTravel = 0;
+    let combatTooltipEntry = null, combatTooltipText = "";
     let zoomAt = -Infinity, zoomDirection = 0, zoomStopped = false, stoppedGesture = null;
     let canvasLeft = 0, canvasTop = 0, canvasWidth = 1, canvasHeight = 1;
     const measureCanvas = () => {
@@ -41,7 +42,15 @@
       if (headHidden) headHidden.cameraHidden = savedHeadHidden;
       headHidden = null;
     };
+    const setCombatTooltip = (entry) => {
+      if (entry !== combatTooltipEntry) combatTooltipText = entry ? `🦍 ${entry.owner.traits.display}` : "";
+      else if (!entry || !hud.el.tooltip.hidden && hud.el.tooltipText.textContent === combatTooltipText) return;
+      combatTooltipEntry = entry;
+      if (entry) hud.tooltip.show(combatTooltipText, 0, 0, entry, true);
+      else hud.tooltip.hide();
+    };
     const resetReticle = () => {
+      setCombatTooltip(null);
       reticle.hidden = true;
       reticle.dataset.target = reticle.dataset.hit = "none";
       reticle.dataset.ads = reticle.dataset.sight = reticle.dataset.close = reticle.dataset.occluded = "false";
@@ -87,21 +96,24 @@
     };
     const acceptTarget = (owner) => owner.entry !== player;
     const updateReticle = (dt) => {
-      if (!combat && !grabHeld) return;
+      if (!combat && !grabHeld) { setCombatTooltip(null); return; }
       reticle.hidden = false;
       targetWait -= dt;
       if (targetWait > 0) return;
       targetWait = 0.05;
       viewRay();
       let type = "none";
+      let tooltipEntry = null;
       if (input && input.weaponTargets.ray(hit, ray.ox, ray.oy, ray.oz, ray.dx, ray.dy, ray.dz, 60, null, acceptTarget, true)) {
         const near = Math.max(0, hit.distance - 0.035);
         if (!sightClear || sightClear(ray.ox, ray.oy, ray.oz, ray.ox + ray.dx * near, ray.oy + ray.dy * near, ray.oz + ray.dz * near, hit.node, true)) {
           const kind = hit.owner.kind;
           type = kind === "clanker" || kind === "agent" ? "friendly" : kind === "caveman" ? hit.type
             : kind === "crate" ? "object" : reticleTarget ? reticleTarget(hit) : "none";
+          if (combat && kind === "clanker") tooltipEntry = hit.owner.entry;
         }
       }
+      setCombatTooltip(tooltipEntry);
       if (reticle.dataset.target !== type) reticle.dataset.target = type;
     };
     const climbHandoff = () => {
@@ -304,6 +316,8 @@
       else if (name === "mode-release") release();
       else if (name === "mode-toggle") {
         combat = !combat;
+        if (!combat) setCombatTooltip(null);
+        targetWait = 0;
         cancelInput();
         if (view === "orbit" && combat) setView("birds-eye");
         else if (view === "birds-eye" && !combat) {
