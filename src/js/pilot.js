@@ -13,7 +13,8 @@
   const CLOSE_RATE = 12, CLOSE_SNAP = 0.001, CLOSE_PINCH_EXIT = 1.08, CLOSE_LOOK_DIST = 4;
   const AIM_ENTRY_RATE = 8, CARRY_FOCUS_TIME = 0.22;
   const OVERHEAD_TIME = 0.65, OVERHEAD_MIN = 5, OVERHEAD_ZOOM_RATE = 10, OVERHEAD_ZOOM_FAST = 18;
-  const OVERHEAD_NORTH_RATE = 12;
+  const OVERHEAD_NORTH_TIME = 0.6;
+  const overheadNorthEase = t => t * t * t * (10 + t * (-15 + 6 * t));
   const SHOT_SPREAD = 0.015, ADS_SPREAD = 0.005, SPREAD_MASS = 1 - Math.exp(-4.5);
   const TARGET_INTERVAL = 0.05, HIT_TIME = 0.16, TARGET_MARGIN = 0.035;
   const AIM_CLOSE_HIT = 0.9, AIM_SPREAD_NEAR = 6, AIM_SPREAD_MAX = 2.4;
@@ -141,7 +142,7 @@
     let overheadActive = false, overheadMix = 0, overheadExit = 0, overheadTime = 0;
     let overheadHeight = overheadDefault, overheadWanted = overheadHeight, overheadVelocity = 0, overheadYaw = 0;
     let overheadTargetYaw = 0, overheadEntryYaw = 0, overheadEntryPitch = 0, overheadEntryRadius = 0, overheadToShoulder = false, overheadNorthUp = false;
-    let overheadNorthVelocity = 0;
+    let overheadNorthStartYaw = 0, overheadNorthTime = 0;
     let overheadX = 0, overheadY = 0, overheadPointerMoved = false, overheadCeiling = Infinity;
     const overheadEntry = { x: 0, y: 0, z: 0 }, overheadAim = { x: 0, y: 0, z: 0 };
     const overheadRotation = quat.create(), overheadStartRotation = quat.create(), overheadViewRotation = quat.create();
@@ -773,7 +774,7 @@
       overheadEntryPitch = Math.atan2(overheadEntry.y, Math.hypot(overheadEntry.x, overheadEntry.z));
       overheadEntryYaw = Math.hypot(overheadEntry.x, overheadEntry.z) > 1e-7 ? Math.atan2(overheadEntry.x, overheadEntry.z) : orbit.yaw;
       overheadYaw = orbit.yaw;
-      overheadNorthVelocity = 0;
+      overheadNorthStartYaw = overheadYaw; overheadNorthTime = 0;
       overheadTargetYaw = overheadNorthUp
         ? overheadYaw + Math.atan2(Math.sin(-overheadYaw), Math.cos(-overheadYaw))
         : overheadYaw;
@@ -943,16 +944,15 @@
       const t = overheadTime / OVERHEAD_TIME;
       overheadMix = t * t * (3 - 2 * t);
       if (overheadNorthUp) {
-        // North is a potentially half-turn jump, unlike incremental mouse or
-        // held-key input. A critical spring starts gently and keeps its speed
-        // continuous while following the shortest unwrapped path.
-        const delta = overheadYaw - overheadTargetYaw, decay = Math.exp(-OVERHEAD_NORTH_RATE * dt);
-        const impulse = (overheadNorthVelocity + OVERHEAD_NORTH_RATE * delta) * dt;
-        overheadYaw = overheadTargetYaw + (delta + impulse) * decay;
-        overheadNorthVelocity = (overheadNorthVelocity - OVERHEAD_NORTH_RATE * impulse) * decay;
+        // A finite shortest-arc trajectory starts and stops with zero velocity
+        // and acceleration. Even a half turn stays below 0.25 rad per 60 Hz
+        // frame, and reaches exact north before the replay settling deadline.
+        overheadNorthTime = Math.min(OVERHEAD_NORTH_TIME, overheadNorthTime + dt);
+        overheadYaw = overheadNorthStartYaw + (overheadTargetYaw - overheadNorthStartYaw)
+          * overheadNorthEase(overheadNorthTime / OVERHEAD_NORTH_TIME);
       } else {
         overheadYaw = damp(overheadYaw, overheadTargetYaw, 14, dt);
-        overheadNorthVelocity = 0;
+        overheadNorthStartYaw = overheadYaw; overheadNorthTime = 0;
       }
       viewRotation(overheadRotation, 0, -1, 0, -Math.sin(overheadYaw), 0, -Math.cos(overheadYaw), overheadYaw);
       const delta = overheadHeight - overheadWanted;
@@ -1205,7 +1205,7 @@
         if (e.repeat) return;
         resumePose();
         overheadNorthUp = true;
-        overheadNorthVelocity = 0;
+        overheadNorthStartYaw = overheadYaw; overheadNorthTime = 0;
         overheadPointerMoved = true;
         assistedTargetWait = 0;
         overheadTargetYaw = overheadYaw + Math.atan2(Math.sin(-overheadYaw), Math.cos(-overheadYaw));
@@ -2903,7 +2903,7 @@
         overheadToShoulder = false;
         overheadNorthUp = !!pose.birdsEyeNorthUp;
         overheadYaw = pose.orbit[0];
-        overheadNorthVelocity = 0;
+        overheadNorthStartYaw = overheadYaw; overheadNorthTime = 0;
         overheadTargetYaw = overheadNorthUp
           ? overheadYaw + Math.atan2(Math.sin(-overheadYaw), Math.cos(-overheadYaw))
           : overheadYaw;

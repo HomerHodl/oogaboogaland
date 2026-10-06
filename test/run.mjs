@@ -9,6 +9,64 @@ import { createHash } from "node:crypto";
 import { externalizeAudio } from "../scripts/distribution-audio.mjs";
 import { launch, acquire, dispose, driverError } from "./browser.mjs";
 import { writeCharacters } from "../scripts/characters.mjs";
+// Execute the actual north update branch at the replay deadline and worst arc.
+const northTrajectoryProof = async () => {
+  const source = await readFile(join(root, "src/js/pilot.js"), "utf8");
+  const constants = source.slice(source.indexOf("  const OVERHEAD_NORTH_TIME ="), source.indexOf("  const SHOT_SPREAD ="));
+  const start = source.indexOf("      if (overheadNorthUp) {", source.indexOf("    const updateOverhead ="));
+  const branch = source.slice(start + "      if (overheadNorthUp) {".length, source.indexOf("      } else {", start));
+  const update = source.slice(start, source.indexOf("      viewRotation(overheadRotation", start));
+  const keyStart = source.indexOf("        overheadNorthUp = true;", source.indexOf('if (birdsEye() && key === "n")'));
+  const keyReset = source.slice(keyStart, source.indexOf("        return;", keyStart));
+  const restoreStart = source.indexOf("        overheadNorthUp = !!pose.birdsEyeNorthUp;");
+  const restoreReset = source.slice(restoreStart, source.indexOf("        overheadFov =", restoreStart));
+  return runInNewContext(`(() => {
+    ${constants}
+    let maxStep = 0, residual = 0, monotonic = true, finite = true;
+    for (const initial of [-Math.PI, -2.49, -1.61037, -0.001, 0, 0.001, 1.61037, 2.49, Math.PI, 20 * Math.PI + 2.49]) {
+      for (const dt of [1 / 60, 1 / 120]) {
+        let overheadYaw = initial, overheadNorthStartYaw = initial, overheadNorthTime = 0;
+        const overheadTargetYaw = initial + Math.atan2(Math.sin(-initial), Math.cos(-initial));
+        for (let frame = 0; frame < Math.round(0.8 / dt); frame++) {
+          const before = overheadYaw, error = Math.abs(before - overheadTargetYaw);
+          ${branch}
+          maxStep = Math.max(maxStep, Math.abs(overheadYaw - before));
+          monotonic &&= Math.abs(overheadYaw - overheadTargetYaw) <= error + 1e-12;
+          finite &&= Number.isFinite(overheadYaw);
+        }
+        residual = Math.max(residual, Math.abs(overheadYaw - overheadTargetYaw));
+      }
+    }
+    let resets = true, variableSteps = true;
+    {
+      let overheadYaw = -Math.PI, overheadNorthStartYaw = 0, overheadNorthTime = 0, overheadTargetYaw = 0, overheadNorthUp = false;
+      let overheadPointerMoved = false, assistedTargetWait = 0;
+      const damp = (a,b,rate,dt) => b + (a-b) * Math.exp(-rate*dt);
+      const tick = dt => { ${update} };
+      const north = () => { ${keyReset} };
+      const restore = pose => { ${restoreReset} };
+      north(); tick(0.25); const halfway = overheadYaw;
+      north(); resets &&= overheadNorthTime === 0 && overheadNorthStartYaw === halfway;
+      tick(0.8); resets &&= Math.abs(overheadYaw - overheadTargetYaw) < 0.001;
+      restore({ birdsEyeNorthUp: true, orbit: [2.49] });
+      resets &&= overheadNorthStartYaw === 2.49 && overheadNorthTime === 0 && overheadNorthUp;
+      tick(0.8); resets &&= Math.abs(overheadYaw - overheadTargetYaw) < 0.001;
+      restore({ birdsEyeNorthUp: false, orbit: [-2.49] });
+      overheadTargetYaw += 0.4; tick(1/60);
+      resets &&= !overheadNorthUp && overheadNorthTime === 0 && overheadNorthStartYaw === overheadYaw && overheadYaw > -2.49;
+      for (const dt of [1/240, 1/30, 0.07, 0.4, 1]) {
+        restore({ birdsEyeNorthUp: true, orbit: [Math.PI] });
+        for (let elapsed = 0; elapsed < 0.8 - 1e-12;) {
+          const step = Math.min(dt, 0.8 - elapsed), before = Math.abs(overheadYaw - overheadTargetYaw);
+          tick(step); elapsed += step;
+          variableSteps &&= Number.isFinite(overheadYaw) && Math.abs(overheadYaw - overheadTargetYaw) <= before + 1e-12;
+        }
+        variableSteps &&= Math.abs(overheadYaw - overheadTargetYaw) < 0.001;
+      }
+    }
+    return { maxStep, residual, monotonic, finite, resets, variableSteps };
+  })()`);
+};
 // Inspect private query storage only in the test VM; the shipped API stays unchanged.
 const cutawayBoundsProof = async () => {
   const context = { window: {} };
@@ -9124,6 +9182,8 @@ const distributionAudioChecks = async () => {
   } finally { rmSync(out, { recursive: true, force: true }); }
 };
 const unitChecks = async () => {
+  const north = await northTrajectoryProof();
+  record("birds-eye north: worst shortest arcs stay monotonic below the frame step limit and settle before the replay deadline", north.finite && north.monotonic && north.resets && north.variableSteps && north.maxStep < 0.25 && north.residual < 0.001, JSON.stringify(north));
   const cutaway = await cutawayBoundsProof();
   record("cutaway visibility: active apertures reject remote meshes without vertex scans and retain cells, blends, children, global and rotated local cuts", Object.entries(cutaway).every(([key, value]) => key === "bytes" ? value === 160 : value), JSON.stringify(cutaway));
   const storage = await visibilityStorageProof({ compact: true, deferred: true });
