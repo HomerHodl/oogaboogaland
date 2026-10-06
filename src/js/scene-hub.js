@@ -251,6 +251,7 @@
   let cutawayTravelRamp = null, cutawayTravelChannel = -1, cutawayTravelStation = 0;
   const CUTAWAY_PATH_STATE = { lo: new Uint16Array(4), hi: new Uint16Array(4), mix: new Float32Array(4), windowMix: new Float32Array(2), active: 0, version: 1 };
   const cutawayHiddenNodes = [];
+  let cutawayPathBounds = null;
   const addTerrainSection = (source, parent, worldY = 0, region = null, sections = region ? caveSections : terrainSections) => {
     const cap = BL.terrainCutaway.create(source, renderer.releaseGeometry);
     addChild(parent, cap.node);
@@ -281,6 +282,41 @@
   };
   const cutawayPathsActive = () => CUTAWAY_PATH_STATE.mix[0] > 0 || CUTAWAY_PATH_STATE.mix[1] > 0
     || CUTAWAY_PATH_STATE.mix[2] > 0 || CUTAWAY_PATH_STATE.mix[3] > 0;
+  const buildCutawayPathBounds = (paths) => {
+    if (!paths) return null;
+    const bounds = new Float64Array(4 * 5);
+    for (let channel = 0; channel < 4; channel++) {
+      const at = channel * 5;
+      bounds[at] = bounds[at + 1] = bounds[at + 4] = Infinity;
+      bounds[at + 2] = bounds[at + 3] = -Infinity;
+    }
+    for (let cell = 0; cell < paths.keys.length; cell++) {
+      const key = paths.keys[cell]; if (!key) continue;
+      const x = paths.origin.x + Math.floor(cell / paths.height) * paths.unit;
+      const z = paths.origin.z + (cell % paths.height) * paths.unit;
+      for (let channel = 0; channel < 4; channel++) {
+        if (!(key >>> (channel * 8) & 255)) continue;
+        const at = channel * 5;
+        bounds[at] = Math.min(bounds[at], x); bounds[at + 1] = Math.min(bounds[at + 1], z);
+        bounds[at + 2] = Math.max(bounds[at + 2], x + paths.unit); bounds[at + 3] = Math.max(bounds[at + 3], z + paths.unit);
+        bounds[at + 4] = Math.min(bounds[at + 4], paths.bottoms[cell]);
+      }
+    }
+    return bounds;
+  };
+  const cutawayPathMayCross = (cx, cy, cz, rx, ry, rz) => {
+    if (!cutawayPathBounds) return false;
+    for (let channel = 0; channel < 4; channel++) {
+      const mix = CUTAWAY_PATH_STATE.mix[channel], at = channel * 5;
+      if (mix <= 0 || CUTAWAY_PATH_STATE.lo[channel] > CUTAWAY_PATH_STATE.hi[channel]) continue;
+      // Whole-channel cell bounds deliberately overestimate the live station
+      // window. The exact vertex pass still decides every possible crossing.
+      if (cy + ry + 1e-6 <= lerp(CUTAWAY_TOP, cutawayPathBounds[at + 4], mix)) continue;
+      if (cx + rx >= cutawayPathBounds[at] - 1e-6 && cx - rx <= cutawayPathBounds[at + 2] + 1e-6
+        && cz + rz >= cutawayPathBounds[at + 1] - 1e-6 && cz - rz <= cutawayPathBounds[at + 3] + 1e-6) return true;
+    }
+    return false;
+  };
   const cutawayActorY = (region, y) => {
     const dx = cutawayX - region.x, dz = cutawayZ - region.z;
     return Math.abs(dx * region.cos - dz * region.sin) < region.halfWidth + PLAYER_RADIUS && Math.abs(dx * region.sin + dz * region.cos) < region.halfDepth + PLAYER_RADIUS
@@ -313,7 +349,7 @@
       const rz = Math.abs(w[2]) * hx + Math.abs(w[6]) * hy + Math.abs(w[10]) * hz;
       const cy = w[1] * lx + w[5] * ly + w[9] * lz + w[13];
       const ry = Math.abs(w[1]) * hx + Math.abs(w[5]) * hy + Math.abs(w[9]) * hz;
-      let mayCross = cutawayPathsActive() || cy + ry > RENDER_OPTS.cutawayMaxY + 1e-6;
+      let mayCross = cy + ry > RENDER_OPTS.cutawayMaxY + 1e-6 || cutawayPathMayCross(cx, cy, cz, rx, ry, rz);
       for (let i = 0; !mayCross && i < Math.min(CUTAWAY_REGION_CAP, RENDER_OPTS.cutawayRegionCount); i++) {
         const r = RENDER_OPTS.cutawayRegions[i], dx = cx - r.x, dz = cz - r.z;
         const across = dx * r.cos - dz * r.sin, along = dx * r.sin + dz * r.cos;
@@ -8794,6 +8830,7 @@
     clock = daylight.createClock({ hour: hourParam, daylen: daylenParam, day: dayParam, time: timeParam, now: new Date() });
     phase = null;
     island = terrain.island({ seed: SEED });
+    cutawayPathBounds = buildCutawayPathBounds(island.cutawayPaths);
     guideSegmentClear.boxGrid = POOL_SEAMS[0].boxGrid = POOL_SEAMS[1].boxGrid = island.sightGrid;
     buildCameraRamps();
     cameraCaveIndex = 0;
@@ -9806,6 +9843,7 @@
     cutawayHill = false;
     cutawayPool = 0; poolShade = poolUnder = 0;
     cutawayPlayer = null;
+    cutawayPathBounds = null;
     cutawayTravelRamp = null; cutawayTravelChannel = -1; cutawayTravelStation = 0;
     CUTAWAY_PATH_STATE.lo.fill(0); CUTAWAY_PATH_STATE.hi.fill(0); CUTAWAY_PATH_STATE.mix.fill(0); CUTAWAY_PATH_STATE.windowMix.fill(0); CUTAWAY_PATH_STATE.active = 0; CUTAWAY_PATH_STATE.version++;
     window.clearTimeout(hintTimer);

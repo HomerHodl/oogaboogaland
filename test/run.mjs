@@ -10,6 +10,44 @@ import { externalizeAudio } from "../scripts/distribution-audio.mjs";
 import { launch, acquire, dispose, driverError } from "./browser.mjs";
 import { writeCharacters } from "../scripts/characters.mjs";
 // Inspect private query storage only in the test VM; the shipped API stays unchanged.
+const cutawayBoundsProof = async () => {
+  const context = { window: {} };
+  for (const name of ["math", "scene"]) runInNewContext(await readFile(join(root, "src/js/" + name + ".js"), "utf8"), context);
+  const source = await readFile(join(root, "src/js/scene-hub.js"), "utf8");
+  const functions = source.slice(source.indexOf("  const cutawayHeightAt ="), source.indexOf("  const hideNodeIfCut ="));
+  return runInNewContext(`(() => {
+    const BL = window.BL, lerp = BL.math.lerp, CUTAWAY_TOP = 16, CUTAWAY_REGION_CAP = 8, PLAYER_RADIUS = 0.35;
+    let cutawayX = 0, cutawayZ = 0, cutawayHeadY = 0, cutawayPathBounds;
+    const cutawayHiddenNodes = [], CUTAWAY_PATH_STATE = { lo: [1,1,1,1], hi: [255,255,255,255], mix: [1,0.5,0,1] };
+    const RENDER_OPTS = { cutawayMaxY: 1e6, cutawayRegionCount: 0, cutawayRegions: [] };
+    const paths = { width: 4, height: 4, unit: 1, origin: { x: 0, z: 0 }, keys: new Uint32Array(16), bottoms: new Float32Array(16) };
+    paths.keys[0] = 1; paths.bottoms[0] = 0; paths.keys[5] = 128 << 8; paths.bottoms[5] = -3; paths.keys[15] = (255 << 24) >>> 0; paths.bottoms[15] = -8;
+    const island = { cutawayPaths: paths };
+    ${functions}
+    cutawayPathBounds = buildCutawayPathBounds(paths);
+    const S = BL.scene;
+    const triangle = (x, y, z) => { const n = S.createNode({ geometry: { verts: [x,y,z,x+0.1,y,z,x,y,z+0.1], faces: [] } }); S.updateWorld(n); return n; };
+    const outside = triangle(100,20,100), originalVerts = outside.geometry.verts;
+    // Baking bounds once must let an unrelated aperture reject this mesh
+    // without reading all its vertices again on every frame.
+    S.boundsOf(outside.geometry);
+    let vertexReads = 0; Object.defineProperty(outside.geometry, "verts", { get: () => { vertexReads++; return originalVerts; } });
+    const remote = !nodeCrossesCutaway(outside) && vertexReads === 0;
+    const aperture = nodeCrossesCutaway(triangle(0.5,1,0.5)) && !nodeCrossesCutaway(triangle(0.5,-1,0.5));
+    const mixed = !nodeCrossesCutaway(triangle(1.5,6,1.5)) && nodeCrossesCutaway(triangle(1.5,7,1.5));
+    const edge = nodeCrossesCutaway(triangle(-Number.EPSILON,1,0.5));
+    CUTAWAY_PATH_STATE.hi.fill(0); const empty = !nodeCrossesCutaway(triangle(0.5,1,0.5)); CUTAWAY_PATH_STATE.hi.fill(255);
+    const parent = triangle(100,20,100), child = triangle(0.5,1,0.5); S.addChild(parent, child);
+    const children = nodeCrossesCutaway(parent); child.visible = false; const hidden = !nodeCrossesCutaway(parent); child.visible = true;
+    child.geometry.cutawayPreserve = true; const preserved = !nodeCrossesCutaway(parent);
+    CUTAWAY_PATH_STATE.mix.fill(0); const inactive = !nodeCrossesCutaway(triangle(0.5,1,0.5));
+    RENDER_OPTS.cutawayMaxY = 0.5; const global = nodeCrossesCutaway(outside);
+    RENDER_OPTS.cutawayMaxY = 1e6; RENDER_OPTS.cutawayRegions = [{ x: 20, z: 20, cos: 0, sin: 1, halfWidth: 1, halfDepth: 2, y: 2 }]; RENDER_OPTS.cutawayRegionCount = 1;
+    const region = nodeCrossesCutaway(triangle(20,3,20)) && !nodeCrossesCutaway(triangle(23,3,20));
+    return { remote, aperture, mixed, edge, empty, children, hidden, preserved, inactive, global, region, bytes: cutawayPathBounds.byteLength };
+  })()`, context);
+};
+
 const visibilityStorageProof = async ({ compact = false, deferred = false } = {}) => {
   const context = { window: {}, performance };
   for (const name of ["math", "scene", "models", "object-guides"]) {
@@ -9086,6 +9124,8 @@ const distributionAudioChecks = async () => {
   } finally { rmSync(out, { recursive: true, force: true }); }
 };
 const unitChecks = async () => {
+  const cutaway = await cutawayBoundsProof();
+  record("cutaway visibility: active apertures reject remote meshes without vertex scans and retain cells, blends, children, global and rotated local cuts", Object.entries(cutaway).every(([key, value]) => key === "bytes" ? value === 160 : value), JSON.stringify(cutaway));
   const storage = await visibilityStorageProof({ compact: true, deferred: true });
   record("visibility storage: exact source doubles and signed zero survive queries, demand and bounded screen BVHs", storage.exact && storage.unchanged && storage.bounded && storage.tightBacking && storage.storage && storage.demand && storage.disposed && storage.values > 600, JSON.stringify(storage));
   record("visibility lifecycle: shared immutable bakes survive another registry removal, larger mesh replacement and disposal", storage.lifecycle, JSON.stringify(storage));
