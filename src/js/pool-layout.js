@@ -63,6 +63,8 @@
   const NEST = { r: 16.5, halfR: 3.1, halfT: 2.6 };
   const NESTS = [170, 205, 240, 275, 310].map((deg) => ({ bearing: deg * DEG }));
   const CHANNEL = { bed: 0.3, bank: 0.45, low: 0.65, lip: 1 };
+  // Leave room for the one-metre fall and a voxel corner, without opening a full extra cell on each bank.
+  const FALL_GAP_MARGIN = 0.21;
   // Ten evenly spaced bearings, omitting the bridge-facing slot at 7.5 degrees.
   // The first four enter the raised forest wall and spill down the descent's inner wall.
   const CHANNELS = Array.from({ length: 9 }, (_, i) => {
@@ -249,7 +251,7 @@
     if (r < SHAFT_R) return c;
     if (r >= edge) {
       // Outside the cliff only the ledge stands: a shelf hanging on the rock, thinner toward its lip.
-      if (fallGap(bearing, r, UNIT * Math.SQRT1_2)) return c;
+      if (fallGap(bearing, r, FALL_GAP_MARGIN)) return c;
       const lip = lipAt(bearing, r), width = lip || ledgeWidth(a);
       if (width <= 0 || r > edge + width || !lip && !onLedge(a)) return c;
       c.ledge = true;
@@ -487,7 +489,7 @@
 
   BL.poolLayout = {
     UNIT, R, LAKE_R, CHAMBER_R, SHAFT_R, FLOOR, MEMBRANE_DEPTH, LEVEL, WATER, RING, RAMP, DOORS, DOOR, BAYS, WINDOW, JUNCTION, LEDGE, LINK, LINKS, linkAt, lipAt, STOPS, STOP, COURT, BRIDGE, NEST, NESTS,
-    CHANNEL, CHANNELS, channelOutlet, fallGap, RILL, rillRadius, rillInner, RILL_STATIONS, RILL_TAIL, rillTailPoint, rillTailDistance, rillJunctionY, HILLS, SLOT_GRID: SLOT, SLOTS, ORIGIN, SX, SY, SZ, M, PALETTE,
+    CHANNEL, CHANNELS, channelOutlet, fallGap, FALL_GAP_MARGIN, RILL, rillRadius, rillInner, RILL_STATIONS, RILL_TAIL, rillTailPoint, rillTailDistance, rillJunctionY, HILLS, SLOT_GRID: SLOT, SLOTS, ORIGIN, SX, SY, SZ, M, PALETTE,
     wrap, turn, edgeAt, membraneY, waterRadius, rampAngle, rampY, rampHalf, stepUnder, roofUnder, onLedge, ledgeWidth, ledgeY, ridgeTop, column, body,
     groundAt, solidAt, covered, sightClear, boxSolid, boxClear, onIsland, keptClear, rampPoint
   };

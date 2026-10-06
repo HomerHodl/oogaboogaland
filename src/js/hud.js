@@ -829,7 +829,7 @@
         boardFilterRepos: "board-filter-repos", boardFilterUsers: "board-filter-users", boardFilterTypes: "board-filter-types"
       };
       for (const key in ids) el[key] = node.querySelector(`[id="${ids[key]}"]`);
-      const boardNav = node.querySelector(".board-nav");
+      const boardNav = node.querySelector(".board-nav"), boardCenter = node.querySelector(".board-center");
       if (floatingId) {
         node.id += `-${floatingId}`;
         for (const child of node.querySelectorAll("[id]")) child.id += `-${floatingId}`;
@@ -846,7 +846,7 @@
       };
       // Each window copies a readable board's canvas and owns its controls.
       // A board is any object with `title`, `help`, `canvas`, `count`, `index`, `caption`, `note`, `version` and
-      // `go(index)`, plus an optional `wide`, which widens the dialog on desktop. The dialog copies the canvas, captions the page, lays one dot per page and pages with the
+      // `go(index)`, plus optional `wide` and `captionAbove` layouts. The dialog copies the canvas, captions the page, lays one dot per page and pages with the
       // chevrons, the dots and the arrow keys; it never learns what a board shows, so a board can change freely.
       // `updateBoard` repaints whenever the open board's version moves.
       // A `floating` board also supplies `paused` and `setPaused`, and keeps island input available.
@@ -1022,8 +1022,8 @@
         el.boardCaption.textContent = board.caption;
         el.boardNote.textContent = board.note || "";
         el.boardNote.hidden = !!board.floating || !board.note;
+        if (board.floating || board.carousel) paintBoardPause();
         if (board.floating) {
-          paintBoardPause();
           el.boardRollup.checked = board.rollup;
           el.boardFilter.dataset.active = String(board.rollup || board.filters.repos !== null || board.filters.users !== null || board.filters.types !== null);
           if (!el.boardFilterMenu.hidden && filterShown !== board.filterVersion) paintFilters();
@@ -1055,13 +1055,28 @@
         letterSign(el.boardTitle, board.title);
         el.board.classList.toggle("board-wide", !!board.wide);
         el.board.classList.toggle("board-floating", !!board.floating);
-        if (board.floating) el.boardHead.insertBefore(el.boardDots, el.boardHead.lastElementChild);
-        else boardNav.after(el.boardDots);
-        el.boardCaption.hidden = !!board.floating;
-        el.boardPause.hidden = el.boardResize.hidden = !board.floating;
+        el.board.classList.toggle("board-caption-above", !!board.captionAbove);
+        el.board.classList.toggle("board-carousel", !!board.carousel);
+        if (board.floating) {
+          boardCenter.prepend(el.boardCaption);
+          el.boardHead.insertBefore(el.boardDots, el.boardHead.lastElementChild);
+        } else if (board.carousel) {
+          el.boardScreen.before(el.boardCaption);
+          boardCenter.prepend(el.boardPause);
+          el.boardHead.insertBefore(el.boardDots, el.boardHead.lastElementChild);
+        } else if (board.captionAbove) {
+          el.boardScreen.before(el.boardCaption);
+          boardCenter.prepend(el.boardDots);
+        } else {
+          boardCenter.prepend(el.boardCaption);
+          boardNav.after(el.boardDots);
+        }
+        el.boardCaption.hidden = !!board.floating || !!board.hideCaption;
+        el.boardPause.hidden = !board.floating && !board.carousel;
+        el.boardResize.hidden = !board.floating;
         el.boardFilter.hidden = !board.floating;
         showFilters(false);
-        el.boardHelp.hidden = !!board.floating;
+        el.boardHelp.hidden = !!board.floating || !board.help;
         el.boardHelp.textContent = board.help;
         if (board.floating) {
           if (!boardWindow.placed) {
@@ -1184,7 +1199,7 @@
         else if (button.dataset.action === "board-next") pageBoard(1);
         else if (button.dataset.action === "board-filter") showFilters(el.boardFilterMenu.hidden);
         else if (button.dataset.action === "board-filter-done") showFilters(false);
-        else if (button.dataset.action === "board-pause" && board?.floating) {
+        else if (button.dataset.action === "board-pause" && (board?.floating || board?.carousel)) {
           board.setPaused(!board.paused);
           paintBoardPause();
           scheduleBoardSave();

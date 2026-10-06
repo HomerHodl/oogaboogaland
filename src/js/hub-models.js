@@ -82,7 +82,7 @@
     s: ["000", "011", "110", "001", "110"],
     u: ["000", "101", "101", "101", "011"],
     v: ["000", "101", "101", "101", "010"],
-    w: ["000", "101", "101", "111", "010"],
+    w: ["000", "101", "101", "111", "101"],
     x: ["000", "101", "010", "010", "101"],
     z: ["000", "111", "001", "010", "111"],
     A: ["010", "101", "111", "101", "101"],
@@ -125,6 +125,8 @@
     "-": ["000", "000", "111", "000", "000"],
     ".": ["000", "000", "000", "000", "010"]
   };
+  // The carved headline has room for both diagonals; a three-cell M reads too much like H at bridge distance.
+  const CARVED_M = ["10001", "11011", "10101", "10001", "10001"];
   const SIGN_CELL = 0.075, SIGN_PAD = 0.855, SIGN_FRONT = 0.23;
   const SIGN_CACHE = new Map();
   // The emblem each cave flies, 5 by 7: on its sign either side of the name and on its banners.
@@ -182,7 +184,12 @@
     const hit = SIGN_CACHE.get(key);
     if (hit) return hit;
     let cells = -1;
-    for (const ch of text) cells += ch === " " ? 2 : 4;
+    for (const ch of text) {
+      if (ch === " ") { cells += 2; continue; }
+      const glyph = ch === "M" ? CARVED_M : SIGN_GLYPHS[ch];
+      if (!glyph) throw new Error(`No cave-sign glyph for "${ch}"`);
+      cells += glyph[0].length + 1;
+    }
     const textW = cells * SIGN_CELL;
     const iconW = iconName ? BADGE_CELL * BADGE_CELLS : 0;
     const width = Math.max(CAVE_SIGN_WIDTH, textW + SIGN_PAD + (iconName ? iconW + BADGE_GAP : 0));
@@ -206,8 +213,7 @@
         cursor += SIGN_CELL * 2;
         continue;
       }
-      const glyph = SIGN_GLYPHS[ch];
-      if (!glyph) throw new Error(`No cave-sign glyph for "${ch}"`);
+      const glyph = ch === "M" ? CARVED_M : SIGN_GLYPHS[ch];
       for (let row = 0; row < glyph.length; row++) {
         const line = glyph[row];
         for (let col = 0; col < line.length; col++) {
@@ -223,7 +229,7 @@
           col += n - 1;
         }
       }
-      cursor += SIGN_CELL * 4;
+      cursor += SIGN_CELL * (glyph[0].length + 1);
     }
     if (iconName) {
       const left = shift - textW * 0.5 - BADGE_GAP - iconW;
