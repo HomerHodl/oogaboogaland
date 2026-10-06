@@ -9,6 +9,125 @@ import { createHash } from "node:crypto";
 import { externalizeAudio } from "../scripts/distribution-audio.mjs";
 import { launch, acquire, dispose, driverError } from "./browser.mjs";
 import { writeCharacters } from "../scripts/characters.mjs";
+// Inspect private query storage only in the test VM; the shipped API stays unchanged.
+const visibilityStorageProof = async ({ compact = false, deferred = false } = {}) => {
+  const context = { window: {}, performance };
+  for (const name of ["math", "scene", "models", "object-guides"]) {
+    let source = await readFile(new URL(`../src/js/${name}.js`, import.meta.url), "utf8");
+    if (name === "object-guides") source = source.replace("return { collect, clear,", "return { geometryRecords: () => geometries, entryRecords: () => registered, collect, clear,");
+    runInNewContext(source, context);
+  }
+  return runInNewContext(`(() => {
+    const B = window.BL, S = B.scene, M = B.models, root = S.createNode(), owner = S.createNode(), actor = { root: S.createNode() };
+    S.addChild(root, owner, actor.root);
+    const precise = { verts: [-0, -0, 0, 1 + Number.EPSILON, -0, 0, 0, 1 + Number.EPSILON, 0], faces: [{ i: [0, 1, 2], color: [1, 1, 1] }], lines: [] };
+    const geos = [precise, M.merge(...Array.from({ length: 6 }, (_, i) => M.box({ w: 0.4, h: 0.7, d: 0.3, offset: { x: i * 0.6 }, color: "#fff" })))];
+    geos.push({ verts: [0, 0, 0, 1, 0, 0, 2, 0, 0], faces: [{ i: [0, 1, 2], color: [1, 1, 1] }], lines: [] });
+    geos.push({ verts: [0, 0, 0, 1, 0, 0, 0, 1, 0, 2, 0, 0], faces: [{ i: [0, 1, 2], color: [1, 1, 1] }, { i: [0, 1, 3], color: [1, 1, 1] }], lines: [] });
+    const original = geos.map(g => g.verts.slice());
+    for (let i = 0; i < geos.length; i++) S.addChild(owner, S.createNode({ geometry: geos[i], position: { x: i, y: 0, z: 8 }, rotation: { x: 0.17, y: 0.31, z: 0 }, scale: { x: 1.2, y: 0.8, z: 1.1 } }));
+    const guides = B.objectGuides.create({ roots: [owner], crew: { cavemen: new Map() } });
+    const initiallyUnbaked = guides.stats.triangles === 0 && guides.stats.samples === 0;
+    const camera = S.createCamera({ near: 0.1, far: 100 }); Object.assign(camera.position, { x: 0, y: 0, z: 0 }); Object.assign(camera.target, { x: 0, y: 0, z: 8 });
+    S.updateWorld(root); guides.collect(actor, 0, 0, 8, camera, 1.6);
+    guides.ownerBoundaryAt(owner, 0, 0.2, 8, 1, 0, 0);
+    let values = 0, exact = true, tightBacking = true, bytes = 0, count = 0;
+    for (const [source, geometry] of guides.geometryRecords()) {
+      const v = source.verts, expected = [];
+      for (const face of source.faces) {
+        const a = face.i[0] * 3, b = face.i[1] * 3, c = face.i[2] * 3;
+        const ux = v[b] - v[a], uy = v[b + 1] - v[a + 1], uz = v[b + 2] - v[a + 2], vx = v[c] - v[a], vy = v[c + 1] - v[a + 1], vz = v[c + 2] - v[a + 2];
+        if (Math.hypot(uy * vz - uz * vy, uz * vx - ux * vz, ux * vy - uy * vx) < 1e-6) continue;
+        for (let j = 1; j < face.i.length - 1; j++) {
+          const b = face.i[j] * 3, c = face.i[j + 1] * 3;
+          expected.push(v[a], v[a + 1], v[a + 2], v[b] - v[a], v[b + 1] - v[a + 1], v[b + 2] - v[a + 2], v[c] - v[a], v[c + 1] - v[a + 1], v[c + 2] - v[a + 2]);
+        }
+      }
+      const actual = [];
+      if (geometry.triangleIndices) {
+        const ids = geometry.triangleIndices;
+        bytes += ids.byteLength;
+        tightBacking &&= ids.buffer.byteLength === ids.byteLength && geometry.triangleCoverFaces.buffer.byteLength === geometry.triangleCoverFaces.byteLength;
+        for (let i = 0; i < ids.length; i += 3) {
+          const a = ids[i], b = ids[i + 1], c = ids[i + 2];
+          actual.push(v[a], v[a + 1], v[a + 2], v[b] - v[a], v[b + 1] - v[a + 1], v[b + 2] - v[a + 2], v[c] - v[a], v[c + 1] - v[a + 1], v[c + 2] - v[a + 2]);
+        }
+      } else { actual.push(...geometry.triangles); bytes += geometry.triangles.byteLength; }
+      exact &&= actual.length === expected.length && actual.every((value, i) => Object.is(value, expected[i]));
+      count += expected.length / 9; values += actual.length;
+    }
+    const unchanged = geos.every((g, i) => g.verts.length === original[i].length && g.verts.every((value, j) => Object.is(value, original[i][j])));
+    const bounded = guides.entryRecords().length === 3 && guides.stats.boundaryBuilds > 0 && guides.entryRecords().filter(entry => entry.visible).every(entry => entry.boundaryNodes.length >= entry.geometry.counts.length * 4);
+    const storage = ${compact} ? bytes === count * 12 && guides.stats.triangleBytes === bytes : true;
+    const demand = ${deferred} ? initiallyUnbaked && guides.stats.triangles > 0 : true;
+    guides.dispose();
+    // Registries share immutable CPU bakes, but refresh and disposal own only their scene entries.
+    const shared = M.box({ w: 1, h: 1, d: 1, color: "#fff" }), firstRoot = S.createNode(), secondRoot = S.createNode();
+    const firstNode = S.createNode({ geometry: shared, position: { x: 0, y: 0, z: 8 } }), removed = S.createNode({ geometry: shared, position: { x: 2, y: 0, z: 8 } }), secondNode = S.createNode({ geometry: shared, position: { x: 0, y: 0, z: 8 } });
+    S.addChild(root, firstRoot, secondRoot);
+    S.addChild(firstRoot, firstNode, removed); S.addChild(secondRoot, secondNode);
+    const first = B.objectGuides.create({ roots: [firstRoot], crew: { cavemen: new Map() } }), second = B.objectGuides.create({ roots: [secondRoot], crew: { cavemen: new Map() } });
+    const query = (q, sceneRoot) => { S.updateWorld(sceneRoot); q.collect(actor, 0, 0, 8, camera, 1.6); q.ownerBoundaryAt(sceneRoot, 0, 0.2, 8, 1, 0, 0); };
+    query(first, firstRoot); query(second, secondRoot);
+    const sharedBake = first.geometryRecords().get(shared) === second.geometryRecords().get(shared);
+    const sharedIndices = second.geometryRecords().get(shared).triangleIndices.slice();
+    S.removeChild(firstRoot, removed); first.refresh(); query(first, firstRoot);
+    const removal = first.entryRecords().length === 1 && first.entryRecords().every(entry => entry.node !== removed);
+    const larger = M.merge(...Array.from({ length: 8 }, (_, i) => M.box({ w: 0.2, h: 1, d: 0.3, offset: { x: i * 0.25 }, color: "#fff" })));
+    firstNode.geometry = larger; first.refresh(); query(first, firstRoot);
+    const entry = first.entryRecords()[0], replacement = !first.geometryRecords().has(shared) && first.geometryRecords().has(larger)
+      && entry.geometry === first.geometryRecords().get(larger) && entry.boundsGeometry === entry.geometry
+      && entry.boundaryReserve >= 96 && entry.boundaryTriangles.length >= 960 && entry.boundaryNodes.length >= entry.geometry.counts.length * 4;
+    first.dispose(); query(second, secondRoot);
+    const survivor = second.stats.registered === 1 && second.stats.triangles === 12 && second.entryRecords()[0].visible
+      && second.geometryRecords().get(shared).triangleIndices.every((value, i) => value === sharedIndices[i]);
+    const released = first.entryRecords().length === 0 && first.geometryRecords().size === 0 && first.stats.triangleBytes === 0;
+    second.dispose();
+    return { exact, unchanged, bounded, tightBacking, storage, demand, values, count, bytes, lifecycle: sharedBake && removal && replacement && survivor && released && second.geometryRecords().size === 0, sharedBake, removal, replacement, survivor, released, disposed: guides.stats.registered === 0 };
+  })()`, context);
+};
+// Count descriptor users rather than timings, so the first-demand cost scales with actual users.
+const visibilityDemandUsersProof = async () => {
+  const context = { window: { demandVisits: 0 }, performance };
+  for (const name of ["math", "scene", "models", "object-guides"]) {
+    let source = await readFile(new URL(`../src/js/${name}.js`, import.meta.url), "utf8");
+    if (name === "object-guides") source = source
+      .replace("return { collect, clear,", "return { geometryRecords: () => geometries, entryRecords: () => registered, descriptorUsers: () => descriptorUsers, collect, clear,")
+      .replace("if (users) for (const entry of users) {", "if (users) for (const entry of users) { window.demandVisits++;");
+    runInNewContext(source, context);
+  }
+  return runInNewContext(`(() => {
+    const B = window.BL, S = B.scene, M = B.models, rows = [];
+    for (const count of [100, 1000]) {
+      const root = S.createNode(), geos = Array.from({ length: 10 }, (_, i) => M.box({ w: 1 + i / 10, h: 1, d: 1, color: "#fff" }));
+      for (let i = 0; i < count; i++) S.addChild(root, S.createNode({ geometry: geos[i % 10], visible: false }));
+      const q = B.objectGuides.create({ roots: [root], crew: { cavemen: new Map() } });
+      const before = window.demandVisits;
+      for (const record of q.geometryRecords().values()) void record.triangleIndices;
+      rows.push({ count, visits: window.demandVisits - before, released: q.descriptorUsers().size === 0,
+        resolved: q.entryRecords().every(e => e.geometry.ready) });
+      q.dispose();
+    }
+    const root = S.createNode(), a = M.box({ w: 1, h: 1, d: 1, color: "#fff" }), b = M.box({ w: 2, h: 2, d: 2, color: "#fff" });
+    const first = S.createNode({ geometry: a }), second = S.createNode({ geometry: a }), removed = S.createNode({ geometry: b });
+    first.visible = second.visible = removed.visible = false;
+    S.addChild(root, first, second, removed);
+    const q = B.objectGuides.create({ roots: [root], crew: { cavemen: new Map() } });
+    const aDescriptor = q.geometryRecords().get(a), bDescriptor = q.geometryRecords().get(b);
+    const aUsers = q.descriptorUsers().get(aDescriptor), bUsers = q.descriptorUsers().get(bDescriptor);
+    S.updateWorld(root); q.collect({ root: S.createNode() }, 0, 0, 0);
+    const boundsTracked = q.entryRecords().every(e => e.geometry === e.boundsGeometry) && aUsers.size === 2 && bUsers.size === 1;
+    S.removeChild(root, removed); first.geometry = b; q.refresh();
+    const replacementReleased = aUsers.size === 1 && bUsers.size === 1 && ![...bUsers].some(e => e.node === removed);
+    S.updateWorld(root); q.collect({ root: S.createNode() }, 0, 0, 0);
+    const before = window.demandVisits; void aDescriptor.triangleIndices;
+    const entry = q.entryRecords().find(e => e.node === second);
+    const bothResolved = entry.geometry === entry.boundsGeometry && entry.geometry.ready && window.demandVisits - before === 1 && !q.descriptorUsers().has(aDescriptor);
+    q.dispose();
+    const disposed = q.descriptorUsers().size === 0 && q.entryRecords().length === 0 && aUsers.size === 0 && bUsers.size === 0;
+    return { rows, boundsTracked, replacementReleased, bothResolved, disposed };
+  })()`, context);
+};
 // ---- solid-props.mjs ----
 const { solidPropsProbe } = (() => {
   // Exercise the same transformed mesh queries used by hub movement.
@@ -1359,6 +1478,7 @@ const { canopyCertificateProbe, canopyPileProbe } = (() => {
     const right = S.createNode({ geometry: left.geometry, position: { x: 1.001, y: 0, z: 2 }, visible: false });
     S.addChild(root, target, cover, left, right, actor.root);
     const objects = BL.objectGuides.create({ roots: [target, cover, left, right], crew: { cavemen: new Map() }, propsBlockActor: false });
+    const initiallyUnbaked = objects.stats.triangles === 0 && objects.stats.samples === 0;
     const camera = S.createCamera({ near: 0.1, far: 100 });
     Object.assign(camera.position, { x: 0, y: 0, z: 0 }); Object.assign(camera.target, target.position);
     let rays = 0;
@@ -1369,12 +1489,13 @@ const { canopyCertificateProbe, canopyPileProbe } = (() => {
       S.updateWorld(root); objects.collect(actor, 0, 0, 24, camera, 1.6);
       rays = 0;
       const before = objects.stats.cameraCertificates, hidden = objects.concealed(target, actor, clear);
-      const row = { name, hidden, rays, certificates: objects.stats.cameraCertificates - before };
+      const row = { name, hidden, rays, certificates: objects.stats.cameraCertificates - before, triangleBytes: objects.stats.triangleBytes, triangles: objects.stats.triangles };
       rows.push(row);
-      if (hidden !== expected || efficient && (rays > 2 || row.certificates < 1)) failures.push(row);
+      if (hidden !== expected || row.triangleBytes !== row.triangles * 12 || efficient && (rays > 2 || row.certificates < 1)) failures.push(row);
     };
     try {
       sample("nearby solid canopy covers the full target", true, true);
+      if (!initiallyUnbaked || objects.stats.triangles === 0) failures.push({ initiallyUnbaked, triangles: objects.stats.triangles });
       camera.position.x = 0.05; sample("small camera pan", true, true);
       camera.position.x = 0;
       cover.visible = false; left.visible = right.visible = true;
@@ -8465,6 +8586,15 @@ scene("factory", { label: "lifecycle", url: hubPage(src), steps: [{ name: "facto
   const { rendered, settled, snapshot, travel, heapDetail, within } = await dsbSoak(b);
   // Keep resource comparisons at one tier, as in the other lifecycle soaks.
   await b.evaluate('__ooga.renderer.setQuality("low")');
+  // Replay can become live after the first snapshot. These four static signal labels are intentionally
+  // cached for the page lifetime; warm them before measuring per-visit retention, not the changing feed.
+  const signalLabels = await b.evaluate(`(() => {
+    const subtitles = ["(Waiting)", "(No Signal)", "(Signal: Live)", "(Catching Up)"];
+    const labels = subtitles.map(sub => BL.factoryModels.label("WATCHTOWER\\nOUTPOST", sub));
+    return { variants: subtitles.length, distinct: new Set(labels).size,
+      reused: subtitles.every((sub, i) => BL.factoryModels.label("WATCHTOWER\\nOUTPOST", sub) === labels[i]) };
+  })()`);
+  record("soak: factory cycles: all four finite watchtower signal labels are cached before retention accounting", signalLabels.variants === 4 && signalLabels.distinct === 4 && signalLabels.reused, JSON.stringify(signalLabels));
   await b.evaluate(`(() => {
     const node = __ooga.factory.node, feed = node.feed, subscribe = feed.subscribe;
     window.__factoryLife = { node, subscriptions: 0 };
@@ -8853,6 +8983,11 @@ const distributionAudioChecks = async () => {
   } finally { rmSync(out, { recursive: true, force: true }); }
 };
 const unitChecks = async () => {
+  const storage = await visibilityStorageProof({ compact: true, deferred: true });
+  record("visibility storage: exact source doubles and signed zero survive queries, demand and bounded screen BVHs", storage.exact && storage.unchanged && storage.bounded && storage.tightBacking && storage.storage && storage.demand && storage.disposed && storage.values > 600, JSON.stringify(storage));
+  record("visibility lifecycle: shared immutable bakes survive another registry removal, larger mesh replacement and disposal", storage.lifecycle, JSON.stringify(storage));
+  const demandUsers = await visibilityDemandUsersProof();
+  record("visibility demand: first demand visits only descriptor users and releases replaced, removed and disposed entries", demandUsers.rows.every(row => row.visits === row.count && row.released && row.resolved) && demandUsers.boundsTracked && demandUsers.replacementReleased && demandUsers.bothResolved && demandUsers.disposed, JSON.stringify(demandUsers));
   await distributionAudioChecks();
   const canvasStub = () => ({
     width: 0, height: 0,
