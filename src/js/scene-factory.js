@@ -395,7 +395,7 @@
     if (e.key === "g" || e.key === "G") return pilot.weaponAction("weapon-toggle");
     if (e.key === "v" || e.key === "V") return pilot.weaponAction("weapon-fire");
     if (e.key === "Escape") {
-      // The foreman's open menu swallows Escape first; only with none up does Escape leave the cave.
+      // The guide's open menu swallows Escape first; only with none up does Escape leave the cave.
       if (greeter && greeter.escape()) return true;
       leaveCave();
       return true;
@@ -643,7 +643,7 @@
   // switchboard, rebalancer, treasury and watchtower. Every other light shares the rest of the slots by nearness to
   // the view (`glowNear`), as the mine shares its lamps: the study, the tunnels, the balcony, the galleries and the
   // daylight at the rim, and every lantern, which throws a wide, soft, warm pool and flickers like a flame.
-  const LIGHT = { core: 0, forge: 1, bay: 2, switchboard: 6, rebalancer: 7, treasury: 8, lookout: 9 }, FIXED = 10;
+  const LIGHT = { core: 0, forge: 1, bay: 2, switchboard: 6, rebalancer: 7, treasury: 8, lookout: 9, tess: 10 }, FIXED = 11;
   const lamp = (i, x, y, z, radius, r, g, b) => {
     const o = i * 8, l = RENDER_OPTS.lights;
     l[o] = x; l[o + 1] = y; l[o + 2] = z; l[o + 3] = radius; l[o + 4] = r; l[o + 5] = g; l[o + 6] = b; l[o + 7] = 0;
@@ -657,6 +657,7 @@
     lamp(LIGHT.rebalancer, L.rebalancer.x, L.rebalancer.y + 1.6, L.rebalancer.z + 0.6, 9, 0.35, 0.9, 1);
     lamp(LIGHT.treasury, L.treasury.x, L.treasury.y + 2, L.treasury.z + 1, 9, 1, 0.8, 0.35);
     lamp(LIGHT.lookout, L.lookout.x, L.lookout.y + L.lookout.tower + 1, L.lookout.z, 3, 1, 0.82, 0.45);
+    lamp(LIGHT.tess, 0, 0, 0, 0, 0, 0, 0);
     const spot = RENDER_OPTS.spotLight, beam = FM.LOOKOUT_BEAM;
     spot[0] = L.lookout.x; spot[1] = L.lookout.y + L.lookout.tower + 1; spot[2] = L.lookout.z; spot[3] = 0;
     spot[4] = Math.cos(beam.pitch); spot[5] = Math.sin(beam.pitch); spot[6] = 0; spot[7] = Math.cos(beam.outer);
@@ -782,7 +783,7 @@
     });
     const tipFor = (hit) => {
       const o = hit.owner, tip = TIPS[o.kind];
-      if (o.kind === "greeter") return COARSE ? `${BL.factoryGreeter.NAME} the foreman · tap to talk` : `${BL.factoryGreeter.NAME} the foreman · Space to talk`;
+      if (o.kind === "greeter") return COARSE ? `${BL.factoryGreeter.NAME} the guide · tap to talk` : `${BL.factoryGreeter.NAME} the guide · Space to talk`;
       if (o.kind === "line" || o.kind === "tunnel") {
         const b = o.place, c = b.line && mock.snapshot.channels.find((ch) => ch.id === b.line);
         return o.kind === "line" ? `Channel ${b.letter}${c ? ` · peer ${c.peer}` : ""}` : `Peer tunnel${c ? ` · ${c.peer}` : ""}`;
@@ -833,7 +834,7 @@
       // factory has no banana pile, so its private pile level stays zero.
       playerWorld = { level: 0, weapons: world.weapons, magazine: world.magazine };
       const shared = { root, input, hud, game, world: playerWorld, playerName, fx, viewYaw: 0, groundAt: groundFor, walkable: walkableFor, flyable: flyableFor, ceilingAt: ceilingFor, ladders: LAYOUT.ladders, onBodyMove: resolveLanding, clipProjectileTarget, absorbProjectile, reloadPolicy, useNear: (x, z, reach) => {
-        // Space talks to the foreman only within arm's reach; further away it stays a jump.
+        // Space talks to the guide only within arm's reach; further away it stays a jump.
         const p = greeter && greeter.root.position;
         return !!p && Math.hypot(x - p.x, z - p.z) <= reach ? greeter.act() : false;
       } };
@@ -876,8 +877,8 @@
     greeter = BL.factoryGreeter.create({ parent: root, input, fx, feed,
       visitor: () => people && people.player === avatar ? avatar : null,
       demoRunning: () => feed.reading.contract === "obl.factory.demo.v1" || feed.reading.contract === null && !!shared.mock, coarse: COARSE });
-    // With no Ooga the visitor cannot talk to the foreman: a hint points them to the island to pick one.
-    if (!avatar) hud.hint(`${BL.factoryGreeter.NAME} the foreman gives tours here — pick an Ooga on the island first`);
+    // With no Ooga the visitor cannot talk to the guide: a hint points them to the island to pick one.
+    if (!avatar) hud.hint(`${BL.factoryGreeter.NAME} the guide gives tours here — pick an Ooga on the island first`);
 
     factoryScene.root = root;
     factoryScene.camera = camera;
@@ -1241,7 +1242,8 @@
       refreshBoards(s);
     }
     greeter.update(dt, elapsed);
-    // The act button talks to the foreman in reach, starts the picked tour or skips a line ahead, the way the
+    greeter.light(RENDER_OPTS.lights, LIGHT.tess * 8);
+    // The act button talks to the guide in reach, starts the picked tour or skips a line ahead, the way the
     // hub shows ENTER ARCADE by its door; the pilot's own label returns once the offer is gone.
     const actLabel = avatar && greeter.actLabel();
     if (actLabel) { hud.setAct(actLabel); greeterPrompt = true; }
@@ -1292,7 +1294,6 @@
       scene.gate.phase.liveGeometry(set);
     }
     if (avatar) set.add(avatar.headOpen).add(avatar.headClosed);
-    if (greeter) greeter.liveGeometry(set);
   };
   const stats = () => {
     let nodes = 0;

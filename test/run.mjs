@@ -5219,7 +5219,7 @@ const factoryWalking = { name: "factory walking", why: "regression: Factory move
   })()`);
   record("factory rebalancer: walk onto and off the low drum; a shallow console overlap allows walking out while deeper movement stays blocked", rebalancer.onto > 0.5 && Math.abs(rebalancer.peak - (rebalancer.height + 0.56)) < 1e-5 && Math.abs(rebalancer.off - rebalancer.height) < 1e-5 && rebalancer.overlapped && rebalancer.inwardBlocked && rebalancer.escaped > 0.5 && rebalancer.clear && rebalancer.grounded, JSON.stringify(rebalancer));
 } };
-const factoryGreeter = { name: "factory greeter", why: "rule: Talk opens the foreman's tour menu, keyboard choices work, Escape dismisses it, and a tour can be ended without leaving the cave", run: async (b) => {
+const factoryGreeter = { name: "factory greeter", why: "rule: Talk opens the guide's tour menu, keyboard choices work, Escape dismisses it, and a tour can be ended without leaving the cave", run: async (b) => {
   const near = await b.evaluate(`(() => {
     const B = __ooga, a = B.cavemen.get("portlandhodl");
     if (B.crew.player !== a) B.pilot.possess(a);
@@ -5242,8 +5242,8 @@ const factoryGreeter = { name: "factory greeter", why: "rule: Talk opens the for
     document.querySelector(".greeter-stop").click(); __ooga.advance(0.5, 1 / 60);
     return { phase: __ooga.factory.greeter.state.phase, scene: __ooga.scene };
   })()`);
-  record("factory greeter: the act button opens four tours, arrows select, Escape closes the menu, and End tour returns Flink without leaving the cave",
-    near.scene === "factory" && near.label === "TALK TO FLINK" && menu.open && menu.choices === 4 && menu.phase === "menu"
+  record("factory greeter: the act button opens four tours, arrows select, Escape closes the menu, and End tour returns Tess without leaving the cave",
+    near.scene === "factory" && near.label === "TALK TO TESS" && menu.open && menu.choices === 4 && menu.phase === "menu"
       && selected === 1 && dismissed.scene === "factory" && dismissed.hidden && started.phase === "walk"
       && started.tour === "payments" && started.stop && ended.phase === "idle" && ended.scene === "factory",
     JSON.stringify({ near, menu, selected, dismissed, started, ended }));
@@ -8139,7 +8139,7 @@ scene("factory", { label: "lifecycle", url: hubPage(src), steps: [{ name: "facto
   const before = await snapshot(), visits = [];
   for (let i = 0; i < 6; i++) {
     await travel("factory");
-    // One listener belongs to the hall and one to Flink; both leave with the scene.
+    // One listener belongs to the hall and one to Tess; both leave with the scene.
     const hall = await b.evaluate('__factoryLife.subscriptions');
     await travel("lab");
     const away = await b.evaluate('__factoryLife.subscriptions');
