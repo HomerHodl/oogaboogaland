@@ -1,0 +1,590 @@
+{
+  "testedCommit": "dd386181ac94711301eb8412ea262e06562b9b14",
+  "productionAndTestCodeCommit": "e433ab9a638383551582080b5b2581238e7ddfdb",
+  "sourceHashes": {
+    "src/js/factory-greeter.js": "8eaadb1c6f90ec54c95e191c801713b46710818225ad956e24c078560c378ccc",
+    "src/js/scene-factory.js": "a7520b0bb1f8025798bf7a725319eaad6f24d9184509dc0602974d7e28a75afa",
+    "test/run.mjs": "e8cb75b13e118c6d2de91536bb9edc6749d9ff28ce2316cbd72b7f98eb4e2631"
+  },
+  "nonBrowser": {
+    "build": "pass",
+    "syntax": [
+      "src/js/factory-greeter.js",
+      "src/js/scene-factory.js",
+      "test/run.mjs"
+    ],
+    "unit": {
+      "passed": 131,
+      "failed": 0
+    },
+    "site": {
+      "result": "pass",
+      "pages": 11,
+      "cards": 9
+    },
+    "worker": {
+      "passed": 36,
+      "failed": 0
+    },
+    "diffCheck": "pass",
+    "lint": "No repository lint runner is configured."
+  },
+  "full": {
+    "command": "LANES=4 npm run test:full",
+    "passed": 712,
+    "total": 730,
+    "failed": 18,
+    "minutes": 11.4,
+    "exitCode": 1,
+    "scope": "All named scenes, unit and poker-protocol; default fresh browser sessions and original locked performance floor.",
+    "factory": {
+      "desktop": "All selected checks passed.",
+      "phone": "All selected checks passed.",
+      "canvas": "All selected checks passed.",
+      "coverage": [
+        "All four tours complete every stop and return using real guide updates; visitor repositioning is explicit, complementary real-control floor/stair/bridge tests remain unchanged.",
+        "Talk, menu choice, keyboard, Escape, End tour, cancellation and return.",
+        "Independent entry-policy assertion: 36 prepared geometries for eligible desktop visits, 12 for Low/touch; immediate Low near/far equality; normal/fine hysteresis.",
+        "Original globe detail retained; bounded cached-face budgets of 225000 for eligible visits and 7000 for light-only visits."
+      ],
+      "resourceAcceptance": "Original Factory travel deadline failed before counters. Separate diagnostic below does not replace that acceptance failure."
+    },
+    "baselineComparison": {
+      "sharedFailureNames": 18,
+      "variantOnlyFailureNames": 0,
+      "method": "Compare failure names against current-engine baseline; source-independent failures are retained, not weakened."
+    },
+    "failures": [
+      {
+        "name": "factory lifecycle",
+        "detail": "Error: Scene travel did not settle: {\"wanted\":\"hub\",\"scene\":\"hub\",\"accepted\":true,\"trail\":[{\"state\":\"lab:false\",\"at\":65.19999998807907,\"frames\":219},{\"state\":\"lab:true\",\"at\":143.7999999821186,\"frames\":220},{\"state\":\"hub:true\",\"at\":9949.09999999404,\"frames\":223}],\"framesTotal\":5,\"hidden\":false,\"focus\":true,\"requested\":true,\"tweens\":7,\"framesSinceSwap\":0,\"swap\":9949}\n    at tick (<anonymous>:1:883)"
+      },
+      {
+        "name": "wall movement performance: ordinary movement stays responsive at a high-density desktop size",
+        "detail": "{\"fps\":56.414958934694205,\"p95\":33.29999999999927,\"max\":33.400000000000546,\"worst\":{\"gap\":26.099999994039536,\"at\":1583.2000000000007,\"updateMs\":5.4000000059604645,\"renderMs\":5.5,\"overlayMs\":5.5999999940395355,\"donated\":false},\"outlined\":0,\"samples\":283,\"travel\":3.74402500000002,\"donated\":false,\"particles\":0,\"quality\":\"high\"}"
+      },
+      {
+        "name": "wall movement performance: moving behind cave walls during a donation stays responsive at a high-density desktop size",
+        "detail": "{\"fps\":31.29734470935331,\"p95\":50,\"max\":50.100000000000364,\"worst\":{\"gap\":42.5,\"at\":3283.2000000000007,\"updateMs\":3.2999999821186066,\"renderMs\":3.5,\"overlayMs\":28.900000005960464,\"donated\":true},\"outlined\":157,\"samples\":157,\"travel\":3.8734500000000605,\"donated\":true,\"particles\":26,\"quality\":\"low\"}"
+      },
+      {
+        "name": "gorilla lab carry jump: Shift+W+G keeps a running grab through both jumps and a charged midair throw without a smash",
+        "detail": "{\"lab\":true,\"ran\":true,\"grabbed\":true,\"first\":true,\"peak\":0.19051473497820978,\"second\":false,\"charged\":true,\"heldThroughRelease\":true,\"thrownInAir\":true,\"smashUnchanged\":true}"
+      },
+      {
+        "name": "gorilla wall destination: a roof gorilla reaches the clicked lower lateral wall grip through continuous climbing without relocation or terrain penetration",
+        "detail": "{\"accepted\":true,\"seconds\":7.8666666666666485,\"from\":{\"x\":26.8,\"y\":6.75,\"z\":-2.0000000000000018},\"target\":{\"x\":23,\"y\":4.25,\"z\":3.7999999999999985},\"end\":{\"x\":21.131513350874187,\"y\":4.392920537730999,\"z\":3.656494446233321},\"status\":\"arrived\",\"reason\":\"\",\"climbing\":125,\"hanging\":true,\"stayedHanging\":false,\"lateral\":5.656494446233323,\"drop\":2.3570794622690006,\"verticalExcursion\":2.3570794622690006,\"tangentError\":0.14350555376667762,\"outwardGap\":1.8684866491258134,\"verticalError\":0.14292053773099944,\"maxStep\":0.15297058540778383,\"overlap\":{\"x\":26.326061031862352,\"y\":7.156022518510232,\"z\":0.5020300"
+      },
+      {
+        "name": "timechain crossing",
+        "detail": "the session passed 120 s and its Chrome was killed"
+      },
+      {
+        "name": "race tracks: bay builds fast into culled sectors with checkpoints clear of its gaps",
+        "detail": "{\"ms\":28,\"samples\":453,\"length\":680,\"sectors\":16,\"chunks\":30,\"checkpoints\":8,\"first\":0,\"gapNearCheck\":false,\"maxStep\":0.68,\"faces\":45942,\"placedFaces\":311308,\"bananas\":38,\"crates\":10,\"pads\":3,\"map\":302,\"grid\":41,\"gridHeight\":true,\"torches\":0,\"spectators\":208,\"records\":380,\"sky\":true}"
+      },
+      {
+        "name": "race tracks: gorge builds fast into culled sectors with checkpoints clear of its gaps",
+        "detail": "{\"ms\":29,\"samples\":622,\"length\":933,\"sectors\":22,\"chunks\":60,\"checkpoints\":8,\"first\":0,\"gapNearCheck\":false,\"maxStep\":0.05,\"faces\":47310,\"placedFaces\":47310,\"bananas\":44,\"crates\":10,\"pads\":3,\"map\":416,\"grid\":41,\"gridHeight\":true,\"torches\":45,\"spectators\":96,\"records\":380,\"sky\":false}"
+      },
+      {
+        "name": "race tracks: peak builds fast into culled sectors with checkpoints clear of its gaps",
+        "detail": "{\"ms\":29,\"samples\":744,\"length\":1116,\"sectors\":27,\"chunks\":30,\"checkpoints\":8,\"first\":0,\"gapNearCheck\":false,\"maxStep\":0.78,\"faces\":64009,\"placedFaces\":64009,\"bananas\":46,\"crates\":8,\"pads\":3,\"map\":496,\"grid\":41,\"gridHeight\":true,\"torches\":17,\"spectators\":220,\"records\":380,\"sky\":true}"
+      },
+      {
+        "name": "hub melee: one swing breaks a box, two a barrel and four a rock, and a broken rock is back whole within a minute",
+        "detail": "{\"swings\":{\"crate\":{\"health\":4,\"n\":1},\"barrel\":{\"health\":9,\"n\":2},\"rock\":{\"health\":17,\"n\":7}},\"back\":{\"t\":1,\"health\":17,\"active\":true}}"
+      },
+      {
+        "name": "hub melee: focused quick taps start at normal power, rapid contacts recover linearly after 0.1s and every hit restarts recovery",
+        "detail": "{\"ready\":1,\"recovered\":1,\"rows\":[{\"wait\":0,\"damage\":0,\"after\":1},{\"wait\":0.05,\"damage\":0,\"after\":1},{\"wait\":0.1,\"damage\":0,\"after\":1},{\"wait\":0.15,\"damage\":0,\"after\":1},{\"wait\":0.2,\"damage\":0,\"after\":1}],\"last\":0,\"switched\":1,\"finalDamage\":0,\"chargedDamage\":0,\"labels\":[]}"
+      },
+      {
+        "name": "hub melee: red damage numbers round full hit power to half points",
+        "detail": "[]"
+      },
+      {
+        "name": "birds-eye combat: held Q and E rotate smoothly in opposite directions and settle after release",
+        "detail": "{\"left\":{\"before\":-0.7685871079613056,\"immediate\":0,\"total\":0.9272388335079385,\"maxStep\":0.028327853565313452,\"center\":0.000014217222605443628,\"after\":0.26644317901592435,\"stopped\":0.000024215415143469254},\"right\":{\"before\":0.26644317901592435,\"immediate\":0,\"total\":-0.9122118881870431,\"maxStep\":0.02832697024305142,\"center\":0.000019710910811163516,\"after\":-0.7535567848846628,\"stopped\":0.000024153146207850362},\"returned\":0.01503032307664276,\"around\":{\"before\":-0.7535567848846628,\"immediate\":0,\"total\":-7.032187657914357,\"maxStep\":0.028333492430608676,\"center\":0.000020331544453677654,\"after\":-1.61"
+      },
+      {
+        "name": "birds-eye combat: N eases back to north along the shortest path after rotating past a full turn",
+        "detail": "{\"before\":-1.610371446441251,\"immediate\":0,\"first\":-1.2752363347177826,\"after\":-1.2210737222696968e-9,\"path\":1.6103714452201774,\"maxStep\":0.33513511172346844,\"monotonic\":true}"
+      },
+      {
+        "name": "birds-eye combat camera",
+        "detail": "the session passed 120 s and its Chrome was killed"
+      },
+      {
+        "name": "hub phone: nothing is clipped, wrapped by accident or off screen, and every control is under a thumb, with the sheet open too",
+        "detail": "{\"play\":[\"off-screen #sheet-toggle 75,808,139,850\",\"off-screen #sheet-bananas 3,808,67,850\"],\"sheet\":[]}"
+      },
+      {
+        "name": "birds-eye lower floors",
+        "detail": "Runtime.evaluate got no reply in 90 s: Chrome hung"
+      },
+      {
+        "name": "dsb lifecycle",
+        "detail": "Error: Scene travel did not settle: {\"wanted\":\"hub\",\"scene\":\"hub\",\"accepted\":true,\"trail\":[{\"state\":\"dsb:false\",\"at\":12.700000017881393,\"frames\":225},{\"state\":\"dsb:true\",\"at\":28.30000001192093,\"frames\":226},{\"state\":\"hub:true\",\"at\":10296.59999999404,\"frames\":241}],\"framesTotal\":17,\"hidden\":false,\"focus\":true,\"requested\":true,\"tweens\":8,\"framesSinceSwap\":0,\"swap\":10297}\n    at tick (<anonymous>:1:883)"
+      }
+    ],
+    "countAudit": {
+      "preGateCommit": "345aafdd86b0e4e6a0fcd0bb819c5cf35dad9b52",
+      "preGatePassed": 712,
+      "preGateTotal": 731,
+      "preGateLanes": 2,
+      "recordCallSitesBefore": 476,
+      "recordCallSitesFinal": 476,
+      "removedAssertionsStepsOrScenes": false,
+      "explanation": "Summary denominator is runtime results.length. Existing timeouts retain partial assertions and omit later assertions and the conditional clean-console result. Scheduling differs between LANES=2 and LANES=4. Quiet initial output did not save passing names, so the exact earlier partial passing check that differs is unknown. This is incomplete timeout coverage, not a removed or combined test; full acceptance remains failed."
+    }
+  },
+  "factoryResourceDiagnostic": {
+    "testedCommit": "dd386181ac94711301eb8412ea262e06562b9b14",
+    "mode": "diagnostic-resource-continuation",
+    "acceptanceEligible": false,
+    "exitCode": 0,
+    "error": null,
+    "timingFailures": [],
+    "travels": [
+      {
+        "visit": 1,
+        "id": "factory",
+        "timing": {
+          "swap": 608.9000000059605,
+          "swapGap": 349.7000000178814,
+          "settled": 752.3000000119209
+        },
+        "error": null,
+        "originalDeadlinePassed": true
+      },
+      {
+        "visit": 2,
+        "id": "lab",
+        "timing": {
+          "swap": 350,
+          "swapGap": 103.90000000596046,
+          "settled": 748.7999999821186
+        },
+        "error": null,
+        "originalDeadlinePassed": true
+      },
+      {
+        "visit": 3,
+        "id": "hub",
+        "timing": {
+          "swap": 1099.9000000059605,
+          "swapGap": 834.0999999940395,
+          "settled": 1488
+        },
+        "error": null,
+        "originalDeadlinePassed": true
+      },
+      {
+        "visit": 4,
+        "id": "factory",
+        "timing": {
+          "swap": 431.90000000596046,
+          "swapGap": 155.90000000596046,
+          "settled": 581
+        },
+        "error": null,
+        "originalDeadlinePassed": true
+      },
+      {
+        "visit": 5,
+        "id": "lab",
+        "timing": {
+          "swap": 717,
+          "swapGap": 450.69999998807907,
+          "settled": 1183.7000000178814
+        },
+        "error": null,
+        "originalDeadlinePassed": true
+      },
+      {
+        "visit": 6,
+        "id": "hub",
+        "timing": {
+          "swap": 3502.800000011921,
+          "swapGap": 3210,
+          "settled": 3916.5999999940395
+        },
+        "error": null,
+        "originalDeadlinePassed": true
+      },
+      {
+        "visit": 7,
+        "id": "factory",
+        "timing": {
+          "swap": 423.2000000178814,
+          "swapGap": 150.10000002384186,
+          "settled": 575
+        },
+        "error": null,
+        "originalDeadlinePassed": true
+      },
+      {
+        "visit": 8,
+        "id": "lab",
+        "timing": {
+          "swap": 505.90000000596046,
+          "swapGap": 225.5,
+          "settled": 906.3000000119209
+        },
+        "error": null,
+        "originalDeadlinePassed": true
+      },
+      {
+        "visit": 9,
+        "id": "hub",
+        "timing": {
+          "swap": 2569.300000011921,
+          "swapGap": 2322.800000011921,
+          "settled": 3165.5
+        },
+        "error": null,
+        "originalDeadlinePassed": true
+      },
+      {
+        "visit": 10,
+        "id": "factory",
+        "timing": {
+          "swap": 493.09999999403954,
+          "swapGap": 155.89999997615814,
+          "settled": 640.2000000178814
+        },
+        "error": null,
+        "originalDeadlinePassed": true
+      },
+      {
+        "visit": 11,
+        "id": "lab",
+        "timing": {
+          "swap": 504.90000000596046,
+          "swapGap": 140.09999999403954,
+          "settled": 799.9000000059605
+        },
+        "error": null,
+        "originalDeadlinePassed": true
+      },
+      {
+        "visit": 12,
+        "id": "hub",
+        "timing": {
+          "swap": 2452.9000000059605,
+          "swapGap": 2165.4000000059605,
+          "settled": 3273.2000000178814
+        },
+        "error": null,
+        "originalDeadlinePassed": true
+      },
+      {
+        "visit": 13,
+        "id": "factory",
+        "timing": {
+          "swap": 440.90000000596046,
+          "swapGap": 151.80000001192093,
+          "settled": 603.3000000119209
+        },
+        "error": null,
+        "originalDeadlinePassed": true
+      },
+      {
+        "visit": 14,
+        "id": "lab",
+        "timing": {
+          "swap": 712.4000000059605,
+          "swapGap": 457.30000001192093,
+          "settled": 1679.300000011921
+        },
+        "error": null,
+        "originalDeadlinePassed": true
+      },
+      {
+        "visit": 15,
+        "id": "hub",
+        "timing": {
+          "swap": 1546.300000011921,
+          "swapGap": 1268.7000000178814,
+          "settled": 2446.800000011921
+        },
+        "error": null,
+        "originalDeadlinePassed": true
+      },
+      {
+        "visit": 16,
+        "id": "factory",
+        "timing": {
+          "swap": 490.10000002384186,
+          "swapGap": 153.30000001192093,
+          "settled": 636.9000000059605
+        },
+        "error": null,
+        "originalDeadlinePassed": true
+      },
+      {
+        "visit": 17,
+        "id": "lab",
+        "timing": {
+          "swap": 406.40000000596046,
+          "swapGap": 155.30000001192093,
+          "settled": 820.5999999940395
+        },
+        "error": null,
+        "originalDeadlinePassed": true
+      },
+      {
+        "visit": 18,
+        "id": "hub",
+        "timing": {
+          "swap": 2066.5999999940395,
+          "swapGap": 1779.7999999821186,
+          "settled": 3213.0999999940395
+        },
+        "error": null,
+        "originalDeadlinePassed": true
+      },
+      {
+        "visit": 19,
+        "id": "factory",
+        "timing": {
+          "swap": 408,
+          "swapGap": 151.19999998807907,
+          "settled": 549.2000000178814
+        },
+        "error": null,
+        "originalDeadlinePassed": true
+      },
+      {
+        "visit": 20,
+        "id": "lab",
+        "timing": {
+          "swap": 451.89999997615814,
+          "swapGap": 191.2999999821186,
+          "settled": 841.3999999761581
+        },
+        "error": null,
+        "originalDeadlinePassed": true
+      },
+      {
+        "visit": 21,
+        "id": "hub",
+        "timing": {
+          "swap": 2011,
+          "swapGap": 1729.199999988079,
+          "settled": 2418.0999999940395
+        },
+        "error": null,
+        "originalDeadlinePassed": true
+      }
+    ],
+    "assertions": [
+      {
+        "name": "soak: factory cycles: one bounded node survives six round trips, the hall's subscription released, without retaining scene nodes, targets or DOM",
+        "passed": true
+      },
+      {
+        "name": "soak: factory cycles: GPU records, listeners and retained heap remain bounded",
+        "passed": true
+      }
+    ],
+    "visits": [
+      {
+        "same": true,
+        "subscriptions": 1,
+        "lines": 14,
+        "places": 14,
+        "hall": 2,
+        "away": 0,
+        "lighter": true
+      },
+      {
+        "same": true,
+        "subscriptions": 1,
+        "lines": 14,
+        "places": 14,
+        "hall": 2,
+        "away": 0,
+        "lighter": true
+      },
+      {
+        "same": true,
+        "subscriptions": 1,
+        "lines": 14,
+        "places": 14,
+        "hall": 2,
+        "away": 0,
+        "lighter": true
+      },
+      {
+        "same": true,
+        "subscriptions": 1,
+        "lines": 14,
+        "places": 14,
+        "hall": 2,
+        "away": 0,
+        "lighter": true
+      },
+      {
+        "same": true,
+        "subscriptions": 1,
+        "lines": 14,
+        "places": 14,
+        "hall": 2,
+        "away": 0,
+        "lighter": true
+      },
+      {
+        "same": true,
+        "subscriptions": 1,
+        "lines": 14,
+        "places": 14,
+        "hall": 2,
+        "away": 0,
+        "lighter": true
+      }
+    ],
+    "beforeStats": {
+      "visibleNodes": 2290,
+      "allNodes": 4377,
+      "tweens": 0,
+      "targets": 1209,
+      "particles": 0,
+      "pool": 0,
+      "bubbles": 0,
+      "zzz": 27,
+      "damageNumbers": 0,
+      "crates": 0,
+      "built": 0,
+      "slots": 302,
+      "shown": 1000,
+      "rendered": 194,
+      "deliveries": 0,
+      "pendingDrops": 0,
+      "dropsStarted": 0,
+      "dropsLanded": 0,
+      "landedBananaValue": 0,
+      "dropPool": 96,
+      "dropRate": 72,
+      "spillPool": 32,
+      "spilling": 0,
+      "butterflies": 8,
+      "fireflies": 0,
+      "embers": 4,
+      "surfaceEmbers": 0,
+      "headquartersEmbers": 4,
+      "waterCubes": 0,
+      "waterQueued": 0,
+      "waterRipples": 0,
+      "breakablesProps": 26,
+      "breakablesBroken": 0,
+      "breakablesRewards": 0,
+      "breakablesRevealing": 0,
+      "rainDrops": 0,
+      "strikes": 0,
+      "remotePlayers": 0,
+      "gl": {
+        "records": 978,
+        "active": 937,
+        "mirrorResources": 4,
+        "imageTextures": 1,
+        "rippleBodyTextures": 0,
+        "shadowResources": 4,
+        "shadowSize": 512,
+        "shadowPassCount": 149,
+        "shadowFinite": true,
+        "shadowDraws": 564,
+        "shadowStatic": 0,
+        "shadowStaticRebuilds": 12,
+        "culled": 1140,
+        "drawn": 37699,
+        "suppressed": 0,
+        "rippleSurfaces": 1,
+        "rippleWaves": 3
+      },
+      "dom": 3111
+    },
+    "afterStats": {
+      "visibleNodes": 2289,
+      "allNodes": 4377,
+      "tweens": 0,
+      "targets": 1209,
+      "particles": 0,
+      "pool": 0,
+      "bubbles": 0,
+      "zzz": 27,
+      "damageNumbers": 0,
+      "crates": 0,
+      "built": 0,
+      "slots": 302,
+      "shown": 1000,
+      "rendered": 194,
+      "deliveries": 0,
+      "pendingDrops": 0,
+      "dropsStarted": 0,
+      "dropsLanded": 0,
+      "landedBananaValue": 0,
+      "dropPool": 96,
+      "dropRate": 72,
+      "spillPool": 32,
+      "spilling": 0,
+      "butterflies": 10,
+      "fireflies": 0,
+      "embers": 4,
+      "surfaceEmbers": 0,
+      "headquartersEmbers": 4,
+      "waterCubes": 0,
+      "waterQueued": 0,
+      "waterRipples": 0,
+      "breakablesProps": 26,
+      "breakablesBroken": 0,
+      "breakablesRewards": 0,
+      "breakablesRevealing": 0,
+      "rainDrops": 0,
+      "strikes": 0,
+      "remotePlayers": 0,
+      "gl": {
+        "records": 977,
+        "active": 936,
+        "mirrorResources": 4,
+        "imageTextures": 1,
+        "rippleBodyTextures": 0,
+        "shadowResources": 4,
+        "shadowSize": 512,
+        "shadowPassCount": 629,
+        "shadowFinite": true,
+        "shadowDraws": 564,
+        "shadowStatic": 0,
+        "shadowStaticRebuilds": 40,
+        "culled": 1158,
+        "drawn": 37675,
+        "suppressed": 0,
+        "rippleSurfaces": 1,
+        "rippleWaves": 4
+      },
+      "dom": 3111
+    },
+    "domCounters": [
+      {
+        "documents": 1,
+        "nodes": 9248,
+        "jsEventListeners": 367
+      },
+      {
+        "documents": 1,
+        "nodes": 9248,
+        "jsEventListeners": 367
+      }
+    ],
+    "heapDetail": "objects 438.09 -> 432.91 MB (used 267.07 -> 266.53 MB, code 16.46 -> 19.05 MB)",
+    "limitation": "Read-only census instrumentation and a diagnostic continuation guard can perturb timing. All 21 observed travels met the original eight-second deadline in this isolated run, but diagnostic mode is not an acceptance pass. Full-run Factory and DSB deadline failures remain recorded."
+  },
+  "remainingCaveats": [
+    "Full acceptance is not green: 18 failure names reproduce baseline classes, including performance and interrupted timechain/birds-eye cases.",
+    "Physical mobile and low-end hardware are not tested; phone is desktop emulation.",
+    "Canvas retains approximately five percent matched frame-rate cost relative to Flink; no underlying Canvas or covered-movement slowdown is claimed fixed.",
+    "Maintainer play-test requested from drneski remains pending.",
+    "No merge, deployment, push or readiness transition performed by this worker."
+  ]
+}
