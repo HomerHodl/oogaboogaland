@@ -9057,6 +9057,23 @@ const unitChecks = async () => {
   const BL = globalThis.BL;
   pokerChecks(BL);
   {
+    // At an uneven roof lip, the partially upright chest must clear the stone while the root and grips stay put.
+    const solid = (_x, y, z) => y > 1 && z >= 0;
+    const gorilla = BL.agent.create({ managed: true, groundAt: () => 0, climbSolidAt: solid });
+    gorilla.poseManaged(2, 0, 0, -0.9, 0, 0, false, false, "", { climb: 1, climbBlend: 0.2 });
+    BL.scene.updateWorld(gorilla.root);
+    const torso = gorilla.parts.torso, v = torso.geometry.verts, m = torso.world;
+    let penetration = 0;
+    for (let i = 0; i < v.length; i += 3) {
+      const x = m[0] * v[i] + m[4] * v[i + 1] + m[8] * v[i + 2] + m[12];
+      const y = m[1] * v[i] + m[5] * v[i + 1] + m[9] * v[i + 2] + m[13];
+      const z = m[2] * v[i] + m[6] * v[i + 1] + m[10] * v[i + 2] + m[14];
+      if (solid(x, y, z)) penetration++;
+    }
+    record("gorilla roof mount: the rendered torso retracts from a projecting tread without relocating the root", penetration === 0
+      && gorilla.root.position.x === 0 && gorilla.root.position.y === 0 && gorilla.root.position.z === -0.9, JSON.stringify({ penetration }));
+  }
+  {
     // Analytic half-spaces are an independent normal oracle: an incoming
     // bearing, even 70 degrees off, must not become the climbing direction.
     const rows = [], normal = 0.73, nx = Math.sin(normal), nz = Math.cos(normal);

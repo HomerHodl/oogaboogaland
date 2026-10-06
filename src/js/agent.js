@@ -1321,6 +1321,9 @@
       return true;
     };
     const fitClimbBody = () => {
+      // A projecting roof tread can meet the chest before its hands leave the rim.
+      // Retract the torso independently, as the head and feet already do, without moving the grip or root.
+      for (let step = 0; step < 15 && !climbPartClear(parts.torso); step++) parts.torso.position.z -= 0.02;
       for (let side = 0; side < 2; side++) {
         const leg = side ? parts.legL : parts.legR;
         for (let step = 0; step < 15 && !climbPartClear(leg); step++) {
