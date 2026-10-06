@@ -163,9 +163,8 @@
     const geo = { verts: [], faces: [], lines: [] }, RAMP = L.RAMP, STEP = 1 / RAMP.r;
     const at = (bearing, r, y) => pushVert(geo, Math.sin(bearing) * r, y, Math.cos(bearing) * r);
     const SHEET = { emissive: 0 };
-    // Slightly overlap the one-metre waterfall so no daylight seam shows at either bank.
-    // Its voxel support still needs the wider corner allowance from the layout.
-    const fallMouthHalf = 0.49;
+    // Match the opening in the voxel ledge so neither smooth floor skirt hangs over a fall.
+    const fallMouthHalf = L.FALL_OPENING_HALF;
     const quad = (b0, b1, r0, r1, y0, y1, color) => face(geo, [at(b0, r0, y0), at(b0, r1, y0), at(b1, r1, y1), at(b1, r0, y1)], color, SHEET);
     const floorEdge = (bearing, edge) => {
       for (const channel of L.CHANNELS) {

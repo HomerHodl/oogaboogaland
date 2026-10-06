@@ -3225,10 +3225,11 @@ const poolLayoutChecks = async () => {
   }
   const mouths = shown.filter(Boolean).length;
   const chamber = L.sightClear(3, L.FLOOR + 1, 5, 3, 12, 5) && !L.sightClear(10, L.FLOOR + 1, 0, 10, 12, 0) && L.sightClear(1, L.FLOOR + 1, 1, 1, -40, 1) && !L.sightClear(6, L.FLOOR + 1, 0, 6, -40, 0);
-  const fallRoofs = L.CHANNELS.filter(channel => channel.falls).every(channel => [-1.5, 1.5].every(side => {
-    const r = L.channelOutlet(channel) + 0.25, bearing = channel.bearing + side / r;
-    const x = Math.sin(bearing) * r, z = Math.cos(bearing) * r;
-    return !L.solidAt(x, L.LEVEL.ground - 0.25, z);
+  const fallLedges = L.CHANNELS.filter(channel => channel.falls).every(channel => [-1.5, 1.5].every(side => {
+    const edge = L.edgeAt(channel.bearing), outer = edge + 0.4, inner = L.channelOutlet(channel) + 0.25;
+    const outerBearing = channel.bearing + side / outer, innerBearing = channel.bearing + side / inner;
+    return L.groundAt(Math.sin(outerBearing) * outer, Math.cos(outerBearing) * outer) === -Infinity
+      && L.solidAt(Math.sin(innerBearing) * inner, L.LEVEL.ground - 0.25, Math.cos(innerBearing) * inner);
   }));
   L.rampPoint(40, 0, to);
   const out = Math.hypot(to.x, to.z), ux = to.x / out, uz = to.z / out;
@@ -3236,8 +3237,8 @@ const poolLayoutChecks = async () => {
   const boxes = box(L.RAMP.r, 0.8, L.boxClear) && !box(L.RAMP.r, 0.8, L.boxSolid) && box(20, 0.2, L.boxSolid) && !box(20, 0.2, L.boxClear)
     && !box(wall, 0.6, L.boxSolid) && !box(wall, 0.6, L.boxClear) && !L.boxSolid(40, 0, 40, 41, 1, 41) && L.boxClear(40, 0, 40, 41, 1, 41) && L.sightClear(40, 0, 40, 60, 5, 60);
   record("pool layout: the descent falls ten metres in a hundred at one grade with its headroom open and rock over it all the way, its two links leave it and come back by open mouths round a pier of rock, every bed stands on a nest above the highest flood a body's width from the next, the lake's water stays inside its membrane, and the rock hides a walker from outside the cliff and never from behind in the tunnel",
-    graded && open && roofed && linked && beds && apart >= 1.7 && lake && along && hidden && doorways === L.DOORS.length && mouths === 2 * L.LINKS.length && chamber && fallRoofs && boxes,
-    JSON.stringify({ graded, open, roofed, linked, beds, apart, lake, slots: L.SLOTS.length, along, hidden, doorways, mouths, chamber, fallRoofs, boxes }));
+    graded && open && roofed && linked && beds && apart >= 1.7 && lake && along && hidden && doorways === L.DOORS.length && mouths === 2 * L.LINKS.length && chamber && fallLedges && boxes,
+    JSON.stringify({ graded, open, roofed, linked, beds, apart, lake, slots: L.SLOTS.length, along, hidden, doorways, mouths, chamber, fallLedges, boxes }));
   // The water over that layout, through its own module: what the backlog floods and what it never reaches.
   Object.assign(context, { document: { createElement: () => ({ getContext: () => null }) }, performance, console });
   for (const file of ["scene", "models", "convex", "terrain", "hub-models", "pool-models", "pool-water"]) runInNewContext(await readFile(new URL(`../src/js/${file}.js`, import.meta.url), "utf8"), context);
