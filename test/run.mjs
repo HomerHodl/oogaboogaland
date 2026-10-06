@@ -1,9 +1,12 @@
 import { AsyncLocalStorage } from "node:async_hooks";
-import { mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { readFile, writeFile } from "node:fs/promises";
 import { runInNewContext } from "node:vm";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { tmpdir } from "node:os";
+import { createHash } from "node:crypto";
+import { externalizeAudio } from "../scripts/distribution-audio.mjs";
 import { launch, acquire, dispose, driverError } from "./browser.mjs";
 import { writeCharacters } from "../scripts/characters.mjs";
 // Inspect private query storage only in the test VM; the shipped API stays unchanged.
@@ -2484,7 +2487,7 @@ const contributorActivityChecks = async () => {
   const byLogin = new Map(live.jumbotronData.contributors.map((entry) => [entry.login.toLowerCase(), entry]));
   const matched = live.contributors.roster.map((entry) => ({ entry, source: byLogin.get((aliases[entry.name] || entry.name).toLowerCase()) })).filter((row) => row.source);
   const accepted = live.contributors.applySnapshot(live.jumbotronData, generatedAt);
-  const current = matched.every(({ entry, source }) => entry.lastCommitAt === Date.parse(source.last_seen_at));
+  const current = matched.every(({ entry, source }) => entry.lastContributionAt === Date.parse(source.last_seen_at));
   // Schema 3 fans activity onto each repository key: the island uses these to
   // route a worker to the cave of the repo they actually contributed to.
   const loginOf = (entry) => (aliases[entry.name] || entry.name).toLowerCase();
@@ -3002,10 +3005,16 @@ const poolLayoutChecks = async () => {
   let rising = true, last = -Infinity;
   for (let mvb = 0; mvb <= 400; mvb += 0.5) { const level = W.levelFor(mvb * 1e6); rising &&= level >= last; last = level; }
   const anchors = W.levelFor(0) === L.WATER.low && W.levelFor(H.NORMAL_VB) === L.WATER.normal && W.levelFor(H.OVERFLOW_VB) === L.WATER.spill && W.levelFor(H.FULL_VB) === L.WATER.flood && W.levelFor(H.FULL_VB * 3) === L.WATER.flood;
-  const water = W.create({ site: { node: S.createNode(), membrane: S.createNode() }, renderer: { kind: "webgl2", quality: "high" }, seaY: -76 });
+  // Residual waterfalls read the rendered ground; exercise the real mesh rather than an empty site.
+  const site = { node: S.createNode(), ground: S.createNode({ geometry: context.window.BL.poolModels.islet() }), membrane: S.createNode({ geometry: { ...context.window.BL.poolModels.membrane() } }) };
+  site.membraneRock = S.createNode({ geometry: { ...context.window.BL.poolModels.membraneRock() } });
+  site.boardLegs = S.createNode({ geometry: { ...context.window.BL.poolModels.chainBoardLegs() } });
+  site.infoLeg = S.createNode({ geometry: { ...context.window.BL.poolModels.infoSignLeg() } });
+  S.addChild(site.node, site.ground, site.membrane, site.membraneRock, site.boardLegs, site.infoLeg);
+  const water = W.create({ site, renderer: { kind: "webgl2", quality: "high" }, seaY: -76 });
   let elapsed = 0;
   const run = (seconds, now) => { for (let t = 0; t < seconds; t += 1 / 20) water.update(1 / 20, elapsed += 1 / 20, now); };
-  const channel = L.CHANNELS[1], at = (r) => water.levelAt(Math.sin(channel.bearing) * r, Math.cos(channel.bearing) * r), nest = L.NESTS[2];
+  const channel = L.CHANNELS.find((channel) => !channel.inner), at = (r) => water.levelAt(Math.sin(channel.bearing) * r, Math.cos(channel.bearing) * r), nest = L.NESTS[2];
   // Past the cliff the channel falls: no level in the air on its line, nor on the link's lip beside the fall.
   const brink = L.edgeAt(channel.bearing) + 1, lip = channel.bearing + 1.5 / brink;
   const wet = () => ({ lake: water.levelAt(3, 0) > -Infinity, shore: water.levelAt(8.7, 0) > -Infinity, lowland: water.levelAt(-10, 0.3) > -Infinity, path: water.levelAt(-11.5, 0.3) > -Infinity, channel: at(15) > -Infinity, past: at(brink) > -Infinity, lip: water.levelAt(Math.sin(lip) * brink, Math.cos(lip) * brink) > -Infinity, nest: water.levelAt(nest.x, nest.z) > -Infinity, falls: water.state.falls, status: water.state.status, stage: water.state.stage });
@@ -3019,10 +3028,12 @@ const poolLayoutChecks = async () => {
   const flooded = wet(), held = water.state.level;
   run(1, 1e6 + H.FRESH_MS + 5000);
   const stale = wet(), kept = water.state.level === held;
-  for (let i = 0; i < W.SEQUENCES + W.QUEUE + 2; i++) water.block();
+  // Birth spacing staggers cubes; fill the live sets before saturating the waiting queue.
+  for (let i = 0; i < W.SEQUENCES; i++) { water.block(); run(0.4, 1e6 + H.FRESH_MS + 5000); }
+  for (let i = 0; i < W.QUEUE + 2; i++) water.block();
   const cubes = { falling: water.state.cubes, queued: water.state.queued, dropped: water.state.dropped };
-  const stages = none.status === "unavailable" && !none.lake && normal.status === "live" && normal.lake && !normal.shore && !normal.channel && !normal.falls
-    && spilling.stage === 1 && spilling.shore && spilling.channel && !spilling.lowland && spilling.falls > 0 && flooded.stage === 2 && flooded.lowland && flooded.falls > spilling.falls
+  const stages = none.status === "unavailable" && none.lake && normal.status === "live" && normal.lake && !normal.shore && !normal.channel && !normal.falls
+    && spilling.stage === 1 && spilling.shore && spilling.channel && !spilling.lowland && spilling.falls > 0 && flooded.stage === 2 && flooded.lowland && flooded.falls === L.CHANNELS.length
     && [normal, spilling, flooded].every((row) => !row.path && !row.nest && !row.past && !row.lip) && stale.status === "stale" && kept;
   record("pool water: the backlog fills the lake by a rising scale to its crest and its highest flood, the shore and channels flood before the lowland while the path and the nests never do and a channel past the cliff holds no one up, a stale reading is held and said to be stale, and blocks found faster than they fall wait in a bounded queue",
     rising && anchors && stages && cubes.falling === W.SEQUENCES && cubes.queued === W.QUEUE && cubes.dropped === 2, JSON.stringify({ rising, anchors, none, normal, spilling, flooded, stale, kept, cubes }));
@@ -3668,10 +3679,22 @@ const hubSheetPersistence = { name: "side panel persistence", why: "rule: a firs
     && closed.open === "false" && closed.tab === "bananas" && !closed.saved.open && closed.saved.tab === "bananas", JSON.stringify({ first, opened, restored, closed }));
 } };
 const hubBlockHeight = { name: "header clock and block height", why: "rule: the single-digit clock is centered from its visible glyphs with a time zone, and the shared chain reading is shown beneath it", run: async (b) => {
-  const before = await b.evaluate(`(() => { const clock = document.getElementById("world-clock"), label = clock.getAttribute("aria-label"), text = label.replace(/^Ooga Booga time /, ""), cells = [...text].reduce((sum, ch) => sum + (ch === " " ? 2 : 4), -1), zone = (new Intl.DateTimeFormat("en-US", { timeZoneName: "short" }).formatToParts(new Date()).find(part => part.type === "timeZoneName")?.value || "UTC").toUpperCase().replaceAll("−", "-"); return { height: document.getElementById("world-block-height").textContent, bananas: !!document.getElementById("world-banana-count"), label, text, zone, cells, viewWidth: clock.querySelector("svg").viewBox.baseVal.width, cssWidth: parseFloat(clock.style.width) }; })()`);
+  const before = await b.evaluate(`(() => { const clock = document.getElementById("world-clock"), label = clock.querySelector("svg").getAttribute("aria-label"), text = label.replace(/^Ooga Booga time /, ""), cells = [...text].reduce((sum, ch) => sum + (ch === " " ? 2 : 4), -1), zone = (new Intl.DateTimeFormat("en-US", { timeZoneName: "short" }).formatToParts(new Date()).find(part => part.type === "timeZoneName")?.value || "UTC").toUpperCase().replaceAll("−", "-"); return { height: document.getElementById("world-block-height").textContent, bananas: !!document.getElementById("world-banana-count"), label, namedImage: !clock.hasAttribute("aria-label") && clock.querySelector("svg").getAttribute("role") === "img", text, zone, cells, viewWidth: clock.querySelector("svg").viewBox.baseVal.width, cssWidth: parseFloat(clock.style.width) }; })()`);
   await b.evaluate(`BL.mempool.emit({ type: "block", height: 900123, txCount: 3210 })`);
   const after = await b.evaluate(`(() => { const B = __ooga, height = document.getElementById("world-block-height"), block = document.getElementById("world-block"); const shown = height.textContent; B.hud.setMeter(42, 60, "Ready"); return { shown, afterMeter: height.textContent, label: block.getAttribute("aria-label"), bananas: !!document.getElementById("world-banana-count"), icon: !!block.querySelector(".banana-icon") }; })()`);
-  record("header: a single-digit clock is centered from its displayed time and local zone, while the chain feed paints block height below it and banana-meter updates cannot overwrite it", before.height === "\u2014" && !before.bananas && before.text === `9:00 AM ${before.zone}` && before.viewWidth === before.cells && Math.abs(before.cssWidth - before.cells / 6) < 1e-6 && after.shown === "900,123" && after.afterMeter === after.shown && after.label === "Bitcoin block height 900123" && !after.bananas && !after.icon, JSON.stringify({ before, after }));
+  record("header: a single-digit clock is centered from its displayed time and local zone, while the chain feed paints block height below it and banana-meter updates cannot overwrite it", before.height === "\u2014" && before.namedImage && !before.bananas && before.text === `9:00 AM ${before.zone}` && before.viewWidth === before.cells && Math.abs(before.cssWidth - before.cells / 6) < 1e-6 && after.shown === "900,123" && after.afterMeter === after.shown && after.label === "Bitcoin block height 900123" && !after.bananas && !after.icon, JSON.stringify({ before, after }));
+} };
+const hubDestinationNames = { name: "destination accessible names", why: "regression: each visible destination label must occur in the button's accessible name", run: async (b) => {
+  const rows = [];
+  await b.send("Accessibility.enable");
+  for (const preset of ["pile", "lab", "mirror", "underground", "basement", "mempool"]) {
+    const label = await b.evaluate(`(() => { document.querySelector('[data-detached-preset="${preset}"]').click(); __ooga.advance(0.1, 1 / 60); return document.getElementById("detached-destination-name").textContent; })()`);
+    const tree = await b.send("Accessibility.getFullAXTree");
+    const names = tree.result.nodes.filter(node => node.role?.value === "button" && node.name?.value.includes("Ooga Booga Land destinations")).map(node => node.name.value);
+    rows.push({ preset, label, names });
+  }
+  await b.evaluate(`__ooga.pilot.goPreset("pile"); __ooga.advance(0.1, 1 / 60)`);
+  record("destinations: every visible place label is included in the actual browser accessibility name", rows.every(row => row.label && row.names.length === 1 && row.names[0].toLowerCase().includes(row.label.toLowerCase())), JSON.stringify(rows));
 } };
 const hubWalking = { name: "hub walking", why: "regression: steering keys came out mirrored, and the removed hub Agent could still be summoned", run: async (b) => {
   // Keep each directional check in the same clear patch as walking speed changes.
@@ -3727,7 +3750,7 @@ const hubMapNavigation = { name: "hub map navigation", why: "regression: the map
       map.click(); B.advance(0.1, 1 / 60);
       const mirror = selected() === "mirror" && label.textContent === "Mirror";
       const cycle = [];
-      for (const next of ["underground", "basement", "pile"]) { map.click(); B.advance(0.1, 1 / 60); cycle.push(selected() === next); }
+      for (const next of ["underground", "basement", "mempool", "pile"]) { map.click(); B.advance(0.1, 1 / 60); cycle.push(selected() === next); }
       rows.push({ mode, lab, cursorDot, mirror, cycle, possession: mode === "detached" ? !P.player : P.player === a });
     }
     P.goPreset("pile"); P.possess(a); if (P.aiming) P.modeAction("mode-toggle");
@@ -3747,7 +3770,7 @@ const hubMapNavigation = { name: "hub map navigation", why: "regression: the map
     P.release(true); P.goPreset("pile");
     return { rows, looking, departed, areas };
   })()`);
-  record("hub map: native and locked-cursor Lab clicks remain usable, the map cycles through Mirror, HQ, Basement and Pile in every view, and possession is retained", r.rows.every(row => row.lab && row.cursorDot && row.mirror && row.cycle.every(Boolean) && row.possession), JSON.stringify(r.rows));
+  record("hub map: native and locked-cursor Lab clicks remain usable, the map cycles through Mirror, HQ, Basement, Mempool and Pile in every view, and possession is retained", r.rows.every(row => row.lab && row.cursorDot && row.mirror && row.cycle.every(Boolean) && row.possession), JSON.stringify(r.rows));
   record("hub map: looking keeps the arrival label; actual travel clears its dot and shows HUB, and underground and sphere arrivals resolve to their broader areas", r.looking && r.departed.distance > 1.5 && r.departed.label === "HUB" && r.departed.selected === null && r.departed.visible
     && r.areas.map(row => row.label).join(",") === "HQ,B1,SPHERE", JSON.stringify({ looking: r.looking, departed: r.departed, areas: r.areas }));
 } };
@@ -4027,7 +4050,8 @@ const hubJumbotron = { name: "hub jumbotron", why: "rule: the island rotation st
     const reader = j.createReader();
     reader.setFilter("repos", [data.repos[0].name]); reader.go(1);
     const filtered = reader.view.name === "repo" && reader.view.params.name === data.repos[0].name;
-    const aliases = Object.keys(BL.contributorIdentities.OWNERS), owner = BL.contributorIdentities.ownerOf(aliases[0]);
+    const owner = BL.contributorIdentities.ownerOf(Object.keys(BL.contributorIdentities.OWNERS)[0]);
+    const aliases = Object.keys(BL.contributorIdentities.OWNERS).filter(login => BL.contributorIdentities.ownerOf(login) === owner);
     j.refreshData({ ...data, contributors: [{ login: owner }, ...aliases.map(login => ({ login }))] });
     const restored = j.createReader({ screen: { name: "recent" }, filters: { users: aliases } });
     const restoredOwner = restored.filters.users.length === 1 && restored.filters.users[0] === owner;
@@ -7627,7 +7651,7 @@ scene("hub", { label: "birds-eye combat projection and targets", query: "solo=1&
 scene("hub", { label: "birds-eye lower floors", query: "solo=1&character=portlandhodl&weapon=1&mode=shoulder&combat=1", steps: [hubBirdsEyeFloors] });
 scene("hub", { label: "mirror", steps: [hubJumbotron, hubMatrix, hubMirror] });
 scene("hub", { label: "side panel", query: "pos=0", steps: [hubSheetPersistence] });
-scene("hub", { label: "clock and block height", query: "pos=0&time=0900", steps: [hubBlockHeight] });
+scene("hub", { label: "clock and block height", query: "pos=0&time=0900", steps: [hubBlockHeight, hubDestinationNames] });
 scene("hub", { label: "canvas2d", query: "canvas2d=1", steps: [canvasTour] });
 scene("hub", { query: "pos=0", opts: PHONE_SIZE, steps: [phone("hub", { required: ["#joy-move", "#joy-look", "#sheet-toggle", "#sheet-bananas"], sheet: true })] });
 scene("lab", { query: "pos=0", opts: PHONE_SIZE, steps: [phone("lab", { required: ["#joy-move", "#joy-look", ".leave"] })] });
@@ -8861,9 +8885,30 @@ const pokerProtocolChecks = async () => {
   } catch (e) { record("poker protocol: timeouts refund chips, repeated requests cannot stall, and signers cannot be impersonated", false, e.stack); }
 };
 
+// Staging must preserve exact recordings and hash the final script, including literal replacement tokens.
+const distributionAudioChecks = async () => {
+  const out = mkdtempSync(join(tmpdir(), "ooga-audio-"));
+  try {
+    const source = readFileSync(join(root, "src/js/dsb-audio-data.js"), "utf8").trim();
+    const script = `\nwindow.BL = {};\n${source}\nconst literal = "$& $$ $' $` + "`" + `";\n`;
+    const hash = value => createHash("sha256").update(value).digest("base64");
+    const html = `<meta content="default-src 'none'; script-src 'sha256-${hash(script)}'; connect-src 'self' https: wss:"><script>${script}</script>`;
+    const staged = externalizeAudio(html, root, out), updated = staged.match(/<script>([\s\S]*?)<\/script>/)[1];
+    const context = { window: { BL: {} } };
+    runInNewContext(updated, context);
+    const descriptor = context.window.BL.dsbAudioData, original = { window: {} };
+    runInNewContext(source, original);
+    const encoded = [...original.window.BL.dsbAudioData.voices, original.window.BL.dsbAudioData.music];
+    const urls = [...descriptor.voices, descriptor.music];
+    record("distribution audio: exact MP3 assets replace embedded text and the final script retains its literal bytes and strict CSP hash",
+      descriptor.external && urls.length === 5 && urls.every((url, i) => /^\/audio\/dsb-[a-f0-9]{64}\.mp3$/.test(url) && readFileSync(join(out, url)).equals(Buffer.from(encoded[i], "base64")))
+      && staged.includes(`script-src 'sha256-${hash(updated)}'`) && updated.endsWith(script.slice(script.indexOf("const literal"))) && !updated.includes(encoded[0]), "staged recording/CSP mismatch");
+  } finally { rmSync(out, { recursive: true, force: true }); }
+};
 const unitChecks = async () => {
   const storage = await visibilityStorageProof({ compact: true });
   record("visibility storage: exact source doubles and signed zero survive queries, demand and bounded screen BVHs", storage.exact && storage.unchanged && storage.bounded && storage.storage && storage.demand && storage.disposed && storage.values > 600, JSON.stringify(storage));
+  await distributionAudioChecks();
   const canvasStub = () => ({
     width: 0, height: 0,
     getContext: () => ({

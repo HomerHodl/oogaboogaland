@@ -4,11 +4,12 @@
   "use strict";
   const scope = typeof window === "undefined" ? globalThis : window;
   const BL = scope.BL = scope.BL || {};
-  // Both unresolved identities were explicitly confirmed by the maintainer as
-  // MrHodlX's. Display names alone must never add entries to this table.
+  // These owners were explicitly confirmed by the maintainer. Display names
+  // alone must never add entries to this table.
   const OWNERS = Object.freeze({
     "email:bdb4923572c8ac13": "MrHodlX",
-    "email:56537ddd43347582": "MrHodlX"
+    "email:56537ddd43347582": "MrHodlX",
+    "harry": "hotpixelgroup"
   });
   const METRICS = ["commits", "prs", "reviews", "issues", "comments"];
   const ISO = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/;
