@@ -4569,7 +4569,7 @@ body.orbit-dragging #tooltip {
   }
 
   .sheet[data-open="false"] .sheet-toggle {
-    top: calc(-39px - var(--safe-bottom));
+    top: calc(-45px - var(--safe-bottom));
   }
 
   .sheet[data-open="true"]~.joysticks,
@@ -4965,7 +4965,7 @@ body.orbit-dragging #tooltip {
   }
 
   .sheet[data-open="false"] .sheet-toggle {
-    top: calc(-39px - var(--safe-bottom));
+    top: calc(-45px - var(--safe-bottom));
   }
 
   .equipment-hud {
