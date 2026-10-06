@@ -3974,7 +3974,8 @@ const hubJumbotron = { name: "hub jumbotron", why: "rule: the island rotation st
     const reader = j.createReader();
     reader.setFilter("repos", [data.repos[0].name]); reader.go(1);
     const filtered = reader.view.name === "repo" && reader.view.params.name === data.repos[0].name;
-    const aliases = Object.keys(BL.contributorIdentities.OWNERS), owner = BL.contributorIdentities.ownerOf(aliases[0]);
+    const owner = BL.contributorIdentities.ownerOf(Object.keys(BL.contributorIdentities.OWNERS)[0]);
+    const aliases = Object.keys(BL.contributorIdentities.OWNERS).filter(login => BL.contributorIdentities.ownerOf(login) === owner);
     j.refreshData({ ...data, contributors: [{ login: owner }, ...aliases.map(login => ({ login }))] });
     const restored = j.createReader({ screen: { name: "recent" }, filters: { users: aliases } });
     const restoredOwner = restored.filters.users.length === 1 && restored.filters.users[0] === owner;
