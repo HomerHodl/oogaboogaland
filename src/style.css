@@ -2588,8 +2588,7 @@ body[data-active-scene="arcade"] .magazine-hud {
   overscroll-behavior: contain;
 }
 
-/* The board close-up, shared by every readable board: the board's own pixels blown up, the page's caption between
-   the chevrons, one dot a page, and the page's note on a tablet. */
+/* The board close-up shared by every readable board. */
 .board-modal {
   width: 440px;
 }
@@ -2749,6 +2748,65 @@ body[data-active-scene="arcade"] .magazine-hud {
   text-transform: uppercase;
   overflow-wrap: anywhere;
 }
+
+.board-caption-above .board-caption {
+  display: block;
+  height: 18px;
+  margin: 8px 0 4px;
+  line-height: 18px;
+  white-space: nowrap;
+}
+
+.board-caption-above .board-screen { margin-top: 0; }
+.board-caption-above .board-dots { margin: 0; }
+
+.board-modal.board-carousel {
+  padding: 0 0 8px;
+  border: 0;
+  background: repeating-linear-gradient(90deg, rgba(0, 0, 0, 0.05) 0 2px, transparent 2px 11px), repeating-linear-gradient(180deg, var(--wood) 0 34px, var(--wood-edge) 34px 36px, var(--plank) 36px 70px, var(--wood-edge) 70px 72px);
+}
+
+.board-carousel .panel-head {
+  display: grid;
+  grid-template-columns: 36px minmax(0, 1fr) 36px;
+  align-items: center;
+  box-sizing: border-box;
+  height: 48px;
+  padding-inline: 8px;
+  border-bottom: 2px solid var(--wood-edge);
+  background: repeating-linear-gradient(90deg, rgba(0, 0, 0, 0.05) 0 2px, transparent 2px 11px), var(--wood);
+}
+
+.board-carousel .panel-head h2 {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+}
+
+.board-carousel .board-dots { grid-column: 2; margin: 0; gap: 7px; }
+.board-carousel .panel-head .modal-close {
+  grid-column: 3;
+  justify-self: end;
+  width: 36px;
+  height: 32px;
+  margin: 0;
+  background: var(--wood-edge);
+  font-size: 22px;
+}
+.board-carousel .board-screen {
+  margin: 0;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
+.board-carousel.board-caption-above .board-screen { margin-top: 0; }
+.board-carousel .board-nav { grid-template-columns: 36px 44px 36px; justify-content: center; gap: 10px; margin-top: 8px; }
+.board-carousel .board-note { margin: 8px 8px 0; }
 
 .board-center {
   display: flex;
@@ -2943,6 +3001,13 @@ body[data-active-scene="arcade"] .magazine-hud {
 
 .board-note[hidden] {
   display: none;
+}
+
+.board-caption-above .board-note {
+  box-sizing: border-box;
+  height: clamp(112px, 22dvh, 168px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 
 /* A wide board (the Timechain Sphere, a tall page of rows) gets a wide dialog on desktop: the page on the left,
@@ -4488,7 +4553,8 @@ body.orbit-dragging #tooltip {
     left: 0;
     right: 0;
     bottom: 0;
-    width: auto;
+    width: 100%;
+    max-width: none;
     height: 52vh;
     max-height: 52vh;
     border-radius: var(--radius) var(--radius) 0 0;
@@ -4499,7 +4565,11 @@ body.orbit-dragging #tooltip {
   }
 
   .sheet[data-open="false"] {
-    transform: translateY(calc(100% - 48px - var(--safe-bottom)));
+    transform: translateY(100%);
+  }
+
+  .sheet[data-open="false"] .sheet-toggle {
+    top: calc(-39px - var(--safe-bottom));
   }
 
   .sheet[data-open="true"]~.joysticks,
@@ -4611,6 +4681,10 @@ body.orbit-dragging #tooltip {
     left: calc(12px + var(--safe-left));
   }
 
+  .topbar:not(:has(.presets:not([hidden])))~.equipment-hud {
+    top: calc(55px + var(--safe-top));
+  }
+
   .act {
     bottom: calc(112px + var(--safe-bottom));
   }
@@ -4687,6 +4761,46 @@ body.orbit-dragging #tooltip {
 
   .race-item-btn {
     bottom: calc(112px + var(--safe-bottom));
+  }
+}
+
+@media (min-width: 620px) and (max-width: 720px) {
+  .panel[data-panel="roster"] > .roster,
+  .panel[data-panel="loot"] > .loot {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    column-gap: 16px;
+  }
+
+  .panel[data-panel="roster"] > .roster li {
+    grid-column: auto;
+    grid-template-columns: 8px minmax(0, 1fr) max-content max-content;
+  }
+
+  .panel[data-panel="roster"] > .roster li.roster-away {
+    grid-column: 1 / -1;
+  }
+
+  .panel[data-panel="bananas"] {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    align-content: start;
+    gap: 12px;
+  }
+
+  .panel[data-panel="bananas"] > .meter {
+    grid-column: 1 / -1;
+    margin-bottom: 0;
+  }
+
+  .panel[data-panel="bananas"] > .stats,
+  .panel[data-panel="bananas"] > .help {
+    margin-top: 0;
+  }
+
+  .panel[data-panel="bananas"] > .feed-open {
+    align-self: end;
+    margin-top: 0;
   }
 }
 
@@ -4838,7 +4952,27 @@ body.orbit-dragging #tooltip {
 }
 
 @media (max-width: 720px) and (max-height: 500px) and (orientation: landscape) {
+  .sheet {
+    left: 0;
+    right: 0;
+    width: 100%;
+    max-width: none;
+    border-radius: var(--radius) var(--radius) 0 0;
+  }
+
+  .sheet[data-open="false"] {
+    transform: translateY(100%);
+  }
+
+  .sheet[data-open="false"] .sheet-toggle {
+    top: calc(-39px - var(--safe-bottom));
+  }
+
   .equipment-hud {
+    top: calc(64px + var(--safe-top));
+  }
+
+  .topbar:has(.presets[data-scene="hub"]:not([hidden]))~.equipment-hud {
     top: calc(96px + var(--safe-top));
   }
 }
