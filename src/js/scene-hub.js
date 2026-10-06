@@ -164,6 +164,7 @@
   const BUILD_RADIUS = 13;
   const NUDGES = [0, -2, 2, -4, 4, -6, 6, -8, 8];
   const PATH_GEOMETRY = new WeakMap();
+  const CAVE_TERRAIN_LAYOUTS = new WeakMap();
   const TIMECHAIN_NEAR = 25, TIMECHAIN_OUTER_PERIOD = 180;
   const DRESSED = new WeakMap();
   const DRESSING_LAMPS = BL.dressing.LIGHT_RGB.map(([r, g, b]) => ({ r, g, b, radius: 5.5, glow: 0.9, hide: false }));
@@ -908,6 +909,36 @@
     }
     return island.faceIndex = { byCave, ramps };
   };
+  const terrainGlyphLayoutMatches = (layout, geometry, faces, signature) => {
+    if (!layout || layout.verts !== geometry.verts || layout.faces.length !== faces.length) return false;
+    for (let i = 0; i < signature.length; i++) if (layout.signature[i] !== signature[i]) return false;
+    let at = 0;
+    for (let f = 0; f < faces.length; f++) {
+      const face = faces[f];
+      if (layout.faces[f] !== face || layout.lengths[f] !== face.i.length) return false;
+      for (let i = 0; i < face.i.length; i++) {
+        const index = face.i[i], vertex = index * 3;
+        if (layout.coordinates[at++] !== index || layout.coordinates[at++] !== geometry.verts[vertex]
+          || layout.coordinates[at++] !== geometry.verts[vertex + 1] || layout.coordinates[at++] !== geometry.verts[vertex + 2]) return false;
+      }
+    }
+    return at === layout.coordinates.length;
+  };
+  const captureTerrainGlyphSource = (geometry, faces, signature) => {
+    let count = 0;
+    for (const face of faces) count += face.i.length;
+    const coordinates = new Float64Array(count * 4), lengths = new Uint32Array(faces.length);
+    let at = 0;
+    for (let f = 0; f < faces.length; f++) {
+      const indices = faces[f].i; lengths[f] = indices.length;
+      for (let i = 0; i < indices.length; i++) {
+        const index = indices[i], vertex = index * 3;
+        coordinates[at++] = index; coordinates[at++] = geometry.verts[vertex];
+        coordinates[at++] = geometry.verts[vertex + 1]; coordinates[at++] = geometry.verts[vertex + 2];
+      }
+    }
+    return { verts: geometry.verts, faces: faces.slice(), lengths, coordinates, signature };
+  };
   const buildCaveGlyphs = (slot, m, group) => {
     const caveIndex = island.mouths.indexOf(m) + 1, cr = Math.cos(m.ry), sr = Math.sin(m.ry);
     const portalInset = slot.status === "mirror" ? 0 : 0.02;
@@ -1043,29 +1074,59 @@
       if (source === "terrain") terrainFaces++; else propFaces++;
     };
     const caveFaces = islandFaceIndex().byCave.get(caveIndex) || EMPTY_FACES;
-    for (let i = 0; i < caveFaces.length; i++) addFace(island.geometry, caveFaces[i], null, "terrain");
-    for (const section of horizontalDomains) {
-      section.streamStart = streams.length;
-      const portalU = sr * section.ux + cr * section.uz, portalV = sr * section.vx + cr * section.vz;
-      const portalN = sr * section.nx + cr * section.nz;
-      const portalLimit = PORTAL_Z - portalInset + sr * m.x + cr * m.z - portalN * (section.plane + halfZ + clearance) - Math.abs(portalU) * halfX - Math.abs(portalV) * halfY - Math.abs(portalN) * halfZ;
-      section.constraints.push([portalU, portalV, portalLimit]);
-      for (let column = Math.ceil((section.minU + halfX) / MATRIX_SURFACE_PITCH); column * MATRIX_SURFACE_PITCH <= section.maxU - halfX + 1e-8; column++) {
-        const cross = column * MATRIX_SURFACE_PITCH;
-        const intervals = matrixSupportIntervals(section.supports, cross - halfX, cross + halfX);
-        for (let i = 0; i < intervals.length; i++) {
-          let flowMin = intervals[i][0] + halfY, flowMax = intervals[i][1] - halfY;
-          const remain = portalLimit - portalU * cross;
-          if (portalV > 1e-8) flowMax = Math.min(flowMax, remain / portalV);
-          else if (portalV < -1e-8) flowMin = Math.max(flowMin, remain / portalV);
-          else if (remain < -1e-8) continue;
-          if (flowMax - flowMin >= 1e-6) addStream(section, column, flowMin, flowMax);
+    let layouts = CAVE_TERRAIN_LAYOUTS.get(island.geometry);
+    if (!layouts) { layouts = new Map(); CAVE_TERRAIN_LAYOUTS.set(island.geometry, layouts); }
+    // At most one layout per cave/backend. Status, portal pose, topology and
+    // source coordinates invalidate that slot instead of accumulating keys.
+    const layoutKey = caveIndex * 2 + (renderer.kind === "canvas2d" ? 1 : 0);
+    const signature = [slot.id, slot.status, m.x, m.z, m.floorY, m.ry, renderer.kind];
+    const cachedLayout = layouts.get(layoutKey);
+    if (terrainGlyphLayoutMatches(cachedLayout, island.geometry, caveFaces, signature)) {
+      for (const section of cachedLayout.sections) sections.push({ ...section });
+      for (const stream of cachedLayout.streams) streams.push({ ...stream, head: 0, gap: 0 });
+      const entryData = cachedLayout.entryData;
+      for (let i = 0; i < entryData.length; i += 3) entries.push({ stream: entryData[i], character: entryData[i + 1], rank: entryData[i + 2] });
+      Object.assign(surfaceCounts, cachedLayout.surfaceCounts);
+      ({ maximumLocalZ, minEntranceX, maxEntranceX, terrainFaces, perGlyphCapacity } = cachedLayout);
+    } else {
+      for (let i = 0; i < caveFaces.length; i++) addFace(island.geometry, caveFaces[i], null, "terrain");
+      for (const section of horizontalDomains) {
+        section.streamStart = streams.length;
+        const portalU = sr * section.ux + cr * section.uz, portalV = sr * section.vx + cr * section.vz;
+        const portalN = sr * section.nx + cr * section.nz;
+        const portalLimit = PORTAL_Z - portalInset + sr * m.x + cr * m.z - portalN * (section.plane + halfZ + clearance) - Math.abs(portalU) * halfX - Math.abs(portalV) * halfY - Math.abs(portalN) * halfZ;
+        section.constraints.push([portalU, portalV, portalLimit]);
+        for (let column = Math.ceil((section.minU + halfX) / MATRIX_SURFACE_PITCH); column * MATRIX_SURFACE_PITCH <= section.maxU - halfX + 1e-8; column++) {
+          const cross = column * MATRIX_SURFACE_PITCH;
+          const intervals = matrixSupportIntervals(section.supports, cross - halfX, cross + halfX);
+          for (let i = 0; i < intervals.length; i++) {
+            let flowMin = intervals[i][0] + halfY, flowMax = intervals[i][1] - halfY;
+            const remain = portalLimit - portalU * cross;
+            if (portalV > 1e-8) flowMax = Math.min(flowMax, remain / portalV);
+            else if (portalV < -1e-8) flowMin = Math.max(flowMin, remain / portalV);
+            else if (remain < -1e-8) continue;
+            if (flowMax - flowMin >= 1e-6) addStream(section, column, flowMin, flowMax);
+          }
+        }
+        if (section.streamCount) {
+          sections.push(section);
+          surfaceCounts[section.category] += section.glyphCount;
         }
       }
-      if (section.streamCount) {
-        sections.push(section);
-        surfaceCounts[section.category] += section.glyphCount;
+      const layout = captureTerrainGlyphSource(island.geometry, caveFaces, signature);
+      // Terrain entry identities are nonnegative indices/ranks. Keep their
+      // cached copy compact; every visit still owns fresh live entry objects.
+      const entryData = new Uint32Array(entries.length * 3);
+      for (let i = 0; i < entries.length; i++) {
+        const entry = entries[i], at = i * 3;
+        entryData[at] = entry.stream; entryData[at + 1] = entry.character; entryData[at + 2] = entry.rank;
       }
+      Object.assign(layout, {
+        sections: sections.map(section => ({ ...section })), streams: streams.map(stream => ({ ...stream, head: 0, gap: 0 })),
+        entryData, surfaceCounts: { ...surfaceCounts },
+        maximumLocalZ, minEntranceX, maxEntranceX, terrainFaces, perGlyphCapacity
+      });
+      layouts.set(layoutKey, layout);
     }
     BL.scene.updateWorld(group);
     const visit = (node, inheritedLiving = false, inheritedEmissive = false, inheritedExterior = false) => {
