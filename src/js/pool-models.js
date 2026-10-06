@@ -1135,7 +1135,7 @@
   // bevelled stiles, iron plates riveted over the corners and a lamp on the top rail.
   const chainBoardLegs = cached(() => {
     const B = CHAIN_BOARD;
-    return curveChainBoard(merge(...[-1, 1].map((side) => bevelBox({ w: 0.5, h: B.y + 0.4 - BOARD_FOOT, d: 0.5, color: SIGN_POST, offset: { x: side * (B.w / 2 - 0.3), y: (B.y + 0.4 + BOARD_FOOT) / 2 } }))));
+    return curveChainBoard(merge(...[-1, 1].map((side) => bevelBox({ w: 0.5, h: B.y - BOARD_FOOT, d: 0.5, color: SIGN_POST, offset: { x: side * (B.w / 2 - 0.3), y: (B.y + BOARD_FOOT) / 2 } }))));
   });
   const chainBoard = cached(() => {
     const B = CHAIN_BOARD, top = B.y + B.h;
