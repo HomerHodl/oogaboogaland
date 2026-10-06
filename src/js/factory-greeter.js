@@ -335,20 +335,25 @@
     "0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000" +
     "0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000" +
     "0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000";
-  const buildMeshes = (fine) => {
-    const segments = fine ? 240 : 48, ringSegments = fine ? 480 : 96;
-    const sphere = (r, color) => lathe({ profile: Array.from({ length: fine ? 49 : 25 }, (_, i) =>
-      [Math.sin(i / (fine ? 48 : 24) * Math.PI) * r, -Math.cos(i / (fine ? 48 : 24) * Math.PI) * r]), segments, color });
-    const globe = lathe({ profile: Array.from({ length: fine ? 161 : 73 }, (_, i) =>
-      [Math.sin(i / (fine ? 160 : 72) * Math.PI) * 0.105, -Math.cos(i / (fine ? 160 : 72) * Math.PI) * 0.105]),
-      segments: fine ? 320 : 144, color: GRAPHITE });
+  const buildMeshes = (fine, light = false) => {
+    const segments = light ? 12 : fine ? 240 : 48, ringSegments = light ? 24 : fine ? 192 : 96;
+    // Fasteners and glints are below seven millimetres across; dense globe tessellation adds no visible detail here.
+    const sphere = (r, color) => lathe({ profile: Array.from({ length: 7 }, (_, i) =>
+      [Math.sin(i / 6 * Math.PI) * r, -Math.cos(i / 6 * Math.PI) * r]), segments: 12, color });
+    const globeRows = light ? 18 : fine ? 160 : 72, globeSegments = light ? 36 : fine ? 320 : 144;
+    const globe = lathe({ profile: Array.from({ length: globeRows + 1 }, (_, i) =>
+      [Math.sin(i / globeRows * Math.PI) * 0.105, -Math.cos(i / globeRows * Math.PI) * 0.105]),
+      segments: globeSegments, color: GRAPHITE });
     const earthColors = [BL.math.hexToRgb(GRAPHITE), BL.math.hexToRgb("#f7931a"), BL.math.hexToRgb("#b96110")];
     for (let i = 0; i < globe.faces.length; i++) {
-      const cell = (parseInt((fine ? EARTH_FINE : EARTH_MAP)[i >> 1], 16) >> (i % 2 ? 0 : 2)) & 3;
+      // Sample the same baked map at cell centres for the small Low/touch globe; preserve longitude and latitude.
+      const mapIndex = light ? (Math.floor((Math.floor(i / globeSegments) + 0.5) * 72 / globeRows) * 144
+        + Math.floor((i % globeSegments + 0.5) * 144 / globeSegments)) : i;
+      const cell = (parseInt((fine ? EARTH_FINE : EARTH_MAP)[mapIndex >> 1], 16) >> (mapIndex % 2 ? 0 : 2)) & 3;
       globe.faces[i].color = earthColors[cell];
       globe.faces[i].emissive = cell ? 0.3 : 0;
     }
-    const core = shaded([globe, forwardLathe(torus(0.097, 0.003, COPPER, 0, segments, fine ? 16 : 8))]);
+    const core = shaded([globe, forwardLathe(torus(0.097, 0.003, COPPER, 0, segments, light ? 4 : fine ? 16 : 8))]);
     const lens = shaded([moved(forwardLathe(turn([[0.069, 0], [0.072, 0.009], [0.065, 0.018],
       [0.047, 0.022], [0.043, 0.016], [0.043, 0], [0.069, 0]], segments, COPPER)), 0, 0, 0.083)]);
     const iris = shaded([moved(forwardLathe(turn([[0.044, 0], [0.04, 0.006], [0.026, 0.007],
@@ -378,18 +383,18 @@
       capDetails.push(turnedZ(bevelBox({ w: 0.027, h: 0.003, d: 0.002, bevel: 0.001,
         color: "#ffc16b", emissive: 0.35, offset: { y: 0.074, z: 0.047 } }), a));
     }
-    for (let i = 0; i < 24; i++) irisMarks.push(turnedZ(bevelBox({ w: 0.0015, h: 0.013, d: 0.002,
+    for (let i = 0; i < 24; i += light ? 4 : 1) irisMarks.push(turnedZ(bevelBox({ w: 0.0015, h: 0.013, d: 0.002,
       bevel: 0.0004, color: COPPER, offset: { y: 0.055, z: 0.106 } }), i * TAU / 24));
     // Overlapping tapered vanes resolve the iris as a mechanism, with dark seams between its warm blades.
     for (let i = 0; i < 18; i++) blades.push(moved(turnedZ(prism([
       [-0.002, 0.027], [0.004, 0.03], [0.008, 0.041], [-0.002, 0.043]
     ], 0.0015, i % 3 ? "#e5a34e" : "#ffe0a0", 0.3), i * TAU / 18), 0, 0, 0.115));
     const housing = shaded([
-      moved(forwardLathe(torus(0.068, 0.002, "#171c23", 0, fine ? 320 : 64, fine ? 16 : 8)), 0, 0, 0.099),
-      moved(forwardLathe(torus(0.05, 0.0015, "#efc48a", 0, fine ? 320 : 64, fine ? 16 : 8)), 0, 0, 0.11),
-      forwardLathe(torus(0.103, 0.002, "#171c23", 0, fine ? 320 : 64, fine ? 16 : 8)),
+      moved(forwardLathe(torus(0.068, 0.002, "#171c23", 0, light ? 12 : fine ? 320 : 64, light ? 4 : fine ? 16 : 8)), 0, 0, 0.099),
+      moved(forwardLathe(torus(0.05, 0.0015, "#efc48a", 0, light ? 12 : fine ? 320 : 64, light ? 4 : fine ? 16 : 8)), 0, 0, 0.11),
+      forwardLathe(torus(0.103, 0.002, "#171c23", 0, light ? 12 : fine ? 320 : 64, light ? 4 : fine ? 16 : 8)),
       moved(forwardLathe(turn([[0.033, 0], [0.033, 0.006], [0.026, 0.01], [0.026, 0],
-        [0.033, 0]], fine ? 320 : 64, GRAPHITE)), 0, 0, 0.112)
+        [0.033, 0]], light ? 12 : fine ? 320 : 64, GRAPHITE)), 0, 0, 0.112)
     ]);
     const glints = shaded([moved(sphere(0.0035, "#fff4ce"), -0.009, 0.009, 0.121),
       moved(sphere(0.0014, "#c3d9e7"), 0.01, -0.006, 0.12)]);
@@ -398,7 +403,7 @@
       const r = ring.radius, round = [], marks = [];
       const band = (inner, outer, depth, color, emissive = 0) => {
         const bevel = Math.min(0.0008, depth * 0.4, (outer - inner) * 0.2);
-        return forwardLathe(turn([
+        return forwardLathe(turn(light ? [[inner, -depth], [outer, -depth], [outer, depth], [inner, depth], [inner, -depth]] : [
         [inner + bevel, -depth], [outer - bevel, -depth], [outer, -depth + bevel],
         [outer, depth - bevel], [outer - bevel, depth], [inner + bevel, depth],
         [inner, depth - bevel], [inner, -depth + bevel], [inner + bevel, -depth]
@@ -414,7 +419,7 @@
         f.color = f.color.map((c) => c * grain);
       }
       round.push(wood);
-      for (const z of [-0.0082, 0.0082]) {
+      for (const z of light ? [] : [-0.0082, 0.0082]) {
         const grainLine = band(r + 0.004, r + 0.0048, 0.0002, "#50311e");
         grainLine.faces = grainLine.faces.filter((f) => f.i[f.i.length - 1] % ringSegments % (ringSegments / 4) >= ringSegments / 48);
         round.push(moved(grainLine, 0, 0, z));
@@ -424,7 +429,7 @@
         offset: { x: r }
       }), (i * 24 + edge) * TAU / 96));
       // Radial ticks and linked blocks are baked into the mesh, never regenerated while the rings turn.
-      for (let i = 0; i < 48; i++) {
+      for (let i = 0; i < 48; i += light ? 4 : 1) {
         if (i % 12 === 0) continue;
         const a = i * TAU / 48;
         marks.push(turnedZ(bevelBox({ w: 0.001, h: i % 4 ? 0.005 : 0.008, d: 0.0008,
@@ -449,11 +454,12 @@
     return { core, lens, iris, pupil, housing, glints, blades: shaded([], blades),
       armor: shaded(caps, capDetails), irisMarks: shaded([], irisMarks), rings };
   };
-  const MESHES = cached(() => buildMeshes(false)), FINE_MESHES = cached(() => buildMeshes(true));
+  const MESHES = cached(() => buildMeshes(false)), FINE_MESHES = cached(() => buildMeshes(true)), LIGHT_MESHES = cached(() => buildMeshes(false, true));
   const create = ({ parent, input, fx, feed, visitor, demoRunning, coarse, camera, quality = () => "high" }) => {
     // Prepare detail behind the scene transition, never in update. Touch and Low retain the lighter rig.
-    const meshes = MESHES(), fineMeshes = !coarse && quality() !== "low" ? FINE_MESHES() : null,
-      detailTiers = fineMeshes ? [meshes, fineMeshes] : [meshes], detailNodes = [], detailKeys = [], body = createNode(), hover = createNode(), head = createNode({ geometry: meshes.core });
+    const lightMeshes = LIGHT_MESHES(), eligible = !coarse && quality() !== "low",
+      meshes = eligible ? MESHES() : lightMeshes, fineMeshes = eligible ? FINE_MESHES() : null,
+      detailTiers = fineMeshes ? [meshes, fineMeshes, lightMeshes] : [lightMeshes], detailNodes = [], detailKeys = [], body = createNode(), hover = createNode(), head = createNode({ geometry: meshes.core });
     const iris = createNode({ geometry: meshes.iris }), pupil = createNode({ geometry: meshes.pupil });
     const optics = createNode(), blades = createNode({ geometry: meshes.blades });
     const figure = { root: body, parts: { head: hover } }, rings = [], pivots = [], orientations = [], orbit = quat.create();
@@ -476,7 +482,7 @@
     for (const node of head.children) for (const key of ["lens", "housing", "armor", "irisMarks"])
       if (node.geometry === meshes[key]) registerDetail(node, key);
     for (const node of optics.children) if (node.geometry === meshes.glints) registerDetail(node, "glints");
-    let detailed = false;
+    let detailed = false, selectedTier = meshes;
     addChild(parent, body);
     input.add(head, { kind: "greeter" }, { radius: HEIGHT * 7 / 32 });
     // The tour menu lives on screen, in the HUD's wood, built for the visit and removed on leave.
@@ -652,14 +658,15 @@
       return true;
     };
     const update = (dt, elapsed) => {
-      // Hysteresis avoids mesh churn around the cutoff. Both cached tiers stay in the visit's live set.
+      // Hysteresis avoids mesh churn. Every prepared tier stays in the visit's live set.
       const distance = camera ? Math.hypot(camera.position.x - position.x,
         camera.position.y - position.y, camera.position.z - position.z) : Infinity;
       const fine = !!fineMeshes && quality() !== "low" && distance < (detailed ? 7 : 6);
-      if (fine !== detailed) {
-        const tier = fine ? fineMeshes : meshes;
+      const tier = quality() === "low" ? lightMeshes : fine ? fineMeshes : meshes;
+      if (tier !== selectedTier) {
         for (let i = 0; i < detailNodes.length; i++) detailNodes[i].geometry = tier[detailKeys[i]];
         for (let i = 0; i < rings.length; i++) rings[i].geometry = tier.rings[i];
+        selectedTier = tier;
         detailed = fine;
       }
       state.cooldown = Math.max(0, state.cooldown - dt);

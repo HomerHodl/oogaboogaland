@@ -5640,17 +5640,20 @@ const factoryGreeter = { name: "factory greeter", why: "rule: the guide's four t
     const at = distance => { camera.position.x = g.root.position.x; camera.position.y = g.root.position.y;
       camera.position.z = g.root.position.z + distance; g.update(0, 0); return head.geometry; };
     const far = at(8), near = at(5), heldNear = at(6.5), farAgain = at(8), heldFar = at(6.5);
-    B.renderer.setQuality("low"); const lowNear = at(5);
+    B.renderer.setQuality("low"); const lowNear = at(5), lowFar = at(8);
     B.renderer.setQuality(quality); at(8); g.liveGeometry(set);
     const geometry = []; const collect = node => { if (node.geometry) geometry.push(node.geometry); for (const child of node.children) collect(child); }; collect(g.root);
     Object.assign(camera.position, original);
     return { nearFaces: near.faces.length, farFaces: far.faces.length, switched: near !== far, expectedDetail,
-      lowCoarse: lowNear === far, entry, prepared: set.size === (expectedDetail ? 24 : 12),
+      lowCoarse: lowNear === lowFar && (expectedDetail ? lowNear.faces.length < far.faces.length : lowNear === far),
+      lightFaces: lowNear.faces.length, retainedFaces: [...set].reduce((sum, mesh) => sum + mesh.faces.length, 0),
+      entry, prepared: set.size === (expectedDetail ? 36 : 12),
       stable: heldNear === near && farAgain === far && heldFar === far, retained: geometry.every(mesh => set.has(mesh) || mesh === BL.factoryModels.forgeWave().gold), count: set.size };
   })()`);
   record("factory greeter: close-up detail switches with hysteresis and every animated tier remains in the visit's live geometry set",
     detail.switched === detail.expectedDetail && detail.stable && detail.retained && detail.lowCoarse && detail.prepared
-      && (detail.expectedDetail ? detail.nearFaces > detail.farFaces : detail.nearFaces === detail.farFaces), JSON.stringify(detail));
+      && detail.lightFaces === 696 && detail.retainedFaces <= (detail.expectedDetail ? 225000 : 7000)
+      && (detail.expectedDetail ? detail.nearFaces === 55040 && detail.farFaces === 10752 : detail.nearFaces === detail.farFaces), JSON.stringify(detail));
 } };
 const factoryLadders = { name: "factory ladders", why: "rule: Oogas must climb the rebalancer and lighthouse ladders through real controls, hold their height at rest, walk off both landings and jump away without snapping back", run: async (b) => {
   const r = await b.evaluate(`(() => {
