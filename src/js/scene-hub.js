@@ -2427,7 +2427,7 @@
       canvas.width = CHAIN_PANEL_W;
       canvas.height = CHAIN_PANEL_H;
       // willReadFrequently: every refresh reads the panel back, and without it Chrome warns.
-      chainSign = { node: panelNode, ctx2d: canvas.getContext("2d", { alpha: false, willReadFrequently: true }), printed: "" };
+      chainSign = { node: panelNode, ctx2d: canvas.getContext("2d", { alpha: false, willReadFrequently: true }), printed: "", index: 0, switchAt: NaN, nextRefresh: 0 };
     }
     // Fire: the two torches of the court either side of the mouth, then one down each stretch of the descent on the
     // wall clear of its waterfalls, and four round the chamber between the paintings. The ones under the ground burn
@@ -4888,8 +4888,8 @@
     }
   };
   // The chain board's four readings, set in the jumbotron's 5x7 font and run-length merged into quads,
-  // exactly as the cave sets its wall panels. The rows are rebuilt only when one of them changed, so a
-  // board left standing all day replaces no geometry and holds its size.
+  // exactly as the cave sets its wall panels. Its overview and four detail panes rebuild only when their
+  // visible readings change, so a board left standing all day holds its size.
   const CHAIN_PANEL_W = 208, CHAIN_PANEL_H = 72, CHAIN_PANEL_BG = [42, 39, 36];
   // A board that has stopped being fed says so by going grey. Holding the last reading out in its
   // usual colours would be the one genuinely misleading thing this island could do.
@@ -4951,24 +4951,55 @@
       ["FAST FEE", s.fastestFee ? `${gameMod.formatFeeRate(s.fastestFee)} SAT/VB` : "-", ink("#ff9a2a")]
     ];
   };
+  const chainDetail = [
+    [(s) => s.lastTxCount && s.lastWeight ? `${gameMod.formatThree(s.lastTxCount, true)} TX · ${gameMod.formatThree(s.lastWeight / 4e6)} MVB` : "", "BLOCK HEIGHT"],
+    [(s) => arrivalsLive(s) ? `WEATHER ${weatherMod.STEPS[weather.state.step].name.toUpperCase()}` : "WEATHER UNAVAILABLE", "INCOMING DATA"],
+    [(s) => backlogDetails(s.count, !!s.backlogAt), "MEMPOOL"],
+    [(s) => s.hourFee ? `HOUR ${gameMod.formatFeeRate(s.hourFee)} SAT/VB` : "", "FAST FEE RATE"]
+  ];
   const refreshChainSign = () => {
     if (!chainSign) return;
-    const rows = chainRows(chain.snapshot);
-    const printed = rows.map((r) => r[0] + r[1]).join("|");
+    const snapshot = chain.snapshot, rows = chainRows(snapshot), index = chainSign.index;
+    const under = index ? chainDetail[index - 1][0](snapshot) : "";
+    const printed = index ? `${index}|${rows[index - 1].join("|")}|${under}`
+      : `0|${rows.map((r) => r.join("|")).join("|")}`;
     if (printed === chainSign.printed) return;
     chainSign.printed = printed;
     const c2 = chainSign.ctx2d, text = BL.jumbotron.text;
     c2.fillStyle = `rgb(${CHAIN_PANEL_BG[0]},${CHAIN_PANEL_BG[1]},${CHAIN_PANEL_BG[2]})`;
     c2.fillRect(0, 0, CHAIN_PANEL_W, CHAIN_PANEL_H);
-    let y = 4;
-    for (const [label, value, color] of rows) {
-      text.drawText(c2, label, 2, y, "#9b8f7a", 2);
-      drawMetric(c2, value, CHAIN_PANEL_W - 2, y, color, 2, true);
-      y += 16;
+    if (!index) {
+      let y = 4;
+      for (const [label, value, color] of rows) {
+        text.drawText(c2, label, 2, y, "#9b8f7a", 2);
+        drawMetric(c2, value, CHAIN_PANEL_W - 2, y, color, 2, true);
+        y += 16;
+      }
+    } else {
+      const [label, value, color] = rows[index - 1];
+      const title = chainDetail[index - 1][1] || label;
+      text.drawText(c2, title, Math.round((CHAIN_PANEL_W - text.measureText(title, 2)) / 2), 4, "#9b8f7a", 2);
+      const scale = metricWidth(value, 4) <= CHAIN_PANEL_W - 8 ? 4 : 3;
+      drawMetric(c2, value, CHAIN_PANEL_W / 2, 23, color, scale);
+      if (under) drawMetric(c2, under, CHAIN_PANEL_W / 2, 59, "#9b8f7a", 1);
     }
     const node = chainSign.node;
     if (node.geometry) renderer.releaseGeometry(node.geometry);
     node.geometry = poolModels.chainPanel(c2, CHAIN_PANEL_W, CHAIN_PANEL_H, CHAIN_PANEL_BG);
+  };
+  const updateChainSign = (elapsed) => {
+    if (!chainSign) return;
+    if (!Number.isFinite(chainSign.switchAt)) chainSign.switchAt = elapsed;
+    const cycle = jumbotron?.cycleSeconds ?? 8;
+    if (cycle > 0 && elapsed - chainSign.switchAt >= cycle) {
+      chainSign.index = (chainSign.index + 1) % (chainDetail.length + 1);
+      chainSign.switchAt = elapsed;
+      chainSign.nextRefresh = elapsed + 1;
+      refreshChainSign();
+    } else if (elapsed >= chainSign.nextRefresh) {
+      chainSign.nextRefresh = elapsed + 1;
+      refreshChainSign();
+    }
   };
   // The Mempool island's two boards in the shared board dialog. Each is a list of pages, every page a caption, a
   // note and a drawing in the jumbotron's 5x7 font on the board's own small canvas; `refresh` redraws the shown
@@ -5060,10 +5091,10 @@
       },
       note: chainStatus
     },
-    rowPage(0, "Block height", (s) => s.lastTxCount && s.lastWeight ? `${gameMod.formatThree(s.lastTxCount, true)} TX · ${gameMod.formatThree(s.lastWeight / 4e6)} MVB` : "", "A block's height is its number in the Bitcoin chain. The third line shows that block's transaction count and virtual size. When a new block arrives, lightning strikes and a water cube drops through the chamber; the next mempool reading determines how much waiting data remains in the lake.", "BLOCK HEIGHT"),
-    rowPage(1, "Incoming data", (s) => arrivalsLive(s) ? `WEATHER ${weatherMod.STEPS[weather.state.step].name.toUpperCase()}` : "WEATHER UNAVAILABLE", "The large number is new transaction data arriving each second, in virtual bytes (vB/s). Rain strength follows a roughly 30-second average of this rate. Arrivals add to the mempool; blocks confirm transactions and can reduce it.", "INCOMING DATA"),
-    rowPage(2, "Mempool", (s) => backlogDetails(s.count, !!s.backlogAt), "The mempool is the data still waiting for a block, measured in millions of virtual bytes (MvB). The smaller figure counts waiting transactions. Rain shows new arrivals; a mined block can clear some of this queue."),
-    rowPage(3, "Next-block fee", (s) => s.hourFee ? `HOUR ${gameMod.formatFeeRate(s.hourFee)} SAT/VB` : "", "This fee estimate helps a transaction compete for space in the next block, in satoshis per virtual byte (sat/vB). The smaller figure estimates a fee for confirmation within an hour; neither time is guaranteed. Fees affect queue order, while arrivals set the rain and total waiting data fills the lake.", "FAST FEE RATE")
+    rowPage(0, "Block height", chainDetail[0][0], "A block's height is its number in the Bitcoin chain. The third line shows that block's transaction count and virtual size. When a new block arrives, lightning strikes and a water cube drops through the chamber; the next mempool reading determines how much waiting data remains in the lake.", chainDetail[0][1]),
+    rowPage(1, "Incoming data", chainDetail[1][0], "The large number is new transaction data arriving each second, in virtual bytes (vB/s). Rain strength follows a roughly 30-second average of this rate. Arrivals add to the mempool; blocks confirm transactions and can reduce it.", chainDetail[1][1]),
+    rowPage(2, "Mempool", chainDetail[2][0], "The mempool is the data still waiting for a block, measured in millions of virtual bytes (MvB). The smaller figure counts waiting transactions. Rain shows new arrivals; a mined block can clear some of this queue."),
+    rowPage(3, "Next-block fee", chainDetail[3][0], "This fee estimate helps a transaction compete for space in the next block, in satoshis per virtual byte (sat/vB). The smaller figure estimates a fee for confirmation within an hour; neither time is guaranteed. Fees affect queue order, while arrivals set the rain and total waiting data fills the lake.", chainDetail[3][1])
   ], true);
   // The key to the island: what arrives makes the weather, what waits fills the lake, and a block is a bolt and a
   // cube. A reading that has stopped being fed goes grey and says so; it is never drawn as a calm zero.
@@ -6946,6 +6977,7 @@
     if (jumbotron) {
       jumbotron.update(elapsed, renderer);
     }
+    updateChainSign(elapsed);
     hud.updateBoard(elapsed);
     if (fireworksShells.length) updateFireworks();
     const next = daylight.phaseAt(hour);
