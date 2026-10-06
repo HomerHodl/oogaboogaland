@@ -168,6 +168,8 @@
     for (const el of intros) el.hidden = el.dataset.intro !== next.id;
     // The page styles by scene too: the games hide the island's sheet, see style.css.
     document.body.dataset.activeScene = next.id;
+    window.BL.net.setBody(null);
+    window.BL.net.setZone(next.id === "hub" ? "outside" : next.id === "dsb" ? "dsb-outside" : `scene-${next.id}`);
     next.enter(ctx);
     active = next;
     sceneTime = 0;
@@ -346,7 +348,7 @@
     if (e.key === "Shift" && (e.code === "ShiftRight" || e.location === 2)) rightShift = true;
     if (e.repeat) return;
     const typing = e.target && (e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA");
-    if (typing || (e.target && e.target.closest && e.target.closest("dialog"))) return;
+    if (typing || (e.target && e.target.closest && e.target.closest("dialog, #sheet"))) return;
     const intro = openIntro();
     if (intro) {
       // Registered at boot, before any scene's controls, so this keeps the key from them too.

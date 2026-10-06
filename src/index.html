@@ -5,7 +5,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta http-equiv="Content-Security-Policy"
-    content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; media-src https://stream.noderunnersradio.com; connect-src 'self' https: wss:; worker-src 'self'; base-uri 'none'; form-action 'none'">
+    content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; media-src https://stream.noderunnersradio.com https://hodlerhiq.net; connect-src 'self' https: wss:; worker-src 'self'; base-uri 'none'; form-action 'none'">
   <meta name="referrer" content="no-referrer">
   <meta name="color-scheme" content="dark">
   <meta name="theme-color" content="#0a0a0b">
@@ -283,7 +283,7 @@
         <button type="button" class="leave" data-action="leave">Leave<span> cave</span></button>
       </nav>
       <nav class="presets" aria-label="DSB Land" data-scene="dsb" hidden>
-        <button type="button" data-action="dsb-lookout">Turtle view</button>
+        <button type="button" data-action="dsb-lookout">Island overview</button>
         <button type="button" data-action="reset-view">Walk</button>
         <button type="button" data-action="dsb-mute" id="dsb-mute" aria-pressed="false">Mute</button>
       </nav>
@@ -1280,7 +1280,7 @@
     </div>
     <button id="dsb-context" class="dsb-context" data-action="dsb-context" type="button" hidden>Use</button>
     <section id="dsb-panel" class="dsb-panel" data-scene="dsb" data-phase="entrance" aria-label="DSB Land" hidden>
-      <div class="dsb-intro"><p>DSB LAND</p><h2>Follow the light.</h2><button type="button" id="dsb-start-audio" data-action="dsb-start-audio">Enter with sound</button><p>Hold W or ↑ · on touch, push the left stick forward</p><p>The music gets closer with every step.</p><button type="button" data-action="dsb-mute">Mute sound</button><button type="button" data-action="leave">Back to island</button></div>
+      <div class="dsb-intro"><p>DSB LAND</p><h2>Follow the light.</h2><button type="button" id="dsb-start-audio" data-action="dsb-start-audio">Enter with sound</button><p>Hold W or ↑ · on touch, push the left stick forward</p><p>The music gets closer with every step.</p><button type="button" data-action="dsb-skip-entry">Skip</button><button type="button" data-action="dsb-mute">Mute sound</button><button type="button" data-action="leave">Back to ₿IFRÖST</button></div>
       <div class="dsb-arrival-card"><p>Welcome to DSB Land</p><button type="button" data-action="dsb-skip">Skip tour</button><p>Space / Enter to explore</p></div>
       <div class="dsb-world">
         <button type="button" class="dsb-toggle" id="dsb-toggle" data-action="dsb-panel" aria-expanded="false">Bag &amp; rides</button>
@@ -1305,6 +1305,7 @@
     </dialog>
     <dialog id="dsb-tv" aria-labelledby="dsb-tv-title">
       <header><div><p class="dsb-eyebrow">DSB LAND BROADCASTING</p><h2 id="dsb-tv-title">DSB TV</h2></div><button type="button" id="dsb-tv-close" autofocus>Close TV</button></header>
+      <nav class="dsb-tv-routes" aria-label="Noderunner interfaces"><button id="dsb-tv-main-route" type="button">DSB TV / Main</button><button id="dsb-tv-radio-route" type="button">Noderunners Radio</button><button id="dsb-tv-request-route" type="button">Jukebox / Request</button></nav>
       <div class="dsb-tv-glass">
         <nav aria-label="TV channels" id="dsb-tv-menu">
           <button type="button" id="dsb-tv-channel" aria-expanded="false" aria-controls="dsb-tv-radio">1. Noderunners Radio</button>
@@ -1312,6 +1313,7 @@
         </nav>
         <section id="dsb-tv-radio" hidden aria-label="Noderunners Radio">
           <button type="button" id="dsb-tv-back">Back to TV menu</button>
+          <button type="button" id="dsb-tv-play">Play / enable radio</button>
           <p id="dsb-tv-status" role="status">Connecting to the station</p>
           <p class="dsb-eyebrow">NOW PLAYING</p><h3 id="dsb-tv-song">Waiting for song info</h3><p id="dsb-tv-artist"></p><p id="dsb-tv-note"></p>
           <section class="dsb-tv-jukebox" aria-label="Request a song">
@@ -1319,6 +1321,7 @@
             <div class="dsb-tv-search"><input id="dsb-tv-query" maxlength="100" placeholder="Search Noderunners"><button id="dsb-tv-search" type="button">Search</button></div>
             <p id="dsb-tv-request-status" role="status"></p><div id="dsb-tv-results"></div>
             <section id="dsb-tv-invoice" hidden aria-label="Lightning payment">
+              <p>Invoice from Noderunners Radio. Scan or open your wallet to pay. No payment is made automatically.</p>
               <h3 id="dsb-tv-price"></h3><p id="dsb-tv-selected"></p><canvas id="dsb-tv-invoice-qr" role="img" aria-label="Lightning invoice QR code"></canvas>
               <a id="dsb-tv-wallet">Open Lightning wallet</a><button id="dsb-tv-copy" type="button">Copy invoice</button><button id="dsb-tv-cancel-invoice" type="button">Close invoice</button>
               <textarea id="dsb-tv-invoice-text" readonly aria-label="Lightning invoice"></textarea><p id="dsb-tv-payment-status" role="status"></p>
@@ -1326,7 +1329,7 @@
           </section>
           <div class="dsb-tv-columns"><div><h3>Up next</h3><ol id="dsb-tv-queue"></ol><h3>Recently played</h3><ol id="dsb-tv-history"></ol></div>
           <div class="dsb-tv-request"><canvas id="dsb-tv-qr" role="img" aria-label="Scan to open the official Noderunners jukebox"></canvas><a href="https://noderunnersradio.com/?jukebox" target="_blank" rel="noopener noreferrer">Choose a song on Noderunners &#8599;</a><p>Scan or open the jukebox, choose a song, then pay its Lightning invoice. The station sets the price and confirms your place in the queue.</p></div></div>
-          <p class="dsb-tv-help">Broadcast audio can lag behind song information. Music and Mute controls remain in Bag &amp; rides. Closing this TV keeps the radio playing.</p>
+          <p class="dsb-tv-help">Broadcast audio can lag behind song information. The existing DSB Mute control silences radio and ambience. Closing this TV keeps the outdoor radio playing and stops invoice monitoring. Close invoice stops monitoring only; it does not cancel a Lightning invoice. No payment is made automatically.</p>
         </section>
         <p id="dsb-tv-welcome">Choose a channel. The island is listening.</p>
       </div>
@@ -1540,6 +1543,27 @@ Then run npm run build and ONLY=characters node test/run.mjs.</pre>
   </main>
 
   <script src="js/qr.js"></script>
+  <section id="rulers-catalog" class="rulers-catalog" role="dialog" aria-modal="true" aria-labelledby="rulers-title" hidden>
+    <header><div><p class="rulers-eyebrow">ART · APPAREL · IDEAS</p><h2 id="rulers-title">WITHOUT RULERS <span aria-hidden="true">■</span></h2></div><button type="button" data-wr="close">Return to shop</button></header>
+    <p class="rulers-privacy">No customer info stored here. Browse here; purchases are handled on the official site.</p>
+    <nav aria-label="Shop categories"></nav>
+    <div class="rulers-browse"><div class="rulers-bar"><button type="button" data-wr="back" hidden>← Back</button><h3 class="rulers-heading">Featured apparel &amp; art</h3></div><label class="rulers-search">Search catalog<input type="search" maxlength="120" autocomplete="off" placeholder="Search this curated catalog"></label><div class="rulers-results"></div></div>
+    <footer><p class="rulers-status" role="status"></p><a href="https://www.without-rulers.com/" target="_blank" rel="noopener noreferrer" referrerpolicy="no-referrer">Open on without-rulers.com ↗</a></footer>
+  </section>
+  <section id="ink-catalog" class="ink-catalog" role="dialog" aria-modal="true" aria-labelledby="ink-title" hidden>
+    <header><div><p class="ink-eyebrow">ART / PRINT / COMMUNITY</p><h2 id="ink-title">PROOF OF INK <span aria-hidden="true">◆</span></h2></div><button type="button" data-ink="close">Return to studio</button></header>
+    <p class="ink-privacy">Browse here. Purchase on ProofOfInk.com. No customer data stored in OogaBoogaLand.</p>
+    <nav aria-label="Catalog sections"></nav>
+    <div class="ink-browse"><div class="ink-bar"><button type="button" data-ink="back" hidden>← Back</button><h3 class="ink-heading">Featured</h3></div><label class="ink-search">Search this selection<input type="search" maxlength="120" autocomplete="off" placeholder="Art, apparel, artists, collections…"></label><div class="ink-filters" aria-label="Categories"></div><div class="ink-results"></div></div>
+    <footer><p class="ink-status" role="status"></p><a href="https://proofofink.com/" target="_blank" rel="noopener noreferrer" referrerpolicy="no-referrer">Open Proof of Ink ↗</a></footer>
+  </section>
+  <section id="big-terminal" class="big-terminal" role="dialog" aria-modal="true" aria-labelledby="big-title" hidden>
+    <header><div><p class="big-eyebrow">PUBLIC INFORMATION / PODCONF</p><h2 id="big-title">BIG BITCOIN</h2></div><button type="button" data-big="close">Return to HQ</button></header>
+    <p class="big-privacy">Discover here. Visit PODCONF.xyz for current information. No customer data stored here.</p>
+    <nav aria-label="Information sections"></nav>
+    <div class="big-results"></div>
+    <footer>Curated from the official homepage · checked 4 October 2026. The headquarters is in-world satire; market screens are decorative.</footer>
+  </section>
   <script src="js/math.js"></script>
   <script src="js/daylight.js"></script>
   <script src="js/scene.js"></script>
@@ -1547,6 +1571,7 @@ Then run npm run build and ONLY=characters node test/run.mjs.</pre>
   <script src="js/mirror-body.js"></script>
   <script src="js/mirror-damage.js"></script>
   <script src="js/character-visibility.js"></script>
+  <script src="js/dsb-water.js"></script>
   <script src="js/gl-renderer.js"></script>
   <script src="js/canvas-renderer.js"></script>
   <script src="js/models.js"></script>
@@ -1556,6 +1581,7 @@ Then run npm run build and ONLY=characters node test/run.mjs.</pre>
   <script src="js/lab-wallpaper.js"></script>
   <script src="js/hub-models.js"></script>
   <script src="js/dressing.js"></script>
+  <script src="js/dressing-mediterranean.js"></script>
   <script src="js/chalkboard.js"></script>
   <script src="js/lifehash.js"></script>
   <script src="js/contributor-identities.js"></script>
@@ -1658,15 +1684,66 @@ Then run npm run build and ONLY=characters node test/run.mjs.</pre>
   <script src="js/rocket-hud.js"></script>
   <script src="js/rocket-audio.js"></script>
   <script src="js/scene-orbit.js"></script>
+  <script src="js/dsb-coast.js"></script>
+  <script src="js/dsb-geography.js"></script>
   <script src="js/dsb-models.js"></script>
   <script src="js/dsb-data.js"></script>
   <script src="js/dsb-audio-data.js"></script>
   <script src="js/dsb-audio.js"></script>
+  <script src="js/dsb-menu-shell.js"></script>
+  <script src="js/dsb-menu-zones.js"></script>
   <script src="js/dsb-tv.js"></script>
   <script src="js/dsb-agent-remote.js"></script>
   <script src="js/dsb-conversation.js"></script>
   <script src="js/dsb-agent-brain.js"></script>
   <script src="js/dsb-agent.js"></script>
+  <script src="js/dsb-weather.js"></script>
+  <script src="js/dsb-nature.js"></script>
+  <script src="js/dressing-chora.js"></script>
+  <script src="js/dressing-coastal.js"></script>
+  <script src="js/dsb-exterior.js"></script>
+  <script src="js/dsb-enrichment.js"></script>
+  <script src="js/dsb-town.js"></script>
+  <script src="js/dsb-atmosphere.js"></script>
+  <script src="js/dsb-entrance.js"></script>
+  <script src="js/dsb-olympus.js"></script>
+  <script src="js/dsb-vacancies.js"></script>
+  <script src="js/dsb-water-interaction.js"></script>
+  <script src="js/dsb-interior-audio.js"></script>
+  <script src="js/dsb-studio.js"></script>
+  <script src="js/maxis-models.js"></script>
+  <script src="js/maxis-club.js"></script>
+  <script src="js/dsb-spaces.js"></script>
+  <script src="js/without-rulers-models.js"></script>
+  <script src="js/without-rulers-shop.js"></script>
+  <script src="js/without-rulers-data.js"></script>
+  <script src="js/without-rulers-menu.js"></script>
+  <script src="js/proof-of-ink-data.js"></script>
+  <script src="js/proof-of-ink-art.js"></script>
+  <script src="js/proof-of-ink-models.js"></script>
+  <script src="js/proof-of-ink-room.js"></script>
+  <script src="js/proof-of-ink-menu.js"></script>
+  <script src="js/big-bitcoin-data.js"></script>
+  <script src="js/big-bitcoin-models.js"></script>
+  <script src="js/big-bitcoin-room.js"></script>
+  <script src="js/big-bitcoin-menu.js"></script>
+  <script src="js/meme-factory-data.js"></script>
+  <script src="js/meme-factory-models.js"></script>
+  <script src="js/meme-factory-room.js"></script>
+  <script src="js/meme-factory-menu.js"></script>
+  <script src="js/stackchain-data.js"></script>
+  <script src="js/stackchain-art.js"></script>
+  <script src="js/stackchain-models.js"></script>
+  <script src="js/stackchain-zones.js"></script>
+  <script src="js/stackchain-room.js"></script>
+  <script src="js/stackchain-menu.js"></script>
+  <script src="js/svrn-data.js"></script>
+  <script src="js/svrn-models.js"></script>
+  <script src="js/svrn-room.js"></script>
+  <script src="js/svrn-menu.js"></script>
+  <script src="js/dsb-interiors.js"></script>
+  <script src="js/dsb-radio.js"></script>
+  <script src="js/dsb-noderunner.js"></script>
   <script src="js/scene-dsb.js"></script>
   <script src="js/bifrost-models.js"></script>
   <script src="js/bifrost-gate.js"></script>
