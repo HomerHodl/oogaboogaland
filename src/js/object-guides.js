@@ -14,7 +14,7 @@
   const bakes = new WeakMap();
   const create = ({ roots, crew, actorRoots = [], exclude = [], providers = [], propsBlockActor = true, perceptionThrough = null }) => {
     const excluded = new Set(exclude), geometries = new Map(), registered = [], seen = new Set(), entries = new Map(), ownerEntries = new Map(), ownerGroups = [];
-    const aliases = new Map(), providerOwners = new Map();
+    const aliases = new Map(), providerOwners = new Map(), descriptorUsers = new Map();
     for (const provider of providers) {
       providerOwners.set(provider.owner, provider);
       for (const node of provider.roots) aliases.set(node, provider.owner);
@@ -48,17 +48,63 @@
       return true;
     };
     const cameraBoxIncludes = (e) => cameraBoundsIncludes(e.x, e.y, e.z, e.hx, e.hy, e.hz);
+    // Each unresolved descriptor retains only entries using it in either slot. Sets are made at
+    // registration; steady frame reads do not allocate or scan unrelated registered entries.
+    const setEntryGeometry = (entry, key, geometry) => {
+      const previous = entry[key];
+      if (previous === geometry) return;
+      entry[key] = geometry;
+      const other = key === "geometry" ? entry.boundsGeometry : entry.geometry;
+      if (previous !== other) descriptorUsers.get(previous)?.delete(entry);
+      descriptorUsers.get(geometry)?.add(entry);
+    };
     const geometryOf = (geometry) => {
       if (!geometry || excluded.has(geometry) || geometry.matrixGlyph || !geometry.faces || !geometry.faces.length) return null;
       let cached = geometries.get(geometry);
       if (cached) return cached;
+      let triangles = 0, edges = 0, resolved = null;
+      const v = geometry.verts;
+      for (const face of geometry.faces) if (face.i.length > 2) {
+        const a = face.i[0] * 3, b = face.i[1] * 3, c = face.i[2] * 3;
+        const ux = v[b] - v[a], uy = v[b + 1] - v[a + 1], uz = v[b + 2] - v[a + 2], vx = v[c] - v[a], vy = v[c + 1] - v[a + 1], vz = v[c + 2] - v[a + 2];
+        // Match the bake's degenerate-face rejection so grid sizing stays identical.
+        if (Math.hypot(uy * vz - uz * vy, uz * vx - ux * vz, ux * vy - uy * vx) < EPS) continue;
+        triangles += face.i.length - 2; edges += face.i.length;
+      }
+      if (!triangles) return null;
+      // Registration needs bounds and conservative capacities, not exact silhouettes.
+      // Materialize immutable query data only when a visibility query reads it.
+      cached = { sphere: BL.scene.boundsOf(geometry), triangleSlots: triangles, edgeSlots: edges,
+        nodeSlots: Math.max(1, Math.ceil(triangles / 4) * 2 - 1), get ready() { return resolved !== null; } };
+      const keys = ["lines", "samples", "sampleBounds", "coverFaces", "triangleCoverFaces", "edgeStarts", "edgeNormals", "vertices", "triangleIndices", "indices", "bounds", "left", "right", "starts", "counts"];
+      const materialize = () => {
+        resolved = bakeGeometry(geometry);
+        resolved.triangleSlots = cached.triangleSlots; resolved.edgeSlots = cached.edgeSlots; resolved.nodeSlots = cached.nodeSlots; resolved.ready = true;
+        geometries.set(geometry, resolved);
+        // Keep lazy descriptors out of hot loops: entries use the ordinary shared bake after first demand.
+        const users = descriptorUsers.get(cached);
+        if (users) for (const entry of users) {
+          if (entry.geometry === cached) entry.geometry = resolved;
+          if (entry.boundsGeometry === cached) entry.boundsGeometry = resolved;
+        }
+        users?.clear(); descriptorUsers.delete(cached);
+      };
+      for (const key of keys) {
+        Object.defineProperty(cached, key, { configurable: true, get: () => { if (!resolved) materialize(); return resolved[key]; } });
+      }
+      descriptorUsers.set(cached, new Set());
+      geometries.set(geometry, cached); stats.geometries++;
+      return cached;
+    };
+    const bakeGeometry = (geometry) => {
+      let cached;
       const baked = bakes.get(geometry.verts);
       if (baked) for (const bake of baked) {
         let same = bake.faces.length === geometry.faces.length;
         for (let n = 0; same && n < bake.faces.length; n++) same = bake.faces[n] === geometry.faces[n].i;
         if (!same) continue;
         cached = bake.record;
-        geometries.set(geometry, cached); stats.geometries++; stats.triangles += cached.triangleIndices.length / 3; stats.triangleBytes += cached.triangleIndices.byteLength; stats.samples += cached.samples.length / 3;
+        stats.triangles += cached.triangleIndices.length / 3; stats.triangleBytes += cached.triangleIndices.byteLength; stats.samples += cached.samples.length / 3;
         return cached;
       }
       // Triangle buffers take every face's fan up front (skipped faces leave their slots unused) and the witnesses
@@ -285,7 +331,7 @@
       cached = { lines: edgeLines, samples, sampleBounds, coverFaces: new Uint32Array(coverFaces), triangleCoverFaces: count === slots ? triangleCoverFaces : triangleCoverFaces.slice(0, count), edgeStarts, edgeNormals: new Float64Array(edgeNormals), vertices: v, triangleIndices: count === slots ? triangleIndices : triangleIndices.slice(0, count * 3), indices, bounds: new Float64Array(bounds), left: new Int32Array(left), right: new Int32Array(right), starts: new Uint32Array(starts), counts: new Uint32Array(counts), sphere: BL.scene.boundsOf(geometry) };
       const bake = { faces: geometry.faces.map((face) => face.i), record: cached };
       if (baked) baked.push(bake); else bakes.set(geometry.verts, [bake]);
-      geometries.set(geometry, cached); stats.geometries++; stats.triangles += count; stats.triangleBytes += cached.triangleIndices.byteLength; stats.samples += samples.length / 3;
+      stats.triangles += count; stats.triangleBytes += cached.triangleIndices.byteLength; stats.samples += samples.length / 3;
       return cached;
     };
     // Completed bakes retain three offsets into the immutable CPU vertices, rather than
@@ -328,10 +374,15 @@
             const group = groupOf(owner);
             entry = { node, owner, group, character, geometry, hitTriangle: -1, capacity: 0, source: node.geometry, inverse: BL.math.mat4.create(), world: new Float64Array(16), visible: false, shown: false, clipMinY: -Infinity, worldMinY: -Infinity, worldMaxY: Infinity, x: 0, y: 0, z: 0, radius: 0, hx: 0, hy: 0, hz: 0, scaleX: 0, scaleY: 0, scaleZ: 0, centerY: 0, halfY: 0, boundsGeometry: null, boundaryBounds: new Float64Array(4), boundaryTriangles: new Float64Array(0), boundaryBoxes: new Float64Array(0), boundaryNodes: new Float64Array(0), boundaryRay: new Float64Array(12), boundaryHits: new Int32Array([-1, -1]), boundaryGrid: null, boundaryReserve: 0, boundaryNodeReserve: 0 };
             registered.push(entry); entries.set(node, entry); group.push(entry);
+            descriptorUsers.get(geometry)?.add(entry);
+          }
+          if (entry.geometry !== geometry) {
+            setEntryGeometry(entry, "geometry", geometry); setEntryGeometry(entry, "boundsGeometry", null);
+            entry.hitTriangle = -1; entry.boundaryHits.fill(-1);
           }
           // Animated world-height planes can add one boundary per triangle and plane; reserve it at registration,
           // never during collection.
-          entry.capacity = geometry.lines.length / 6 + (node.geometry.clipMinY !== undefined || node.geometry.clipMaxY !== undefined ? geometry.triangleIndices.length / 3 * 2 : 0);
+          entry.capacity = geometry.edgeSlots + (node.geometry.clipMinY !== undefined || node.geometry.clipMaxY !== undefined ? geometry.triangleSlots * 2 : 0);
           reserveBoundary(entry, geometry);
         }
       }
@@ -340,7 +391,7 @@
     const reserveHead = (cave) => {
       const open = geometryOf(cave.headOpen), closed = geometryOf(cave.headClosed), entry = cave.parts && entries.get(cave.parts.head);
       if (entry) {
-        entry.capacity = Math.max(entry.capacity, open ? open.lines.length / 6 : 0, closed ? closed.lines.length / 6 : 0);
+        entry.capacity = Math.max(entry.capacity, open ? open.edgeSlots : 0, closed ? closed.edgeSlots : 0);
         if (open) reserveBoundary(entry, open);
         if (closed) reserveBoundary(entry, closed);
       }
@@ -348,10 +399,13 @@
     // Registration records the largest geometry each entry can show; the buffers are allocated at that size the first
     // time the entry's boundary is built, since only owners near the camera ever build one.
     const reserveBoundary = (entry, geometry) => {
-      entry.boundaryReserve = Math.max(entry.boundaryReserve, geometry.triangleIndices.length / 3);
-      entry.boundaryNodeReserve = Math.max(entry.boundaryNodeReserve, geometry.counts.length);
+      entry.boundaryReserve = Math.max(entry.boundaryReserve, geometry.triangleSlots);
+      entry.boundaryNodeReserve = Math.max(entry.boundaryNodeReserve, geometry.nodeSlots);
     };
     const boundaryStorage = (entry) => {
+      // First boundary demand has exact data available; never let a capacity estimate truncate its BVH.
+      entry.boundaryReserve = Math.max(entry.boundaryReserve, entry.geometry.triangleIndices.length / 3);
+      entry.boundaryNodeReserve = Math.max(entry.boundaryNodeReserve, entry.geometry.counts.length);
       const count = entry.boundaryReserve;
       if (entry.boundaryTriangles.length < count * 10) entry.boundaryTriangles = new Float64Array(count * 10);
       if (entry.boundaryBoxes.length < count * 4) entry.boundaryBoxes = new Float64Array(count * 4);
@@ -532,7 +586,7 @@
           const b = geometry && geometry.sphere, p = b && b.center;
           entry.centerY = b ? w[1] * p[0] + w[5] * p[1] + w[9] * p[2] + w[13] : 0;
           entry.halfY = b ? (Math.abs(w[1]) * (b.max[0] - b.min[0]) + Math.abs(w[5]) * (b.max[1] - b.min[1]) + Math.abs(w[9]) * (b.max[2] - b.min[2])) / 2 : 0;
-          entry.boundsGeometry = geometry;
+          setEntryGeometry(entry, "boundsGeometry", geometry);
         }
         const scaleX = entry.scaleX, scaleY = entry.scaleY, scaleZ = entry.scaleZ, centerY = entry.centerY, halfY = entry.halfY;
         // The reflected panel opens from the bottom: its discarded pixels must not remain blockers or perception
@@ -549,7 +603,7 @@
         const perceptionMoved = entry.character < 0 && (moved || active !== wasActive);
         if (perceptionMoved && wasActive) invalidatePerception(entry);
         entry.visible = active; entry.shown = shown; entry.source = node.geometry; entry.clipMinY = clipMinY; entry.worldMinY = worldMinY; entry.worldMaxY = worldMaxY;
-        if (geometry && entry.geometry !== geometry) { entry.geometry = geometry; entry.hitTriangle = -1; entry.boundaryHits.fill(-1); }
+        if (geometry && entry.geometry !== geometry) { setEntryGeometry(entry, "geometry", geometry); entry.hitTriangle = -1; entry.boundaryHits.fill(-1); }
         if (moved) {
           if (active || wasActive) { occlusionChanged = true; if (entry.character < 0) perceptionChanged = true; }
           if (shown || wasShown) entry.group.revision++;
@@ -1570,7 +1624,11 @@
         visit(cave.root);
         if (cave.sleepWeapons) visit(cave.sleepWeapons);
       }
-      for (let i = registered.length - 1; i >= 0; i--) if (!live.has(registered[i].node)) { entries.delete(registered[i].node); registered.splice(i, 1); }
+      for (let i = registered.length - 1; i >= 0; i--) if (!live.has(registered[i].node)) {
+        const entry = registered[i];
+        setEntryGeometry(entry, "geometry", null); setEntryGeometry(entry, "boundsGeometry", null);
+        entries.delete(entry.node); registered.splice(i, 1);
+      }
       for (const node of seen) if (!live.has(node)) seen.delete(node);
       aliases.clear();
       for (const provider of providers) for (const node of provider.roots) aliases.set(node, provider.owner);
@@ -1584,13 +1642,18 @@
       }
       for (const node of roots) registerNode(node);
       for (const cave of crew.cavemen.values()) reserveHead(cave);
-      for (const geometry of geometries.keys()) if (!wanted.has(geometry)) geometries.delete(geometry);
+      for (const geometry of geometries.keys()) if (!wanted.has(geometry)) {
+        const descriptor = geometries.get(geometry);
+        descriptorUsers.get(descriptor)?.clear(); descriptorUsers.delete(descriptor); geometries.delete(geometry);
+      }
       stats.geometries = geometries.size; stats.triangles = stats.triangleBytes = stats.samples = 0;
-      for (const geometry of geometries.values()) { stats.triangles += geometry.triangleIndices.length / 3; stats.triangleBytes += geometry.triangleIndices.byteLength; stats.samples += geometry.samples.length / 3; }
+      for (const geometry of geometries.values()) if (geometry.ready) { stats.triangles += geometry.triangleIndices.length / 3; stats.triangleBytes += geometry.triangleIndices.byteLength; stats.samples += geometry.samples.length / 3; }
       resize();
       stats.candidates = stats.occluders = stats.cameraOccluders = stats.nearOwners = 0;
     };
     const dispose = () => {
+      for (const users of descriptorUsers.values()) users.clear();
+      descriptorUsers.clear();
       registered.length = ownerGroups.length = 0; seen.clear(); entries.clear(); ownerEntries.clear(); aliases.clear(); providerOwners.clear(); geometries.clear(); characterRoots.clear();
       cameraCoverEntry = cameraCoverSource = null; cameraCoverFace = -1;
       cameraPropEntry = cameraPropSource = null; cameraPropFace = cameraPropStamp = -1; cameraPropCount = 0;

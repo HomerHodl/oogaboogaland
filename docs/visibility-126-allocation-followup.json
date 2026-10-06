@@ -1,0 +1,90 @@
+{
+  "variant": "pr164",
+  "codeHead": "6c2d08a2c333e6b2ed7d914b778c86d2e963836b",
+  "sourceSha256": "4fc332d6e4be539537f86f17656bb7748cae3ad833ed28e928bbdf6633b8b058",
+  "suiteSha256": "ac6f8ced732490dcc79635b3d5bb1da734fd27d02ee4396f490ce722a733126c",
+  "independentReview": "Read-only final review found no proven precision, capacity or lifecycle defect.",
+  "unitPassed": 134,
+  "workerPassed": 36,
+  "sitePages": 11,
+  "siteCards": 9,
+  "lint": "No configured lint script",
+  "changes": [
+    "Reuse fully filled triangleIndices and triangleCoverFaces; slice partial arrays to release unused backing",
+    "Permanent shared-bake, replacement, removal, disposal and partial-degenerate compact-backing coverage",
+    "Replace O(N\u00d7G) first-demand full registry scans with users of demanded descriptors",
+    "100/1000 entries across ten geometries require exactly100/1000 descriptor visits, versus previous1000/10000",
+    "Tracking retains bounded Map/Set references only until demanded or removed; first-time membership may allocate; no total FPS claim"
+  ],
+  "capturedAt": "2026-10-06T18:33:15.450685+00:00",
+  "fullSuite": {
+    "summary": {
+      "passed": 708,
+      "total": 726,
+      "knownOpen": 0,
+      "minutes": 11.5
+    },
+    "exit": 1,
+    "failureNames": [
+      "wall movement performance: ordinary movement stays responsive at a high-density desktop size",
+      "wall movement performance: moving behind cave walls during a donation stays responsive at a high-density desktop size",
+      "work movement cave trips: five workers retain path routes and finish repeated trips to lab, OBL and LF without stuck loops, jumps or relocation",
+      "gorilla lab carry jump: Shift+W+G keeps a running grab through both jumps and a charged midair throw without a smash",
+      "gorilla wall destination: a roof gorilla reaches the clicked lower lateral wall grip through continuous climbing without relocation or terrain penetration",
+      "race tracks: bay builds fast into culled sectors with checkpoints clear of its gaps",
+      "race tracks: gorge builds fast into culled sectors with checkpoints clear of its gaps",
+      "race tracks: peak builds fast into culled sectors with checkpoints clear of its gaps",
+      "timechain crossing",
+      "hub melee: one swing breaks a box, two a barrel and four a rock, and a broken rock is back whole within a minute",
+      "hub melee: focused quick taps start at normal power, rapid contacts recover linearly after 0.1s and every hit restarts recovery",
+      "hub melee: red damage numbers round full hit power to half points",
+      "hub phone: nothing is clipped, wrapped by accident or off screen, and every control is under a thumb, with the sheet open too",
+      "birds-eye combat: held Q and E rotate smoothly in opposite directions and settle after release",
+      "birds-eye combat: N eases back to north along the shortest path after rotating past a full turn",
+      "birds-eye combat camera",
+      "birds-eye lower floors",
+      "factory lifecycle"
+    ],
+    "sharedWithBaseline": [
+      "wall movement performance: ordinary movement stays responsive at a high-density desktop size",
+      "wall movement performance: moving behind cave walls during a donation stays responsive at a high-density desktop size",
+      "work movement cave trips: five workers retain path routes and finish repeated trips to lab, OBL and LF without stuck loops, jumps or relocation",
+      "gorilla lab carry jump: Shift+W+G keeps a running grab through both jumps and a charged midair throw without a smash",
+      "gorilla wall destination: a roof gorilla reaches the clicked lower lateral wall grip through continuous climbing without relocation or terrain penetration",
+      "race tracks: bay builds fast into culled sectors with checkpoints clear of its gaps",
+      "race tracks: gorge builds fast into culled sectors with checkpoints clear of its gaps",
+      "race tracks: peak builds fast into culled sectors with checkpoints clear of its gaps",
+      "timechain crossing",
+      "hub melee: one swing breaks a box, two a barrel and four a rock, and a broken rock is back whole within a minute",
+      "hub melee: focused quick taps start at normal power, rapid contacts recover linearly after 0.1s and every hit restarts recovery",
+      "hub melee: red damage numbers round full hit power to half points",
+      "hub phone: nothing is clipped, wrapped by accident or off screen, and every control is under a thumb, with the sheet open too",
+      "birds-eye combat: held Q and E rotate smoothly in opposite directions and settle after release",
+      "birds-eye combat: N eases back to north along the shortest path after rotating past a full turn",
+      "birds-eye combat camera",
+      "birds-eye lower floors",
+      "factory lifecycle"
+    ],
+    "variantOnlyInFullRun": [],
+    "baselineHead": "5ddd742c5735ef3a5de60ed92050b73851924849",
+    "baselineSummary": {
+      "passed": 701,
+      "total": 720,
+      "knownOpen": 0,
+      "minutes": 11.8
+    },
+    "comparisonLimit": "Matching failure names proves baseline occurrence, not identical causes. Totals vary with timeout completion. No thresholds or checks were weakened."
+  },
+  "akFollowup": {
+    "baselineOriginalCheck": "133/133 checks passed, exit0",
+    "pr163OriginalCheck": "135/135 checks passed, exit0",
+    "scope": "Original ONLY=hub ak regression, serial fresh browsers, assertions unchanged",
+    "interpretation": "PR163 full suite had hit=false while burst/magazine/reload passed. It did not reproduce in the isolated original check; baseline original check and PR164 full check passed. Cause remains unresolved; no proven introduced defect and no fix claimed."
+  },
+  "notRun": [
+    "No configured lint command",
+    "No new post-GC retained-memory benchmark",
+    "No additional fresh standalone context-loss or six-visit extended diagnostic for this follow-up; complete suite includes renderer/mobile/scene lifecycle sessions"
+  ],
+  "invalidatedRun": null
+}

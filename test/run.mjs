@@ -86,6 +86,48 @@ const visibilityStorageProof = async ({ compact = false, deferred = false } = {}
     return { exact, unchanged, bounded, tightBacking, storage, demand, values, count, bytes, lifecycle: sharedBake && removal && replacement && survivor && released && second.geometryRecords().size === 0, sharedBake, removal, replacement, survivor, released, disposed: guides.stats.registered === 0 };
   })()`, context);
 };
+// Count descriptor users rather than timings, so the first-demand cost scales with actual users.
+const visibilityDemandUsersProof = async () => {
+  const context = { window: { demandVisits: 0 }, performance };
+  for (const name of ["math", "scene", "models", "object-guides"]) {
+    let source = await readFile(new URL(`../src/js/${name}.js`, import.meta.url), "utf8");
+    if (name === "object-guides") source = source
+      .replace("return { collect, clear,", "return { geometryRecords: () => geometries, entryRecords: () => registered, descriptorUsers: () => descriptorUsers, collect, clear,")
+      .replace("if (users) for (const entry of users) {", "if (users) for (const entry of users) { window.demandVisits++;");
+    runInNewContext(source, context);
+  }
+  return runInNewContext(`(() => {
+    const B = window.BL, S = B.scene, M = B.models, rows = [];
+    for (const count of [100, 1000]) {
+      const root = S.createNode(), geos = Array.from({ length: 10 }, (_, i) => M.box({ w: 1 + i / 10, h: 1, d: 1, color: "#fff" }));
+      for (let i = 0; i < count; i++) S.addChild(root, S.createNode({ geometry: geos[i % 10], visible: false }));
+      const q = B.objectGuides.create({ roots: [root], crew: { cavemen: new Map() } });
+      const before = window.demandVisits;
+      for (const record of q.geometryRecords().values()) void record.triangleIndices;
+      rows.push({ count, visits: window.demandVisits - before, released: q.descriptorUsers().size === 0,
+        resolved: q.entryRecords().every(e => e.geometry.ready) });
+      q.dispose();
+    }
+    const root = S.createNode(), a = M.box({ w: 1, h: 1, d: 1, color: "#fff" }), b = M.box({ w: 2, h: 2, d: 2, color: "#fff" });
+    const first = S.createNode({ geometry: a }), second = S.createNode({ geometry: a }), removed = S.createNode({ geometry: b });
+    first.visible = second.visible = removed.visible = false;
+    S.addChild(root, first, second, removed);
+    const q = B.objectGuides.create({ roots: [root], crew: { cavemen: new Map() } });
+    const aDescriptor = q.geometryRecords().get(a), bDescriptor = q.geometryRecords().get(b);
+    const aUsers = q.descriptorUsers().get(aDescriptor), bUsers = q.descriptorUsers().get(bDescriptor);
+    S.updateWorld(root); q.collect({ root: S.createNode() }, 0, 0, 0);
+    const boundsTracked = q.entryRecords().every(e => e.geometry === e.boundsGeometry) && aUsers.size === 2 && bUsers.size === 1;
+    S.removeChild(root, removed); first.geometry = b; q.refresh();
+    const replacementReleased = aUsers.size === 1 && bUsers.size === 1 && ![...bUsers].some(e => e.node === removed);
+    S.updateWorld(root); q.collect({ root: S.createNode() }, 0, 0, 0);
+    const before = window.demandVisits; void aDescriptor.triangleIndices;
+    const entry = q.entryRecords().find(e => e.node === second);
+    const bothResolved = entry.geometry === entry.boundsGeometry && entry.geometry.ready && window.demandVisits - before === 1 && !q.descriptorUsers().has(aDescriptor);
+    q.dispose();
+    const disposed = q.descriptorUsers().size === 0 && q.entryRecords().length === 0 && aUsers.size === 0 && bUsers.size === 0;
+    return { rows, boundsTracked, replacementReleased, bothResolved, disposed };
+  })()`, context);
+};
 // ---- solid-props.mjs ----
 const { solidPropsProbe } = (() => {
   // Exercise the same transformed mesh queries used by hub movement.
@@ -1436,6 +1478,7 @@ const { canopyCertificateProbe, canopyPileProbe } = (() => {
     const right = S.createNode({ geometry: left.geometry, position: { x: 1.001, y: 0, z: 2 }, visible: false });
     S.addChild(root, target, cover, left, right, actor.root);
     const objects = BL.objectGuides.create({ roots: [target, cover, left, right], crew: { cavemen: new Map() }, propsBlockActor: false });
+    const initiallyUnbaked = objects.stats.triangles === 0 && objects.stats.samples === 0;
     const camera = S.createCamera({ near: 0.1, far: 100 });
     Object.assign(camera.position, { x: 0, y: 0, z: 0 }); Object.assign(camera.target, target.position);
     let rays = 0;
@@ -1452,6 +1495,7 @@ const { canopyCertificateProbe, canopyPileProbe } = (() => {
     };
     try {
       sample("nearby solid canopy covers the full target", true, true);
+      if (!initiallyUnbaked || objects.stats.triangles === 0) failures.push({ initiallyUnbaked, triangles: objects.stats.triangles });
       camera.position.x = 0.05; sample("small camera pan", true, true);
       camera.position.x = 0;
       cover.visible = false; left.visible = right.visible = true;
@@ -8542,6 +8586,15 @@ scene("factory", { label: "lifecycle", url: hubPage(src), steps: [{ name: "facto
   const { rendered, settled, snapshot, travel, heapDetail, within } = await dsbSoak(b);
   // Keep resource comparisons at one tier, as in the other lifecycle soaks.
   await b.evaluate('__ooga.renderer.setQuality("low")');
+  // Replay can become live after the first snapshot. These four static signal labels are intentionally
+  // cached for the page lifetime; warm them before measuring per-visit retention, not the changing feed.
+  const signalLabels = await b.evaluate(`(() => {
+    const subtitles = ["(Waiting)", "(No Signal)", "(Signal: Live)", "(Catching Up)"];
+    const labels = subtitles.map(sub => BL.factoryModels.label("WATCHTOWER\\nOUTPOST", sub));
+    return { variants: subtitles.length, distinct: new Set(labels).size,
+      reused: subtitles.every((sub, i) => BL.factoryModels.label("WATCHTOWER\\nOUTPOST", sub) === labels[i]) };
+  })()`);
+  record("soak: factory cycles: all four finite watchtower signal labels are cached before retention accounting", signalLabels.variants === 4 && signalLabels.distinct === 4 && signalLabels.reused, JSON.stringify(signalLabels));
   await b.evaluate(`(() => {
     const node = __ooga.factory.node, feed = node.feed, subscribe = feed.subscribe;
     window.__factoryLife = { node, subscriptions: 0 };
@@ -8930,9 +8983,11 @@ const distributionAudioChecks = async () => {
   } finally { rmSync(out, { recursive: true, force: true }); }
 };
 const unitChecks = async () => {
-  const storage = await visibilityStorageProof({ compact: true });
+  const storage = await visibilityStorageProof({ compact: true, deferred: true });
   record("visibility storage: exact source doubles and signed zero survive queries, demand and bounded screen BVHs", storage.exact && storage.unchanged && storage.bounded && storage.tightBacking && storage.storage && storage.demand && storage.disposed && storage.values > 600, JSON.stringify(storage));
   record("visibility lifecycle: shared immutable bakes survive another registry removal, larger mesh replacement and disposal", storage.lifecycle, JSON.stringify(storage));
+  const demandUsers = await visibilityDemandUsersProof();
+  record("visibility demand: first demand visits only descriptor users and releases replaced, removed and disposed entries", demandUsers.rows.every(row => row.visits === row.count && row.released && row.resolved) && demandUsers.boundsTracked && demandUsers.replacementReleased && demandUsers.bothResolved && demandUsers.disposed, JSON.stringify(demandUsers));
   await distributionAudioChecks();
   const canvasStub = () => ({
     width: 0, height: 0,
