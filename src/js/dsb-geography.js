@@ -218,33 +218,6 @@
       put("#2f6aa0",x+s*(d/2+.035),floor+1.1,z+c*(d/2+.035),1.1,2.2,.08,yaw);
       buildings.push({name,x,z,w,d,yaw,floor,front:{x:front.x,z:front.z},h});
     };
-    // PROTOTYPE shore apron: a smooth visual beach profile along the authored coast polygon. It only covers the
-    // grid-stepped sand wall; heights and walk queries never read it. Olympus' rear stays a cliff.
-    {
-      const pts=[];
-      for(let i=0;i<coast.length;i++){const a=coast[i],b=coast[(i+1)%coast.length],len=Math.hypot(b[0]-a[0],b[1]-a[1]),n=Math.ceil(len/1.5);for(let k=0;k<n;k++)pts.push([a[0]+(b[0]-a[0])*k/n,a[1]+(b[1]-a[1])*k/n]);}
-      // Two rounds of neighbour averaging soften the polygon's corners into a drawn shoreline.
-      for(let pass=0;pass<2;pass++){const copy=pts.map(p=>p.slice());for(let i=0;i<pts.length;i++){const a=copy[(i+pts.length-1)%pts.length],b=copy[(i+1)%pts.length];pts[i][0]=(a[0]+2*copy[i][0]+b[0])/4;pts[i][1]=(a[1]+2*copy[i][1]+b[1])/4;}}
-      // Wet mineral/sand tones, never a painted white foam ribbon above the ocean surface.
-      const apron={verts:[],faces:[],lines:[],smooth:true,castShadow:false},PROFILE=[[-2.4,null],[-.2,.5],[1.75,-.268],[2.2,-.286],[5.5,-2.2]],INK=[[232,208,160],[205,182,136],[166,153,123],[150,150,126]];
-      const M4=pts.length;
-      for(let i=0;i<M4;i++){
-        const a=pts[(i+M4-1)%M4],b=pts[(i+1)%M4];let nx=b[1]-a[1],nz=-(b[0]-a[0]);const l=Math.hypot(nx,nz)||1;nx/=l;nz/=l;
-        if(inside(pts[i][0]+nx*1.2,pts[i][1]+nz*1.2)&&!inside(pts[i][0]-nx*1.2,pts[i][1]-nz*1.2)){nx=-nx;nz=-nz;}
-        for(const [d,y] of PROFILE){const x=pts[i][0]+nx*d,z=pts[i][1]+nz*d;apron.verts.push(x,y===null?Math.max(.5,heightAt(x,z))+.035:y,z);}
-      }
-      const W=PROFILE.length;
-      for(let i=0;i<M4;i++){
-        const j=(i+1)%M4,x=pts[i][0],z=pts[i][1];
-        if(x<3&&z<-26||C.beach(x,z)>0||heightAt(apron.verts[i*W*3],apron.verts[i*W*3+2])>3.2)continue;
-        for(let k=0;k<W-1;k++){
-          const q=[i*W+k,j*W+k,j*W+k+1,i*W+k+1],v=apron.verts,a=q[0]*3,b=q[1]*3,c=q[2]*3;
-          if((v[b+2]-v[a+2])*(v[c]-v[a])-(v[b]-v[a])*(v[c+2]-v[a+2])<0)q.reverse();
-          apron.faces.push({i:q,color:INK[k]});
-        }
-      }
-      S.addChild(root,S.createNode({geometry:apron,sightHidden:true}));
-    }
     for(const row of properties)place(row,row[6]?[waterfront]:lanes);
     place(["Noderunner waterfront",-61,27,11,8,5],[waterfront]);
     place(["Harbor store",-48,25,7,6,4],[waterfront]);

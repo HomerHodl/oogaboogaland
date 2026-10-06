@@ -9095,7 +9095,7 @@ const waterChecks = BL => {
   const mask=(x,z)=>water.depths[(Math.floor((z/650+.5)*256)*256+Math.floor((x/650+.5)*256))*4+1];
   record("DSB coast foam: non-beach coasts and zero depth have no universal rim; sand shoals retain moving crests",[0,.04,.2,.6,1.2].every(d=>[0,.5,1].every(c=>sampleFoam(0,d,c)===0))&&sampleFoam(1,0,1)===0&&sampleFoam(1,.4,1)>0&&sampleFoam(1,.4,0)===0&&!/foam\s*\+=/.test(BL.dsbWater.shader)&&mask(20,80)>250&&[[-39,54],[85,14],[-55,-91]].every(p=>mask(...p)===0));
   const apronFaces=L.root.children.flatMap(n=>n.geometry?n.geometry.faces.filter(f=>f.i.every(i=>n.geometry.verts[i*3+1]>=-.29&&n.geometry.verts[i*3+1]<=-.26)):[]);
-  record("DSB coast foam: the old above-water apron strip is wet mineral material, not painted white foam",apronFaces.length>30&&apronFaces.every(f=>Math.max(...f.color)<200&&!f.emissive),JSON.stringify({faces:apronFaces.length}));
+  record("DSB coast foam: no waterline strip traces the coast, white or dark; terrain meets the sea directly",apronFaces.length===0,JSON.stringify({faces:apronFaces.length}));
   const depths=[-.35,0,.12,.3,.5,.7,.87],positions=depths.map(r=>point(r)),routes=[];
   for(const x of [9,20,39,45]){
     let previous=point(-.35,x),maxStep=0,blocked=0;
