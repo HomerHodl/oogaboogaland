@@ -1425,13 +1425,13 @@
       const k = distance > 0.035 ? 1 - 0.035 / distance : 0;
       return ctx.fireReachable(from.x, from.y, from.z, from.x + dx * k, from.y + dy * k, from.z + dz * k, hit.node, melee);
     };
-    const meleePower = (cave = player) => cave ? 0.25 + 0.75 * clamp((elapsed - cave.weapon.meleeHitAt - MELEE_RECHARGE_DELAY) / MELEE_RECHARGE_TIME, 0, 1) : 1;
+    const meleePower = (cave = player, charge = 0) => (cave ? 0.25 + 0.75 * clamp((elapsed - cave.weapon.meleeHitAt - MELEE_RECHARGE_DELAY) / MELEE_RECHARGE_TIME, 0, 1) : 1) * (1 + charge);
     const spendMeleePower = (cave) => {
       const w = cave.weapon;
-      w.meleePower = meleePower(cave);
+      w.meleePower = meleePower(cave, w.meleeCharge);
       w.meleeHitAt = elapsed;
-      return w.meleePower * MELEE_HIT_POWER * (1 + w.meleeCharge) * (cave.traits.nunchaku ? NUNCHAKU_POWER : 1);
     };
+    const strikeMeleePower = (cave) => cave.weapon.meleePower * MELEE_HIT_POWER * (cave.traits.nunchaku ? NUNCHAKU_POWER : 1);
     const hitMeleeTarget = (cave, powerOverride = null) => {
       const w = cave.weapon, hit = w.meleeTarget;
       if (!hit.node) return false;
@@ -1448,7 +1448,7 @@
         ctx.onProjectileMove(hit.x - dx * inv * 0.02, hit.y - dy * inv * 0.02, hit.z - dz * inv * 0.02,
           hit.x + dx * inv * 0.02, hit.y + dy * inv * 0.02, hit.z + dz * inv * 0.02, 0);
       }
-      const power = powerOverride === null ? spendMeleePower(cave) : powerOverride;
+      const power = powerOverride === null ? strikeMeleePower(cave) : powerOverride;
       if (ctx.onWeaponHit) ctx.onWeaponHit(cave, hit.type, power);
       if (ctx.onWeaponImpact) ctx.onWeaponImpact(cave, hit, dx * inv, dy * inv, dz * inv, power);
       hit.node = hit.owner = null;
@@ -1773,7 +1773,7 @@
       w.meleeHit = false;
       w.meleeStop = 1;
       w.meleePower = meleePower(cave);
-      if (!held) w.meleeComboTime = MELEE_COMBO_WINDOW;
+      if (!held) { w.meleeComboTime = MELEE_COMBO_WINDOW; spendMeleePower(cave); }
       if (!held) aimMeleeStrike(cave);
       if (!held && w.meleeTarget.node) {
         weaponOrigin(weaponStart, cave, true);
@@ -1800,7 +1800,6 @@
       if (!cancel && ctx.meleeTarget && !ctx.meleeTarget(w.meleeTarget, cave)) w.meleeTarget.node = null;
       w.meleeHeld = false;
       w.meleeQuick = quick && !cancel;
-      w.meleePower = meleePower(cave);
       w.meleeStrikeTime = w.meleeQuick ? MELEE_QUICK_STRIKE : MELEE_STRIKE * (1 + w.meleeCharge * 0.5);
       w.meleeTime = cancel ? 0 : w.meleeStrikeTime + MELEE_RECOVER + (w.meleeQuick ? MELEE_QUICK_WIND : 0);
       w.meleeComboTime = cancel ? 0 : MELEE_COMBO_WINDOW;
@@ -1809,7 +1808,7 @@
         w.meleePower = 1;
         w.meleeHeldTime = w.meleeCharge = 0;
         w.meleeStrikeTime = MELEE_STRIKE;
-      }
+      } else spendMeleePower(cave);
       aimMeleeStrike(cave);
       if (!cancel && w.meleeTarget.node) {
         weaponOrigin(weaponStart, cave, true);
@@ -5853,8 +5852,7 @@
         hitMeleeTarget(cave, GUN_BASH_POWER);
       }
       if (striking && w.meleeTime > 0 && club.visible && club.parent === cave.parts.armR && !cave.bedTravel.mode) {
-        // Contact time determines strength, including strikes whose arc lands
-        // after release. A weighted flail retains its normal damage multiplier.
+        // The power spent on release stays with the strike until its arc lands.
         BL.scene.updateWorld(cave.root);
         weaponOrigin(weaponStart, cave, true);
         const interactive = input.weaponTargets && input.weaponTargets.strike(weaponHit, meleePreviousWorld, club.world, club.geometry, cave)
@@ -5882,7 +5880,7 @@
           contactFraction = high;
           w.meleeHit = true;
           if (!hitMeleeTarget(cave)) {
-            const power = spendMeleePower(cave);
+            const power = strikeMeleePower(cave);
             if (interactive) {
               for (let j = 0; j < 16; j++) meleeProbeWorld[j] = lerp(meleePreviousWorld[j], meleeCurrentWorld[j], high);
               if (meleeContact.node.mirror && ctx.onMeleeStrike) ctx.onMeleeStrike(meleePreviousWorld, meleeProbeWorld, club.geometry, dt, power);
@@ -5906,8 +5904,7 @@
           // Resolve the reticle target even if the visible skin passed beside it.
           hitMeleeTarget(cave);
         } else if (!input.weaponTargets && ctx.onMeleeStrike) {
-          w.meleeHit = ctx.onMeleeStrike(meleePreviousWorld, club.world, club.geometry, dt, meleePower(cave) * MELEE_HIT_POWER * (1 + w.meleeCharge) * (cave.traits.nunchaku ? NUNCHAKU_POWER : 1));
-          if (w.meleeHit) spendMeleePower(cave);
+          w.meleeHit = ctx.onMeleeStrike(meleePreviousWorld, club.world, club.geometry, dt, strikeMeleePower(cave));
         }
         if (w.meleeHit) {
           const beforeLower = ease.inOutQuad(clamp((meleeRelease - meleeBefore) / w.meleeStrikeTime, 0, 1));
