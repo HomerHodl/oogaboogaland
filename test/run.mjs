@@ -4134,8 +4134,22 @@ const hubJumbotron = { name: "hub jumbotron", why: "rule: the island rotation st
   record("hub jumbotron: the island rotates org activity, readers filter repositories, and attributed users appear once with saved alias selections restored", r.count === 7 && r.captions[0] === "Recent activity" && r.captions[1] === "Org totals" && orgBoards.every((c, i) => r.captions[2 + i] === c) && r.wrapped === "Recent activity" && r.filtered && r.ownerOnly && r.restoredOwner, JSON.stringify(r));
   record("hub jumbotron: a draft PR draws a different ticker row than the same PR undrafted", r.differs, JSON.stringify({ differs: r.differs }));
 } };
-// The healthiest of its kind, so a prop an earlier step shot at is never the one measured.
-const nextTo = (prop, gap, yaw = "-Math.PI / 2", pitch = 0.3) => `(() => { const B = window.__ooga, a = B.cavemen.get("portlandhodl"); if (B.crew.player !== a) B.pilot.possess(a); const r = B.headquarters.breakables.list.filter((r) => r.owner.prop === "${prop}" && r.owner.active && !r.broken && !r.reveal).sort((a, b) => b.health - a.health)[0]; window.__target = r; const t = r.owner.node.position; B.pilot.navigate({ position: { x: t.x - ${gap}, y: a.root.position.y - a.baseY, z: t.z }, yaw: ${yaw}, pitch: ${pitch}, dist: 4 }); B.advance(0.3, 1 / 60); return r.health; })()`;
+// The healthiest prop with a level approach: the first meadow rock can sit
+// beside a raised island ledge, which puts a teleported actor above its surface.
+const nextTo = (prop, gap, yaw = "-Math.PI / 2", pitch = 0.3) => `(() => {
+  const B = window.__ooga, a = B.cavemen.get("portlandhodl");
+  if (B.crew.player !== a) B.pilot.possess(a);
+  const r = B.headquarters.breakables.list.filter(r => r.owner.prop === "${prop}" && r.owner.active && !r.broken && !r.reveal)
+    .sort((a, b) => b.health - a.health).find(r => {
+      const t = r.owner.node.position;
+      return Math.abs(B.island.supportAt(t.x - ${gap}, t.z, t.y + 0.1, a.bodyRadius) - t.y) < 1e-6;
+    });
+  if (!r) throw new Error("No level approach to ${prop}");
+  window.__target = r;
+  const t = r.owner.node.position;
+  B.pilot.navigate({ position: { x: t.x - ${gap}, y: t.y, z: t.z }, yaw: ${yaw}, pitch: ${pitch}, dist: 4 });
+  B.advance(0.3, 1 / 60); return r.health;
+})()`;
 const hubMelee = { name: "hub melee", why: "rule: a ready swing does five damage, so a box breaks in one, a barrel in two and a rock in four, and the prop comes back", run: async (b) => {
   const swings = {};
   await tapKey(b, "1");
