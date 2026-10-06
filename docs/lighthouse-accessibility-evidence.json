@@ -1,0 +1,77 @@
+{
+  "rows": [
+    {
+      "preset": "pile",
+      "label": "Pile",
+      "names": [
+        "PILE Ooga Booga Land destinations. Select a dot or press to cycle places"
+      ],
+      "clock": [
+        "Ooga Booga time 9:00 AM MST"
+      ]
+    },
+    {
+      "preset": "lab",
+      "label": "Lab",
+      "names": [
+        "LAB Ooga Booga Land destinations. Select a dot or press to cycle places"
+      ],
+      "clock": [
+        "Ooga Booga time 9:00 AM MST"
+      ]
+    },
+    {
+      "preset": "mirror",
+      "label": "Mirror",
+      "names": [
+        "MIRROR Ooga Booga Land destinations. Select a dot or press to cycle places"
+      ],
+      "clock": [
+        "Ooga Booga time 9:00 AM MST"
+      ]
+    },
+    {
+      "preset": "underground",
+      "label": "HQ",
+      "names": [
+        "HQ Ooga Booga Land destinations. Select a dot or press to cycle places"
+      ],
+      "clock": [
+        "Ooga Booga time 9:00 AM MST"
+      ]
+    },
+    {
+      "preset": "basement",
+      "label": "Basement",
+      "names": [
+        "BASEMENT Ooga Booga Land destinations. Select a dot or press to cycle places"
+      ],
+      "clock": [
+        "Ooga Booga time 9:00 AM MST"
+      ]
+    },
+    {
+      "preset": "mempool",
+      "label": "Mempool",
+      "names": [
+        "MEMPOOL Ooga Booga Land destinations. Select a dot or press to cycle places"
+      ],
+      "clock": [
+        "Ooga Booga time 9:00 AM MST"
+      ]
+    }
+  ],
+  "checks": [
+    {
+      "name": "header: a single-digit clock is centered from its displayed time and local zone, while the chain feed paints block height below it and banana-meter updates cannot overwrite it",
+      "pass": true,
+      "detail": "{\"before\":{\"height\":\"\u2014\",\"bananas\":false,\"label\":\"Ooga Booga time 9:00 AM MST\",\"namedImage\":true,\"text\":\"9:00 AM MST\",\"zone\":\"MST\",\"cells\":39,\"viewWidth\":39,\"cssWidth\":6.5},\"after\":{\"shown\":\"900,123\",\"afterMeter\":\"900,123\",\"label\":\"Bitcoin block height 900123\",\"bananas\":false,\"icon\":false}}"
+    },
+    {
+      "name": "destinations: every visible place label is included in the actual browser accessibility name",
+      "pass": true,
+      "detail": "[{\"preset\":\"pile\",\"label\":\"Pile\",\"names\":[\"PILE Ooga Booga Land destinations. Select a dot or press to cycle places\"]},{\"preset\":\"lab\",\"label\":\"Lab\",\"names\":[\"LAB Ooga Booga Land destinations. Select a dot or press to cycle places\"]},{\"preset\":\"mirror\",\"label\":\"Mirror\",\"names\":[\"MIRROR Ooga Booga Land destinations. Select a dot or press to cycle places\"]},{\"preset\":\"underground\",\"label\":\"HQ\",\"names\":[\"HQ Ooga Booga Land destinations. Select a dot or press to cycle places\"]},{\"preset\":\"basement\",\"label\":\"Basement\",\"names\":[\"BASEMENT Ooga Booga Land destinations. Select a dot or press to cycle places\"]},{\"preset\":\"mempool\",\"label\":\"Mempool\",\"names\":[\"MEMPOOL Ooga Booga Land destinations. Select a dot or press to cycle places\"]}]"
+    }
+  ],
+  "logs": []
+}
