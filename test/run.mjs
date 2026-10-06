@@ -4153,6 +4153,9 @@ const nextTo = (prop, gap, yaw = "-Math.PI / 2", pitch = 0.3) => `(() => {
 const hubMelee = { name: "hub melee", why: "rule: a ready swing does five damage, so a box breaks in one, a barrel in two and a rock in four, and the prop comes back", run: async (b) => {
   const swings = {};
   await tapKey(b, "1");
+  // The preceding AK check deliberately leaves carry mode. These contacts
+  // exercise the ordinary shoulder reticle, including the recovery aim below.
+  await b.evaluate(`(() => { const B = __ooga, P = B.pilot; if (!P.aiming) P.modeAction("mode-toggle"); if (P.birdsEye) P.hooks.onZoom(0.001); B.advance(1, 1 / 60); })()`);
   for (const [prop, gap] of [["crate", 0.9], ["barrel", 0.9], ["rock", 1.175]]) {
     const health = await b.evaluate(nextTo(prop, gap));
     let n = 0;
@@ -4221,19 +4224,41 @@ const hubMelee = { name: "hub melee", why: "rule: a ready swing does five damage
     && Math.abs(recharge.chargedDamage - 10) < 1e-8, JSON.stringify(recharge));
   record("hub melee: red damage numbers round full hit power to half points", ["5", "1.5", "3", "10"].every(text => recharge.labels.includes(text)), JSON.stringify(recharge.labels));
 } };
-const AK_STATE = `(() => { const w = window.__ooga.crew.player.weapon; return { ammo: w.ammo, spares: w.spareAmmo.slice(), shots: w.shotsFired }; })()`;
+const AK_STATE = `(() => { const w = window.__ooga.crew.player.weapon; return { ammo: w.ammo, spares: w.spareAmmo.slice(), shots: w.shotsFired, aiming: w.aiming }; })()`;
 const hubAk = { name: "hub ak", why: "regression: R did nothing unless the player was aiming, so an AK emptied with V could not swap in its spare", run: async (b) => {
   const barrel = await b.evaluate(nextTo("barrel", 3, -1.34, 0.12));
   await tapKey(b, "2");
   await b.evaluate(`window.__ooga.advance(0.4, 1 / 60)`);
+  // The fixed pitch missed the barrel's centre, so random shot spread could make
+  // all six rounds miss. Centre its real mesh through ordinary shoulder input.
+  const aimed = await b.evaluate(`(() => {
+    const B = __ooga, P = B.pilot, C = B.camera, S = BL.scene, node = __target.owner.node;
+    S.updateWorld(node, node.parent.world);
+    const center = S.boundsOf(node.geometry).center, m = node.world;
+    const target = { x: m[0] * center[0] + m[4] * center[1] + m[8] * center[2] + m[12],
+      y: m[1] * center[0] + m[5] * center[1] + m[9] * center[2] + m[13],
+      z: m[2] * center[0] + m[6] * center[1] + m[10] * center[2] + m[14] };
+    for (let i = 0; i < 4; i++) {
+      const dx = target.x - C.position.x, dy = target.y - C.position.y, dz = target.z - C.position.z;
+      const yaw = Math.atan2(-dx, -dz), pitch = -Math.atan2(dy, Math.hypot(dx, dz));
+      const difference = P.orbit.yaw - yaw;
+      P.hooks.onOrbit(Math.atan2(Math.sin(difference), Math.cos(difference)) / 0.0025, (pitch - P.orbit.pitch) / 0.0025);
+      B.advance(0.3, 1 / 60);
+    }
+    const dx = C.target.x - C.position.x, dy = C.target.y - C.position.y, dz = C.target.z - C.position.z;
+    const length = Math.hypot(dx, dy, dz), hit = {};
+    return B.input.weaponTargets.ray(hit, C.position.x, C.position.y, C.position.z, dx / length, dy / length, dz / length, 60, B.crew.player) && hit.node === node;
+  })()`);
   const start = await b.evaluate(AK_STATE);
   const burst = async () => { await tapKey(b, "v"); await b.evaluate(`window.__ooga.advance(0.7, 1 / 60)`); return b.evaluate(AK_STATE); };
   const one = await burst(), two = await burst(), dry = await burst();
   const hit = await b.evaluate(`window.__target.broken || window.__target.health < ${barrel}`);
+  // R must reload while carrying: the URL currently starts in shoulder aim.
+  await b.evaluate(`(() => { const B = __ooga; if (B.pilot.aiming) B.pilot.modeAction("mode-toggle"); B.advance(0.3, 1 / 60); })()`);
   await tapKey(b, "r");
   await b.evaluate(`window.__ooga.advance(0.8, 1 / 60)`);
   const swapped = await b.evaluate(AK_STATE);
-  record("hub ak: V fires a burst of three from the magazine, an empty magazine fires nothing, the bananas hit, and R swaps in the full spare without aiming", start.ammo === 6 && one.ammo === 3 && two.ammo === 0 && dry.shots === two.shots && hit && swapped.ammo === 30 && swapped.spares.every((n) => n === 0), JSON.stringify({ start, one, two, dry, hit, swapped }));
+  record("hub ak: V fires a burst of three from the magazine, an empty magazine fires nothing, the bananas hit, and R swaps in the full spare without aiming", aimed && start.ammo === 6 && one.ammo === 3 && two.ammo === 0 && dry.shots === two.shots && hit && !swapped.aiming && swapped.ammo === 30 && swapped.spares.every((n) => n === 0), JSON.stringify({ aimed, start, one, two, dry, hit, swapped }));
 } };
 const JET_STATE = `(() => { const c = window.__ooga.crew.player, J = window.__ooga.jetpack; return { worn: !!c.jet, owned: J.owned, fuel: +c.jetFuel.toFixed(3), feet: +(c.root.position.y - c.baseY).toFixed(2), pickup: !!(J.pickup && J.pickup.host), toast: (document.getElementById("toast") || {}).textContent }; })()`;
 const hubJetpack = { name: "hub jetpack", why: "rule: every Ooga permanently owns a J-toggleable jetpack, while abyss respawns remove only loaded and spare AK ammo", run: async (b) => {
