@@ -1311,7 +1311,7 @@
     const signNode = createNode({ position: { x: 0, y: 4.48, z: place.bridgeLocalZ }, geometry: caveSign() });
     // Lit like every hub torch, so the Matrix treats their flames as fire rather than as stone.
     const torches = [-1, 1].map((side) => {
-      const r = L.RAMP.r + side * (L.RAMP.half + 0.9), b = L.RAMP.start - 0.07;
+      const r = L.RAMP.r + side * (L.RAMP.half + 0.3), b = L.RAMP.start - 0.07;
       return createNode({ position: { x: Math.sin(b) * r, y: L.LEVEL.court, z: Math.cos(b) * r }, geometry: torchPost(), matrixEmissiveLiving: true });
     });
     addChild(node, groundNode, floorNode, bridgeNode, membraneNode, membraneRockNode, membraneRimNode, backingNode, vinesNode, signNode, ...crossings, ...beds, ...torches);
