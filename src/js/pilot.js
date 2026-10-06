@@ -1076,8 +1076,12 @@
     };
     // Mouse and trackpad taps expose the same buttons. Classify the release
     // by its held duration, shared with the displayed charge and HUD button.
-    const releasePrimary = (cave, focused = null) => crew.releaseSwing(cave, false, focused,
-      !!cave && cave.weapon.meleeHeldTime < BL.crew.MELEE_TAP_TIME);
+    const releasePrimary = (cave, focused = null) => {
+      const released = crew.releaseSwing(cave, false, focused,
+        !!cave && cave.weapon.meleeHeldTime < BL.crew.MELEE_TAP_TIME);
+      if (released) syncWeaponHud();
+      return released;
+    };
     const releaseRightTap = () => {
       const now = performance.now();
       if (Number.isFinite(rightDownAt)) rightTapAt = aimView()
@@ -1488,9 +1492,10 @@
         primaryButtonCave = null;
       }
       const reload = secondaryReady && weapon.equipped && crew.canReload(cave);
+      const meleeCharge = weapon && weapon.meleeHeld ? weapon.meleeCharge : 0;
       hud.setPrimary(primaryReady, !!weapon && !weapon.equipped, primaryReady ? cave.parts.club.geometry : null,
-        weapon ? weapon.meleeCharge : 0, !!weapon && weapon.meleeHeld,
-        weapon ? crew.meleePower(cave) : 1, !!weapon && weapon.aiming, cave ? cave.traits.name : "");
+        meleeCharge, !!weapon && weapon.meleeHeld,
+        weapon ? crew.meleePower(cave, meleeCharge) : 1, !!weapon && weapon.aiming, cave ? cave.traits.name : "");
       hud.setWeapon(secondaryReady, !!weapon && weapon.equipped, weapon ? weapon.ammo : 0, !!weapon && weapon.reloading, reload, !!weapon && weapon.unlimited);
       const count = secondaryReady && crew ? crew.magazineCount(cave) : 0, canSwap = !!crew && secondaryReady && crew.canSwapMagazine(cave);
       hud.setMagazine(count, crew ? crew.magazineAmmo(cave, 0) : 0, crew ? crew.magazineAmmo(cave, 1) : 0, canSwap,
@@ -1563,7 +1568,7 @@
         syncAim();
         if (armed() && cave.weapon.equipped) lockAim();
         if (cave.weapon.equipped) hud.hint(armed() ? "Left-click bursts · F rifle strike · zoom: tap one shot, hold for auto · 1 melee · 2 AK · scroll to change view · Space reloads or jumps / jetpacks" : "AK equipped · right-click or scroll in to aim · 1 melee · Space reloads beside the pile or jumps / jetpacks");
-        else hud.hint(armed() ? "Hold left-click to raise the club · release to strike · allow 0.2s between hits for full power · 2 AK · scroll out for navigation" : "Club equipped · right-click or scroll in to aim · 2 AK");
+        else hud.hint(armed() ? "Hold left-click to raise the club · release to strike · allow 0.2s between swings for full power · 2 AK · scroll out for navigation" : "Club equipped · right-click or scroll in to aim · 2 AK");
       } else if (action === "weapon-fire") {
         if (cave.weapon.primaryEquipped) crew.swingWeapon(cave, false, ads);
         else if (!(held ? crew.setWeaponTrigger(true, ads) : crew.fireWeapon(cave, null, ads ? 1 : undefined)) && cave.weapon.equipped && !cave.weapon.unlimited && !cave.weapon.ammo) hud.hint("Empty magazine · press Space within reach of the pile to reload");
