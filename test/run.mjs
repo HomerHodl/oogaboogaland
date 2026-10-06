@@ -2343,7 +2343,7 @@ const reviewShot = async (b,path) => {
   if(process.env.DSB_REVIEW!=="1")return;
   // Do not let evidence from a previous run masquerade as this run's capture.
   rmSync(path,{force:true});rmSync(path+".capture.json",{force:true});
-  const start=Date.now();b.captureClock?.(true);
+  const start=Date.now();
   try {
     const shot=await b.send("Page.captureScreenshot",{format:"png"},5000);
     if(!shot.result?.data)throw Error("Review capture returned no image");
@@ -2364,7 +2364,7 @@ const reviewShot = async (b,path) => {
     const report={path,status:"software-GPU capture timeout",ms:Date.now()-start,healthMs:Date.now()-healthStart,before:live,after};
     writeFileSync(path+".capture.json",JSON.stringify(report,null,2)+"\n");
     output.getStore().lines.push("CAPTURE unavailable (healthy, baseline-reproduced software GPU): "+path);
-  } finally {b.captureClock?.(false);}
+  }
 };
 
 const readbackPerformanceNotice = line => /^\[log\.warning\] \[\.WebGL-[^\]]+\]GL Driver Message \(OpenGL, Performance, [^)]*\): GPU stall due to ReadPixels(?: \(this message will no longer repeat\))?$/.test(line);
@@ -2374,7 +2374,7 @@ const reviewCaptureChecks = async () => {
   const run=async({capture=true,proven=true,gpu="SwiftShader",errors=[],logs=[],missing=false}={})=>{
     process.env.DSB_REVIEW=capture?"1":"0";process.env.DSB_CAPTURE_BASELINE=proven?"1":"0";
     let frames=3,shots=0,clocks=0;const h=()=>({scene:"dsb",room:null,frames:frames++,curtain:false,kind:"webgl2",ready:true,failure:"",lost:false,errors,gpu,records:20});
-    const store={lines:[],results:[]},b={logs,evaluate:async()=>({before:h(),live:h()}),captureClock:on=>{clocks+=on?1:-1;},send:async method=>{
+    const store={lines:[],results:[]},b={logs,evaluate:async()=>({before:h(),live:h()}),captureClock:()=>{clocks++;},send:async method=>{
       if(method==="Page.captureScreenshot"){shots++;if(missing)return {result:{}};throw driverError("Page.captureScreenshot got no reply in 5 s: Chrome hung");}
       return {result:{result:{value:h()}}};
     }};
@@ -2385,6 +2385,22 @@ const reviewCaptureChecks = async () => {
     const normal=await run({capture:false}),known=await run(),unproved=await run({proven:false}),hardware=await run({gpu:"hardware"}),broken=await run({errors:[1282]}),runtime=await run({logs:["[exception] broken scene"]}),missing=await run({missing:true});
     record("Review validator: functional mode avoids readback; only baseline-proven healthy software timeout is advisory, with renderer/runtime/image errors still gating",
       !normal.failed&&normal.shots===0&&!known.failed&&known.notice&&known.shots===1&&known.clocks===0&&[unproved,hardware,broken,runtime,missing].every(r=>r.failed),JSON.stringify({normal,known,unproved,hardware,broken,runtime,missing}));
+    // Exercise the real session and capture paths against a virtual absolute clock.
+    // Chrome is healthy until a screenshot crosses the deadline; that must kill, fail and never retry.
+    let now=0,deadline=0,fire=null,killed=false,frames=3;
+    const health=()=>({frames:frames++,curtain:false,ready:true,failure:"",lost:false,errors:[],gpu:"SwiftShader"});
+    const browser={logs:[],open:async()=>{},focus:async()=>{},close:force=>{killed=force;},evaluate:async()=>({before:health(),live:health()}),send:async method=>{
+      if(method!=="Page.captureScreenshot")return {};
+      now=deadline;fire();throw driverError("DevTools socket closed: Chrome is gone");
+    }};
+    const context={output,Date:{now:()=>now},SESSION_MS,POOLED:false,UNLOCKED:false,realTimeTask:false,process:{env:{}},VERBOSE:false,
+      launch:async()=>{now=100;return browser;},setTimeout:(fn,ms)=>{fire=fn;deadline=now+ms;return 1;},clearTimeout:()=>{},
+      untilReady:async()=>{},driverError,failure,record,readbackPerformanceNotice};
+    const bounded=runInNewContext(`(${session.toString()})`,context);
+    process.env.DSB_REVIEW="1";
+    const timed=await bounded("about:blank",[["capture deadline",b=>reviewShot(b,join(dir,"deadline.png"))]],{},false);
+    record("Review validator: screenshot time counts toward the absolute 120s session deadline, forces Chrome destruction and fails without retry",
+      deadline===120000&&killed&&timed.retry===null&&timed.results.some(r=>!r.ok&&r.detail.includes("120 s")),JSON.stringify({deadline,killed,retry:timed.retry,results:timed.results}));
   } finally {if(review===undefined)delete process.env.DSB_REVIEW;else process.env.DSB_REVIEW=review;if(baseline===undefined)delete process.env.DSB_CAPTURE_BASELINE;else process.env.DSB_CAPTURE_BASELINE=baseline;}
 };
 
@@ -2424,21 +2440,18 @@ const failure = (err) => String(err.message || err).slice(0, 1600);
 // Records are held until the session ends, so a session that could not run can be dropped and rerun.
 const session = (url, steps, opts, final) => output.run({ lines: [], results: [], retry: null }, async () => {
   const run = output.getStore(), { lines } = run;
-  const t0 = Date.now(), sessionMs = opts.sessionMs ?? SESSION_MS;
-  let b = null, started = t0, ready = t0, watchdog = null, overran = false, captureAt=0, captureMs=0;
+  const t0 = Date.now();
+  let b = null, started = t0, ready = t0, watchdog = null, overran = false;
   try {
     // Fresh Chrome per session; reuse is opt-in (POOL=1) because it measured slower and flakier than launching.
     // Idle browsers each hold a WebGL context, and a reused one carries the last task's heap and GPU state.
     const shape = { ...opts, perf: opts.perf ?? (realTimeTask || !UNLOCKED) };
     b = POOLED && !shape.perf && !final ? await acquire(shape) : await launch(shape);
     started = Date.now();
-    // Watchdog kills Chrome so a wedged session never holds its lane; the longest healthy session is ~20 s.
+    // One absolute deadline, including launch, readiness and screenshot/evidence capture.
+    // Force destruction even in POOL mode: a timed-out Chrome must never return to the pool.
     const browser = b;
-    watchdog = setTimeout(() => { overran = true; browser.close(); }, sessionMs);
-    b.captureClock = paused => {
-      if(paused){captureAt=Date.now();clearTimeout(watchdog);}
-      else {captureMs+=Date.now()-captureAt;watchdog=setTimeout(()=>{overran=true;browser.close();},Math.max(1,sessionMs-(Date.now()-started-captureMs)));}
-    };
+    watchdog = setTimeout(() => { overran = true; browser.close(true); }, Math.max(0, SESSION_MS-(Date.now()-t0)));
     if(process.env.DSB_TRACE==="1") {
       const evaluate=b.evaluate;
       b.evaluate=async code=>{console.log("DSB STEP",Date.now()-started,String(code).slice(0,150));const value=await evaluate(code);console.log("DSB DONE",Date.now()-started);return value;};
@@ -2517,13 +2530,14 @@ const session = (url, steps, opts, final) => output.run({ lines: [], results: []
       run.open = open || null;
       try {
         await fn(b);
+        if (Date.now()-t0>=SESSION_MS) { overran=true; b.close(true); throw driverError("session deadline"); }
         const observed=b.logs.slice(from),notices=b.shorelineHealthy&&b.shorelineSoftware?observed.filter(readbackPerformanceNotice):[];
         if(notices.length)lines.push(`INFO software WebGL: ${notices.length} driver ReadPixels performance notices; healthy state/GL checks passed (no application readback required).`);
         const noise = observed.filter((l) => !l.includes("WebGL2 renderer failed")&&!notices.includes(l));
         record(`${name}: clean console`, noise.length === 0, `${((Date.now() - started) / 1000).toFixed(1)}s ${noise.join(" | ").slice(0, 1600)}`);
       } catch (err) {
-        if (overran) err = driverError(`the session passed ${sessionMs / 1000} s and its Chrome was killed`);
-        if (err.driver && !final && run.results.every((r) => r.ok)) {
+        if (overran) err = driverError(`the session passed ${SESSION_MS / 1000} s and its Chrome was killed`);
+        if (err.driver && !overran && !final && run.results.every((r) => r.ok)) {
           run.retry = `${name} · ${failure(err)}`;
           break;
         }
@@ -2532,14 +2546,14 @@ const session = (url, steps, opts, final) => output.run({ lines: [], results: []
       }
     }
   } catch (err) {
-    if (overran) err = driverError(`the session passed ${sessionMs / 1000} s and its Chrome was killed`);
-    if (err.driver && !final && run.results.every((r) => r.ok)) run.retry = `${steps[0][0]} · ${failure(err)}`;
+    if (overran) err = driverError(`the session passed ${SESSION_MS / 1000} s and its Chrome was killed`);
+    if (err.driver && !overran && !final && run.results.every((r) => r.ok)) run.retry = `${steps[0][0]} · ${failure(err)}`;
     else record(steps[0][0], false, failure(err));
   } finally {
     clearTimeout(watchdog);
     if (b && !overran) b.close();
     const s = (ms) => (ms / 1000).toFixed(1);
-    if (VERBOSE) lines.push(`TIME ${steps.map((step) => step[0]).join(" + ")} · launch ${s(started - t0)}s · boot ${s(ready - started)}s · body ${s(Date.now() - ready)}s`);
+    if (VERBOSE) lines.push(`TIME ${steps.map((step) => step[0]).join(" + ")} · launch ${s(started - t0)}s · boot ${s(ready - started)}s · body ${s(Date.now() - ready)}s · wall ${s(Date.now()-t0)}s · checks ${run.results.length} · watchdog ${overran?"FIRED":"clear"}${b?.renderer?" · renderer "+b.renderer:""}`);
   }
   return run;
 });
@@ -10860,7 +10874,18 @@ scene("dsb",{label:"vacancy checkpoint",query:"&view=vac-overview&weather=clear&
   }
 }}]});
 
-const dsbShorelineCheckpoint={name:"dsb shoreline checkpoint",why:"playthrough: actual input wades to the head-depth boundary, returns, visits falls, changes weather and releases scene effects",run:async b=>{
+// The two Portara visits stay together: renderer residency must be compared within one Chrome.
+// Wading and weather use fresh sessions so no checkpoint needs an extended deadline.
+const shorelineFinish = async (b,label,state) => {
+  const final=await b.evaluate(`(${shorelineState.toString()})()`);
+  record("DSB shoreline browser: playthrough retains WebGL2 with no API error, shader failure or context loss",shorelineHealthy(final),JSON.stringify(final));
+  b.shorelineHealthy=shorelineHealthy(final)&&output.getStore().results.every(r=>r.ok);
+  b.shorelineSoftware=/SwiftShader|llvmpipe|software/i.test(final.gpu);
+  b.renderer=final.gpu;
+  const evidence=join(root,"untracked/water-review");mkdirSync(evidence,{recursive:true});
+  writeFileSync(join(evidence,"webgl-"+label+".json"),JSON.stringify({...state,final,logs:b.logs},null,2));
+};
+scene("dsb",{label:"shoreline checkpoint wading",query:"&view=water-dry&weather=clear&time=1200",opts:{w:480,h:320},steps:[{name:"dsb shoreline checkpoint wading",why:"playthrough: actual input wades to the head-depth boundary and returns with bounded ripples",run:async b=>{
   const boot=await b.evaluate(`(${shorelineState.toString()})()`);
   await b.evaluate('new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))');
   const live=await b.evaluate(`(${shorelineState.toString()})()`);
@@ -10884,6 +10909,9 @@ const dsbShorelineCheckpoint={name:"dsb shoreline checkpoint",why:"playthrough: 
   record("DSB shoreline browser: reverse input returns to dry land",await b.evaluate('__ooga.dsb.waterInteraction.stats.depth===0&&__ooga.dsb.avatar.root.position.z<76'));
   const expired=await b.evaluate(`(()=>{const W=__ooga.dsb.waterInteraction;__shoreline.until(()=>W.stats.player===0,3);return {depth:W.stats.depth,player:W.stats.player,hidden:W.impulses.slice(5).every(p=>p.age<0&&!p.node.visible),capacity:W.stats.capacity};})()`);
   record("DSB shoreline browser: player ripples expire normally after returning to shore",moving.player&&expired.depth===0&&expired.player===0&&expired.hidden&&expired.capacity===24,JSON.stringify(expired));
+  await shorelineFinish(b,"wading",{boot,live,stable,moving,deep,expired});
+}}]});
+scene("dsb",{label:"shoreline checkpoint weather",query:"&view=water-dry&weather=clear&time=1200",opts:{w:480,h:320},steps:[{name:"dsb shoreline checkpoint weather",why:"rule: all five light/weather states retain bounded waterfall effects and the preserved coast",run:async b=>{
   for(const [name,hour,weather] of [["noon",12,"clear"],["golden",18,"clear"],["night",23,"clear"],["rain",12,"rain"],["storm",12,"storm"]]){
     // Reserved impact rings expire and renew on successive updates. Observe their visible lifetime,
     // keeping all five required, rather than requiring the final sample to miss every renewal gap.
@@ -10892,6 +10920,11 @@ const dsbShorelineCheckpoint={name:"dsb shoreline checkpoint",why:"playthrough: 
   }
   const preserved=await b.evaluate(`(()=>{const D=__ooga.dsb,O=D.olympus,L=D.land,A=D.avatar;let blocked=0;for(let i=1;i<L.trail.length;i++){const a=L.trail[i-1],b=L.trail[i];if(!L.walkable(...a.slice(0,2),...b.slice(0,2),L.heightAt(...a),A.bodyHeight,A)||!O.clearSegment(...a.slice(0,2),...b.slice(0,2),L.heightAt(...a),A.bodyHeight,A))blocked++;}return {blocked,bridges:O.bridges.length,rear:L.heightAt(-55,-91),milestones:Array.from(D.interiors.registry.keys())};})()`);
   record("DSB shoreline browser: Sacred Way, both bridges, seven preserved venues plus SVRN and deep rear Olympus remain intact",preserved.blocked===0&&preserved.bridges===2&&preserved.rear===-5&&preserved.milestones.length===8&&["meme-factory","dsb-studio","maxis-club","without-rulers","proof-of-ink","big-bitcoin","stackchain-magazine","svrn-society"].every(id=>preserved.milestones.includes(id)),JSON.stringify(preserved));
+  await shorelineFinish(b,"weather",{});
+}}]});
+scene("dsb",{label:"shoreline checkpoint reentry",query:"&view=water-dry&weather=clear&time=1200",opts:{w:480,h:320},steps:[{name:"dsb shoreline checkpoint reentry",why:"contract: two consecutive Portara trips release effects and retain identical renderer resources",run:async b=>{
+  // Recreate the old checkpoint's final weather/view before testing disposal and re-entry.
+  await b.evaluate('(()=>{const B=__ooga,D=B.dsb,f=D.olympus.impacts[0];B.pilot.navigate({position:{x:f.x+5,y:D.land.heightAt(f.x+5,f.z+3),z:f.z+3},yaw:1.05,pitch:.4,dist:18});D.weather.setMode("storm");__shoreline.advance(2);})()');
   const before=await b.evaluate('({nodes:__ooga.dsb.waterInteraction.group.children.length,records:__ooga.renderer.stats.records})');
   const visits=[];
   for(let i=0;i<2;i++){
@@ -10912,14 +10945,8 @@ const dsbShorelineCheckpoint={name:"dsb shoreline checkpoint",why:"playthrough: 
     record("DSB shoreline browser: Portara scene trip "+i+" releases effects and creates a clean bounded visit",tunnel.bifrost==="bifrost"&&tunnel.phase==="tunnel"&&tunnel.progress<1&&!tunnel.exterior&&tunnel.textures===0&&r.phase==="done"&&r.progress===1&&r.exterior&&r.water&&r.active&&r.cleared&&r.nodes===before.nodes&&r.capacity===24&&r.depth===0&&r.textures===2,JSON.stringify(visits[i]));
   }
   record("DSB shoreline browser: completed re-entry retains identical renderer records, water nodes and textures",visits[1].records===visits[0].records&&visits.every(v=>v.nodes===before.nodes&&v.textures===2),JSON.stringify(visits));
-  const final=await b.evaluate(`(${shorelineState.toString()})()`);
-  record("DSB shoreline browser: playthrough retains WebGL2 with no API error, shader failure or context loss",shorelineHealthy(final),JSON.stringify(final));
-  b.shorelineHealthy=shorelineHealthy(live)&&shorelineHealthy(stable)&&shorelineHealthy(final)&&output.getStore().results.every(r=>r.ok);
-  b.shorelineSoftware=/SwiftShader|llvmpipe|software/i.test(final.gpu);
-  const evidence=join(root,"untracked/water-review");mkdirSync(evidence,{recursive:true});
-  writeFileSync(join(evidence,"webgl-state.json"),JSON.stringify({boot,live,stable,moving,deep,expired,visits,final,logs:b.logs},null,2));
-}};
-scene("dsb",{label:"shoreline checkpoint",query:"&view=water-dry&weather=clear&time=1200",opts:{w:480,h:320,sessionMs:240000},steps:[dsbShorelineCheckpoint]});
+  await shorelineFinish(b,"reentry",{before,visits});
+}}]});
 
 scene("dsb",{label:"shoreline checkpoint piers",query:"&view=water-pier-west&weather=clear&time=1200",opts:{w:480,h:320},steps:[{name:"dsb shoreline pier access",why:"regression: visible harbor decks must support real keyboard walking without changing the seabed or permitting ocean-floor access",run:async b=>{
   const visits=[];

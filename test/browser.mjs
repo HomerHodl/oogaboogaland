@@ -278,8 +278,8 @@ export const launch = async ({ w = 1440, h = 900, mobile = false, perf = false, 
     listeners.clear();
     logs.length = 0; // Clear in place: the runner holds this same array.
   };
-  const close = () => {
-    if (state.pooled) release(api);
+  const close = (force = false) => {
+    if (state.pooled && !force) release(api);
     else destroy();
   };
   const api = { send, on, evaluate, mouse, drag, click, key, focus, screenshot, open, close, sleep, logs };
