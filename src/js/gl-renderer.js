@@ -1524,6 +1524,7 @@ void main() {
     };
     // Compiles without blocking; ready flips once linked.
     let parallel = null;
+    let maxSamples = 0; // Context capability; querying during a tier change can wait for outstanding GPU work.
     let ready = false, cutawayMaxY = 1e6, cutawayCount = 0, cutawayFade = 0, cutawayFrame = 0, cutawayCloudY = 0, cutawayCloudMix = 0;
     const cutawayRegions = new Float32Array(32), cutawayBounds = new Float32Array(32);
     let failure = null;
@@ -1818,9 +1819,13 @@ void main() {
       res.fbo = null;
     };
     const buildFbo = () => {
+      const samples = Math.min(settings.msaa, maxSamples);
+      const previous = res.fbo;
+      if (previous && previous.width === pw && previous.height === ph && previous.samples === samples &&
+          previous.bloom === settings.bloom && previous.shafts === settings.shafts) return;
       destroyFbo();
-      const samples = Math.min(settings.msaa, gl.getParameter(gl.MAX_SAMPLES));
-      const f = { textures: [], renderbuffers: [], framebuffers: [], samples };
+      const f = { textures: [], renderbuffers: [], framebuffers: [], samples,
+        width: pw, height: ph, bloom: settings.bloom, shafts: settings.shafts };
       f.color = createTexture(pw, ph, gl.RGBA8, gl.LINEAR);
       f.bright = createTexture(pw, ph, gl.RGBA8, gl.LINEAR);
       f.textures.push(f.color, f.bright);
@@ -2479,11 +2484,12 @@ void main() {
       size.height = height;
       pw = Math.max(1, Math.floor(width * dpr));
       ph = Math.max(1, Math.floor(height * dpr));
-      canvas.width = pw;
-      canvas.height = ph;
+      if (canvas.width !== pw) canvas.width = pw;
+      if (canvas.height !== ph) canvas.height = ph;
       buildFbo();
     };
     const init = () => {
+      maxSamples = gl.getParameter(gl.MAX_SAMPLES);
       parallel = gl.getExtension("KHR_parallel_shader_compile");
       // Every flat varying is the same at a triangle's three corners, so the first corner draws the same pixels as
       // GL's default last. Under the default, ANGLE's Metal backend (Safari, Chrome on Apple) rewrites each flat

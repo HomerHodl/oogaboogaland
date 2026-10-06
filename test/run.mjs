@@ -9214,7 +9214,48 @@ const distributionAudioChecks = async () => {
       && staged.includes(`script-src 'sha256-${hash(updated)}'`) && updated.endsWith(script.slice(script.indexOf("const literal"))) && !updated.includes(encoded[0]), "staged recording/CSP mismatch");
   } finally { rmSync(out, { recursive: true, force: true }); }
 };
+const qualityFramebufferChecks = async () => {
+  const source = await readFile(new URL("../src/js/gl-renderer.js", import.meta.url), "utf8");
+  const extract = (name, next) => source.slice(source.indexOf(`    const ${name} =`), source.indexOf(next, source.indexOf(`    const ${name} =`))).trim();
+  const live = new Set();
+  let created = 0, deleted = 0, writes = 0;
+  const allocate = () => { const handle = { id: ++created }; live.add(handle); return handle; };
+  const release = handle => { if (!live.delete(handle)) throw new Error("Framebuffer resource released twice"); deleted++; };
+  const gl = new Proxy({ getParameter: () => 2, createFramebuffer: allocate, deleteFramebuffer: release, deleteTexture: release, deleteRenderbuffer: release }, {
+    get: (target, name) => name in target ? target[name] : /^[A-Z_0-9]+$/.test(name) ? name : () => {}
+  });
+  const canvas = { clientWidth: 1920, clientHeight: 1080 };
+  for (const name of ["width", "height"]) {
+    let value = 0;
+    Object.defineProperty(canvas, name, { get: () => value, set: next => { value = next; writes++; } });
+  }
+  const context = { gl, canvas, window: { devicePixelRatio: 2 }, MAX_PIXELS: 2.6e6,
+    settings: { dpr: 1.5, msaa: 2, bloom: true, shafts: true }, maxSamples: 2, res: {}, size: {},
+    createTexture: allocate, createRenderbuffer: allocate, DRAW_BOTH: [] };
+  const r = runInNewContext(`(() => {
+    let width, height, dpr, pw, ph;
+    ${extract("destroyFbo", "    const buildFbo =")}
+    ${extract("buildFbo", "    const destroyShadow =")}
+    ${extract("resize", "    const init =")}
+    resize(); const first = res.fbo, initialCreates = countCreated(), initialWrites = countWrites();
+    settings = { ...settings, dpr: 1.25 }; resize();
+    const reused = res.fbo === first && countCreated() === initialCreates && countWrites() === initialWrites;
+    let replacements = true;
+    for (const change of [{ msaa: 0 }, { bloom: false }, { shafts: false }]) {
+      const before = res.fbo; settings = { ...settings, ...change }; resize();
+      replacements &&= res.fbo !== before && before.textures.every(handle => !isLive(handle));
+    }
+    const beforeLow = res.fbo; settings = { ...settings, dpr: 1 }; resize();
+    const resized = res.fbo !== beforeLow && canvas.width === 1920 && canvas.height === 1080;
+    const beforeRepeat = res.fbo; resize(); const repeated = res.fbo === beforeRepeat;
+    destroyFbo(); const disposed = liveCount() === 0 && res.fbo === null;
+    resize(); const restored = res.fbo !== beforeRepeat && liveCount() > 0;
+    destroyFbo(); return { reused, replacements, resized, repeated, disposed, restored, released: liveCount() === 0 };
+  })()`, { ...context, countCreated: () => created, countWrites: () => writes, isLive: handle => live.has(handle), liveCount: () => live.size });
+  record("quality framebuffer: capped tiers and repeated resizes preserve identical targets, every changed attachment configuration rebuilds and disposal permits fresh restoration", Object.values(r).every(Boolean), JSON.stringify({ ...r, created, deleted, writes }));
+};
 const unitChecks = async () => {
+  await qualityFramebufferChecks();
   const north = await northTrajectoryProof();
   record("birds-eye north: worst shortest arcs stay monotonic below the frame step limit and settle before the replay deadline", north.finite && north.monotonic && north.resets && north.variableSteps && north.maxStep < 0.25 && north.residual < 0.001, JSON.stringify(north));
   const cutaway = await cutawayBoundsProof();
