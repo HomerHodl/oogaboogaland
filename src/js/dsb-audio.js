@@ -2,6 +2,26 @@
 (() => {
   "use strict";
   const BL = window.BL = window.BL || {};
+  // Five compressed recordings at most, shared across visits. Decode receives a copy because
+  // decodeAudioData detaches its input. Failed requests are evicted so a later visit can retry.
+  const recordings = new Map();
+  const recording = (url, held) => {
+    let entry = recordings.get(url);
+    if (!entry) {
+      const controller = new AbortController(), timer = setTimeout(() => controller.abort(), 15000);
+      entry = { controller, users: 0, pending: true, promise: null, url };
+      entry.promise = fetch(url, { signal: controller.signal }).then((response) => {
+        if (!response.ok) throw new Error("Entrance audio unavailable");
+        return response.arrayBuffer();
+      }).catch((error) => {
+        if (recordings.get(url) === entry) recordings.delete(url);
+        throw error;
+      }).finally(() => { entry.pending = false; clearTimeout(timer); });
+      recordings.set(url, entry);
+    }
+    if (!held.has(entry)) { held.add(entry); entry.users++; }
+    return entry.promise;
+  };
   // All outdoor sources are started once; updates only automate this fixed graph.
   const createAmbience = (context, master) => {
     const sources = [], nodes = [], layers = {}, names = ["river", "waterfall", "motor", "crowd", "wildlife"], targets = new Float32Array(5);
@@ -64,6 +84,7 @@
     return { update, get stats() { return { enabled, calls, sources: sources.length, nodes: nodes.length, river: targets[0], waterfall: targets[1], motor: targets[2], crowd: targets[3], wildlife: targets[4], gain: bus.gain.value, motorPan: layers.motor.pan.pan.value }; }, dispose: () => { for (const source of sources) { source.stop(); source.disconnect(); } for (const node of nodes) node.disconnect(); } };
   };
   const create = () => {
+    const heldRecordings = new Set();
     let context = null, master = null, musicGain = null, speechGain = null, voice = null, music = null, disposed = false;
     let muted = false, progress = 0, next = 0, queued = 0, musicVersion = 0, cue = -1, outdoors = false, stepAt = 0, stepSide = 0, steps = 0, ready = false, duration = 7, failure = "";
     let foot = null, footGain = null, ambience = null;
@@ -106,9 +127,17 @@
       music = context.createBufferSource(); music.buffer = buffer; music.loop = true; music.connect(musicGain); music.start();
     };
     const decode = async (decoder, encoded) => {
-      const binary = atob(encoded), bytes = new Uint8Array(binary.length);
-      for (let j = 0; j < binary.length; j++) bytes[j] = binary.charCodeAt(j);
-      return decoder.decodeAudioData(bytes.buffer);
+      let bytes;
+      if (BL.dsbAudioData.external) {
+        const compressed = await recording(encoded, heldRecordings);
+        if (disposed) return null;
+        bytes = compressed.slice(0);
+      } else {
+        const binary = atob(encoded), decoded = new Uint8Array(binary.length);
+        for (let j = 0; j < binary.length; j++) decoded[j] = binary.charCodeAt(j);
+        bytes = decoded.buffer;
+      }
+      return decoder.decodeAudioData(bytes);
     };
     const schedule = () => {
       let total = 0; for (const clip of clips) if (clip) total += clip.duration;
@@ -119,16 +148,17 @@
     const preload = async () => {
       const decoder = context;
       try {
-        await Promise.all([
+        const results = await Promise.allSettled([
           ...BL.dsbAudioData.voices.map(async (encoded, i) => {
             const buffer = await decode(decoder, encoded);
-            if (!disposed && versions[i] === 0) clips[i] = buffer;
+            if (!disposed && buffer && versions[i] === 0) clips[i] = buffer;
           }),
           (async () => {
             const buffer = await decode(decoder, BL.dsbAudioData.music);
-            if (!disposed && musicVersion === 0) startMusic(buffer);
+            if (!disposed && buffer && musicVersion === 0) startMusic(buffer);
           })()
         ]);
+        if (results.some((result) => result.status === "rejected")) throw new Error("Entrance audio unavailable");
       } catch { if (!disposed) failure = "An entrance audio track could not be decoded."; }
       if (!disposed) { schedule(); ready = true; }
     };
@@ -191,7 +221,16 @@
       if (master) master.gain.setTargetAtTime(muted ? 0 : 0.5, context.currentTime, 0.03);
       syncRadio(); return muted;
     }, dispose: () => {
-      disposed = true; stopRadio(); radio = null; window.removeEventListener("pointerdown", gesture); window.removeEventListener("keydown", gesture);
+      disposed = true;
+      for (const entry of heldRecordings) {
+        entry.users--;
+        if (entry.pending && !entry.users) {
+          if (recordings.get(entry.url) === entry) recordings.delete(entry.url);
+          entry.controller.abort();
+        }
+      }
+      heldRecordings.clear();
+      stopRadio(); radio = null; window.removeEventListener("pointerdown", gesture); window.removeEventListener("keydown", gesture);
       window.removeEventListener("pointerup", gesture); window.removeEventListener("touchend", gesture);
       if (voice) { voice.onended = null; voice.stop(); voice.disconnect(); } if (music) { music.stop(); music.disconnect(); }
       if (foot) { foot.stop(); foot.disconnect(); footGain.disconnect(); }

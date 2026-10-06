@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import { readdirSync, readFileSync } from "node:fs";
 import { runInNewContext } from "node:vm";
 import { contributorRows, createContributorLookup } from "../src/contributor-policy.js";
-import { missingCharacters, characterSource } from "../../scripts/sync-characters.mjs";
+import { missingCharacters, characterSource, retiredCharacters } from "../../scripts/sync-characters.mjs";
 import { checkCharacterIdentities, identityAdvice } from "../../scripts/contributor-pr.mjs";
 import { declaredIdentity, mayAuthorIdentity } from "../../scripts/character-identity.mjs";
 import { CharacterRejection, parseSafeCharacter, scanCharacter, safeCharacterSource, checkOwner } from "../../scripts/character-safety.mjs";
@@ -281,6 +281,10 @@ test("confirmed aliases roll up across stats without increasing event totals or 
   assert.deepEqual(contributorRows(raw, NOW).map((row) => row.handle), ["mrhodlx"]);
   const alone = normalize(snapshot(person(a)), NOW);
   assert.equal(alone.contributors[0].login, "MrHodlX");
+  const harry = normalize(snapshot(person("Harry"), person("hotpixelgroup")), NOW);
+  assert.deepEqual(harry.contributors.map((row) => row.login), ["hotpixelgroup"]);
+  assert.equal(harry.contributors[0].counts.commits, 2);
+  assert.deepEqual(contributorRows(harry, NOW).map((row) => row.handle), ["hotpixelgroup"]);
 });
 
 test("onboarding rejects bot aliases, unresolved identities, malformed dates and stale snapshots", () => {
@@ -308,6 +312,11 @@ test("a just-merged custom character and its GitHub alias prevent duplicate defa
   assert.equal(collected[0].joined, missing[0].joined);
   assert.equal(declaredIdentity(characterSource(missing[0])).handle, "new-ooga");
   assert.deepEqual(existing[0].look, { bald: true });
+  const alias = { handle: "harry", joined: 1, lastCommit: 2 }, owner = { handle: "hotpixelgroup", joined: 1, lastCommit: 2 };
+  const source = characterSource(alias), sourceFor = (file) => file === "harry.js" ? source : null;
+  assert.deepEqual(retiredCharacters([alias, owner], sourceFor), [{ file: "harry.js", source }]);
+  assert.deepEqual(retiredCharacters([alias], sourceFor), []);
+  assert.deepEqual(retiredCharacters([alias, owner], () => source + "// Custom profile\n"), []);
 });
 
 test("a single aliased profile gains github; explicit mappings and ambiguous batches are preserved", () => {

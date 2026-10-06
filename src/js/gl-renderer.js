@@ -104,6 +104,10 @@ uniform int uLakeWaveCount;
 uniform vec4 uLakeWaves[32];
 uniform vec4 uLakeSurface;
 uniform vec4 uLakeWaveEnd;
+uniform vec4 uLakeSuction;
+uniform vec4 uLakeFlowU;
+uniform vec4 uLakeCharge;
+uniform float uLakeChargeRise;
 // Optional local water body: time, amplitude, stretch, pinch; bend x/z and shape kind.
 uniform vec4 uLakeBodyShape;
 uniform vec4 uLakeBodyBend;
@@ -206,8 +210,22 @@ void main() {
     slope /= limit * limit;
     float endT = clamp(dot(uLakeWaveEnd, w), 0.0, 1.0), fade = endT * endT * (3.0 - 2.0 * endT);
     slope = slope * fade + uLakeWaveEnd.xz * (6.0 * endT * (1.0 - endT) * height);
-    w.y += height * fade;
+    height *= fade;
+    if (uLakeSuction.w > 0.0) {
+      vec2 delta = w.xz - uLakeSuction.xy;
+      float r = length(delta), q = clamp(1.0 - r / uLakeSuction.z, 0.0, 1.0);
+      height -= uLakeSuction.w * q * q * (3.0 - 2.0 * q);
+      slope += delta * (uLakeSuction.w * 6.0 * q * (1.0 - q) / uLakeSuction.z / max(r, 0.0001));
+    }
+    w.y += height;
     vNormal = normalize(vec3(-slope.x, 1.0, -slope.y)) * sign(aNormal.y);
+  }
+  if (uLakeChargeRise > 0.0 && uLakeCharge.y > 0.0) {
+    vec2 delta = w.xz - uLakeFlowU.xy;
+    float distanceAlong = abs(mod(atan(delta.x, delta.y) - uLakeFlowU.z + 6.28318530718, 6.28318530718) * uLakeFlowU.w);
+    if (uLakeCharge.z > 2.5) distanceAlong = min(distanceAlong, max(0.0, uLakeCharge.w - distanceAlong));
+    float lit = 1.0 - smoothstep(uLakeCharge.x - 0.45, uLakeCharge.x + 0.15, distanceAlong);
+    w.y += uLakeChargeRise * uLakeCharge.y * lit;
   }
   vColor = aColor;
   vColor.rgb *= 1.0 - clamp(-aParams.y, 0.0, 1.0) * 0.88;
@@ -317,6 +335,9 @@ uniform float uGlass;
 uniform float uLakeFlowEnabled;
 uniform vec4 uLakeFlowU;
 uniform vec4 uLakeFlowV;
+uniform vec4 uLakeCharge;
+uniform vec2 uLakeChargeCenter;
+uniform vec4 uLakeOcclude;
 uniform float uLightBeam;
 uniform float uMatrixCave;
 uniform vec4 uMatrixCaves[8];
@@ -631,9 +652,19 @@ vec3 lakeShade(vec3 lit, out vec3 bright, out float alpha) {
   float grain = 0.94 + 0.06 * sin(flow.x * 43.0) * sin(flow.y * 31.0);
   float sheen = pow(max(0.0, 0.5 + 0.5 * sin(flow.x * 6.0 + sin(flow.y * 4.0))), 12.0);
   vec3 col = color / 255.0 * shade * pulse * grain * max(0.35, vParams.x) * 1.08 + vec3(0.1, 0.16, 0.18) * sheen;
+  bright = vec3(0.0);
+  if (uLakeCharge.z > 0.5 && uLakeCharge.y > 0.0) {
+    float distanceAlong = uLakeCharge.z < 1.5 ? distance(vWorld.xz, uLakeChargeCenter) : abs(coord.y);
+    if (uLakeCharge.z > 2.5) distanceAlong = min(distanceAlong, max(0.0, uLakeCharge.w - distanceAlong));
+    float lit = 1.0 - smoothstep(uLakeCharge.x - 0.45, uLakeCharge.x + 0.15, distanceAlong);
+    float leading = 1.0 - smoothstep(0.0, 0.9, abs(distanceAlong - uLakeCharge.x));
+    float charge = uLakeCharge.y * (lit * 0.7 + leading * 0.3);
+    col += vec3(0.48, 0.76, 1.0) * charge * 0.65;
+    bright += vec3(0.46, 0.72, 1.0) * charge * 0.8;
+  }
   float grazing = 1.0 - abs(dot(n, normalize(viewTowardEye(vWorld))));
   alpha = min(0.95, uGlass + (foam ? 0.12 : 0.0) + grazing * grazing * 0.06);
-  bright = col * (foam ? 0.25 : 0.12);
+  bright += col * (foam ? 0.25 : 0.12);
   return col;
 }
 // Lava: a dark crust drifting over a hot flow, its cracks glowing into the bloom.
@@ -689,6 +720,13 @@ float matrixPermanentAt(vec3 point, float caveIndex) {
 void main() {
   vWorld = uProjective > 0.5 ? vWorldH.xyz / vWorldH.w : vWorldH.xyz;
   if (vWorld.y < uClipMinY || dot(uObjectClip, vec4(vWorld, 1.0)) > 0.0 || abs(dot(uObjectSlab.xyz, vWorld) + uObjectSlab.w) > 1.0 || cutaway(vWorld, vSmokeOpacity)) discard;
+  if (uLakeOcclude.w > 0.0 && uEye.y > uLakeOcclude.y && vWorld.y < uLakeOcclude.y) {
+    vec3 towardEye = viewTowardEye(vWorld);
+    if (towardEye.y > 0.0) {
+      vec2 crossing = vWorld.xz + towardEye.xz * ((uLakeOcclude.y - vWorld.y) / towardEye.y);
+      if (distance(crossing, uLakeOcclude.xz) < uLakeOcclude.w) discard;
+    }
+  }
   if (vParams.z > 5.5) {
     vec2 p = vPortalUV;
     float rectangular = step(6.5, vParams.z);
@@ -1553,7 +1591,7 @@ void main() {
       const meshFragment = matrixSampling ? MESH_FS.replace("#version 300 es", "#version 300 es\n#extension GL_OES_shader_multisample_interpolation : require\n#define MATRIX_SAMPLE_INTERPOLATION") : MESH_FS;
       res.programs = {
         image: compile(IMAGE_VS, IMAGE_FS, ["uViewProj", "uRect", "uImage", "uReady", "uClipMaxY"]),
-        mesh: compile(MESH_VS, meshFragment, ["uViewProj", "uLightViewProj", "uEye", "uViewDirection", "uLightDir", "uSky", "uGround", "uSun", "uDirectStrength", "uAmbientFloor", "uDiffuseFloor", "uShadowStrength", "uShadowFloor", "uShadowBias", "uShadow", "uShadowTexel", "uLights", "uLightCount", "uSpotLight", "uFog", "uFogRange", "uMatrixParams", "uMatrixOrigin", "uMatrixGlyph", "uMatrixCave", "uMatrixCaves", "uMatrixCaveBounds", "uMatrixCaveNear", "uMatrixPermanentCave", "uMatrixPermanentPlane", "uMatrixPermanentAperture", "uMatrixLivingGlobal", "uMatrixGlyphTex", "uMatrixSamples", "uClipMinY", "uClipMaxY", "uObjectClip", "uObjectSlab", "uProjective", "uMatrixGlyphOpacity", "uGlassOpacity", "uVoxel", "uWindTime", "uSway", "uSwing", "uGlass", "uLightBeam", "uDSBSurface", "uDSBDepth", "uDSBEnvironment", "uLakeWaveCount", "uLakeWaves", "uLakeSurface", "uLakeFlowEnabled", "uLakeFlowU", "uLakeFlowV", "uLakeWaveEnd", "uLakeBodyShape", "uLakeBodyBend"]),
+        mesh: compile(MESH_VS, meshFragment, ["uViewProj", "uLightViewProj", "uEye", "uViewDirection", "uLightDir", "uSky", "uGround", "uSun", "uDirectStrength", "uAmbientFloor", "uDiffuseFloor", "uShadowStrength", "uShadowFloor", "uShadowBias", "uShadow", "uShadowTexel", "uLights", "uLightCount", "uSpotLight", "uFog", "uFogRange", "uMatrixParams", "uMatrixOrigin", "uMatrixGlyph", "uMatrixCave", "uMatrixCaves", "uMatrixCaveBounds", "uMatrixCaveNear", "uMatrixPermanentCave", "uMatrixPermanentPlane", "uMatrixPermanentAperture", "uMatrixLivingGlobal", "uMatrixGlyphTex", "uMatrixSamples", "uClipMinY", "uClipMaxY", "uObjectClip", "uObjectSlab", "uProjective", "uMatrixGlyphOpacity", "uGlassOpacity", "uVoxel", "uWindTime", "uSway", "uSwing", "uGlass", "uLightBeam", "uLakeWaveCount", "uLakeWaves", "uLakeSurface", "uLakeSuction", "uLakeFlowEnabled", "uLakeFlowU", "uLakeFlowV", "uLakeCharge", "uLakeChargeRise", "uLakeChargeCenter", "uLakeOcclude", "uLakeWaveEnd", "uLakeBodyShape", "uLakeBodyBend", "uDSBSurface", "uDSBDepth", "uDSBEnvironment"]),
         shadow: compile(SHADOW_VS, SHADOW_FS, ["uLightViewProj", "uClipMinY", "uClipMaxY", "uObjectClip"]),
         line: compile(LINE_VS, LINE_FS, ["uViewProj", "uViewport", "uWidth", "uClipMaxY", "uObjectClip"]),
         sky: compile(QUAD_VS, SKY_FS, ["uInvViewProj", "uHorizon", "uZenith", "uSun", "uSunDir", "uMoonDir", "uMoonSunDir", "uStarMatrix", "uStars", "uTime", "uHazeDrop", "uClouds", "uSea", "uSeaEye"]),
@@ -2625,6 +2663,24 @@ void main() {
               gl.uniform4f(program.u.uLakeFlowU, flow[0], flow[1], flow[2], flow[3]);
               gl.uniform4f(program.u.uLakeFlowV, flow[4], flow[5], flow[6], flow[7]);
             }
+            const charge = rec.geometry.lakeCharge;
+            gl.uniform1f(program.u.uLakeChargeRise, rec.geometry.lakeChargeRise || 0);
+            if (charge) {
+              gl.uniform4f(program.u.uLakeCharge, charge[0], charge[1], charge[2], charge[3]);
+              gl.uniform2f(program.u.uLakeChargeCenter, charge[4], charge[5]);
+              program.lakeCharge = charge;
+            } else if (program.lakeCharge) {
+              gl.uniform4f(program.u.uLakeCharge, 0, 0, 0, 0);
+              program.lakeCharge = null;
+            }
+            const lakeOcclude = rec.geometry.lakeOcclude;
+            if (lakeOcclude) {
+              gl.uniform4fv(program.u.uLakeOcclude, lakeOcclude);
+              program.lakeOcclude = lakeOcclude;
+            } else if (program.lakeOcclude) {
+              gl.uniform4f(program.u.uLakeOcclude, 0, 0, 0, 0);
+              program.lakeOcclude = null;
+            }
             const waves = rec.geometry.lakeWaves, count = waves ? waves.count : 0;
             if (count !== program.lakeWaveCount) {
               gl.uniform1i(program.u.uLakeWaveCount, count);
@@ -2633,9 +2689,11 @@ void main() {
             if (count) gl.uniform4fv(program.u.uLakeWaves, waves.data);
             if (waves) {
               gl.uniform4fv(program.u.uLakeSurface, waves.surface);
+              gl.uniform4fv(program.u.uLakeSuction, waves.suction);
               program.lakeSurface = waves;
             } else if (program.lakeSurface !== null) {
               gl.uniform4f(program.u.uLakeSurface, 0, 0, 0, 0);
+              gl.uniform4f(program.u.uLakeSuction, 0, 0, 0, 0);
               program.lakeSurface = null;
             }
           }

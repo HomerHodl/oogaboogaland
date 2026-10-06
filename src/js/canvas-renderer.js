@@ -410,6 +410,13 @@
               BL.poolWater.sampleWaves(waterWave, V[k][0], V[k][2], node.geometry.lakeWaves, node.geometry.lakeWaveEnd);
               V[k][1] += waterWave[0];
             }
+            const charge = node.geometry.lakeCharge, curve = node.geometry.lakeFlowCurve;
+            if (face.lake && node.geometry.lakeChargeRise && charge && charge[1] > 0 && curve) {
+              const dx = V[k][0] - curve[0], dz = V[k][2] - curve[1], tau = Math.PI * 2;
+              let distance = Math.abs(((Math.atan2(dx, dz) - curve[2]) % tau + tau) % tau * curve[3]);
+              if (charge[2] > 2.5) distance = Math.min(distance, Math.max(0, charge[3] - distance));
+              V[k][1] += node.geometry.lakeChargeRise * charge[1] * (1 - smooth((distance - charge[0] + 0.45) / 0.6));
+            }
             if (projective) divideW(V[k], w, x, y + displacement, z);
             centerX += V[k][0];
             centerY += V[k][1];
@@ -441,6 +448,16 @@
           centerX /= count;
           centerY /= count;
           centerZ /= count;
+          const lakeOcclude = node.geometry.lakeOcclude;
+          if (lakeOcclude && lakeOcclude[3] > 0 && eye.y > lakeOcclude[1] && centerY < lakeOcclude[1]) {
+            const dx = perspectiveWeight * (eye.x - centerX) + orthographicDepth * view[2];
+            const dy = perspectiveWeight * (eye.y - centerY) + orthographicDepth * view[6];
+            const dz = perspectiveWeight * (eye.z - centerZ) + orthographicDepth * view[10];
+            if (dy > 0) {
+              const crossing = (lakeOcclude[1] - centerY) / dy;
+              if (Math.hypot(centerX + dx * crossing - lakeOcclude[0], centerZ + dz * crossing - lakeOcclude[2]) < lakeOcclude[3]) continue;
+            }
+          }
           let faceOpacity = opacity;
           if (node.geometry.lightBeam) {
             const along = ((centerX - w[12]) * w[0] + (centerY - w[13]) * w[1] + (centerZ - w[14]) * w[2]) / (w[0] * w[0] + w[1] * w[1] + w[2] * w[2]);
@@ -715,6 +732,17 @@
                 red = lerp((foam ? 226 : band === 0 ? 45 : band === 1 ? 74 : 124) * glow + 25.5 * sheen, fogRgb[0], fog);
                 green = lerp((foam ? 245 : band === 0 ? 125 : band === 1 ? 166 : 200) * glow + 40.8 * sheen, fogRgb[1], fog);
                 blue = lerp(255 * glow + 45.9 * sheen, fogRgb[2], fog);
+                const charge = node.geometry.lakeCharge;
+                if (charge && charge[1] > 0) {
+                  let distanceAlong = charge[2] < 1.5 ? Math.hypot(centerX - charge[4], centerZ - charge[5]) : Math.abs(coordZ);
+                  if (charge[2] > 2.5) distanceAlong = Math.min(distanceAlong, Math.max(0, charge[3] - distanceAlong));
+                  const lit = 1 - smooth((distanceAlong - charge[0] + 0.45) / 0.6);
+                  const leading = 1 - smooth(Math.abs(distanceAlong - charge[0]) / 0.9);
+                  const strength = Math.min(1, charge[1] * (lit * 0.7 + leading * 0.3));
+                  red = lerp(red, lerp(215, fogRgb[0], fog), strength * 0.75);
+                  green = lerp(green, lerp(245, fogRgb[1], fog), strength * 0.75);
+                  blue = lerp(blue, lerp(255, fogRgb[2], fog), strength * 0.75);
+                }
               }
               if (liquid) {
                 const time = node.portalTime, radius = rectangular?Math.max(Math.abs(liquidX),Math.abs(liquidZ)):Math.hypot(liquidX, liquidZ);

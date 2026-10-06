@@ -1290,6 +1290,7 @@
     // Nobody's sleep is seen through the Mempool island's rock: not from the tunnels and the chamber inside it,
     // and not a gorilla's in its nest from under the island or beyond its cliffs.
     if (poolShade > 0.5) return false;
+    if (mempoolIsland?.billboardOccludes(camera.position.x, camera.position.y, camera.position.z, x, y, z)) return false;
     if (!cave) return sleepSightAt(x, y, z) && mempoolIsland.sightClear(camera.position.x, camera.position.y, camera.position.z, x, y, z);
     const bed = cave.bedroll;
     if (cave.state !== "sleeping" || cave.bedTravel.mode !== "rest" || !bed || bed.sleeper !== cave) return false;
@@ -2385,7 +2386,34 @@
     addChild(boardNode, panelNode, boardLegs);
     site.boardLegs = boardLegs;
     addChild(site.node, boardNode);
-    atNode("chainsign", boardNode, B.w * 0.55);
+    // The visible slate is a circular arc. Test that arc instead of its broad pick sphere, so a gorilla
+    // behind the board cannot win a tap, while one standing in front of it still can.
+    const boardRadius = B.r - B.d / 2 - 0.02, boardHalfTangent = Math.tan((B.w + 0.57) / (2 * B.r));
+    const boardBottom = place.y + L.LEVEL.shore + B.y - 0.3, boardTop = place.y + L.LEVEL.shore + B.y + B.h + 0.5;
+    const billboardRay = (ox, oy, oz, dx, dy, dz, limit = Infinity) => {
+      if (!site.node.visible || site.node.cameraHidden || !boardNode.visible || boardNode.cameraHidden) return Infinity;
+      const vx = ox - place.x, vz = oz - place.z, a = dx * dx + dz * dz;
+      if (a < 1e-10) return Infinity;
+      const b = vx * dx + vz * dz, discriminant = b * b - a * (vx * vx + vz * vz - boardRadius * boardRadius);
+      if (discriminant < 0) return Infinity;
+      const root = Math.sqrt(discriminant);
+      for (let side = -1; side <= 1; side += 2) {
+        const t = (-b + side * root) / a;
+        if (t <= 0 || t >= limit) continue;
+        const y = oy + dy * t;
+        if (y < boardBottom || y > boardTop) continue;
+        const lx = localX(ox + dx * t, oz + dz * t), lz = localZ(ox + dx * t, oz + dz * t);
+        if (-lz > 0 && Math.abs(lx) <= -lz * boardHalfTangent) return t;
+      }
+      return Infinity;
+    };
+    const boardOwner = atNode("chainsign", boardNode, B.w * 0.55);
+    boardOwner.priority = 2;
+    boardOwner.pickRay = ray => billboardRay(ray.ox, ray.oy, ray.oz, ray.dx, ray.dy, ray.dz);
+    const billboardOccludes = (ax, ay, az, bx, by, bz) => {
+      const dx = bx - ax, dy = by - ay, dz = bz - az, distance = Math.hypot(dx, dy, dz);
+      return distance > 0.02 && billboardRay(ax, ay, az, dx / distance, dy / distance, dz / distance, distance - 0.02) < Infinity;
+    };
     // The weather key sits to the right when entering from the bridge, just past the curved frame.
     const infoBearing = boardBearing - (B.w / 2 + P.INFO_SIGN.w / 2 + 0.8) / B.r;
     const infoNode = createNode({ position: { x: Math.sin(infoBearing) * B.r, y: L.LEVEL.shore, z: Math.cos(infoBearing) * B.r }, rotation: { x: 0, y: infoBearing + Math.PI, z: 0 }, geometry: P.infoSign() });
@@ -2667,8 +2695,6 @@
     for (const owner of water.picks) { owner.weaponType = "none"; addTarget(owner.node, owner); }
     const fillParam = DEBUG ? params.get("poolfill") : null;
     if (fillParam !== null && fillParam.trim() !== "" && Number.isFinite(Number(fillParam))) water.previewFill(Number(fillParam));
-    // A debug visit can preview the existing cube sequence without a live block or a weather change.
-    if (DEBUG_POOL_BLOCK) water.block();
     const rainHit = (x, y, z, size, wet) => water.rain(localX(x, z), y - place.y, localZ(x, z), size, wet);
     const wake = (key, x, feet, z, height, radius) => water.wake(key, localX(x, z), feet - place.y, localZ(x, z), height, radius);
     const paintings = BL.poolPaintings.create({ site, renderer });
@@ -2742,7 +2768,7 @@
     const preview = {
       lake: (mvb) => water.preview(mvb === null || mvb === undefined ? null : mvb * 1e6),
       fill: (value) => { water.previewFill(value); if (value === null) water.apply(chain.snapshot); },
-      block: () => { weather.strike(); water.block(); },
+      block: () => { weather.strike({ x: place.x, y: place.y + water.state.shown, z: place.z }); water.block(); },
       sleep: (name, asleep = true) => {
         const cave = crew.list.find((c) => c.traits.name === name);
         if (!cave) return false;
@@ -2774,7 +2800,7 @@
     const boxSolid = boxIn(L.boxSolid), boxClear = boxIn(L.boxClear);
     // What is walked on here rather than walked round: the bridge and the island's own ground in all its pieces.
     const walked = new Set([site.bridge, site.ground, site.floor, site.membrane, ...site.crossings]);
-    return { site, place, centre, groundAt, rainAt, rainHit, wake, worldX, worldZ, localX, localZ, cos, sin, claimGround, wildlife, water, paintings, overAt, coveredAt, sightClear, solidAt, rockMaterialAt, boxSolid, boxClear, floatAt, afloat, walked, layout: L, preview };
+    return { site, place, centre, groundAt, rainAt, rainHit, wake, worldX, worldZ, localX, localZ, cos, sin, claimGround, wildlife, water, paintings, overAt, coveredAt, billboardOccludes, sightClear, solidAt, rockMaterialAt, boxSolid, boxClear, floatAt, afloat, walked, layout: L, preview };
   };
   // Where the gorillas sleep while their Oogas do: the banana-leaf beds of the Mempool island's nests, and the dry
   // way to each from the home island, as x, z pairs: up the approach stair, over the bridge, across the court,
@@ -4851,11 +4877,11 @@
     fx.burst(0, DROP_HEIGHT - 0.2, 0, 26, CONFETTI, 2.2);
     fx.showTicker(`THANKS ${donation.handle ? "@" + donation.handle.toUpperCase() : "ANON"} · ${bananas} BANANAS`, 4.5);
   };
-  // The Bitcoin feed: a block strikes lightning over the island.
+  // The Bitcoin feed: a block strikes the lake and sends light through its collector.
   const onMempool = (event) => {
     if (event.type === "block") {
       // Every block mined while the page is open strikes, whatever the weather is doing.
-      weather.strike();
+      weather.strike({ x: mempoolIsland.place.x, y: mempoolIsland.place.y + mempoolIsland.water.state.shown, z: mempoolIsland.place.z });
       // And a cube of the lake leaves through the chamber. It takes nothing with it: the backlog says what is left.
       mempoolIsland.water.block(event.height);
       hud.toast(`Block ${event.height} mined${event.txCount ? ` · ${event.txCount} transactions` : ""}`);
@@ -4864,17 +4890,65 @@
   // The chain board's four readings, set in the jumbotron's 5x7 font and run-length merged into quads,
   // exactly as the cave sets its wall panels. The rows are rebuilt only when one of them changed, so a
   // board left standing all day replaces no geometry and holds its size.
-  const CHAIN_PANEL_W = 96, CHAIN_PANEL_H = 36, CHAIN_PANEL_BG = [42, 39, 36];
+  const CHAIN_PANEL_W = 208, CHAIN_PANEL_H = 72, CHAIN_PANEL_BG = [42, 39, 36];
   // A board that has stopped being fed says so by going grey. Holding the last reading out in its
   // usual colours would be the one genuinely misleading thing this island could do.
   const STALE_INK = "#7d766a";
+  const arrivalsLive = (s) => s.socketAt > 0 && Date.now() - s.socketAt < weatherMod.ARRIVALS_FRESH_MS;
+  const rateText = (vbs) => `${gameMod.formatThree(vbs, true)} VB/S`;
+  const backlogText = (vsize) => `${gameMod.formatThree(vsize / 1e6)} MVB`;
+  const backlogDetails = (count, countKnown = true) => countKnown ? `${gameMod.formatThree(count, true)} TX WAITING` : "TX COUNT UNKNOWN";
+  // Units stay half-height; popup units use the doubled canvas grid so their small letters remain legible.
+  const UNIT_WORDS = new Set(["VB/S", "MVB", "SAT/VB", "TX"]);
+  const metricUnit = (word, previous) => (word === "WEATHER" && !previous)
+    || (UNIT_WORDS.has(word) && (previous === "-" || /[0-9KMB]$/.test(previous)));
+  const unitWidth = (word, scale, fine = false) => fine ? (word.length * 3 - 0.5) * scale : BL.jumbotron.text.measureText(word, scale / 2);
+  const metricWidth = (value, scale, fine = false) => {
+    const text = BL.jumbotron.text, words = value.split(" ");
+    let width = 0, previous = "";
+    for (const word of words) {
+      const unit = metricUnit(word, previous);
+      if (previous) width += (unit ? 4 : 7) * scale;
+      width += unit ? unitWidth(word, scale, fine) : text.measureText(word, scale);
+      previous = word;
+    }
+    return width;
+  };
+  const drawMetric = (c2, value, anchor, y, color, scale, right = false, fine = false) => {
+    const text = BL.jumbotron.text, words = value.split(" ");
+    const width = metricWidth(value, scale, fine);
+    let x = anchor - (right ? width : Math.round(width / 2));
+    let previous = "";
+    for (const word of words) {
+      const unit = metricUnit(word, previous);
+      if (previous) x += (unit ? 4 : 7) * scale;
+      if (!unit) {
+        text.drawText(c2, word, x, y, color, scale);
+        x += text.measureText(word, scale);
+      } else if (fine) {
+        c2.save();
+        c2.fillStyle = color;
+        c2.font = `bold ${scale * 4.5}px monospace`;
+        c2.textBaseline = "alphabetic";
+        for (const ch of word) {
+          c2.fillText(ch, x, y + 7 * scale);
+          x += 3 * scale;
+        }
+        c2.restore();
+      } else {
+        text.drawText(c2, word, x, y + 7 * scale / 2, color, scale / 2);
+        x += unitWidth(word, scale);
+      }
+      previous = word;
+    }
+  };
   const chainRows = (s) => {
     const ink = (live) => s.live ? live : STALE_INK;
     return [
       ["BLOCK", s.height ? String(s.height) : "-", ink("#e8c14a")],
-      ["PRICE", s.priceUsd ? `$${Math.round(s.priceUsd).toLocaleString("en-US")}` : "-", ink("#8fbf6a")],
-      ["MEMPOOL", s.count ? `${gameMod.formatLarge(s.count)} TX` : "-", ink("#e8c14a")],
-      ["FAST", s.fastestFee ? `${String(+s.fastestFee.toFixed(s.fastestFee >= 10 ? 0 : 2))} SAT/VB` : "-", ink("#ff9a2a")]
+      ["INCOMING", arrivalsLive(s) ? rateText(s.inflow) : "- VB/S", arrivalsLive(s) ? "#8fc3ff" : STALE_INK],
+      ["MEMPOOL", s.backlogAt ? backlogText(s.vsize) : "-", s.backlogAt && Date.now() - s.backlogAt < BL.poolWater.HYDRO.FRESH_MS ? "#7cc8ff" : STALE_INK],
+      ["FAST FEE", s.fastestFee ? `${gameMod.formatFeeRate(s.fastestFee)} SAT/VB` : "-", ink("#ff9a2a")]
     ];
   };
   const refreshChainSign = () => {
@@ -4886,11 +4960,11 @@
     const c2 = chainSign.ctx2d, text = BL.jumbotron.text;
     c2.fillStyle = `rgb(${CHAIN_PANEL_BG[0]},${CHAIN_PANEL_BG[1]},${CHAIN_PANEL_BG[2]})`;
     c2.fillRect(0, 0, CHAIN_PANEL_W, CHAIN_PANEL_H);
-    let y = 2;
+    let y = 4;
     for (const [label, value, color] of rows) {
-      text.drawText(c2, label, 1, y, "#9b8f7a", 1);
-      text.drawText(c2, value, CHAIN_PANEL_W - 1 - text.measureText(value, 1), y, color, 1);
-      y += 8;
+      text.drawText(c2, label, 2, y, "#9b8f7a", 2);
+      drawMetric(c2, value, CHAIN_PANEL_W - 2, y, color, 2, true);
+      y += 16;
     }
     const node = chainSign.node;
     if (node.geometry) renderer.releaseGeometry(node.geometry);
@@ -4899,22 +4973,35 @@
   // The Mempool island's two boards in the shared board dialog. Each is a list of pages, every page a caption, a
   // note and a drawing in the jumbotron's 5x7 font on the board's own small canvas; `refresh` redraws the shown
   // page and moves `version`, which is all the dialog watches.
-  const POOL_BOARD_W = 128, POOL_BOARD_H = 48, POOL_BOARD_BG = "#0f110f", POOL_DIM = "#9b8f7a";
-  const poolBoard = (title, pages) => {
+  const POOL_BOARD_W = 512, POOL_BOARD_H = 192, POOL_BOARD_BG = "#0f110f", POOL_DIM = "#9b8f7a";
+  const poolBoard = (title, pages, hideCaption = false) => {
     const canvas = document.createElement("canvas");
     canvas.width = POOL_BOARD_W;
     canvas.height = POOL_BOARD_H;
     const c2 = canvas.getContext("2d", { alpha: false, willReadFrequently: true });
-    let nextRefresh = 0;
+    let nextRefresh = 0, lastElapsed = 0, switchAt = NaN, paused = false;
     const board = {
-      title, help: "Live Bitcoin data. Arrow keys flip the pages.", canvas, count: pages.length, index: 0, version: 0, caption: "", note: "",
+      title, help: "", captionAbove: true, hideCaption, carousel: true, canvas, count: pages.length, index: 0, version: 0, caption: "", note: "",
+      get paused() { return paused; },
+      setPaused(value) { paused = value; switchAt = lastElapsed; },
+      begin() { lastElapsed = switchAt = NaN; },
       go(i) {
         board.index = i;
+        switchAt = lastElapsed;
         board.refresh();
       },
       update(elapsed) {
         // Freshness and the weather can change even when no feed event arrives.
-        if (!Number.isFinite(elapsed) || elapsed < nextRefresh) return;
+        if (!Number.isFinite(elapsed)) return;
+        lastElapsed = elapsed;
+        if (!Number.isFinite(switchAt)) switchAt = elapsed;
+        const cycle = jumbotron?.cycleSeconds ?? 8;
+        if (!paused && cycle > 0 && elapsed - switchAt >= cycle) {
+          board.go((board.index + 1) % board.count);
+          nextRefresh = elapsed + 1;
+          return;
+        }
+        if (elapsed < nextRefresh) return;
         nextRefresh = elapsed + 1;
         board.refresh();
       },
@@ -4930,30 +5017,32 @@
     };
     return board;
   };
-  // A reading: its label small at the top, its value as large as fits, a line under it and an optional gauge.
+  // A reading: its label small at the top, its value as large as fits, one or two detail lines and an optional gauge.
   const reading = (c2, label, value, color, under, gauge = -1, gaugeColor = color) => {
     const text = BL.jumbotron.text, centre = (t, y, ink, scale) => text.drawText(c2, t, Math.round((POOL_BOARD_W - text.measureText(t, scale)) / 2), y, ink, scale);
-    centre(label, 4, POOL_DIM, 1);
-    const scale = text.measureText(value, 2) <= POOL_BOARD_W - 8 ? 2 : 1;
-    centre(value, scale === 2 ? 15 : 19, color, scale);
-    if (under) centre(under, 34, POOL_DIM, 1);
+    centre(label, 16, POOL_DIM, 4);
+    const scale = metricWidth(value, 8, true) <= POOL_BOARD_W - 32 ? 8 : 4;
+    drawMetric(c2, value, POOL_BOARD_W / 2, scale === 8 ? 60 : 76, color, scale, false, true);
+    if (Array.isArray(under)) {
+      for (let i = 0; i < under.length; i++) drawMetric(c2, under[i], POOL_BOARD_W / 2, 128 + i * 32, POOL_DIM, 4, false, true);
+    } else if (under) drawMetric(c2, under, POOL_BOARD_W / 2, 136, POOL_DIM, 4, false, true);
     if (gauge < 0) return;
     c2.fillStyle = "#2a2724";
-    c2.fillRect(14, 43, POOL_BOARD_W - 28, 3);
+    c2.fillRect(56, 172, POOL_BOARD_W - 112, 12);
     c2.fillStyle = gaugeColor;
-    c2.fillRect(14, 43, Math.round((POOL_BOARD_W - 28) * clamp(gauge, 0, 1)), 3);
+    c2.fillRect(56, 172, Math.round((POOL_BOARD_W - 112) * clamp(gauge, 0, 1)), 12);
   };
   const chainStatus = (s) => {
     const age = s.at ? Math.round((Date.now() - s.at) / 1000) : 0;
-    return !s.height ? "Waiting on the chain."
-      : s.live ? `Live. Block ${s.height}, ${gameMod.formatLarge(s.count)} transactions waiting, ${s.deep.toFixed(1)} blocks deep.`
-      : `Last heard ${age > 90 ? `${Math.round(age / 60)} min` : `${age}s`} ago from ${s.degraded ? "a fallback source" : "nobody"}; the board has gone grey until the chain answers.`;
+    return !s.height ? "Waiting for Bitcoin data."
+      : s.live ? `Block ${s.height} is the latest. Rain follows new transactions arriving in vB/s; the mempool holds the transactions still waiting, in MvB. A new block can shrink that queue after the next backlog update. Fees affect which transactions are likely to get in first.`
+      : `Last updated ${age > 90 ? `${Math.round(age / 60)} minutes` : `${age} seconds`} ago. These numbers may be out of date until the feed responds again.`;
   };
-  const rowPage = (i, caption, under, note) => ({
+  const rowPage = (i, caption, under, note, detailLabel = null) => ({
     caption,
     draw: (c2, s) => {
       const [label, value, color] = chainRows(s)[i];
-      reading(c2, label, value, color, under(s));
+      reading(c2, detailLabel || label, value, color, under(s));
     },
     note: () => note
   });
@@ -4962,64 +5051,56 @@
       caption: "At a glance",
       draw: (c2, s) => {
         const text = BL.jumbotron.text;
-        let y = 5;
+        let y = 20;
         for (const [label, value, color] of chainRows(s)) {
-          text.drawText(c2, label, 8, y, POOL_DIM, 1);
-          text.drawText(c2, value, POOL_BOARD_W - 8 - text.measureText(value, 1), y, color, 1);
-          y += 10;
+          text.drawText(c2, label, 32, y, POOL_DIM, 4);
+          drawMetric(c2, value, POOL_BOARD_W - 32, y, color, 4, true, true);
+          y += 40;
         }
       },
       note: chainStatus
     },
-    rowPage(0, "Block height", (s) => s.lastTxCount ? `${gameMod.formatLarge(s.lastTxCount)} TX IN IT` : "", "The newest block on the chain. Every block mined while you are here throws a bolt over the rainforest and drops a cube of the lake through the chamber under it."),
-    rowPage(1, "Price", () => "US DOLLARS", "Bitcoin's price from a live exchange feed."),
-    rowPage(2, "Mempool", (s) => s.count ? `${s.deep.toFixed(1)} BLOCKS DEEP` : "", "Transactions waiting for a block, and how many blocks of space they would fill."),
-    rowPage(3, "Next-block fee", (s) => s.hourFee ? `HOUR ${String(+s.hourFee.toFixed(s.hourFee >= 10 ? 0 : 2))} SAT/VB` : "", "The fee rate that gets a transaction into the next block, in sats per virtual byte, with the rate for within the hour under it.")
-  ]);
+    rowPage(0, "Block height", (s) => s.lastTxCount && s.lastWeight ? `${gameMod.formatThree(s.lastTxCount, true)} TX · ${gameMod.formatThree(s.lastWeight / 4e6)} MVB` : "", "A block's height is its number in the Bitcoin chain. The third line shows that block's transaction count and virtual size. When a new block arrives, lightning strikes and a water cube drops through the chamber; the next mempool reading determines how much waiting data remains in the lake.", "BLOCK HEIGHT"),
+    rowPage(1, "Incoming data", (s) => arrivalsLive(s) ? `WEATHER ${weatherMod.STEPS[weather.state.step].name.toUpperCase()}` : "WEATHER UNAVAILABLE", "The large number is new transaction data arriving each second, in virtual bytes (vB/s). Rain strength follows a roughly 30-second average of this rate. Arrivals add to the mempool; blocks confirm transactions and can reduce it.", "INCOMING DATA"),
+    rowPage(2, "Mempool", (s) => backlogDetails(s.count, !!s.backlogAt), "The mempool is the data still waiting for a block, measured in millions of virtual bytes (MvB). The smaller figure counts waiting transactions. Rain shows new arrivals; a mined block can clear some of this queue."),
+    rowPage(3, "Next-block fee", (s) => s.hourFee ? `HOUR ${gameMod.formatFeeRate(s.hourFee)} SAT/VB` : "", "This fee estimate helps a transaction compete for space in the next block, in satoshis per virtual byte (sat/vB). The smaller figure estimates a fee for confirmation within an hour; neither time is guaranteed. Fees affect queue order, while arrivals set the rain and total waiting data fills the lake.", "FAST FEE RATE")
+  ], true);
   // The key to the island: what arrives makes the weather, what waits fills the lake, and a block is a bolt and a
   // cube. A reading that has stopped being fed goes grey and says so; it is never drawn as a calm zero.
   const weatherBoard = poolBoard("Reading the weather", [
     {
       caption: "Rain",
-      draw: (c2) => {
-        const live = weather.state.arrivals === "live";
-        reading(c2, "RAIN", live ? weatherMod.STEPS[weather.state.step].name.toUpperCase() : "UNAVAILABLE", live ? "#8fc3ff" : STALE_INK, live ? `${gameMod.formatLarge(Math.round(weather.state.inflow))} VB/S ARRIVING` : "NO ARRIVALS HEARD", live ? weather.state.storm : -1);
-      },
-      note: () => "Transaction arrivals in virtual bytes per second (vB/s) drive the rain. The rate is smoothed over about 30 seconds, then shown as dry, drizzle, light rain, rain, heavy rain or downpour. Drops fall straight down. After 90 seconds without a socket reading, the storm eases off and this reads unavailable; that does not mean zero arrivals."
-    },
-    {
-      caption: "Wind",
-      draw: (c2) => {
-        const live = weather.state.arrivals === "live";
-        reading(c2, "WIND INPUT", live ? `${Math.round(weather.state.gale * 100)}%` : "UNAVAILABLE", live ? "#e6f2ff" : STALE_INK, live ? "CLOUD DRIFT AND SOUND" : "NO ARRIVALS HEARD", live ? weather.state.gale : -1);
-      },
-      note: () => "The arrival rate also sets a 0–100% input for the island's wind effect. Wind drifts the clouds and changes the sound; it does not push raindrops sideways. This is a visual effect, not a measured weather reading."
-    },
-    {
-      caption: "The lake",
       draw: (c2, s) => {
-        const water = mempoolIsland.water.state, W = BL.poolLayout.WATER, fill = water.debugFill;
-        const value = fill !== null ? `DEBUG ${fill}/200` : water.status === "unavailable" ? "NO READING" : `${(water.vsize / 1e6).toFixed(1)} MVB`;
-        const under = fill !== null ? "POOL HEIGHT OVERRIDE" : water.preview !== null ? "DEBUG BACKLOG"
-          : water.status === "stale" ? "HELD, READING IS STALE" : water.status === "live" ? "CURRENT BACKLOG" : "NO BACKLOG READING";
-        reading(c2, "LAKE", value, water.status === "live" ? "#7cc8ff" : STALE_INK, under,
-          water.status === "unavailable" ? -1 : (water.level - W.low) / (W.flood - W.low), "#4aa6ff");
+        const live = weather.state.arrivals === "live";
+        reading(c2, "ARRIVALS", live ? rateText(weather.state.inflow) : "- VB/S", live ? "#8fc3ff" : STALE_INK,
+          [live ? weatherMod.STEPS[weather.state.step].name.toUpperCase() : "RAIN UNAVAILABLE", s.backlogAt ? `QUEUE ${backlogText(s.vsize)}` : "QUEUE UNAVAILABLE"]);
       },
-      note: (s) => {
+      note: () => "The large number is new transaction data arriving per second (vB/s). Rain follows a roughly 30-second average, so the weather changes smoothly. The queue below is data still waiting in the mempool (MvB): arrivals can grow it, while new blocks can reduce it. If arrival updates stop for 90 seconds, rain fades and the rate becomes unavailable; that does not mean zero arrivals."
+    },
+    {
+      caption: "Lake",
+      draw: (c2, s) => {
         const water = mempoolIsland.water.state;
-        if (water.debugFill !== null) return `poolfill=${water.debugFill} controls the lake height for debugging. This is not the live Bitcoin backlog; remove the flag to follow the feed again.`;
-        const source = water.preview !== null ? "A debug backlog value" : "Everything waiting for a block";
-        return `${source}, in millions of virtual bytes (MvB), fills the lake. At about ${BL.poolWater.HYDRO.OVERFLOW_VB / 1e6} MvB it reaches its rim, floods the shore and the channels, and pours over the cliffs. That is this island's own scale, not a limit of Bitcoin. The part of the backlog paying 1 sat/vB or more${s.paying && water.preview === null ? ` (${s.paying.toFixed(1)} MvB now)` : ""} is still read, but it no longer makes the rain.`;
+        const known = water.status !== "unavailable" || water.preview !== null;
+        reading(c2, "MEMPOOL", known ? backlogText(water.vsize) : "NO READING", water.status === "live" ? "#7cc8ff" : STALE_INK,
+          backlogDetails(s.count, known && water.preview === null && !!s.backlogAt));
+      },
+      note: () => {
+        const water = mempoolIsland.water.state;
+        const override = water.debugFill !== null ? ` The poolfill=${water.debugFill} setting overrides the lake height, but not these backlog figures.` : "";
+        const preview = water.preview !== null ? " A test backlog is active, so the transaction count is unavailable." : "";
+        return `MvB means millions of virtual bytes still waiting for a block. The smaller figure counts waiting transactions. Fees affect which transactions fit first. Incoming data drives the rain and can grow this queue; blocks confirm transactions and can shrink it. Around ${BL.poolWater.HYDRO.OVERFLOW_VB / 1e6} MvB, the lake reaches the rim and spills over. That is this island's visual scale, not a Bitcoin limit.${override}${preview}`;
       }
     },
     {
       caption: "Lightning",
       draw: (c2, s) => reading(c2, "LAST BLOCK", s.height ? String(s.height) : "-",
         s.heightAt > 0 && Date.now() - s.heightAt < 180000 ? "#ffe066" : STALE_INK, "A BOLT AND A CUBE"),
-      note: () => `A new block throws a bolt over the island and sends a cube of lake water through the chamber. The cube is a visual marker; the next backlog reading says what remains.${DEBUG_POOL_BLOCK ? " In poolblock debug mode, P also triggers a test bolt and cube." : ""}`
+      note: () => `A newly mined block strikes the lake. Light runs down the ramp and splits around the chamber trench; when the two fronts meet, the formed water cube falls. Confirmed transactions leave the mempool, so its next reading may be smaller, though new arrivals can keep it growing. The cube marks the block and does not directly drain the lake.${DEBUG_POOL_BLOCK ? " With poolblock enabled, press P to trigger a test block." : ""}`
     }
   ]);
   const openPoolBoard = (board) => {
+    board.begin();
     board.refresh();
     hud.openBoard(board);
   };
@@ -5607,8 +5688,17 @@
     else hud.toast("Gorilla cannot take a movement order right now");
     return true;
   };
+  const gorillaBehindBillboard = (hit, p) => {
+    if (hit?.owner.kind !== "clanker" || !p || !mempoolIsland) return false;
+    renderer.ray(p.x, p.y, camera, TAP_RAY);
+    const part = hit.node.world;
+    const depth = (part[12] - TAP_RAY.ox) * TAP_RAY.dx + (part[13] - TAP_RAY.oy) * TAP_RAY.dy + (part[14] - TAP_RAY.oz) * TAP_RAY.dz;
+    return depth > 0 && mempoolIsland.billboardOccludes(TAP_RAY.ox, TAP_RAY.oy, TAP_RAY.oz,
+      TAP_RAY.ox + TAP_RAY.dx * depth, TAP_RAY.oy + TAP_RAY.dy * depth, TAP_RAY.oz + TAP_RAY.dz * depth);
+  };
   const onTap = (hit, p) => {
     if (factoryDeparting || bifrostDeparting) return;
+    if (gorillaBehindBillboard(hit, p)) return;
     if (debugMovementTap(hit, p)) return;
     if (!hit) return;
     const o = hit.owner;
@@ -6850,7 +6940,7 @@
       RENDER_OPTS.directStrength *= 1 - 0.92 * poolShade;
       for (let i = 0; i < 3; i++) { RENDER_OPTS.sky[i] *= keep; RENDER_OPTS.ground[i] *= keep; }
     }
-    mempoolIsland.water.update(dt, elapsed);
+    mempoolIsland.water.update(dt, elapsed, Date.now());
     mempoolIsland.paintings.update(dt);
     updateLamps(dt, elapsed, phase !== null);
     if (jumbotron) {
@@ -8892,6 +8982,10 @@
     // The snapshot outlives the visit, so a re-entered hub opens in the weather it left.
     weather.apply(chain.snapshot);
     mempoolIsland.water.apply(chain.snapshot);
+    if (DEBUG_POOL_BLOCK) {
+      mempoolIsland.water.update(0, 0);
+      mempoolIsland.preview.block();
+    }
     mempoolIsland.paintings.refresh(chain.snapshot);
     refreshChainSign();
     unsubscribeChain = chain.subscribe(onChain);
@@ -9308,6 +9402,7 @@
       },
       onDoubleTap: (hit, p) => {
         if (factoryDeparting || bifrostDeparting) return;
+        if (gorillaBehindBillboard(hit, p)) return;
         if (hit && hit.owner.kind === "clanker") {
           if (clankerPlay.player === hit.owner.entry) clankerPlay.release();
           else if (clankerPlay.possess(hit.owner.entry)) selectDebugGorilla(null);

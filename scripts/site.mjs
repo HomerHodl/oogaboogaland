@@ -9,6 +9,7 @@ import { copyFileSync, cpSync, existsSync, mkdirSync, readFileSync, rmSync, writ
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import vm from "node:vm";
+import { externalizeAudio } from "./distribution-audio.mjs";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const out = resolve(root, process.argv[2] || "untracked/site");
@@ -26,7 +27,8 @@ mkdirSync(join(out, "src", "js"), { recursive: true });
 cpSync(join(root, "src", "maxis-player"), join(out, "src", "maxis-player"), { recursive: true });
 copyFileSync(join(root, "src", "js", "maxis-media-data.js"), join(out, "src", "js", "maxis-media-data.js"));
 
-const shell = readFileSync(join(root, "oogaboogaland.html"), "utf8");
+let shell = readFileSync(join(root, "oogaboogaland.html"), "utf8");
+if (process.argv.includes("--audio-assets")) shell = externalizeAudio(shell, root, out);
 if (shell.split("</title>").length !== 2 || shell.split("</head>").length !== 2) throw new Error("oogaboogaland.html: expected one <title> and one </head>");
 
 const esc = (text) => text.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;");

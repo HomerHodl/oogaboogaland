@@ -180,11 +180,11 @@
       const geos = [models.polyline({ points: trunk, color: "#eef5ff", emissive: 1 })];
       for (let b = 0; b < 3; b++) {
         const at = trunk[3 + b * 3], drop = 0.18 + rand() * 0.22;
-        const arm = jag(at.x + (rand() - 0.5) * 0.3, at.z + (rand() - 0.5) * 0.3, at.y, at.y - drop, 4, 0.16);
+        const arm = jag(at.x + (rand() - 0.5) * 0.3, at.z + (rand() - 0.5) * 0.3, at.y, Math.max(0, at.y - drop), 4, 0.16);
         geos.push(models.polyline({ points: [at, ...arm.slice(1)], color: "#dbe9ff", emissive: 1 }));
         if (rand() < 0.55) {
           const fork = arm[2];
-          geos.push(models.polyline({ points: [fork, ...jag(fork.x + (rand() - 0.5) * 0.25, fork.z, fork.y, fork.y - drop * 0.6, 3, 0.12).slice(1)], color: "#cfe0ff", emissive: 1 }));
+          geos.push(models.polyline({ points: [fork, ...jag(fork.x + (rand() - 0.5) * 0.25, fork.z, fork.y, Math.max(0, fork.y - drop * 0.6), 3, 0.12).slice(1)], color: "#cfe0ff", emissive: 1 }));
         }
       }
       out.push(models.merge(...geos));
@@ -348,15 +348,15 @@
         storm = gale = heardAt > 0 && now - heardAt < ARRIVALS_FRESH_MS ? reading : 0;
       }
     };
-    const strike = () => {
+    const strike = (landing = null) => {
       strikes++;
       flashT = 0;
       boltT = 0;
       thunderAt = exterior ? THUNDER_DELAY_MIN + random() * THUNDER_DELAY_SPREAD : -1;
       const a = random() * Math.PI * 2, r = 6 + random() * (BOLT_RANGE - 6), t = centre;
-      const bx = t.x + Math.cos(a) * r, bz = t.z + Math.sin(a) * r;
+      const bx = landing ? landing.x : t.x + Math.cos(a) * r, bz = landing ? landing.z : t.z + Math.sin(a) * r;
       // A bolt that finds no ground under it strikes down to the island's own datum.
-      const found = heightAt(bx, bz), ground = found > -Infinity ? found : t.y;
+      const found = landing ? landing.y : heightAt(bx, bz), ground = found > -Infinity ? found : t.y;
       boltVariant = (random() * variants.length) | 0;
       boltNode.geometry = variants[boltVariant];
       boltNode.position.x = bx;

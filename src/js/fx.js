@@ -254,8 +254,9 @@
           zzz.splice(i, 1);
           continue;
         }
-        if (zzzVisible && !zzzVisible(p.cave, p.x, p.y, p.z)) continue;
-        const pos = project(p.x, p.y + p.t * 0.45, p.z);
+        const y = p.y + p.t * 0.45;
+        if (zzzVisible && !zzzVisible(p.cave, p.x, y, p.z)) continue;
+        const pos = project(p.x, y, p.z);
         if (!pos) continue;
         ctx.globalAlpha = (1 - p.t / 2.4) * 0.8;
         ctx.fillStyle = "#ffb347";

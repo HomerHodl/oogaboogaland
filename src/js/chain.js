@@ -102,7 +102,7 @@
     // Chain
     height: 0, lastTxCount: 0, lastWeight: 0, lastSize: 0, lastBlockAt: 0, pace: TARGET_BLOCK,
     // Mining and market
-    progressPercent: 0, difficultyChange: 0, remainingBlocks: 0, remainingTime: 0,
+    progressPercent: 0, difficultyChange: 0, remainingBlocks: 0, remainingTime: 0, avgBlockMs: 0,
     hashrate: 0, difficulty: 0, priceUsd: 0, priceOpenUsd: 0, priceSource: null,
     // Derived weather axes, 0..1
     soak: 0, gale: 0
@@ -311,6 +311,8 @@
     snapshot.difficultyChange = Number(d.difficultyChange) || 0;
     snapshot.remainingBlocks = d.remainingBlocks | 0;
     snapshot.remainingTime = Number(d.remainingTime) || 0;
+    const avg = Number(d.timeAvg);
+    snapshot.avgBlockMs = Number.isFinite(avg) && avg > 0 ? avg : 0;
   };
   const readHashrate = (h) => {
     if (!h || typeof h !== "object") return;
@@ -468,6 +470,8 @@
       snapshot.heightAt = Number.isInteger(Number(event.height)) && Number(event.height) > 0 ? Date.now() : 0;
       snapshot.height = event.height | 0;
       snapshot.lastTxCount = event.txCount | 0;
+      snapshot.lastWeight = 0;
+      snapshot.lastSize = 0;
       snapshot.lastBlockAt = Date.now();
       // A new block empties part of the pool and replaces the tip, so both are refreshed rather than
       // left to their intervals: the socket gives the height at once, but the size, weight and pace
@@ -499,7 +503,7 @@
   const CACHED = [
     "count", "vsize", "totalFee", "deep", "floor", "nextFee", "fastestFee", "halfHourFee", "hourFee",
     "economyFee", "minimumFee", "height", "lastTxCount", "lastWeight", "lastSize", "lastBlockAt",
-    "pace", "progressPercent", "difficultyChange", "remainingBlocks", "remainingTime", "hashrate",
+    "pace", "progressPercent", "difficultyChange", "remainingBlocks", "remainingTime", "avgBlockMs", "hashrate",
     "difficulty", "priceUsd", "priceOpenUsd", "paying", "payEma", "payAt"
   ];
   const save = () => {

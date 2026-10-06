@@ -176,7 +176,7 @@
         <p data-scene="dash" hidden>Ooga Arcade · Dino Dash</p>
         <p data-scene="stacker" hidden>Ooga Arcade · Stone Stacker</p>
       </div>
-      <time class="world-clock" id="world-clock" aria-label="Local time"></time>
+      <time class="world-clock" id="world-clock"></time>
       <div class="world-block" id="world-block" aria-live="polite" aria-label="Bitcoin block height unavailable">
         <span>Block</span><span id="world-block-height">&mdash;</span>
       </div>
@@ -395,9 +395,9 @@
     <div class="equipment-hud" id="equipment-hud">
       <div class="weapon-equipment-row">
       <button type="button" class="mode-hud" id="destination-hud" data-action="mode-preset" data-selected="false"
-        aria-label="Ooga Booga Land destinations. Select a dot or press to cycle places" title="Ooga Booga Land destinations" hidden>
+        aria-labelledby="detached-destination-name destination-hud-label" title="Ooga Booga Land destinations" hidden>
         <img class="freeroam-icon" id="freeroam-icon" alt="" aria-hidden="true">
-        <span class="detached-destinations" id="detached-destinations" aria-label="Places">
+        <span class="detached-destinations" id="detached-destinations">
           <span class="detached-dot" data-detached-preset="pile" title="Pile"></span>
           <span class="detached-dot" data-detached-preset="lab" title="Lab"></span>
           <span class="detached-dot" data-detached-preset="mirror" title="Mirror"></span>
@@ -406,6 +406,7 @@
           <span class="detached-dot" data-detached-preset="mempool" title="Mempool"></span>
         </span>
         <span class="detached-destination-name" id="detached-destination-name" aria-live="polite"></span>
+        <span id="destination-hud-label" hidden>Ooga Booga Land destinations. Select a dot or press to cycle places</span>
       </button>
       <button type="button" class="mode-hud" id="own-ooga-hud" data-action="mode-retake" data-selected="true"
         aria-label="Return to your Ooga" title="Return to your Ooga" hidden>
