@@ -74,28 +74,40 @@ export const launch = async ({ w = 1440, h = 900, mobile = false, perf = false, 
     ...(perf ? [] : SPEED_FLAGS),
     "about:blank"
   ];
-  const chrome = spawn(CHROME, args, { stdio: "ignore" });
-  const state = { alive: true, pooled: false, key: keyOf({ w, h, mobile, perf, motion }) };
+  const state = { alive: true, pooled: false, released: false, destroyed: false, key: keyOf({ w, h, mobile, perf, motion }) };
+  let startupError = null, stopTransport = null, entry = null;
+  let chrome;
+  try { chrome = spawn(CHROME, args, { stdio: "ignore" }); }
+  catch (err) { removeProfile(profile); throw driverError(`Chrome could not launch at ${CHROME}: ${err.message}`); }
+  chrome.on("error", err => {
+    startupError = err; state.alive = false;
+    stopTransport?.();
+  });
   chrome.on("exit", () => {
     state.alive = false;
+    stopTransport?.();
   });
   const logs = [];
-  let targets = null;
-  for (let i = 0; i < 500 && !targets; i++) {
+  let page = null;
+  const startupDeadline = Date.now() + SETUP_MS;
+  while (!page && state.alive && Date.now() < startupDeadline) {
     await sleep(20);
+    if (!state.alive) break;
     try {
       const port = parseInt(readFileSync(join(profile, "DevToolsActivePort"), "utf8"), 10);
-      if (port) targets = await (await fetch(`http://127.0.0.1:${port}/json`)).json();
-    } catch {
-      targets = null;
-    }
+      const remaining = startupDeadline - Date.now();
+      if (port && remaining > 0) {
+        const response = await fetch(`http://127.0.0.1:${port}/json`, { signal: AbortSignal.timeout(Math.min(1000, remaining)) });
+        const targets = await response.json();
+        if (Array.isArray(targets)) page = targets.find(t => t.type === "page" && t.webSocketDebuggerUrl);
+      }
+    } catch { /* Chrome has not published a usable page yet. */ }
   }
-  if (!targets) {
+  if (!page || !state.alive) {
     chrome.kill("SIGKILL");
     removeProfile(profile);
-    throw driverError(`Chrome did not start at ${CHROME}`);
+    throw driverError(`Chrome did not start at ${CHROME}${startupError ? ": " + startupError.message : ""}`);
   }
-  const page = targets.find((t) => t.type === "page");
   // Chrome can refuse or drop the first socket while starting: retry, and never wait on a failed socket.
   // CONNECT_MS bounds every attempt; an unbounded one once sat 26 minutes as the run's critical path.
   const CONNECT_MS = 5000;
@@ -149,12 +161,23 @@ export const launch = async ({ w = 1440, h = 900, mobile = false, perf = false, 
     }
     if (m.method === "Log.entryAdded") logs.push(`[log.${m.params.entry.level}] ${m.params.entry.text}`);
   };
-  // A crashed Chrome takes its socket with it: fail waiting commands on close instead of at the timeout.
-  ws.onclose = () => {
-    state.alive = false;
-    for (const reply of pending.values()) reply.fail(driverError("DevTools socket closed: Chrome is gone"));
+  // Retire an unusable transport immediately: it must never enter the pool or
+  // keep rendering while a retry uses a new Chrome. Reject all commands now,
+  // without depending on a close event from an already wedged socket.
+  const destroy = (now = false) => {
+    if (state.destroyed) { if (now) removeProfile(profile); return; }
+    state.destroyed = true; state.alive = false;
+    if (entry) live.delete(entry);
+    for (const reply of pending.values()) reply.fail(driverError("DevTools transport retired: Chrome is gone"));
     pending.clear();
+    try { ws.close(); } catch {}
+    chrome.kill(); chrome.kill("SIGKILL");
+    if (now) removeProfile(profile);
+    else setTimeout(() => removeProfile(profile), 500).unref();
   };
+  stopTransport = () => destroy();
+  ws.onclose = () => destroy();
+  ws.onerror = () => destroy();
   // A reply that never comes (DevTools channel can die silently) fails the case instead of freezing the run.
   const send = (method, params = {}, timeoutMs = COMMAND_MS) => new Promise((resolve, reject) => {
     if (!state.alive) return reject(driverError(`${method} cannot run: Chrome is gone`));
@@ -162,6 +185,7 @@ export const launch = async ({ w = 1440, h = 900, mobile = false, perf = false, 
     const timer = setTimeout(() => {
       pending.delete(i);
       reject(driverError(`${method} got no reply in ${timeoutMs / 1000} s: Chrome hung`));
+      destroy();
     }, timeoutMs);
     pending.set(i, {
       ok: (m) => {
@@ -173,7 +197,8 @@ export const launch = async ({ w = 1440, h = 900, mobile = false, perf = false, 
         reject(err);
       }
     });
-    ws.send(JSON.stringify({ id: i, method, params }));
+    try { ws.send(JSON.stringify({ id: i, method, params })); }
+    catch { destroy(); }
   });
   // Raw protocol events; pass null to stop listening.
   const on = (method, fn) => listeners.set(method, fn);
@@ -197,10 +222,7 @@ export const launch = async ({ w = 1440, h = 900, mobile = false, perf = false, 
     await applyMedia();
   } catch (err) {
     // This Chrome is not in `live` yet, so nothing else would ever reap it.
-    state.alive = false;
-    ws.close();
-    chrome.kill("SIGKILL");
-    removeProfile(profile);
+    destroy(true);
     throw err;
   }
   const evaluate = async (expression) => {
@@ -239,20 +261,6 @@ export const launch = async ({ w = 1440, h = 900, mobile = false, perf = false, 
     await send("Page.navigate", { url });
     await send("Page.bringToFront");
   };
-  const destroy = (now = false) => {
-    state.alive = false;
-    live.delete(entry);
-    try {
-      ws.close();
-    } catch {
-    }
-    // A wedged Chrome ignores SIGTERM and a survivor steals CPU from later tasks: one leak made a frame-rate
-    // lane read 20 fps.
-    chrome.kill();
-    chrome.kill("SIGKILL");
-    if (now) removeProfile(profile);
-    else setTimeout(() => removeProfile(profile), 500).unref();
-  };
   // reset() must undo everything a task leaves behind: leaked focus emulation silently throttles the next task
   // to 30 fps and leaked device metrics render it at the wrong viewport.
   const reset = async () => {
@@ -266,10 +274,13 @@ export const launch = async ({ w = 1440, h = 900, mobile = false, perf = false, 
     // about:blank drops the old page's timers, animation loop and WebGL context, so an idle Chrome costs nothing
     // and no leftover frame callback can touch the next task.
     await send("Page.navigate", { url: "about:blank" });
+    let blank = false;
     for (let i = 0; i < 40; i++) {
-      if (await evaluate("location.href === 'about:blank' && document.readyState === 'complete'").catch(() => false)) break;
+      blank = await evaluate("location.href === 'about:blank' && document.readyState === 'complete'").catch(() => false);
+      if (blank) break;
       await sleep(25);
     }
+    if (!blank) throw driverError("Chrome reset did not reach a complete blank page");
     // Clear log buffers last: late console and log events from the old document have landed by now.
     await send("Log.clear").catch(() => {});
     await send("Runtime.discardConsoleEntries").catch(() => {});
@@ -278,12 +289,12 @@ export const launch = async ({ w = 1440, h = 900, mobile = false, perf = false, 
     listeners.clear();
     logs.length = 0; // Clear in place: the runner holds this same array.
   };
-  const close = () => {
-    if (state.pooled) release(api);
+  const close = (force = false) => {
+    if (state.pooled && !force) release(api);
     else destroy();
   };
   const api = { send, on, evaluate, mouse, drag, click, key, focus, screenshot, open, close, sleep, logs };
-  const entry = { api, state, reset, destroy, resetting: null };
+  entry = { api, state, reset, destroy, resetting: null };
   internals.set(api, entry);
   live.add(entry);
   return api;
@@ -312,7 +323,7 @@ export const acquire = async (opts = {}) => {
     // Spliced out of the pool synchronously, so two lanes can never claim the same Chrome.
     const entry = idle.splice(i, 1)[0];
     if (await usable(entry)) {
-      entry.resetting = null;
+      entry.resetting = null; entry.state.released = false;
       return entry.api;
     }
     entry.destroy();
@@ -326,16 +337,17 @@ export const release = (browser) => {
   const entry = internals.get(browser);
   if (!entry) return;
   if (!entry.state.pooled || !entry.state.alive) return entry.destroy();
+  if (entry.state.released) return;
+  entry.state.released = true;
   // The runner does not await close(), so the reset runs on its own and acquire() waits on entry.resetting.
-  entry.resetting = entry.reset().catch(() => {
-    entry.state.alive = false;
-  });
+  entry.resetting = entry.reset().catch(() => entry.destroy());
   idle.push(entry);
   while (idle.length > MAX_IDLE) idle.shift().destroy();
 };
 
 export const dispose = async () => {
-  for (const entry of idle.splice(0)) entry.destroy();
+  idle.length = 0;
+  for (const entry of [...live]) entry.destroy();
 };
 export const closeAll = dispose;
 
