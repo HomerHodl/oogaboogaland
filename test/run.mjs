@@ -4166,7 +4166,21 @@ const hubMelee = { name: "hub melee", why: "rule: a ready swing does five damage
     }
     swings[prop] = { health, n };
   }
-  const back = await b.evaluate(`(() => { const r = window.__target, B = window.__ooga; for (let t = 0; t < 65; t++) { B.advance(1, 1 / 30); if (!r.broken && !r.reveal) return { t: t + 1, health: r.health, active: r.owner.active }; } return null; })()`);
+  const back = await b.evaluate(`(() => {
+    const r = window.__target, B = window.__ooga, a = B.crew.player, origin = { ...r.owner.node.position };
+    const distance = () => Math.hypot(a.root.position.x - origin.x, a.root.position.z - origin.z);
+    const occupiedDistance = distance();
+    // A safe respawn cannot overlap the observer. Leave through normal
+    // navigation without advancing uncounted time before the same timed loop.
+    B.pilot.navigate({ position: { x: -8, y: 0, z: 16 }, yaw: -Math.PI / 2, pitch: 0.3, dist: 5 });
+    const clearedDistance = distance();
+    for (let t = 0; t < 65; t++) {
+      B.advance(1, 1 / 30);
+      if (!r.broken && !r.reveal) return { t: t + 1, health: r.health, active: r.owner.active,
+        occupiedDistance, clearedDistance, footprint: r.owner.footprint, bodyRadius: a.bodyRadius };
+    }
+    return null;
+  })()`);
   record("hub melee: one swing breaks a box, two a barrel and four a rock, and a broken rock is back whole within a minute", swings.crate.n === 1 && swings.barrel.n === 2 && swings.rock.n === 4 && !!back && back.t >= 30 && back.t <= 61 && back.health === swings.rock.health && back.active, JSON.stringify({ swings, back }));
   await b.evaluate(nextTo("rock", 1.175));
   const recharge = await b.evaluate(`(() => {
