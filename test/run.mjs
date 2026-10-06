@@ -4481,6 +4481,9 @@ const hubBirdsEye = { name: "birds-eye combat camera", why: "regression: horizon
   record("birds-eye combat: small native mouse and orbit gestures release the tracked target without jumping to stale absolute coordinates", centered.unlocked && centered.manualError < 0.02 && centered.releasedError < 0.02 && centered.mouseTurnError < 0.001 && centered.hookError < 0.02 && centered.newTarget > 20, JSON.stringify(centered));
   const rotation = await b.evaluate(`(() => {
     const B = __ooga, angle = () => { const s = __birdsSnapshot(); return Math.atan2(-s.up[0], -s.up[2]); }, wrap = n => Math.atan2(Math.sin(n), Math.cos(n));
+    // The preceding mouse/orbit probe ends one frame after a new gesture.
+    // Settle that gesture before comparing equal opposite held-key turns.
+    B.advance(1, 1 / 60);
     const key = (type, k) => window.dispatchEvent(new KeyboardEvent(type, { key: k }));
     const hold = (k, frames) => { const before = angle(); key("keydown", k); const immediate = Math.abs(wrap(angle() - before)); let total = 0, maxStep = 0, center = 0, last = before;
       for (let i = 0; i < frames; i++) { B.advance(1 / 60, 1 / 60); const next = angle(), step = wrap(next - last); total += step; maxStep = Math.max(maxStep, Math.abs(step)); center = Math.max(center, __birdsSnapshot().center); last = next; }
