@@ -4890,7 +4890,7 @@
   // The chain board's four readings, set in the jumbotron's 5x7 font and run-length merged into quads,
   // exactly as the cave sets its wall panels. Its overview and four detail panes rebuild only when their
   // visible readings change, so a board left standing all day holds its size.
-  const CHAIN_PANEL_W = 208, CHAIN_PANEL_H = 72, CHAIN_PANEL_BG = [42, 39, 36];
+  const CHAIN_PANEL_W = 230, CHAIN_PANEL_H = 72, CHAIN_PANEL_BG = [42, 39, 36];
   // A board that has stopped being fed says so by going grey. Holding the last reading out in its
   // usual colours would be the one genuinely misleading thing this island could do.
   const STALE_INK = "#7d766a";
@@ -4981,7 +4981,7 @@
       text.drawText(c2, title, Math.round((CHAIN_PANEL_W - text.measureText(title, 2)) / 2), 4, "#9b8f7a", 2);
       const scale = metricWidth(value, 4) <= CHAIN_PANEL_W - 8 ? 4 : 3;
       drawMetric(c2, value, CHAIN_PANEL_W / 2, 23, color, scale);
-      if (under) drawMetric(c2, under, CHAIN_PANEL_W / 2, 59, "#9b8f7a", 1);
+      if (under) drawMetric(c2, under, CHAIN_PANEL_W / 2, 54, "#9b8f7a", 2);
     }
     const node = chainSign.node;
     if (node.geometry) renderer.releaseGeometry(node.geometry);
