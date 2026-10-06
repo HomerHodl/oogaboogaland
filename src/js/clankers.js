@@ -6149,7 +6149,9 @@
           }
         } else if (travelGoal(e, dt)) {
           if (!e.jump.active) {
-            if (e.route === "apron" && p.y > e.goalY + 0.8 && caveAt(p.x, p.y, p.z) < 0)
+            // A short prop can lift the feet above the ground-level goal too.
+            // Keep its supported exit on the ordinary steered walker.
+            if (e.route === "apron" && p.y > e.goalY + 0.8 && !raisedSupport(e) && caveAt(p.x, p.y, p.z) < 0)
               runDownhill(e, dt, Math.atan2(e.goalX - p.x, e.goalZ - p.z));
             else if (enteringAisle(e)) moveEntryAisle(e, dt);
             else if (e.motion.lab && !e.motion.labRunIn && (e.fromSite === labSite && e.route === "exit"
