@@ -7187,10 +7187,20 @@ scene("hub", { label: "gorilla lab carry jump", query: "character=gorilla-portla
     cave.act.kind = "idle"; cave.act.until = Infinity;
     const mesh = B.headquarters.solids.companions;
     const key = (type, name, code) => window.dispatchEvent(new KeyboardEvent(type, { key: name, code, bubbles: true, cancelable: true }));
+    // Face the lab aisle with the actual camera controls. The default view
+    // runs into the rear work desks, whose torso collision correctly stops ascent.
+    const orbit = B.pilot.orbit, aisleYaw = B.headquarters.entropyLab.mouth.ry + Math.PI;
+    const turn = Math.atan2(Math.sin(aisleYaw - orbit.yaw), Math.cos(aisleYaw - orbit.yaw));
+    const turnKey = turn < 0 ? "q" : "e", turnCode = turn < 0 ? "KeyQ" : "KeyE";
+    key("keydown", turnKey, turnCode);
+    for (let i = 0; i < Math.round(Math.abs(turn) * 60 / 1.7); i++) B.advance(1 / 60, 1 / 60);
+    key("keyup", turnKey, turnCode);
+    for (let i = 0; i < 20; i++) B.advance(1 / 60, 1 / 60);
+    const forwardX = -Math.sin(orbit.yaw), forwardZ = -Math.cos(orbit.yaw);
     const startY = p.y, startZ = p.z, serial = e.smashSerial;
     key("keydown", "Shift", "ShiftLeft"); key("keydown", "w", "KeyW");
     for (let i = 0; i < 5; i++) B.advance(1 / 60, 1 / 60);
-    const ran = e.drive.run && e.drive.z < -0.5 && Math.abs(p.z - startZ) > 0.2;
+    const ran = e.drive.run && e.drive.x * forwardX + e.drive.z * forwardZ > 0.5 && Math.abs(p.z - startZ) > 0.2;
     S.updateWorld(BL.scenes.hub.root); mesh.sync();
     let support = -Infinity, riderX = p.x, riderZ = p.z;
     for (let dx = -1; dx <= 1.001; dx += 0.2) for (let dz = -1; dz <= 1.001; dz += 0.2) {
@@ -9315,6 +9325,43 @@ const unitChecks = async () => {
       if (crew) crew.dispose();
       C.roster.forEach((c, i) => Object.assign(c, saved[i]));
     }
+  }
+  {
+    // Exercise the real watchdog: blocked steering must not erase a published route.
+    const S = BL.scene, root = S.createNode(), noop = () => {};
+    const island = { path: { version: 0, debug: { active: false, ringCenterRadius: 0 }, centerlines: [[{ x: 0, z: -10 }, { x: 0, z: 10 }]] }, surfaceAt: () => 0, isPath: () => true };
+    const npcPaths = BL.npcPaths.create({ island, walkable: () => true });
+    let escapeAllowed = false;
+    const crew = BL.crew.create({ root, world: { level: 0 }, npcPaths,
+      input: { add: noop, remove: noop }, hud: { setRosterRow: noop },
+      game: { state: { assignments: {}, inventory: [] } }, pile: { footprintEdge: 1, pileEdge: () => 1 },
+      viewYaw: 0, buildSpots: [], walkIn: { x: 0, z: 3 }, groundAt: () => 0, walkable: (x, z, tx, tz) => escapeAllowed && Math.abs(tx - x) > 0.3 && Math.abs(tz - z) < 0.1,
+      bedrolls: BL.contributors.roster.map((entry, i) => ({ x: 30 + i * 2, y: 0, z: 30, hidden: true })),
+      fx: { say: noop, zzzAt: noop, burst: noop, puff: noop, spawnParticle: noop, damageNumber: noop }
+    });
+    try {
+      for (const c of crew.list) { c.root.visible = false; c.state = "away"; c.bedTravel.mode = ""; }
+      const c = crew.list[0], rows = [];
+      for (const escape of [false, true]) {
+        escapeAllowed = escape; c.state = "working"; c.root.visible = true; c.root.quaternion = null;
+        Object.assign(c.root.position, { x: 0, y: c.baseY, z: -6 });
+        c.walk = { tx: 0, tz: 6, speed: 1.7, phase: 0, heading: 0, to: "spot" };
+        c.act.kind = "wander"; Object.assign(c.act.spot, { x: 0, z: 6, ry: 0 });
+        c.act.until = c.nextBuildAt = c.yawnAt = 1e12; c.hop = c.hopV = 0;
+        c.pathing.tx = NaN; c.avoidance.active = false; c.avoidance.navigation.mode = 0;
+        Object.assign(c.progress, { x: NaN, z: NaN, stalled: 0, motionless: 0, retry: 0, backoff: 0, replanned: false, escaped: false, navigationHop: false, detours: 0, replans: 0, resets: 0 });
+        npcPaths.target(c, 0, 6);
+        let missing = 0, backoff = false;
+        for (let frame = 0; frame < 32; frame++) {
+          crew.update(1 / 20, frame / 20);
+          if (c.pathing.count < 2 || !Number.isFinite(c.pathing.tx)) missing++;
+          backoff ||= c.progress.backoff > 0;
+        }
+        rows.push({ escape, replans: c.progress.replans, detours: c.progress.detours, backoff, missing, resets: c.progress.resets, x: c.root.position.x, z: c.root.position.z });
+      }
+      record("NPC watchdog: escape and replan retain the same surface route before publishing grounded frames without relocation", rows.every(row => !row.missing && !row.resets && row.x === 0 && row.z === -6) && rows[0].replans > 0 && rows[1].detours > 0 && rows[1].backoff,
+        JSON.stringify(rows));
+    } finally { crew.dispose(); }
   }
   {
     // Bed priority must work both on entry and when a vacancy opens mid-session.

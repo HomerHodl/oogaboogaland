@@ -3553,7 +3553,8 @@
       return shoulderClear(cave, x, z) && npcWalkable(p.x, p.z, x, z, feet, cave.bodyHeight, cave)
         && groundAt(x, z, feet, feet, cave) >= feet - STEP - 1e-7;
     };
-    const resetWalkerRoute = (cave) => {
+    const resetWalkerRoute = (cave, retainPath = false) => {
+      const tx = retainPath && cave.pathing ? cave.pathing.tx : NaN, tz = retainPath && cave.pathing ? cave.pathing.tz : NaN;
       const a = cave.avoidance;
       a.active = false; a.tx = NaN; a.stalled = 0; a.best = Infinity;
       a.navigation.mode = 0; a.detour.site = -1;
@@ -3561,6 +3562,9 @@
       cave.pileApproach = false;
       if (cave.pathing) { cave.pathing.tx = NaN; cave.pathing.index = cave.pathing.count = 0; }
       clearShoulder(cave);
+      // Recovery changes steering, not the destination. Publish its rebuilt
+      // surface route in this frame, including while the short backoff runs.
+      if (ctx.npcPaths && Number.isFinite(tx) && Number.isFinite(tz)) ctx.npcPaths.target(cave, tx, tz);
     };
     // Independent of changing path hints and traffic waits: a failed route may
     // otherwise restart its local recovery forever without moving the Ooga.
@@ -3616,13 +3620,13 @@
           const angle = heading + (side === 4 ? Math.PI : (side & 1 ? -1 : 1) * (Math.PI / 2 + (side >> 1) * Math.PI / 4));
           const dx = Math.sin(angle), dz = Math.cos(angle), x = p.x + dx * 0.4, z = p.z + dz * 0.4;
           if (!walkerClear(cave, x, z) || !shoulderClear(cave, x, z)) continue;
-          resetWalkerRoute(cave);
+          resetWalkerRoute(cave, true);
           progress.backX = dx; progress.backZ = dz; progress.backoff = 0.4; progress.detours++;
           break;
         }
       }
       if (!progress.replanned && progress.stalled >= 1 && progress.motionless >= 0.8 && !progress.backoff) {
-        resetWalkerRoute(cave); progress.replanned = true; progress.replans++;
+        resetWalkerRoute(cave, true); progress.replanned = true; progress.replans++;
         ctx.fx.say(cave, "COMING THROUGH!", 1.8);
         if (travel.mode === "walk" && ctx.bedRoute) startBedRoute(cave, travel.toBed ? cave.bedroll : travel.bed, travel.toBed);
       }
