@@ -1,0 +1,993 @@
+{
+  "capturedAt": "2026-10-06T08:47:37.192Z",
+  "base": "5ddd742c5735ef3a5de60ed92050b73851924849",
+  "testedCodeHead": "a27d3c9e543e7cc66d326175902c5e8307e85c63",
+  "suiteSha256": "9cf3b33869ed860652da504c2dcbdcaa5932d69c0edcba93d95facbad28e0950",
+  "sourceSha256": "1a1c6fc4448cfa0d9c78c16df5906a97a543b9cb1fda90908b983740ee2528f0",
+  "baselineFull": {
+    "passed": 701,
+    "total": 720,
+    "knownOpen": 0,
+    "minutes": 11.8
+  },
+  "full": {
+    "passed": 702,
+    "total": 721,
+    "knownOpen": 0,
+    "minutes": 13.3
+  },
+  "sharedBaselineFailureNames": [
+    "wall movement performance: ordinary movement stays responsive at a high-density desktop size",
+    "wall movement performance: moving behind cave walls during a donation stays responsive at a high-density desktop size",
+    "work movement cave trips: five workers retain path routes and finish repeated trips to lab, OBL and LF without stuck loops, jumps or relocation",
+    "gorilla lab carry jump: Shift+W+G keeps a running grab through both jumps and a charged midair throw without a smash",
+    "gorilla wall destination: a roof gorilla reaches the clicked lower lateral wall grip through continuous climbing without relocation or terrain penetration",
+    "race tracks: bay builds fast into culled sectors with checkpoints clear of its gaps",
+    "race tracks: gorge builds fast into culled sectors with checkpoints clear of its gaps",
+    "race tracks: peak builds fast into culled sectors with checkpoints clear of its gaps",
+    "timechain crossing",
+    "hub melee: one swing breaks a box, two a barrel and four a rock, and a broken rock is back whole within a minute",
+    "hub melee: focused quick taps start at normal power, rapid contacts recover linearly after 0.1s and every hit restarts recovery",
+    "hub melee: red damage numbers round full hit power to half points",
+    "hub phone: nothing is clipped, wrapped by accident or off screen, and every control is under a thumb, with the sheet open too",
+    "birds-eye combat: held Q and E rotate smoothly in opposite directions and settle after release",
+    "birds-eye combat: N eases back to north along the shortest path after rotating past a full turn",
+    "birds-eye combat camera",
+    "birds-eye lower floors",
+    "dsb lifecycle",
+    "factory lifecycle"
+  ],
+  "variantOnlyFailureNames": [],
+  "context": {
+    "capturedAt": "2026-10-06T08:45:31.748Z",
+    "variant": "pr163",
+    "head": "a27d3c9e543e7cc66d326175902c5e8307e85c63",
+    "pageSha256": "055c389cfdffda7ad794dcb0e3cdd205ada1c5006231eddce4643d4b2eb9c428",
+    "results": [
+      {
+        "backend": "webgl2",
+        "before": {
+          "frames": 35,
+          "stats": {
+            "visibleNodes": 2312,
+            "allNodes": 4504,
+            "tweens": 0,
+            "targets": 1209,
+            "particles": 0,
+            "pool": 0,
+            "bubbles": 0,
+            "zzz": 27,
+            "damageNumbers": 0,
+            "crates": 0,
+            "built": 0,
+            "slots": 302,
+            "shown": 1000,
+            "rendered": 194,
+            "deliveries": 0,
+            "pendingDrops": 0,
+            "dropsStarted": 0,
+            "dropsLanded": 0,
+            "landedBananaValue": 0,
+            "dropPool": 96,
+            "dropRate": 72,
+            "spillPool": 32,
+            "spilling": 0,
+            "butterflies": 6,
+            "fireflies": 0,
+            "embers": 3,
+            "surfaceEmbers": 0,
+            "headquartersEmbers": 3,
+            "waterCubes": 0,
+            "waterQueued": 0,
+            "waterRipples": 0,
+            "breakablesProps": 26,
+            "breakablesBroken": 0,
+            "breakablesRewards": 0,
+            "breakablesRevealing": 0,
+            "rainDrops": 0,
+            "strikes": 0,
+            "remotePlayers": 0,
+            "gl": {
+              "records": 937,
+              "active": 936,
+              "mirrorResources": 4,
+              "imageTextures": 1,
+              "rippleBodyTextures": 0,
+              "shadowResources": 4,
+              "shadowSize": 1024,
+              "shadowPassCount": 35,
+              "shadowFinite": true,
+              "shadowDraws": 164,
+              "shadowStatic": 400,
+              "shadowStaticRebuilds": 3,
+              "culled": 1172,
+              "drawn": 37689,
+              "suppressed": 0,
+              "rippleSurfaces": 1,
+              "rippleWaves": 4
+            },
+            "dom": 2967
+          },
+          "renderer": "webgl2"
+        },
+        "visits": [
+          {
+            "accepted": true,
+            "scene": "lab",
+            "frames": 162,
+            "stats": {
+              "visibleNodes": 996,
+              "allNodes": 1810,
+              "tweens": 0,
+              "targets": 270,
+              "particles": 0,
+              "pool": 0,
+              "bubbles": 0,
+              "zzz": 35,
+              "damageNumbers": 0,
+              "crates": 0,
+              "built": 0,
+              "slots": 302,
+              "shown": 1000,
+              "rendered": 194,
+              "deliveries": 0,
+              "pendingDrops": 0,
+              "dropsStarted": 0,
+              "dropsLanded": 0,
+              "landedBananaValue": 0,
+              "dropPool": 96,
+              "dropRate": 72,
+              "spillPool": 32,
+              "spilling": 0,
+              "gl": {
+                "records": 436,
+                "active": 428,
+                "mirrorResources": 0,
+                "imageTextures": 0,
+                "rippleBodyTextures": 0,
+                "shadowResources": 4,
+                "shadowSize": 1024,
+                "shadowPassCount": 162,
+                "shadowFinite": true,
+                "shadowDraws": 307,
+                "shadowStatic": 106,
+                "shadowStaticRebuilds": 8,
+                "culled": 202,
+                "drawn": 1020,
+                "suppressed": 0,
+                "rippleSurfaces": 0,
+                "rippleWaves": 0
+              },
+              "dom": 2967
+            }
+          },
+          {
+            "accepted": true,
+            "scene": "hub",
+            "frames": 287,
+            "stats": {
+              "visibleNodes": 2303,
+              "allNodes": 4486,
+              "tweens": 0,
+              "targets": 1209,
+              "particles": 0,
+              "pool": 0,
+              "bubbles": 0,
+              "zzz": 27,
+              "damageNumbers": 0,
+              "crates": 0,
+              "built": 0,
+              "slots": 302,
+              "shown": 1000,
+              "rendered": 194,
+              "deliveries": 0,
+              "pendingDrops": 0,
+              "dropsStarted": 0,
+              "dropsLanded": 0,
+              "landedBananaValue": 0,
+              "dropPool": 96,
+              "dropRate": 72,
+              "spillPool": 32,
+              "spilling": 0,
+              "butterflies": 8,
+              "fireflies": 0,
+              "embers": 4,
+              "surfaceEmbers": 0,
+              "headquartersEmbers": 4,
+              "waterCubes": 0,
+              "waterQueued": 0,
+              "waterRipples": 0,
+              "breakablesProps": 26,
+              "breakablesBroken": 0,
+              "breakablesRewards": 0,
+              "breakablesRevealing": 0,
+              "rainDrops": 0,
+              "strikes": 0,
+              "remotePlayers": 0,
+              "gl": {
+                "records": 979,
+                "active": 938,
+                "mirrorResources": 4,
+                "imageTextures": 1,
+                "rippleBodyTextures": 0,
+                "shadowResources": 4,
+                "shadowSize": 1024,
+                "shadowPassCount": 287,
+                "shadowFinite": true,
+                "shadowDraws": 414,
+                "shadowStatic": 150,
+                "shadowStaticRebuilds": 14,
+                "culled": 1170,
+                "drawn": 37691,
+                "suppressed": 0,
+                "rippleSurfaces": 1,
+                "rippleWaves": 3
+              },
+              "dom": 2967
+            }
+          },
+          {
+            "accepted": true,
+            "scene": "lab",
+            "frames": 413,
+            "stats": {
+              "visibleNodes": 996,
+              "allNodes": 1810,
+              "tweens": 0,
+              "targets": 270,
+              "particles": 0,
+              "pool": 0,
+              "bubbles": 0,
+              "zzz": 35,
+              "damageNumbers": 0,
+              "crates": 0,
+              "built": 0,
+              "slots": 302,
+              "shown": 1000,
+              "rendered": 194,
+              "deliveries": 0,
+              "pendingDrops": 0,
+              "dropsStarted": 0,
+              "dropsLanded": 0,
+              "landedBananaValue": 0,
+              "dropPool": 96,
+              "dropRate": 72,
+              "spillPool": 32,
+              "spilling": 0,
+              "gl": {
+                "records": 436,
+                "active": 428,
+                "mirrorResources": 0,
+                "imageTextures": 0,
+                "rippleBodyTextures": 0,
+                "shadowResources": 4,
+                "shadowSize": 1024,
+                "shadowPassCount": 413,
+                "shadowFinite": true,
+                "shadowDraws": 351,
+                "shadowStatic": 62,
+                "shadowStaticRebuilds": 17,
+                "culled": 202,
+                "drawn": 1020,
+                "suppressed": 0,
+                "rippleSurfaces": 0,
+                "rippleWaves": 0
+              },
+              "dom": 2967
+            }
+          },
+          {
+            "accepted": true,
+            "scene": "hub",
+            "frames": 535,
+            "stats": {
+              "visibleNodes": 2302,
+              "allNodes": 4486,
+              "tweens": 0,
+              "targets": 1209,
+              "particles": 0,
+              "pool": 0,
+              "bubbles": 0,
+              "zzz": 27,
+              "damageNumbers": 0,
+              "crates": 0,
+              "built": 0,
+              "slots": 302,
+              "shown": 1000,
+              "rendered": 194,
+              "deliveries": 0,
+              "pendingDrops": 0,
+              "dropsStarted": 0,
+              "dropsLanded": 0,
+              "landedBananaValue": 0,
+              "dropPool": 96,
+              "dropRate": 72,
+              "spillPool": 32,
+              "spilling": 0,
+              "butterflies": 8,
+              "fireflies": 0,
+              "embers": 4,
+              "surfaceEmbers": 0,
+              "headquartersEmbers": 4,
+              "waterCubes": 0,
+              "waterQueued": 0,
+              "waterRipples": 0,
+              "breakablesProps": 26,
+              "breakablesBroken": 0,
+              "breakablesRewards": 0,
+              "breakablesRevealing": 0,
+              "rainDrops": 0,
+              "strikes": 0,
+              "remotePlayers": 0,
+              "gl": {
+                "records": 978,
+                "active": 937,
+                "mirrorResources": 4,
+                "imageTextures": 1,
+                "rippleBodyTextures": 0,
+                "shadowResources": 4,
+                "shadowSize": 1024,
+                "shadowPassCount": 535,
+                "shadowFinite": true,
+                "shadowDraws": 414,
+                "shadowStatic": 150,
+                "shadowStaticRebuilds": 24,
+                "culled": 1161,
+                "drawn": 37703,
+                "suppressed": 0,
+                "rippleSurfaces": 1,
+                "rippleWaves": 3
+              },
+              "dom": 2967
+            }
+          }
+        ],
+        "recovery": {
+          "lost": true,
+          "restored": true,
+          "framesBefore": 536,
+          "framesAfter": 557,
+          "stats": {
+            "records": 937,
+            "active": 937,
+            "mirrorResources": 1,
+            "imageTextures": 1,
+            "rippleBodyTextures": 0,
+            "shadowResources": 4,
+            "shadowSize": 1024,
+            "shadowPassCount": 538,
+            "shadowFinite": true,
+            "shadowDraws": 564,
+            "shadowStatic": 0,
+            "shadowStaticRebuilds": 25,
+            "culled": 1161,
+            "drawn": 37701,
+            "suppressed": 0,
+            "rippleSurfaces": 0,
+            "rippleWaves": 0
+          }
+        },
+        "logs": [],
+        "pass": true
+      },
+      {
+        "backend": "canvas2d",
+        "before": {
+          "frames": 7,
+          "stats": {
+            "visibleNodes": 2167,
+            "allNodes": 4174,
+            "tweens": 0,
+            "targets": 1148,
+            "particles": 0,
+            "pool": 0,
+            "bubbles": 0,
+            "zzz": 28,
+            "damageNumbers": 0,
+            "crates": 0,
+            "built": 0,
+            "slots": 302,
+            "shown": 1000,
+            "rendered": 194,
+            "deliveries": 0,
+            "pendingDrops": 0,
+            "dropsStarted": 0,
+            "dropsLanded": 0,
+            "landedBananaValue": 0,
+            "dropPool": 96,
+            "dropRate": 72,
+            "spillPool": 32,
+            "spilling": 0,
+            "butterflies": 6,
+            "fireflies": 0,
+            "embers": 3,
+            "surfaceEmbers": 0,
+            "headquartersEmbers": 3,
+            "waterCubes": 0,
+            "waterQueued": 0,
+            "waterRipples": 0,
+            "breakablesProps": 26,
+            "breakablesBroken": 0,
+            "breakablesRewards": 0,
+            "breakablesRevealing": 0,
+            "rainDrops": 0,
+            "strikes": 0,
+            "remotePlayers": 0,
+            "gl": {
+              "records": 0,
+              "active": 0,
+              "mirrorResources": 0,
+              "imageTextures": 0,
+              "rippleBodyTextures": 0,
+              "shadowResources": 0,
+              "shadowSize": 0,
+              "shadowPassCount": 0,
+              "shadowFinite": true,
+              "culled": 0,
+              "drawn": 0,
+              "suppressed": 0,
+              "rippleSurfaces": 1,
+              "rippleWaves": 3,
+              "matrixSurfaces": 542,
+              "matrixLivingSurfaces": 153,
+              "matrixSamples": 80607,
+              "matrixSampleStep": 1,
+              "matrixSampleBudget": 524288,
+              "matrixTileBytes": 4096
+            },
+            "dom": 2967
+          },
+          "renderer": "canvas2d"
+        },
+        "visits": [
+          {
+            "accepted": true,
+            "scene": "lab",
+            "frames": 17,
+            "stats": {
+              "visibleNodes": 996,
+              "allNodes": 1810,
+              "tweens": 0,
+              "targets": 270,
+              "particles": 0,
+              "pool": 0,
+              "bubbles": 0,
+              "zzz": 35,
+              "damageNumbers": 0,
+              "crates": 0,
+              "built": 0,
+              "slots": 302,
+              "shown": 1000,
+              "rendered": 194,
+              "deliveries": 0,
+              "pendingDrops": 0,
+              "dropsStarted": 0,
+              "dropsLanded": 0,
+              "landedBananaValue": 0,
+              "dropPool": 96,
+              "dropRate": 72,
+              "spillPool": 32,
+              "spilling": 0,
+              "gl": {
+                "records": 0,
+                "active": 0,
+                "mirrorResources": 0,
+                "imageTextures": 0,
+                "rippleBodyTextures": 0,
+                "shadowResources": 0,
+                "shadowSize": 0,
+                "shadowPassCount": 0,
+                "shadowFinite": true,
+                "culled": 0,
+                "drawn": 0,
+                "suppressed": 0,
+                "rippleSurfaces": 0,
+                "rippleWaves": 0,
+                "matrixSurfaces": 0,
+                "matrixLivingSurfaces": 0,
+                "matrixSamples": 0,
+                "matrixSampleStep": 1,
+                "matrixSampleBudget": 524288,
+                "matrixTileBytes": 4096
+              },
+              "dom": 2967
+            }
+          },
+          {
+            "accepted": true,
+            "scene": "hub",
+            "frames": 28,
+            "stats": {
+              "visibleNodes": 2167,
+              "allNodes": 4174,
+              "tweens": 0,
+              "targets": 1148,
+              "particles": 0,
+              "pool": 0,
+              "bubbles": 0,
+              "zzz": 28,
+              "damageNumbers": 0,
+              "crates": 0,
+              "built": 0,
+              "slots": 302,
+              "shown": 1000,
+              "rendered": 194,
+              "deliveries": 0,
+              "pendingDrops": 0,
+              "dropsStarted": 0,
+              "dropsLanded": 0,
+              "landedBananaValue": 0,
+              "dropPool": 96,
+              "dropRate": 72,
+              "spillPool": 32,
+              "spilling": 0,
+              "butterflies": 6,
+              "fireflies": 0,
+              "embers": 3,
+              "surfaceEmbers": 0,
+              "headquartersEmbers": 3,
+              "waterCubes": 0,
+              "waterQueued": 0,
+              "waterRipples": 0,
+              "breakablesProps": 26,
+              "breakablesBroken": 0,
+              "breakablesRewards": 0,
+              "breakablesRevealing": 0,
+              "rainDrops": 0,
+              "strikes": 0,
+              "remotePlayers": 0,
+              "gl": {
+                "records": 0,
+                "active": 0,
+                "mirrorResources": 0,
+                "imageTextures": 0,
+                "rippleBodyTextures": 0,
+                "shadowResources": 0,
+                "shadowSize": 0,
+                "shadowPassCount": 0,
+                "shadowFinite": true,
+                "culled": 0,
+                "drawn": 0,
+                "suppressed": 0,
+                "rippleSurfaces": 1,
+                "rippleWaves": 2,
+                "matrixSurfaces": 542,
+                "matrixLivingSurfaces": 153,
+                "matrixSamples": 80594,
+                "matrixSampleStep": 1,
+                "matrixSampleBudget": 524288,
+                "matrixTileBytes": 4096
+              },
+              "dom": 2967
+            }
+          },
+          {
+            "accepted": true,
+            "scene": "lab",
+            "frames": 39,
+            "stats": {
+              "visibleNodes": 996,
+              "allNodes": 1810,
+              "tweens": 0,
+              "targets": 270,
+              "particles": 0,
+              "pool": 0,
+              "bubbles": 0,
+              "zzz": 35,
+              "damageNumbers": 0,
+              "crates": 0,
+              "built": 0,
+              "slots": 302,
+              "shown": 1000,
+              "rendered": 194,
+              "deliveries": 0,
+              "pendingDrops": 0,
+              "dropsStarted": 0,
+              "dropsLanded": 0,
+              "landedBananaValue": 0,
+              "dropPool": 96,
+              "dropRate": 72,
+              "spillPool": 32,
+              "spilling": 0,
+              "gl": {
+                "records": 0,
+                "active": 0,
+                "mirrorResources": 0,
+                "imageTextures": 0,
+                "rippleBodyTextures": 0,
+                "shadowResources": 0,
+                "shadowSize": 0,
+                "shadowPassCount": 0,
+                "shadowFinite": true,
+                "culled": 0,
+                "drawn": 0,
+                "suppressed": 0,
+                "rippleSurfaces": 0,
+                "rippleWaves": 0,
+                "matrixSurfaces": 0,
+                "matrixLivingSurfaces": 0,
+                "matrixSamples": 0,
+                "matrixSampleStep": 1,
+                "matrixSampleBudget": 524288,
+                "matrixTileBytes": 4096
+              },
+              "dom": 2967
+            }
+          },
+          {
+            "accepted": true,
+            "scene": "hub",
+            "frames": 50,
+            "stats": {
+              "visibleNodes": 2167,
+              "allNodes": 4174,
+              "tweens": 0,
+              "targets": 1148,
+              "particles": 0,
+              "pool": 0,
+              "bubbles": 0,
+              "zzz": 28,
+              "damageNumbers": 0,
+              "crates": 0,
+              "built": 0,
+              "slots": 302,
+              "shown": 1000,
+              "rendered": 194,
+              "deliveries": 0,
+              "pendingDrops": 0,
+              "dropsStarted": 0,
+              "dropsLanded": 0,
+              "landedBananaValue": 0,
+              "dropPool": 96,
+              "dropRate": 72,
+              "spillPool": 32,
+              "spilling": 0,
+              "butterflies": 6,
+              "fireflies": 0,
+              "embers": 3,
+              "surfaceEmbers": 0,
+              "headquartersEmbers": 3,
+              "waterCubes": 0,
+              "waterQueued": 0,
+              "waterRipples": 0,
+              "breakablesProps": 26,
+              "breakablesBroken": 0,
+              "breakablesRewards": 0,
+              "breakablesRevealing": 0,
+              "rainDrops": 0,
+              "strikes": 0,
+              "remotePlayers": 0,
+              "gl": {
+                "records": 0,
+                "active": 0,
+                "mirrorResources": 0,
+                "imageTextures": 0,
+                "rippleBodyTextures": 0,
+                "shadowResources": 0,
+                "shadowSize": 0,
+                "shadowPassCount": 0,
+                "shadowFinite": true,
+                "culled": 0,
+                "drawn": 0,
+                "suppressed": 0,
+                "rippleSurfaces": 1,
+                "rippleWaves": 3,
+                "matrixSurfaces": 542,
+                "matrixLivingSurfaces": 153,
+                "matrixSamples": 80582,
+                "matrixSampleStep": 1,
+                "matrixSampleBudget": 524288,
+                "matrixTileBytes": 4096
+              },
+              "dom": 2967
+            }
+          }
+        ],
+        "recovery": null,
+        "logs": [],
+        "pass": true
+      }
+    ]
+  },
+  "factoryResourceDiagnostic": {
+    "method": "Exact current variant untilReady, dsbSoak and Factory lifecycle registration extracted unchanged. Travel deadline and assertions are unchanged. Read-only census is added around snapshot operations; it can perturb timing and must be interpreted as diagnostic instrumentation. Diagnostic continuation only: travel wait extended to 20 seconds, original settled <= 8000 ms verdict recorded for every travel; any original deadline violation fails overall. Resource assertions, six visits and heap parser unchanged. This mode cannot establish an acceptance pass.",
+    "acceptanceEligible": false,
+    "travels": [
+      {
+        "visit": 1,
+        "id": "factory",
+        "timing": {
+          "swap": 585.7000000178814,
+          "swapGap": 335.30000001192093,
+          "settled": 726.2000000178814
+        },
+        "error": null,
+        "originalDeadlinePassed": true
+      },
+      {
+        "visit": 2,
+        "id": "lab",
+        "timing": {
+          "swap": 340,
+          "swapGap": 92.59999999403954,
+          "settled": 749.4000000059605
+        },
+        "error": null,
+        "originalDeadlinePassed": true
+      },
+      {
+        "visit": 3,
+        "id": "hub",
+        "timing": {
+          "swap": 1082.5,
+          "swapGap": 835.2999999821186,
+          "settled": 1470.6000000238419
+        },
+        "error": null,
+        "originalDeadlinePassed": true
+      },
+      {
+        "visit": 4,
+        "id": "factory",
+        "timing": {
+          "swap": 1428.300000011921,
+          "swapGap": 161.2000000178814,
+          "settled": 1601.9000000059605
+        },
+        "error": null,
+        "originalDeadlinePassed": true
+      },
+      {
+        "visit": 5,
+        "id": "lab",
+        "timing": {
+          "swap": 1114.5999999940395,
+          "swapGap": 833.8999999761581,
+          "settled": 1751.5999999940395
+        },
+        "error": null,
+        "originalDeadlinePassed": true
+      },
+      {
+        "visit": 6,
+        "id": "hub",
+        "timing": {
+          "swap": 2990.4000000059605,
+          "swapGap": 2721,
+          "settled": 3450.100000023842
+        },
+        "error": null,
+        "originalDeadlinePassed": true
+      },
+      {
+        "visit": 7,
+        "id": "factory",
+        "timing": {
+          "swap": 591.3000000119209,
+          "swapGap": 141.59999999403954,
+          "settled": 829.8000000119209
+        },
+        "error": null,
+        "originalDeadlinePassed": true
+      },
+      {
+        "visit": 8,
+        "id": "lab",
+        "timing": {
+          "swap": 584.3000000119209,
+          "swapGap": 320.80000001192093,
+          "settled": 968.8000000119209
+        },
+        "error": null,
+        "originalDeadlinePassed": true
+      },
+      {
+        "visit": 9,
+        "id": "hub",
+        "timing": {
+          "swap": 2143.2999999821186,
+          "swapGap": 1886.9000000059605,
+          "settled": 3419.899999976158
+        },
+        "error": null,
+        "originalDeadlinePassed": true
+      },
+      {
+        "visit": 10,
+        "id": "factory",
+        "timing": {
+          "swap": 425.2000000178814,
+          "swapGap": 141.10000002384186,
+          "settled": 579.5999999940395
+        },
+        "error": null,
+        "originalDeadlinePassed": true
+      },
+      {
+        "visit": 11,
+        "id": "lab",
+        "timing": {
+          "swap": 432.30000001192093,
+          "swapGap": 161.5,
+          "settled": 824
+        },
+        "error": null,
+        "originalDeadlinePassed": true
+      },
+      {
+        "visit": 12,
+        "id": "hub",
+        "timing": {
+          "swap": 1890.4000000059605,
+          "swapGap": 1628.9000000059605,
+          "settled": 2446.2000000178814
+        },
+        "error": null,
+        "originalDeadlinePassed": true
+      },
+      {
+        "visit": 13,
+        "id": "factory",
+        "timing": {
+          "swap": 452.5,
+          "swapGap": 140.39999997615814,
+          "settled": 673.3000000119209
+        },
+        "error": null,
+        "originalDeadlinePassed": true
+      },
+      {
+        "visit": 14,
+        "id": "lab",
+        "timing": {
+          "swap": 505.90000000596046,
+          "swapGap": 238.69999998807907,
+          "settled": 960.4000000059605
+        },
+        "error": null,
+        "originalDeadlinePassed": true
+      },
+      {
+        "visit": 15,
+        "id": "hub",
+        "timing": {
+          "swap": 2328.9000000059605,
+          "swapGap": 2048.9000000059605,
+          "settled": 3907.800000011921
+        },
+        "error": null,
+        "originalDeadlinePassed": true
+      },
+      {
+        "visit": 16,
+        "id": "factory",
+        "timing": {
+          "swap": 1056,
+          "swapGap": 145.30000001192093,
+          "settled": 1227
+        },
+        "error": null,
+        "originalDeadlinePassed": true
+      },
+      {
+        "visit": 17,
+        "id": "lab",
+        "timing": {
+          "swap": 580.9000000059605,
+          "swapGap": 316.59999999403954,
+          "settled": 2731.800000011921
+        },
+        "error": null,
+        "originalDeadlinePassed": true
+      },
+      {
+        "visit": 18,
+        "id": "hub",
+        "timing": {
+          "swap": 2689.800000011921,
+          "swapGap": 2398.5,
+          "settled": 4067.100000023842
+        },
+        "error": null,
+        "originalDeadlinePassed": true
+      },
+      {
+        "visit": 19,
+        "id": "factory",
+        "timing": {
+          "swap": 452,
+          "swapGap": 149.90000000596046,
+          "settled": 633.5
+        },
+        "error": null,
+        "originalDeadlinePassed": true
+      },
+      {
+        "visit": 20,
+        "id": "lab",
+        "timing": {
+          "swap": 434,
+          "swapGap": 169.59999999403954,
+          "settled": 883.2000000178814
+        },
+        "error": null,
+        "originalDeadlinePassed": true
+      },
+      {
+        "visit": 21,
+        "id": "hub",
+        "timing": {
+          "swap": 10088.59999999404,
+          "swapGap": 9817.40000000596,
+          "settled": 11309.699999988079
+        },
+        "error": null,
+        "originalDeadlinePassed": false
+      }
+    ],
+    "timingFailures": [
+      {
+        "visit": 21,
+        "id": "hub",
+        "timing": {
+          "swap": 10088.59999999404,
+          "swapGap": 9817.40000000596,
+          "settled": 11309.699999988079
+        },
+        "error": null,
+        "originalDeadlinePassed": false
+      }
+    ],
+    "assertions": [
+      {
+        "name": "soak: factory cycles: one bounded node survives six round trips, the hall's subscription released, without retaining scene nodes, targets or DOM",
+        "ok": true,
+        "detail": "{\"visits\":[{\"same\":true,\"subscriptions\":1,\"lines\":14,\"places\":14,\"hall\":2,\"away\":0},{\"same\":true,\"subscriptions\":1,\"lines\":14,\"places\":14,\"hall\":2,\"away\":0},{\"same\":true,\"subscriptions\":1,\"lines\":14,\"places\":14,\"hall\":2,\"away\":0},{\"same\":true,\"subscriptions\":1,\"lines\":14,\"places\":14,\"hall\":2,\"away\":0},{\"same\":true,\"subscriptions\":1,\"lines\":14,\"places\":14,\"hall\":2,\"away\":0},{\"same\":true,\"subscriptions\":1,\"lines\":14,\"places\":14,\"hall\":2,\"away\":0}],\"before\":{\"visibleNodes\":2290,\"allNodes\":4377,\"tweens\":0,\"targets\":1209,\"particles\":0,\"pool\":0,\"bubbles\":0,\"zzz\":27,\"damageNumbers\":0,\"crates\":0,\"built\":0,\"slots\":302,\"shown\":1000,\"rendered\":194,\"deliveries\":0,\"pendingDrops\":0,\"dropsStarted\":0,\"dropsLanded\":0,\"landedBananaValue\":0,\"dropPool\":96,\"dropRate\":72,\"spillPool\":32,\"spilling\":0,\"butterflies\":8,\"fireflies\":0,\"embers\":4,\"surfaceEmbers\":0,\"headquartersEmbers\":4,\"waterCubes\":0,\"waterQueued\":0,\"waterRipples\":0,\"breakablesProps\":26,\"breakablesBroken\":0,\"breakablesRewards\":0,\"breakablesRevealing\":0,\"rainDrops\":0,\"strikes\":0,\"remotePlayers\":0,\"gl\":{\"records\":978,\"active\":937,\"mirrorResources\":4,\"imageTextures\":1,\"rippleBodyTextures\":0,\"shadowResources\":4,\"shadowSize\":512,\"shadowPassCount\":149,\"shadowFinite\":true,\"shadowDraws\":564,\"shadowStatic\":0,\"shadowStaticRebuilds\":12,\"culled\":1158,\"drawn\":37680,\"suppressed\":0,\"rippleSurfaces\":1,\"rippleWaves\":3},\"dom\":3111},\"after\":{\"visibleNodes\":2289,\"allNodes\":4377,\"tweens\":0,\"targets\":1209,\"particles\":0,\"pool\":0,\"bubbles\":0,\"zzz\":27,\"damageNumbers\":0,\"crates\":0,\"built\":0,\"slots\":302,\"shown\":1000,\"rendered\":194,\"deliveries\":0,\"pendingDrops\":0,\"dropsStarted\":0,\"dropsLanded\":0,\"landedBananaValue\":0,\"dropPool\":96,\"dropRate\":72,\"spillPool\":32,\"spilling\":0,\"butterflies\":10,\"fireflies\":0,\"embers\":4,\"surfaceEmbers\":0,\"headquartersEmbers\":4,\"waterCubes\":0,\"waterQueued\":0,\"waterRipples\":0,\"breakablesProps\":26,\"breakablesBroken\":0,\"breakablesRewards\":0,\"breakablesRevealing\":0,\"rainDrops\":0,\"strikes\":0,\"remotePlayers\":0,\"gl\":{\"records\":977,\"active\":936,\"mirrorResources\":4,\"imageTextures\":1,\"rippleBodyTextures\":0,\"shadowResources\":4,\"shadowSize\":512,\"shadowPassCount\":527,\"shadowFinite\":true,\"shadowDraws\":564,\"shadowStatic\":0,\"shadowStaticRebuilds\":33,\"culled\":1149,\"drawn\":37710,\"suppressed\":0,\"rippleSurfaces\":1,\"rippleWaves\":3},\"dom\":3111}}"
+      },
+      {
+        "name": "soak: factory cycles: GPU records, listeners and retained heap remain bounded",
+        "ok": true,
+        "detail": "objects 417.31 -> 414.97 MB (used 267.32 -> 268.57 MB, code 16.42 -> 19.05 MB)"
+      }
+    ],
+    "counters": [
+      {
+        "documents": 1,
+        "nodes": 9248,
+        "jsEventListeners": 367
+      },
+      {
+        "documents": 1,
+        "nodes": 9248,
+        "jsEventListeners": 367
+      }
+    ],
+    "postHeapCounters": [
+      {
+        "documents": 1,
+        "nodes": 9248,
+        "jsEventListeners": 367
+      },
+      {
+        "documents": 1,
+        "nodes": 9248,
+        "jsEventListeners": 367
+      }
+    ],
+    "attachedNodeCounts": [
+      {
+        "1": 3111,
+        "3": 2574,
+        "9": 1,
+        "10": 1
+      },
+      {
+        "1": 3111,
+        "3": 2574,
+        "9": 1,
+        "10": 1
+      }
+    ],
+    "error": null
+  }
+}
