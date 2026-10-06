@@ -567,8 +567,8 @@
         primarySelected = selected; primaryAiming = aiming;
         el.primary.dataset.equipped = String(selected);
         el.primary.setAttribute("aria-pressed", String(selected));
-        el.primary.title = !selected ? "Equip primary melee weapon (1)" : "Melee weapon · 0.2s between hits for full power (1)";
-        el.primary.setAttribute("aria-label", !selected ? "Equip primary melee weapon" : "Melee weapon · allow 0.2 seconds between hits for full power");
+        el.primary.title = !selected ? "Equip primary melee weapon (1)" : "Melee weapon · 0.2s between swings for full power · hold for double damage (1)";
+        el.primary.setAttribute("aria-label", !selected ? "Equip primary melee weapon" : "Melee weapon · allow 0.2 seconds between swings for full power, then hold for double damage");
       }
       if (held !== primaryHeld) {
         primaryHeld = held;
