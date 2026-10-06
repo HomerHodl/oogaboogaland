@@ -3168,7 +3168,10 @@
           c.freeTargetY = NaN;
           for (let reach = 1.2; reach <= 2.4; reach += 0.3) {
             const x = p.x + sx * reach, z = p.z + sz * reach, y = climbSurfaceAt(x, z);
+            // An autonomous ascent already reserved its roof. A narrow shelf
+            // partway up is a grip, not the walking exit for that route.
             if (!Number.isFinite(y) || y < p.y + 0.1 || y > p.y + 1.8
+              || !e.controlled && !e.debugMove.active && !c.fromTop && c.count > 1 && y < c.upperY - 0.65
               || wallRectangleShare(e, x, y, z, heading, true) < TOP_EXIT_SHARE
               || !actorLanding(e, x, y, z)
               || !climbWalkClear(e, x, y, z, x, y, z, heading)) continue;
