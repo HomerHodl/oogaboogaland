@@ -195,7 +195,7 @@
         title: def.caption, help: "", canvas: boardCanvas, count: 1, index: 0, version: 0, caption: def.caption, note: def.note, wide: true,
         go() {}
       };
-      return { index: i, bearing, node, def, printed: "", shimmer: 0, x, y: FOOT + H * PX / 2, z, board, c2: boardCanvas.getContext("2d", { alpha: false }), owner: null };
+      return { index: i, bearing, node, def, printed: "", shimmer: 0, x, y: FOOT + H * PX / 2, z, width, height: H * PX, board, c2: boardCanvas.getContext("2d", { alpha: false }), owner: null };
     });
     let wait = 0, snapshot = null;
     const refresh = (s, now = Date.now()) => {

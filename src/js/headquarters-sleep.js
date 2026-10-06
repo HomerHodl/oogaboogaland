@@ -11,31 +11,29 @@
   // The validated waypoint graph depends only on the island's architecture; later visits reuse it and map
   // fresh bed objects onto its nodes.
   const graphs = new WeakMap();
-  // Reserved sleeping rectangles on the actual roofs of open project caves.
-  // Sample the whole footprint, not just its centre, to reject cliff edges and
-  // steep steps. These are floor anchors, with no mattress or rendered items.
-  const outdoorBeds = (island, slots, clear = () => true) => {
+  // Reserved sleeping rectangles on the rainforest terraces above the Mempool ramp.
+  // Sample the whole footprint, not just its centre, to reject channels, terrace
+  // edges and props. These are floor anchors, with no mattress or rendered items.
+  const outdoorBeds = (pool, clear = () => true) => {
     const beds = [];
-    for (const slot of slots) {
-      if (slot.status !== "open" && slot.status !== "mirror") continue;
-      const mouth = island.mouths.find(m => m.id === slot.id);
-      if (!mouth) continue;
-      const room = mouth.room, sr = Math.sin(mouth.ry), cr = Math.cos(mouth.ry);
-      for (let along = room.from + 1.5; along <= room.to - 1.5; along += 3.2) {
-        for (let across = -room.w / 2 + 0.9; across <= room.w / 2 - 0.9; across += 1.8) {
-          const x = mouth.x - sr * along + cr * across, z = mouth.z - cr * along - sr * across;
-          let low = Infinity, high = -Infinity;
-          for (let a = -0.75; a <= 0.75; a += 0.25) for (let b = -1.5; b <= 1.5; b += 0.25) {
-            const y = island.surfaceAt(x + cr * a + sr * b, z - sr * a + cr * b);
-            low = Math.min(low, y); high = Math.max(high, y);
-          }
-          if (low < mouth.floorY + room.h + 0.25 || high - low > 0.75 || !Number.isFinite(high)) continue;
-          let safe = true;
-          for (let a = -0.75; safe && a <= 0.75; a += 0.25) for (let b = -1.5; safe && b <= 1.5; b += 0.25) {
-            safe = clear(x + cr * a + sr * b, high + 0.03, z - sr * a + cr * b);
-          }
-          if (safe) beds.push({ x, y: high, z, outdoor: true, caveId: slot.id, sleeper: null, node: { rotation: { y: mouth.ry } } });
+    const L = pool.layout;
+    for (let along = 4; along <= 38; along += 3.6) {
+      const bearing = L.RAMP.start + along / L.RAMP.r, sr = Math.sin(bearing), cr = Math.cos(bearing);
+      for (const radius of [13.9, 16.2, 18.5]) {
+        const lx = sr * radius, lz = cr * radius, x = pool.worldX(lx, lz), z = pool.worldZ(lx, lz);
+        let low = Infinity, high = -Infinity;
+        for (let a = -0.75; a <= 0.75; a += 0.25) for (let b = -1.5; b <= 1.5; b += 0.25) {
+          const y = L.groundAt(lx + sr * a + cr * b, lz + cr * a - sr * b);
+          low = Math.min(low, y); high = Math.max(high, y);
         }
+        if (low < L.LEVEL.ground || high - low > 0.5 || !Number.isFinite(high)) continue;
+        let safe = true;
+        for (let a = -0.75; safe && a <= 0.75; a += 0.25) for (let b = -1.5; safe && b <= 1.5; b += 0.25) {
+          safe = clear(pool.worldX(lx + sr * a + cr * b, lz + cr * a - sr * b), pool.place.y + high + 0.03,
+            pool.worldZ(lx + sr * a + cr * b, lz + cr * a - sr * b));
+        }
+        if (safe) beds.push({ x, y: pool.place.y + high, z, outdoor: true, sleeper: null,
+          node: { rotation: { y: pool.place.ry + bearing + Math.PI / 2 } } });
       }
     }
     return beds;

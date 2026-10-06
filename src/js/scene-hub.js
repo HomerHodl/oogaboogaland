@@ -1457,15 +1457,15 @@
         l.debug.approximated = false;
       }
     }
-    // Fill each tier with the lamps nearest the view, so a lantern beside the player
-    // is never dropped just because distant cave lights were registered first.
+    // Keep the three central pile posts in every tier; fill the remaining slots
+    // with the lamps nearest the view.
     for (; count < limit; count++) {
       let nearest = null, distance = Infinity;
       for (let i = 0; i < lamps.length; i++) {
         const l = lamps[i];
         if (!l.lit || !l.light || l.selected || l.far) continue;
         const dx = l.x - camera.target.x, dy = l.y - camera.target.y, dz = l.z - camera.target.z;
-        const score = dx * dx + dy * dy + dz * dz - (l.centerLight ? 16 : 0);
+        const score = l.pileProfile ? -32 : dx * dx + dy * dy + dz * dz - (l.centerLight ? 16 : 0);
         if (score < distance) { nearest = l; distance = score; }
       }
       if (!nearest) break;
@@ -1778,7 +1778,7 @@
       }
       const light = postDressing.lights, pick = postDressing.picks;
       const lamp = addLamp(glow, DRESSING_LAMPS[light[3]], 0, 0, 0, true, 0, `pile-post:${i}`);
-      lamp.nightOnly = true;
+      lamp.always = true;
       lamp.centerLight = true;
       lamp.pileProfile = true;
       const pickNode = createNode({ geometry: PICK_GEOMETRY });
@@ -2377,6 +2377,9 @@
     addProp("poolbridge", site.bridge, worldX(0, place.bridgeLocalZ + S.span / 2), worldZ(0, place.bridgeLocalZ + S.span / 2), S.width);
     addLamp(site.bridge, LAMP.lantern, worldX(0, place.bridgeLocalZ), place.y + 3.4, worldZ(0, place.bridgeLocalZ), false, 0, "poolbridge:lanterns").nightOnly = true;
     atNode("poolsign", site.sign, site.sign.geometry.signWidth * 0.55);
+    signDetails.push({ node: site.sign, solid: site.sign.geometry, pixels: hubModels.caveSign("Mempool Rainforest", null, true),
+      x: worldX(site.sign.position.x, site.sign.position.z), y: place.y + site.sign.position.y,
+      z: worldZ(site.sign.position.x, site.sign.position.z) });
     // Centre the board across the pool on the bridge's axis, facing the crossing with trees behind it.
     // Its face and lettering stay curved around the pool's centre at this same radius.
     const B = P.CHAIN_BOARD, boardBearing = Math.PI;
@@ -2427,7 +2430,7 @@
       canvas.width = CHAIN_PANEL_W;
       canvas.height = CHAIN_PANEL_H;
       // willReadFrequently: every refresh reads the panel back, and without it Chrome warns.
-      chainSign = { node: panelNode, ctx2d: canvas.getContext("2d", { alpha: false, willReadFrequently: true }), printed: "" };
+      chainSign = { node: panelNode, ctx2d: canvas.getContext("2d", { alpha: false, willReadFrequently: true }), printed: "", index: 0, switchAt: NaN, nextRefresh: 0 };
     }
     // Fire: the two torches of the court either side of the mouth, then one down each stretch of the descent on the
     // wall clear of its waterfalls, and four round the chamber between the paintings. The ones under the ground burn
@@ -2701,6 +2704,20 @@
     for (const stop of paintings.stops) {
       stop.owner = addProp("poolpainting", stop.node, worldX(stop.x, stop.z), worldZ(stop.x, stop.z), 2.6);
       stop.owner.stop = stop;
+      stop.owner.pickRay = ray => {
+        const m = stop.node.world;
+        const facing = ray.dx * m[8] + ray.dy * m[9] + ray.dz * m[10];
+        if (facing >= -1e-6) return -1;
+        const t = ((m[12] - ray.ox) * m[8] + (m[13] - ray.oy) * m[9] + (m[14] - ray.oz) * m[10]) / facing;
+        if (t <= 0) return -1;
+        const x = ray.ox + ray.dx * t, y = ray.oy + ray.dy * t, z = ray.oz + ray.dz * t;
+        const dx = x - m[12], dy = y - m[13], dz = z - m[14];
+        const across = dx * m[0] + dy * m[1] + dz * m[2];
+        const up = dx * m[4] + dy * m[5] + dz * m[6];
+        if (across < 0 || across > stop.width || up < 0 || up > stop.height) return -1;
+        return guideSegmentClear(ray.ox, ray.oy, ray.oz, x, y, z)
+          && mempoolIsland.sightClear(ray.ox, ray.oy, ray.oz, x, y, z) ? t : -1;
+      };
     }
     // The islet and the rim-to-bridge-head walk are claimed after the home scatter, not before it.
     // Claiming first made the scatter's seeded retries draw different numbers, reshuffling trees all
@@ -3508,7 +3525,15 @@
   // for the visitor's Ooga, the crew's and another player's, from where each already stands.
   const floatPose = (cave, feet, height, phase, time) => {
     const p = cave.root.position;
-    if (!mempoolIsland || !mempoolIsland.afloat(p.x, p.z, feet, height * OOGA_DRAUGHT)) return;
+    if (!mempoolIsland || !mempoolIsland.afloat(p.x, p.z, feet, height * OOGA_DRAUGHT)) {
+      if (cave.poolSwimming) {
+        cave.poolSwimming = false;
+        cave.parts.armL.rotation.z = 0.12;
+        cave.parts.armR.rotation.z = -0.12;
+      }
+      return;
+    }
+    cave.poolSwimming = true;
     const parts = cave.parts, s = Math.sin(time * 2.4 + phase), c = Math.cos(time * 2.4 + phase);
     parts.armL.rotation.z = 1.15 + s * 0.16; parts.armR.rotation.z = -1.15 - s * 0.16;
     parts.armL.rotation.x = parts.armR.rotation.x = -0.25 + c * 0.22;
@@ -4888,9 +4913,9 @@
     }
   };
   // The chain board's four readings, set in the jumbotron's 5x7 font and run-length merged into quads,
-  // exactly as the cave sets its wall panels. The rows are rebuilt only when one of them changed, so a
-  // board left standing all day replaces no geometry and holds its size.
-  const CHAIN_PANEL_W = 208, CHAIN_PANEL_H = 72, CHAIN_PANEL_BG = [42, 39, 36];
+  // exactly as the cave sets its wall panels. Its overview and four detail panes rebuild only when their
+  // visible readings change, so a board left standing all day holds its size.
+  const CHAIN_PANEL_W = 230, CHAIN_PANEL_H = 72, CHAIN_PANEL_BG = [42, 39, 36];
   // A board that has stopped being fed says so by going grey. Holding the last reading out in its
   // usual colours would be the one genuinely misleading thing this island could do.
   const STALE_INK = "#7d766a";
@@ -4951,24 +4976,55 @@
       ["FAST FEE", s.fastestFee ? `${gameMod.formatFeeRate(s.fastestFee)} SAT/VB` : "-", ink("#ff9a2a")]
     ];
   };
+  const chainDetail = [
+    [(s) => s.lastTxCount && s.lastWeight ? `${gameMod.formatThree(s.lastTxCount, true)} TX · ${gameMod.formatThree(s.lastWeight / 4e6)} MVB` : "", "BLOCK HEIGHT"],
+    [(s) => arrivalsLive(s) ? `WEATHER ${weatherMod.STEPS[weather.state.step].name.toUpperCase()}` : "WEATHER UNAVAILABLE", "INCOMING DATA"],
+    [(s) => backlogDetails(s.count, !!s.backlogAt), "MEMPOOL"],
+    [(s) => s.hourFee ? `HOUR ${gameMod.formatFeeRate(s.hourFee)} SAT/VB` : "", "FAST FEE RATE"]
+  ];
   const refreshChainSign = () => {
     if (!chainSign) return;
-    const rows = chainRows(chain.snapshot);
-    const printed = rows.map((r) => r[0] + r[1]).join("|");
+    const snapshot = chain.snapshot, rows = chainRows(snapshot), index = chainSign.index;
+    const under = index ? chainDetail[index - 1][0](snapshot) : "";
+    const printed = index ? `${index}|${rows[index - 1].join("|")}|${under}`
+      : `0|${rows.map((r) => r.join("|")).join("|")}`;
     if (printed === chainSign.printed) return;
     chainSign.printed = printed;
     const c2 = chainSign.ctx2d, text = BL.jumbotron.text;
     c2.fillStyle = `rgb(${CHAIN_PANEL_BG[0]},${CHAIN_PANEL_BG[1]},${CHAIN_PANEL_BG[2]})`;
     c2.fillRect(0, 0, CHAIN_PANEL_W, CHAIN_PANEL_H);
-    let y = 4;
-    for (const [label, value, color] of rows) {
-      text.drawText(c2, label, 2, y, "#9b8f7a", 2);
-      drawMetric(c2, value, CHAIN_PANEL_W - 2, y, color, 2, true);
-      y += 16;
+    if (!index) {
+      let y = 4;
+      for (const [label, value, color] of rows) {
+        text.drawText(c2, label, 2, y, "#9b8f7a", 2);
+        drawMetric(c2, value, CHAIN_PANEL_W - 2, y, color, 2, true);
+        y += 16;
+      }
+    } else {
+      const [label, value, color] = rows[index - 1];
+      const title = chainDetail[index - 1][1] || label;
+      text.drawText(c2, title, Math.round((CHAIN_PANEL_W - text.measureText(title, 2)) / 2), 4, "#9b8f7a", 2);
+      const scale = metricWidth(value, 4) <= CHAIN_PANEL_W - 8 ? 4 : 3;
+      drawMetric(c2, value, CHAIN_PANEL_W / 2, 23, color, scale);
+      if (under) drawMetric(c2, under, CHAIN_PANEL_W / 2, 54, "#9b8f7a", 2);
     }
     const node = chainSign.node;
     if (node.geometry) renderer.releaseGeometry(node.geometry);
     node.geometry = poolModels.chainPanel(c2, CHAIN_PANEL_W, CHAIN_PANEL_H, CHAIN_PANEL_BG);
+  };
+  const updateChainSign = (elapsed) => {
+    if (!chainSign) return;
+    if (!Number.isFinite(chainSign.switchAt)) chainSign.switchAt = elapsed;
+    const cycle = jumbotron?.cycleSeconds ?? 8;
+    if (cycle > 0 && elapsed - chainSign.switchAt >= cycle) {
+      chainSign.index = (chainSign.index + 1) % (chainDetail.length + 1);
+      chainSign.switchAt = elapsed;
+      chainSign.nextRefresh = elapsed + 1;
+      refreshChainSign();
+    } else if (elapsed >= chainSign.nextRefresh) {
+      chainSign.nextRefresh = elapsed + 1;
+      refreshChainSign();
+    }
   };
   // The Mempool island's two boards in the shared board dialog. Each is a list of pages, every page a caption, a
   // note and a drawing in the jumbotron's 5x7 font on the board's own small canvas; `refresh` redraws the shown
@@ -5060,10 +5116,10 @@
       },
       note: chainStatus
     },
-    rowPage(0, "Block height", (s) => s.lastTxCount && s.lastWeight ? `${gameMod.formatThree(s.lastTxCount, true)} TX · ${gameMod.formatThree(s.lastWeight / 4e6)} MVB` : "", "A block's height is its number in the Bitcoin chain. The third line shows that block's transaction count and virtual size. When a new block arrives, lightning strikes and a water cube drops through the chamber; the next mempool reading determines how much waiting data remains in the lake.", "BLOCK HEIGHT"),
-    rowPage(1, "Incoming data", (s) => arrivalsLive(s) ? `WEATHER ${weatherMod.STEPS[weather.state.step].name.toUpperCase()}` : "WEATHER UNAVAILABLE", "The large number is new transaction data arriving each second, in virtual bytes (vB/s). Rain strength follows a roughly 30-second average of this rate. Arrivals add to the mempool; blocks confirm transactions and can reduce it.", "INCOMING DATA"),
-    rowPage(2, "Mempool", (s) => backlogDetails(s.count, !!s.backlogAt), "The mempool is the data still waiting for a block, measured in millions of virtual bytes (MvB). The smaller figure counts waiting transactions. Rain shows new arrivals; a mined block can clear some of this queue."),
-    rowPage(3, "Next-block fee", (s) => s.hourFee ? `HOUR ${gameMod.formatFeeRate(s.hourFee)} SAT/VB` : "", "This fee estimate helps a transaction compete for space in the next block, in satoshis per virtual byte (sat/vB). The smaller figure estimates a fee for confirmation within an hour; neither time is guaranteed. Fees affect queue order, while arrivals set the rain and total waiting data fills the lake.", "FAST FEE RATE")
+    rowPage(0, "Block height", chainDetail[0][0], "A block's height is its number in the Bitcoin chain. The third line shows that block's transaction count and virtual size. When a new block arrives, lightning strikes and a water cube drops through the chamber; the next mempool reading determines how much waiting data remains in the lake.", chainDetail[0][1]),
+    rowPage(1, "Incoming data", chainDetail[1][0], "The large number is new transaction data arriving each second, in virtual bytes (vB/s). Rain strength follows a roughly 30-second average of this rate. Arrivals add to the mempool; blocks confirm transactions and can reduce it.", chainDetail[1][1]),
+    rowPage(2, "Mempool", chainDetail[2][0], "The mempool is the data still waiting for a block, measured in millions of virtual bytes (MvB). The smaller figure counts waiting transactions. Rain shows new arrivals; a mined block can clear some of this queue."),
+    rowPage(3, "Next-block fee", chainDetail[3][0], "This fee estimate helps a transaction compete for space in the next block, in satoshis per virtual byte (sat/vB). The smaller figure estimates a fee for confirmation within an hour; neither time is guaranteed. Fees affect queue order, while arrivals set the rain and total waiting data fills the lake.", chainDetail[3][1])
   ], true);
   // The key to the island: what arrives makes the weather, what waits fills the lake, and a block is a bolt and a
   // cube. A reading that has stopped being fed goes grey and says so; it is never drawn as a calm zero.
@@ -6946,6 +7002,7 @@
     if (jumbotron) {
       jumbotron.update(elapsed, renderer);
     }
+    updateChainSign(elapsed);
     hud.updateBoard(elapsed);
     if (fireworksShells.length) updateFireworks();
     const next = daylight.phaseAt(hour);
@@ -9116,7 +9173,7 @@
     shared.npcPaths = headquarters.npcPaths = BL.npcPaths.create({ island, walkable: npcWalkable, pointAllowed: (x, z) => !npcClosedCaveAt(x, z) && !npcRampRoofAt(x, island.surfaceAt(x, z), z),
       surfaceAt: (x, z, y) => island.supportAt(x, z, y, 1e-6, null, PLAYER_RADIUS) });
     const sleepNavigation = headquarters.sleepNavigation = BL.headquartersSleep.create({ island, beds: bedrolls, walkable: sleepRouteClear, surfaceRoute: shared.npcPaths.route });
-    shared.outdoorBedrolls = headquarters.outdoorBeds = BL.headquartersSleep.outdoorBeds(island, caves.slots,
+    shared.outdoorBedrolls = headquarters.outdoorBeds = BL.headquartersSleep.outdoorBeds(mempoolIsland,
       (x, y, z) => physicalClearAt(x, y, z, 0.15, 1.5, null) && propSegmentClear(x, y, z, x, y, z, 0.15, 1.5, null));
     const sleepRouteFrom = { x: 0, y: 0, z: 0 };
     // An Ooga stood up on its mattress plans from the floor under it: the planner joins a start to its graph along the
@@ -9253,9 +9310,9 @@
     shared.onShot = (cave, from, to) => npcSync.recordShot(cave, from, to);
     BL.net.setHub(true);
     for (const cave of crew.list) crew.setJetpackOwnership(cave, true, hubModels.jetpack(), hubModels.jetFlame());
-    // Sani hosts the island on ordinary visits; explicit activity fixtures still exercise every state.
+    // Sani hosts the island on ordinary visits; debug visits keep activity-derived states.
     const sani = crew.cavemen.get("SaniExp");
-    if (sani && !contributors.debugState && !contributors.debugRoster && preloadedCharacter !== "saniexp") sani.override = "chilling";
+    if (sani && !DEBUG && preloadedCharacter !== "saniexp") sani.override = "chilling";
     mirrorCave.body = BL.mirrorBody.create(mirrorCave.node, crew.cavemen);
     for (const cave of crew.list) entropyLab.phase.body.track(cave.root, cave.traits.height * 2,
       Math.max(cave.headOpen.verts.length, cave.headClosed.verts.length));
