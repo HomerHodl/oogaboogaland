@@ -468,6 +468,14 @@ const { npcPathWalkingProbe, npcCenterlineProbe, npcLowerTurnsProbe, npcStairPas
           const start = direction > 0 ? points[0] : points.at(-1), end = direction > 0 ? points.at(-1) : points[0], r = path.debug.ringTrafficRadius;
           Object.assign(cave.root.position, { x: 0, y: cave.baseY, z: -r }); cave.pathing.tx = NaN;
           nav.target(cave, end.x, end.z); const connected = cave.pathing.count > 0;
+          const initialShoulder = { phase: cave.shoulder.phase, originX: cave.shoulder.originX, originZ: cave.shoulder.originZ,
+            forwardX: cave.shoulder.forwardX, forwardZ: cave.shoulder.forwardZ };
+          // This probe teleports between independent trails. A pending shoulder
+          // return belongs to its old origin, not the newly placed route.
+          Object.assign(cave.shoulder, { phase: 0, other: null, prop: false, yaw: 0, targetYaw: 0, motionX: 0, motionZ: 0 });
+          cave.shoulder.obstacle.node = null;
+          Object.assign(cave.progress, { x: NaN, z: NaN, stalled: 0, motionless: 0, retry: 0, backoff: 0,
+            replanned: false, navigationHop: false, escaped: false });
           Object.assign(cave.root.position, { x: start.x, y: cave.baseY + B.island.surfaceAt(start.x, start.z), z: start.z });
           cave.act.kind = "wander"; Object.assign(cave.act.spot, { x: end.x, z: end.z, ry: 0 });
           cave.walk = { tx: end.x, tz: end.z, speed: 1.7, phase: 0, heading: 0, to: "spot" };
@@ -492,7 +500,7 @@ const { npcPathWalkingProbe, npcCenterlineProbe, npcLowerTurnsProbe, npcStairPas
             if (!deviation && best > 0.45) deviation = { x: p.x, z: p.z, targetX: cave.pathing.targetX, targetZ: cave.pathing.targetZ, index: cave.pathing.index, count: cave.pathing.count, mode: cave.avoidance.navigation.mode, goalX: cave.walk?.tx, goalZ: cave.walk?.tz };
           }
           const distance = Math.hypot(cave.root.position.x - end.x, cave.root.position.z - end.z);
-          rows.push({ line, direction, pathLength, connected, arrived: !cave.walk && distance < 1e-6, onPath: onPath / frames, error, laneError, laneSamples, rightSamples, frames, deviation, distance });
+          rows.push({ line, direction, initialShoulder, pathLength, connected, arrived: !cave.walk && distance < 1e-6, onPath: onPath / frames, error, laneError, laneSamples, rightSamples, frames, deviation, distance });
         }
       }
       return { rows, lines: path.centerlines.length, nodes: nav.nodes, capacity: nav.capacity };
@@ -9536,7 +9544,44 @@ const browserDriverProof = async () => {
   return { cases: rows.length, failures: rows.filter(row => !row.pass).length, rows };
 };
 
+const raceRigDisposalProof = async () => {
+  const source = await readFile(join(root, "src/js/gl-renderer.js"), "utf8");
+  const start = source.indexOf("    const dispose = () => {");
+  const disposeSource = source.slice(start, source.indexOf("    // Drop unreferenced buffers", start));
+  const outcomes = [];
+  for (const pending of [true, false]) {
+    const shaders = new Set(pending ? Array.from({ length: 4 }, () => ({})) : []);
+    const programs = new Set(Array.from({ length: 9 }, () => ({})));
+    const handles = [...programs], shaderHandles = [...shaders], base = {};
+    for (let i = 0; i < 7; i++) base["program" + i] = { prog: handles[i], shaders: [] };
+    const mesh = { prog: handles[7], shaders: shaderHandles.slice(0, 2) };
+    const shadow = { prog: handles[8], shaders: shaderHandles.slice(2) };
+    // Shared ordinary entries must be deleted once, not again via the rig map.
+    const rig = { ...base, mesh, shadow };
+    let duplicateDeletes = 0;
+    const context = {
+      canvas: { removeEventListener() {} }, onLost() {}, onRestored() {},
+      destroyRecords() {}, reflectorTargets: new Map(), destroyReflector() {},
+      destroyMirror() {}, destroyFbo() {}, destroyShadow() {},
+      res: { programs: base, matrixTexture: null, quadVao: null },
+      rigPrograms: rig, rigProgramsReady: !pending, programs: rig, rigMode: true,
+      gl: {
+        deleteProgram(handle) { if (!programs.delete(handle)) duplicateDeletes++; },
+        deleteShader(handle) { if (!shaders.delete(handle)) duplicateDeletes++; },
+        getExtension() { return null; }
+      }
+    };
+    runInNewContext(disposeSource + "\ndispose(); dispose();", context);
+    outcomes.push({ pending, programs: programs.size, shaders: shaders.size, duplicateDeletes,
+      arraysCleared: !mesh.shaders.length && !shadow.shaders.length,
+      aliasesReleased: context.rigPrograms === null && context.programs === context.res.programs && !context.rigMode });
+  }
+  return outcomes;
+};
+
 const unitChecks = async () => {
+  const rigDisposal = await raceRigDisposalProof();
+  record("race rig disposal: pending and linked variants release owned shaders and programs exactly once without context-loss support", rigDisposal.every(r => !r.programs && !r.shaders && !r.duplicateDeletes && r.arraysCleared && r.aliasesReleased), JSON.stringify(rigDisposal));
   const driver = await browserDriverProof();
   record("browser driver: broken transports retire every pending command and owned child, discovery is bounded, and pool ownership remains exclusive", driver.cases === 11 && driver.failures === 0, JSON.stringify(driver));
 
