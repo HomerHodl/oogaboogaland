@@ -3244,14 +3244,17 @@
         // A wall foot has reached the floor, but no complete walking body
         // fits there yet. Keep its grip and allow a sideways search instead
         // of continuing vertically through the ground plane.
-        if (autonomousChill(e) && !side) {
-          const floor = pointSupportAt(p.x - sx * 0.6, p.z - sz * 0.6, p.y + 0.2);
+        if (!e.controlled && !e.debugMove.active && !side) {
+          const x = p.x - sx * 0.6, z = p.z - sz * 0.6;
+          const floor = pointSupportAt(x, z, p.y + 0.2);
           // On a jagged face the last handhold can end just above clear
           // grass. Release into a short outward fall rather than holding a
           // stationary wall pose until the recovery timer relocates the Ooga.
-          if (Number.isFinite(floor) && floor <= p.y && p.y - floor <= 1.2) {
+          if (Number.isFinite(floor) && floor <= p.y && p.y - floor <= 1.2
+            && actorLanding(e, x, floor, z)
+            && climbClear(e, p.x, p.y, p.z, x, p.y, z, heading, true, true)) {
             dropRectangleClimb(e, true, 4);
-            e.drive.resume = false;
+            if (autonomousChill(e)) e.drive.resume = false;
             return;
           }
         }
@@ -3407,7 +3410,8 @@
         || Math.abs(Math.atan2(Math.sin(heading - c.searchHeading), Math.cos(heading - c.searchHeading))) > 0.18
         || !e.controlled && Math.hypot(e.goalX - c.searchGoalX, e.goalY - c.searchGoalY, e.goalZ - c.searchGoalZ) > 0.35
         || caveAt(p.x, p.y, p.z) >= 0 || walkingStairsAt(e, heading)
-        || !e.controlled && (e.route === "exit" && e.fromSite >= 0 || e.route === "enter" || e.route === "apron")) {
+        || !e.controlled && (e.route === "exit" && e.fromSite >= 0 || e.route === "enter"
+          || e.route === "apron" && p.y <= e.goalY + 0.8)) {
         c.searchPending = c.searchDeferred = c.claimPending = c.crestPending = c.claimRetreat = false;
         c.claimOrder = 0; c.claimFor = -1; c.searchCursor = 0; c.retry = 0;
         if (climbTurn === e.index) climbTurn = -1;
@@ -4241,7 +4245,8 @@
       const steering = avoidEntrance ? FIRE_STEERING : STEERING;
       const inCave = caveAt(p.x, p.y, p.z) >= 0;
       const onProp = raisedSupport(e);
-      const doorway = e.lab.yielding || e.route === "exit" && e.fromSite >= 0 || e.route === "enter" || e.route === "apron";
+      const doorway = e.lab.yielding || e.route === "exit" && e.fromSite >= 0 || e.route === "enter"
+        || e.route === "apron" && p.y <= e.goalY + 0.8;
       if (!onProp && !inCave && !doorway && !e.climb.retry) {
         const drop = ctx.surfaceAt && ctx.surfaceAt(p.x + Math.sin(desired) * 3.1, p.z + Math.cos(desired) * 3.1) < p.y - 0.8;
         // A meadow stroll should steer around a cave instead of climbing it
@@ -4550,6 +4555,10 @@
     };
     const runDownhill = (e, dt, heading) => {
       const p = e.root.position, sx = Math.sin(heading), sz = Math.cos(heading);
+      // A running ledge hop can stop against a stepped cliff before it finds
+      // open air. Hand a blocked approach to the ordinary steered walker so
+      // it can search for a supported descent instead of holding this pose.
+      if (e.blocked > 0.45 || e.climb.searchPending) { move(e, dt, SPEED); return; }
       if (ctx.fireClear) {
         // The roof-height step cannot see a fire below. Check the whole
         // descent before borrowing the player's running ledge hop, including
