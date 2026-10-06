@@ -58,6 +58,10 @@
       const traits = contributors.traitsFor(contributor.name);
       const cave = models.caveman(traits);
       const node = createNode({ visible: false });
+      if (ctx.renderer && ctx.renderer.createRig) {
+        const parts = cave.parts;
+        node.geometry = ctx.renderer.createRig([parts.legR, parts.legL, parts.torso, parts.armR, parts.armL, parts.club, parts.head, parts.fingersR, parts.fingersL]);
+      }
       const body = node;
       const flame = createNode({ geometry: raceModels.boostFlame(), visible: false });
       addChild(root, node);
@@ -625,6 +629,14 @@
       player = null;
       for (const r of racers) {
         for (const key of ["torso", "head"]) input.remove(r.cave.parts[key]);
+        if (r.node.geometry && r.node.geometry.meshRig) {
+          const rig = r.node.geometry.meshRig;
+          for (const node of rig.nodes) node.meshRigSource = null;
+          ctx.renderer.releaseGeometry(r.node.geometry);
+          rig.nodes.length = rig.sources.length = 0;
+          rig.matrices = rig.params = rig.voxels = rig.visibility = null;
+          r.node.geometry = null;
+        }
         removeChild(root, r.node);
       }
       racers.length = 0;

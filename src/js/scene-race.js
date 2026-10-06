@@ -89,6 +89,7 @@
     track = raceTrack.build(def, { renderer, detail, rain, spectators: !contributors.solo, slots: contributors.activeRoster.length, hour, mirror: selection.mirror });
     addChild(root, track.root);
     buildWeather();
+    track.renderOpts.meshRigs = true;
     raceScene.renderOpts = track.renderOpts;
     // Fog that ends in the clear colour with no sky pass hides everything past fogFar, so the far plane stops there.
     const o = track.renderOpts, fogIsClear = !o.horizon && !o.zenith && o.fog && o.clear && o.fog[0] === o.clear[0] && o.fog[1] === o.clear[1] && o.fog[2] === o.clear[2];
@@ -762,7 +763,7 @@
     agent = raceScene.agent = BL.agent.create({ groundAt: agentGround, form: "code" });
     addChild(root, agent.root);
     placeAgent();
-    racers = racersMod.create({ root, input, fx, game, track });
+    racers = racersMod.create({ root, input, fx, game, track, renderer });
     mark("racers");
     items = raceItems.create({ root, racers, fx, track });
     items.setTrack(track);

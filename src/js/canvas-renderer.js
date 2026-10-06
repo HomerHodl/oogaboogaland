@@ -1820,6 +1820,7 @@
       ray,
       setQuality: () => { },
       releaseGeometry: () => { },
+      createRig: () => null,
       releaseUnused: (live) => { if (environment.source && !live.has(environment.source.geometry)) destroyEnvironment(); return 0; },
       dispose: () => {
         destroyEnvironment();
