@@ -90,7 +90,7 @@
   const CLOCK_DATE = new Date();
   clockSvg.setAttribute("viewBox", "0 0 30 6");
   clockSvg.setAttribute("class", "sign");
-  clockSvg.setAttribute("aria-hidden", "true");
+  clockSvg.setAttribute("role", "img");
   clockPath.setAttribute("fill", "currentColor");
   clockSvg.append(clockPath);
   worldClock.replaceChildren(clockSvg);
@@ -136,7 +136,7 @@
     worldClock.style.width = `${cells / 6}em`;
     clockPath.setAttribute("d", d);
     worldClock.dateTime = `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}`;
-    worldClock.setAttribute("aria-label", `${Number.isFinite(clockTime) || clockDaylen > 0 ? "Ooga Booga time" : "Local time"} ${text}`);
+    clockSvg.setAttribute("aria-label", `${Number.isFinite(clockTime) || clockDaylen > 0 ? "Ooga Booga time" : "Local time"} ${text}`);
   };
   const go = (id, place = null, instant = false) => {
     const next = scenes[id];
