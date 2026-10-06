@@ -1512,11 +1512,28 @@
     const bulletPool = Array.from({ length: Math.max(32, workBodyTarget ? crewList.length * BURST_ROUNDS : 0) }, () => {
       const node = createNode({ geometry: models.bananaGeometry(), scale: { x: models.BANANA_AMMO_SCALE, y: models.BANANA_AMMO_SCALE, z: models.BANANA_AMMO_SCALE }, visible: false, matrixLiving: !!ctx.matrixLivingPile });
       addChild(root, node);
-      return { node, life: 0, source: null, feedback: false, workShot: false, visual: false, site: -1, aimSample: 0, from: { x: 0, y: 0, z: 0 }, to: { x: 0, y: 0, z: 0 } };
+      return { node, life: 0, duration: .22, arc: 0, tomato: false, source: null, feedback: false, workShot: false, visual: false, site: -1, aimSample: 0, from: { x: 0, y: 0, z: 0 }, to: { x: 0, y: 0, z: 0 } };
     });
-    let bulletIdx = 0;
+    let bulletIdx = 0, tomatoesThrown = 0, throwCooldown = 0, tomatoGeometry = null;
+    const clearProjectiles = () => { for (const b of bulletPool) { b.life=0; b.node.visible=false; b.source=null; } throwCooldown=0; };
+    // Throws share the capped projectile pool, collision callbacks and disposal with gun rounds.
+    const throwTomato = () => {
+      const cave=player;if(!cave||throwCooldown>0||cave.health.stunned||cave.state==="sleeping")return false;
+      if(!tomatoGeometry)tomatoGeometry=models.merge(models.box({w:.28,h:.24,d:.28,color:"#e34d32"}),models.box({w:.13,h:.07,d:.13,color:"#578544",offset:{x:0,y:.15,z:0}}));
+      const b=bulletPool[bulletIdx++%bulletPool.length],p=cave.root.position;
+      setVec(b.from,p.x,p.y+cave.traits.height*.45,p.z);
+      if(ctx.aimTarget)ctx.aimTarget(b.to);else setVec(b.to,p.x+Math.sin(cave.root.rotation.y)*16,b.from.y,p.z+Math.cos(cave.root.rotation.y)*16);
+      const dx=b.to.x-b.from.x,dy=b.to.y-b.from.y,dz=b.to.z-b.from.z,k=Math.min(1,22/(Math.hypot(dx,dy,dz)||1));
+      setVec(b.to,b.from.x+dx*k,b.from.y+dy*k-1.4,b.from.z+dz*k);
+      if(ctx.clipProjectileTarget)ctx.clipProjectileTarget(b.from,b.to);
+      b.node.geometry=tomatoGeometry;setVec(b.node.scale,1,1,1);setVec(b.node.position,b.from.x,b.from.y,b.from.z);
+      b.node.visible=true;b.duration=b.life=.8;b.arc=1.8;b.tomato=true;b.source=cave;b.feedback=b.workShot=b.visual=false;
+      throwCooldown=.45;tomatoesThrown++;ctx.onTomatoThrow?.(b.from);return true;
+    };
     const fireBullet = (cave, spot) => {
       const bullet = bulletPool[bulletIdx++ % bulletPool.length], node = bullet.node;
+      node.geometry=models.bananaGeometry();setVec(node.scale,models.BANANA_AMMO_SCALE,models.BANANA_AMMO_SCALE,models.BANANA_AMMO_SCALE);
+      bullet.duration=.22;bullet.arc=0;bullet.tomato=false;
       const h = cave.traits.height;
       BL.scene.updateWorld(cave.root);
       math.mat4.transformPoint(MUZZLE, cave.parts.gun.world, 0, GUN_MUZZLE_Y * h, GUN_MUZZLE_Z * h);
@@ -1562,6 +1579,8 @@
     // impact (the host's events carry those).
     const showShot = (cave, fx, fy, fz, tx, ty, tz) => {
       const bullet = bulletPool[bulletIdx++ % bulletPool.length], node = bullet.node;
+      node.geometry=models.bananaGeometry();setVec(node.scale,models.BANANA_AMMO_SCALE,models.BANANA_AMMO_SCALE,models.BANANA_AMMO_SCALE);
+      bullet.duration=.22;bullet.arc=0;bullet.tomato=false;
       setVec(bullet.from, fx, fy, fz);
       setVec(bullet.to, tx, ty, tz);
       setVec(node.rotation, 0, Math.atan2(tx - fx, tz - fz), 0.6);
@@ -1571,12 +1590,13 @@
       bullet.source = cave; bullet.feedback = true; bullet.workShot = false; bullet.visual = true;
     };
     const updateBullets = (dt) => {
+      throwCooldown=Math.max(0,throwCooldown-dt);
       for (let i = 0; i < bulletPool.length; i++) {
         const bullet = bulletPool[i];
         if (bullet.life <= 0) continue;
         const remaining = bullet.life, step = Math.min(dt, remaining), p = bullet.node.position, x = p.x, y = p.y, z = p.z;
         bullet.life = Math.max(0, bullet.life - dt);
-        const k = 1 - bullet.life / 0.22, from = bullet.from, to = bullet.to;
+        const k = 1 - bullet.life / bullet.duration, from = bullet.from, to = bullet.to;
         if (bullet.visual) {
           setVec(p, lerp(from.x, to.x, k), lerp(from.y, to.y, k), lerp(from.z, to.z, k));
           bullet.node.rotation.x += dt * 24;
@@ -1596,7 +1616,8 @@
             if (shotClear && !shotClear(x, y, z, nx, ny, nz)) { bullet.life = 0; bullet.workShot = false; }
             else setVec(p, nx, ny, nz);
           }
-        } else setVec(p, lerp(from.x, to.x, k), lerp(from.y, to.y, k), lerp(from.z, to.z, k));
+        } else setVec(p, lerp(from.x, to.x, k), lerp(from.y, to.y, k)+bullet.arc*4*k*(1-k), lerp(from.z, to.z, k));
+        if(bullet.tomato&&ctx.tomatoContact?.(x,y,z,p))bullet.life=0;
         const absorbed = ctx.absorbProjectile && ctx.absorbProjectile(x, y, z, p, step, bullet.source, bullet.workShot);
         if (absorbed) bullet.life = 0;
         let impacted = false, dx = 0, dy = 0, dz = 0, distance = 0;
@@ -1613,24 +1634,26 @@
         }
         if (ctx.onProjectileMove) ctx.onProjectileMove(x, y, z, p.x, p.y, p.z, step, bullet.source, bullet.workShot);
         // Emit the crossing while the struck glass still exists.
-        if (impacted) {
+        if (impacted && !bullet.tomato) {
           const power = SHOT_POWER * (weaponHit.owner.hitRegion === "head" ? HEADSHOT_MULTIPLIER : 1);
           if (ctx.onWeaponHit) ctx.onWeaponHit(bullet.source, weaponHit.type, power);
           if (ctx.onWeaponImpact) ctx.onWeaponImpact(bullet.source, weaponHit, dx / distance, dy / distance, dz / distance, power);
         }
         bullet.node.rotation.x += dt * 24;
         if (!bullet.life) {
+          if (bullet.tomato) ctx.onTomatoImpact?.(p);
           if (bullet.workShot && ctx.workHit) ctx.workHit(bullet.source);
           bullet.workShot = false;
           bullet.node.visible = false;
         }
       }
     };
+    const seatBlocksWeapons = cave => !!cave.camp.seat && !cave.camp.seat.allowWeapons;
     const stopReload = (cave = player, immediate = false) => {
       if (!cave) return;
       const w = cave.weapon;
       const ready = !immediate && hasMagazine(cave) && w.equipped && cave.root.visible && cave.state !== "sleeping"
-        && !cave.bedTravel.mode && !cave.camp.burning && !cave.camp.rolling && !cave.camp.panic.active && !cave.camp.seat;
+        && !cave.bedTravel.mode && !cave.camp.burning && !cave.camp.rolling && !cave.camp.panic.active && !seatBlocksWeapons(cave);
       if (!ready) {
         w.reloadSpare = false;
         w.reloadHandoff = w.reloadHandoffTime = 0;
@@ -1664,7 +1687,7 @@
     const reloadHeight = ctx.reloadHeight || 0;
     const nearReload = (cave = player) => {
       if (ctx.reloadPolicy) return !!cave && ctx.reloadPolicy.near(cave);
-      if (!cave || !cave.weapon.secondaryOwned || !cave.root.visible || cave.health.stunned || cave.state === "sleeping" || cave.camp.burning || cave.camp.rolling || cave.bedTravel.mode || cave.camp.seat) return false;
+      if (!cave || !cave.weapon.secondaryOwned || !cave.root.visible || cave.health.stunned || cave.state === "sleeping" || cave.camp.burning || cave.camp.rolling || cave.bedTravel.mode || seatBlocksWeapons(cave)) return false;
       const p = cave.root.position, feet = p.y - cave.baseY, reach = reloadRadius() + cave.bodyRadius;
       return p.x * p.x + p.z * p.z <= reach * reach && feet <= reloadHeight + 1.2 && feet + cave.bodyHeight >= reloadHeight - 0.2;
     };
@@ -1701,7 +1724,7 @@
     };
     const toggleWeapon = (cave = player) => selectWeapon(cave && cave.weapon.equipped ? 1 : 2, cave);
     const selectWeapon = (slot, cave = player) => {
-      if (!cave || cave.health.stunned || cave.state === "sleeping" || cave !== player && (cave.camp.burning || cave.camp.rolling) || cave.camp.seat || cave.bedTravel.mode) return false;
+      if (!cave || cave.health.stunned || cave.state === "sleeping" || cave !== player && (cave.camp.burning || cave.camp.rolling) || seatBlocksWeapons(cave) || cave.bedTravel.mode) return false;
       if (slot === 1 && !cave.weapon.primaryOwned || slot === 2 && !cave.weapon.secondaryOwned) return false;
       stopBurst(cave); stopReload(cave, true);
       clearGunBashThrust(cave);
@@ -2364,11 +2387,11 @@
       w.reloadFireRounds = BURST_ROUNDS;
     };
     const weaponReady = (cave) => !!cave && cave.root.visible && !cave.health.stunned && cave.weapon.secondaryOwned && cave.weapon.equipped && !cave.weapon.reloading && !cave.weapon.swapTime && !cave.weapon.reloadHandoff && !cave.weapon.bashTime && (cave.weapon.unlimited || cave.weapon.ammo > 0)
-      && cave.state !== "sleeping" && (cave === player || !cave.camp.burning && !cave.camp.rolling && !cave.camp.panic.active) && !cave.bedTravel.mode && !cave.camp.seat;
+      && cave.state !== "sleeping" && (cave === player || !cave.camp.burning && !cave.camp.rolling && !cave.camp.panic.active) && !cave.bedTravel.mode && !seatBlocksWeapons(cave);
     const canFire = (cave = player) => weaponReady(cave) && cave.weapon.cooldown <= 0 && !cave.weapon.burstRemaining;
     const canSwapMagazine = (cave = player) => hasMagazine(cave) && cave.weapon.secondaryOwned && (cave === player || cave.state === "working") && cave.root.visible && !cave.health.stunned
       && cave.weapon.equipped && !cave.weapon.reloading && !cave.weapon.swapTime && !cave.weapon.reloadHandoff
-      && cave.state !== "sleeping" && !cave.camp.burning && !cave.camp.rolling && !cave.camp.panic.active && !cave.bedTravel.mode && !cave.camp.seat;
+      && cave.state !== "sleeping" && !cave.camp.burning && !cave.camp.rolling && !cave.camp.panic.active && !cave.bedTravel.mode && !seatBlocksWeapons(cave);
     const swapMagazine = (cave = player, index = null) => {
       if (!canSwapMagazine(cave)) return false;
       const w = cave.weapon;
@@ -2421,7 +2444,7 @@
     };
     const interruptReloadToFire = (cave) => {
       if (cave !== player || !cave || !cave.root.visible || !cave.weapon.equipped || !cave.weapon.unlimited && cave.weapon.ammo <= 0 || cave.weapon.swapTime
-        || cave.state === "sleeping" || cave.bedTravel.mode || cave.camp.seat) return false;
+        || cave.state === "sleeping" || cave.bedTravel.mode || seatBlocksWeapons(cave)) return false;
       if (cave.weapon.reloading) { stopReload(cave); poseWeapon(cave); }
       return cave.weapon.reloadHandoff < 0;
     };
@@ -2496,7 +2519,7 @@
       w.reloadHandoffFrame = !!w.reloadHandoff;
       if (w.reloadHandoff) {
         if (!hasMagazine(cave) || !w.equipped || !cave.root.visible || cave.state === "sleeping"
-          || cave.camp.burning || cave.camp.rolling || cave.camp.panic.active || cave.bedTravel.mode || cave.camp.seat) stopReload(cave, true);
+          || cave.camp.burning || cave.camp.rolling || cave.camp.panic.active || cave.bedTravel.mode || seatBlocksWeapons(cave)) stopReload(cave, true);
         else {
           w.reloadHandoffTime = Math.max(0, w.reloadHandoffTime - dt);
           if (w.reloadHandoff === 2) {
@@ -2959,7 +2982,7 @@
         }
       }
       if (c.seat) {
-        if (cave === player && Math.hypot(steer.x, steer.z) > 0.05 && standPlayer(cave)) return false;
+        if (cave === player && !c.seat.lockMovement && Math.hypot(steer.x, steer.z) > 0.05 && standPlayer(cave)) return false;
         standPose(cave);
         parts.legR.rotation.x = parts.legL.rotation.x = -Math.PI / 2;
         parts.armR.rotation.x = parts.armL.rotation.x = -0.75;
@@ -5360,7 +5383,7 @@
       if (player.camp.rolling) return;
       if (mix <= 0) return;
       const root = player.root, head = player.parts.head;
-      if (player.camp.seat) {
+      if (player.camp.seat && !player.camp.seat.allowWeapons) {
         head.rotation.y = clamp(Math.atan2(Math.sin(heading - root.rotation.y), Math.cos(heading - root.rotation.y)), -1.2, 1.2) * mix;
         head.rotation.x = pitch * mix;
         return;
@@ -5837,7 +5860,7 @@
       }
       w.meleeComboTime = Math.max(0, w.meleeComboTime - dt);
       if (!runCamp(cave, dt)) updateCaveman(cave, dt);
-      else stopReload(cave);
+      else if (!cave.camp.seat?.allowWeapons) stopReload(cave);
       watchWalker(cave, dt, x, z);
       const axeMoving = Math.hypot(p.x - x, p.z - z) > 1e-5 || cave.hop > 1e-4 || Math.abs(cave.hopV) > 1e-4
         || cave.catchT > 0 || cave.yawn > 0;
@@ -6024,11 +6047,11 @@
       cave.act.kind = "idle";
       standPose(cave);
     }
-    const stats = () => ({ built: builtEquipment.length });
+    const stats = () => ({ built: builtEquipment.length, tomatoesThrown, projectiles: bulletPool.reduce((n,b)=>n+(b.life>0?1:0),0) });
     return {
       showShot, setTint,
       cavemen, list: crewList, fanSlots, stateOf, stateCounts, workingCavemen, eatingCavemen, workingCount, eatingCount, feedableCavemen, refreshStates, refreshRosterRow, updateFan, rush, headWorldOf, applyAllSwag, wornBy, renderLocker, pokeCave, idleSay, drawQuotes,
-      control, release, relocatePlayer, sleepPlayer, wakePlayer, sitPlayer, standPlayer, clearHeadLook, recoverDragged, ignite, dropRoll, damage, fireView, steer: steerPlayer, look: lookPlayer, elevate: elevatePlayer, playerAction, jumpPlayer, poseWeapon, wearJetpack, removeJetpack, setJetpackOwnership, thrust, holdRocketJump, update, dispose, stats,
+      throwTomato, clearProjectiles, control, release, relocatePlayer, sleepPlayer, wakePlayer, sitPlayer, standPlayer, clearHeadLook, recoverDragged, ignite, dropRoll, damage, fireView, steer: steerPlayer, look: lookPlayer, elevate: elevatePlayer, playerAction, jumpPlayer, poseWeapon, wearJetpack, removeJetpack, setJetpackOwnership, thrust, holdRocketJump, update, dispose, stats,
       actorClear, builtInJetpack, toggleTint, twirl, toggleWeapon, selectWeapon, configureWeapon, swingWeapon, bashWeapon, releaseSwing, fireWeapon, setWeaponTrigger, canFire, weaponOrigin, meleeReach, meleePower, nearReload, canReload, startReload, stopReload, stopBurst, canSwapMagazine, swapMagazine, collectMagazine, collectGroundMagazine, collectAmmo, removeMagazines, hasMagazine, magazineCount, magazineAmmo, totalAmmo, workSites,
       get sleeping() { return !!(player && player.bedTravel.manual && player.state === "sleeping"); },
       get player() {

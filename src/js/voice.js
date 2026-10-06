@@ -162,6 +162,7 @@
 
   const setPeers = (ids) => {
     desired = ids.slice();
+    for (const [id, s] of subs) s.el.muted = !desired.includes(id);
     schedule();
   };
 
@@ -216,6 +217,7 @@
         if (t.errorCode || t.id === null) continue;
         const el = new Audio();
         el.autoplay = true;
+        el.muted = !desired.includes(t.id);
         subs.set(t.id, { mid: t.mid, el });
       }
       if (res.requiresImmediateRenegotiation && res.sessionDescription) {

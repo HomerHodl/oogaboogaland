@@ -3,9 +3,9 @@
   "use strict";
   const BL = window.BL = window.BL || {}, S = BL.scene;
   const ACTIVATION_MS = 2000, ACTIVE_MS = 10000, SHUTDOWN_MS = 450;
-  const create = ({ radius, outerRadius, position, rotation = { x: 0, y: 0, z: 0 }, destinations = [], receiving = false,
+  const create = ({ radius, outerRadius, aperture = null, position, rotation = { x: 0, y: 0, z: 0 }, destinations = [], receiving = false,
     onMenu = () => {}, onTraverse = null, menuHint = "Choose a destination, then walk through the active gate.", now = () => performance.now(), reducedMotion = matchMedia("(prefers-reduced-motion: reduce)").matches }) => {
-    const model = BL.oogaPortalModels.build(radius, outerRadius);
+    const model = BL.oogaPortalModels.build(radius, outerRadius, aperture);
     Object.assign(model.root.position, position); Object.assign(model.root.rotation, rotation);
     const inverse = BL.math.mat4.create();
     let state = receiving ? "ACTIVE" : "OFF", started = 0, destination = null, disposed = false, crossed = false, opened = false, focus = null, focusFrame = 0, menuOwned = false;
@@ -45,7 +45,8 @@
       model.horizon.portalSurge = burst;
       // A rolling lip surrounds the forming funnel, collapsing into the membrane.
       model.kawoosh.visible = burst > 0.01;
-      model.kawoosh.scale.x = model.kawoosh.scale.z = radius * Math.max(0.001, k);
+      model.kawoosh.scale.x = model.halfWidth * Math.max(0.001, k);
+      model.kawoosh.scale.z = model.halfHeight * Math.max(0.001, k);
       model.kawoosh.scale.y = burst * Math.min(radius * 0.6, 2.4);
       model.kawoosh.position.y = model.surfaceY - burst * 0.32 * (1 - k * k) ** 2;
       model.kawoosh.glow = 0.4 + burst * 1.2;
@@ -86,7 +87,7 @@
       return true;
     };
     // Signed local +Y -> -Y is front entry; receiving scenes explicitly choose the back.
-    const traverse = (from, to, bodyRadius = 0, direction = 1) => {
+    const traverse = (from, to, bodyRadius = 0, direction = 1, bodyHeight = bodyRadius * 2) => {
       update();
       if (!onTraverse || state !== "ACTIVE" || crossed || disposed || !Number.isFinite(bodyRadius) || bodyRadius < 0 || bodyRadius >= radius || (direction !== 1 && direction !== -1)) return false;
       S.updateWorld(model.root, model.root.parent ? model.root.parent.world : undefined); BL.math.mat4.invert(inverse, model.root.world);
@@ -95,7 +96,14 @@
       if (!(ay * direction > 0 && by * direction <= 0)) return false;
       const t = ay / (ay - by), x = from.x + (to.x - from.x) * t, y = from.y + (to.y - from.y) * t, z = from.z + (to.z - from.z) * t;
       const lx = inverse[0] * x + inverse[4] * y + inverse[8] * z + inverse[12], lz = inverse[2] * x + inverse[6] * y + inverse[10] * z + inverse[14];
-      if (!Number.isFinite(lx + lz) || Math.hypot(lx, lz) > radius - bodyRadius) return false;
+      if (!Number.isFinite(lx + lz)) return false;
+      if(aperture){
+        if(!Number.isFinite(bodyHeight)||bodyHeight<0)return false;
+        const half=bodyHeight/2,foot=lz+half>aperture.height/2-aperture.footHeight;
+        const width=foot?aperture.footWidth:aperture.width;
+        // World matrices are Float32; retain sub-millimetre tolerance at the ground threshold.
+        if(Math.abs(lx)+bodyRadius>width/2-aperture.inset||Math.abs(lz)+half>aperture.height/2+1e-4)return false;
+      }else if(Math.hypot(lx,lz)>radius-bodyRadius)return false;
       crossed = true; onTraverse(destination); return true;
     };
     const enableDialer = entries => {
@@ -125,7 +133,7 @@
       for (const node of model.ripples) node.visible = false;
       for (const node of [model.root, model.dialer]) if (node.parent) S.removeChild(node.parent, node);
     };
-    return { ...model, radius, outerRadius, open, close, activate, update, traverse, enableDialer, receive, finishReceiving, dispose, reducedMotion,
+    return { ...model, radius, outerRadius, aperture, open, close, activate, update, traverse, enableDialer, receive, finishReceiving, dispose, reducedMotion,
       get receiving() { return receiving; }, get state() { return state; }, get isOpen() { return opened; }, get disposed() { return disposed; } };
   };
   BL.oogaPortal = { create, ACTIVATION_MS, ACTIVE_MS, SHUTDOWN_MS };
