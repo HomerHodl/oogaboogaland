@@ -9579,7 +9579,107 @@ const raceRigDisposalProof = async () => {
   return outcomes;
 };
 
+const terrainGlyphLayoutProof = () => {
+  const context = { window: {} };
+  for (const name of ["math", "scene", "models", "convex", "terrain", "hub-models", "caves"]) {
+    runInNewContext(readFileSync(new URL(`../src/js/${name}.js`, import.meta.url), "utf8"), context);
+  }
+  const source = readFileSync(new URL("../src/js/scene-hub.js", import.meta.url), "utf8");
+  const constants = source.slice(source.indexOf("  const MATRIX_TYPES ="), source.indexOf("  const RIM_SEAM_DROP ="));
+  const functions = source.slice(source.indexOf("  const matrixModulo ="), source.indexOf("  const matrixWorldStreamSample ="));
+  runInNewContext(`
+    const BL = window.BL, { fnv1a, mulberry32 } = BL.math, { createNode, addChild } = BL.scene, hubModels = BL.hubModels;
+    const RADIUS = 38; ${constants}
+    let island = BL.terrain.island({ seed: 1 }), root = createNode(), renderer;
+    const placed = [], matrixInteriors = [], CAVE_TERRAIN_LAYOUTS = new WeakMap(), DEBUG = true;
+    ${functions}
+    window.glyphProof = {
+      buildCaveGlyphs, updateCaveGlyphs, terrainGlyphLayoutMatches, captureTerrainGlyphSource, island,
+      begin(kind) { root = createNode(); placed.length = matrixInteriors.length = 0; renderer = { kind, quality: "high" }; },
+      activate(caves) { matrixInteriors.length = 0; for (const cave of caves) matrixInteriors.push(cave); },
+      permanent(index) { MATRIX_WORLD.permanentCave = index; MATRIX_WORLD.radius = 100; },
+      layouts() { return CAVE_TERRAIN_LAYOUTS.get(island.geometry); }
+    };
+  `, context);
+  const proof = context.window.glyphProof, BL = context.window.BL;
+  let cases = 0, failures = 0; const timings = [];
+  const check = ok => { cases++; if (!ok) failures++; };
+  const visit = kind => {
+    proof.begin(kind);
+    return BL.caves.slots.map(slot => {
+      const m = proof.island.mouths.find(mouth => mouth.id === slot.id);
+      const group = BL.scene.createNode({ position: { x: m.x, y: m.floorY, z: m.z }, rotation: { x: 0, y: m.ry, z: 0 } });
+      BL.scene.addChild(group, BL.scene.createNode({ geometry: BL.hubModels.caveShelves(), position: { x: 0, y: 0, z: -2 } }));
+      return proof.buildCaveGlyphs(slot, m, group);
+    });
+  };
+  // Original uncached builder's exact registry hashes for the real island and this prop fixture.
+  const hashes = ["d4c73397", "838b0d54", "2a66543d", "26c1d671", "1b1079a0", "84f53811", "4c0e8983", "0c0f13b7"];
+  const metadata = caves => JSON.stringify(caves.map(cave => ({ hash: cave.registryHash, count: cave.glyphCount, capacity: cave.capacity,
+    sections: cave.sections, streams: cave.streams, entries: cave.entries, bytes: cave.bufferBytes, surfaces: cave.surfaceCounts })));
+  for (const kind of ["webgl2", "canvas2d"]) {
+    const start = Date.now(), cold = visit(kind), built = Date.now(), warm = visit(kind);
+    timings.push({ kind, coldMs: built - start, warmMs: Date.now() - built });
+    check(cold.every((cave, i) => cave.registryHash === hashes[i]));
+    check(metadata(cold) === metadata(warm));
+    for (let i = 0; i < warm.length; i++) {
+      check(warm[i].streams !== cold[i].streams && (!warm[i].streams.length || warm[i].streams[0] !== cold[i].streams[0]));
+      check(!warm[i].entries.length || warm[i].entries[0] !== cold[i].entries[0]);
+      check(warm[i].nodes.every((node, n) => node.instanceData !== cold[i].nodes[n].instanceData));
+      check(warm[i].bufferBytes === cold[i].bufferBytes);
+    }
+    for (const time of [0, 0.33, 1.9]) for (let i = 0; i < warm.length; i++) {
+      proof.permanent(i + 1);
+      proof.activate(cold); proof.updateCaveGlyphs(time, true, kind === "canvas2d" ? 1 : 8);
+      proof.activate(warm); proof.updateCaveGlyphs(time, true, kind === "canvas2d" ? 1 : 8);
+      check(warm[i].nodes.every((node, n) => {
+        const expected = cold[i].nodes[n];
+        if (node.instanceCount !== expected.instanceCount) return false;
+        for (let at = 0; at < node.instanceCount * 20; at++) if (node.instanceData[at] !== expected.instanceData[at]) return false;
+        return true;
+      }));
+    }
+  }
+  check(proof.layouts().size === 16);
+  const geometry = { verts: [0, 0, 0, 1, 0, 0, 0, 1, 0], faces: [{ i: [0, 1, 2] }] };
+  const signature = ["c1", "mirror", 0, 0, 0, 0, "webgl2"];
+  const saved = proof.captureTerrainGlyphSource(geometry, geometry.faces, signature);
+  check(proof.terrainGlyphLayoutMatches(saved, geometry, geometry.faces, signature));
+  for (let i = 0; i < signature.length; i++) {
+    const changed = signature.slice(); changed[i] = typeof signature[i] === "string" ? "changed" : 1;
+    check(!proof.terrainGlyphLayoutMatches(saved, geometry, geometry.faces, changed));
+  }
+  geometry.verts[0] = 0.1; check(!proof.terrainGlyphLayoutMatches(saved, geometry, geometry.faces, signature)); geometry.verts[0] = 0;
+  geometry.faces[0].i[1] = 2; check(!proof.terrainGlyphLayoutMatches(saved, geometry, geometry.faces, signature)); geometry.faces[0].i[1] = 1;
+  const face = geometry.faces[0]; geometry.faces[0] = { i: face.i };
+  check(!proof.terrainGlyphLayoutMatches(saved, geometry, geometry.faces, signature)); geometry.faces[0] = face;
+  const verts = geometry.verts; geometry.verts = verts.slice();
+  check(!proof.terrainGlyphLayoutMatches(saved, geometry, geometry.faces, signature)); geometry.verts = verts;
+  check(proof.terrainGlyphLayoutMatches(saved, geometry, geometry.faces, signature));
+  const slot = BL.caves.slots[0], oldStatus = slot.status;
+  slot.status = "headquarters"; visit("webgl2"); check(proof.layouts().size === 16); slot.status = oldStatus;
+  const mouth = proof.island.mouths.find(mouth => mouth.id === slot.id), oldX = mouth.x;
+  mouth.x += 0.01; visit("webgl2"); check(proof.layouts().size === 16); mouth.x = oldX;
+  let snapshotBytes = 0, entryBytes = 0, streamObjects = 0, entryCount = 0, surfaceMetadataEstimate = 0;
+  for (const layout of proof.layouts().values()) {
+    snapshotBytes += layout.coordinates.byteLength + layout.lengths.byteLength;
+    entryBytes += layout.entryData.byteLength; entryCount += layout.entryData.length / 3;
+    streamObjects += layout.streams.length;
+    for (const section of layout.sections) {
+      surfaceMetadataEstimate += 128 + section.constraints.length * 24;
+      if (section.supports) for (const support of section.supports) surfaceMetadataEstimate += 32 + support.polygon.length * 16;
+      else surfaceMetadataEstimate += section.polygon.length * 16;
+    }
+  }
+  return { cases, failures, timings, cacheSlots: proof.layouts().size, snapshotBytes, entryBytes, entryCount, streamObjects, surfaceMetadataEstimate };
+
+};
+
 const unitChecks = async () => {
+
+const glyphLayout = terrainGlyphLayoutProof();
+record("terrain glyph layouts: warm visits preserve exact registries and rendered instances with fresh mutable buffers and bounded invalidation", glyphLayout.failures === 0 && glyphLayout.cases >= 100, JSON.stringify(glyphLayout));
+
   const rigDisposal = await raceRigDisposalProof();
   record("race rig disposal: pending and linked variants release owned shaders and programs exactly once without context-loss support", rigDisposal.every(r => !r.programs && !r.shaders && !r.duplicateDeletes && r.arraysCleared && r.aliasesReleased), JSON.stringify(rigDisposal));
   const driver = await browserDriverProof();
