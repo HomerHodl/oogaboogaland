@@ -876,7 +876,7 @@
     greeterPrompt = false;
     greeter = BL.factoryGreeter.create({ parent: root, input, fx, feed,
       visitor: () => people && people.player === avatar ? avatar : null,
-      demoRunning: () => feed.reading.contract === "obl.factory.demo.v1" || feed.reading.contract === null && !!shared.mock, coarse: COARSE });
+      demoRunning: () => feed.reading.contract === "obl.factory.demo.v1" || feed.reading.contract === null && !!shared.mock, coarse: COARSE, camera });
     // With no Ooga the visitor cannot talk to the guide: a hint points them to the island to pick one.
     if (!avatar) hud.hint(`${BL.factoryGreeter.NAME} the guide gives tours here — pick an Ooga on the island first`);
 
@@ -1294,6 +1294,7 @@
       scene.gate.phase.liveGeometry(set);
     }
     if (avatar) set.add(avatar.headOpen).add(avatar.headClosed);
+    if (greeter) greeter.liveGeometry(set);
   };
   const stats = () => {
     let nodes = 0;

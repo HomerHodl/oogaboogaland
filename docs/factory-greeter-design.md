@@ -46,7 +46,7 @@ Tess follows the existing tour paths using support and collision queries as a na
 
 ## Implementation boundary
 
-factory-greeter.js owns a visit's rig, fixed waypoints, the on-screen menu (DOM built per visit, styled in style.css, removed on leave), bounded state and one feed subscription. Lines are separately named data for future speech. It never fetches, emits node events, changes accounting, assigns player control or takes over the camera. The visit removes its pick, its keydown capture and unsubscribes on exit. Both renderers use the same procedural geometry. All meshes remain on the live graph, so the guide keeps no swapped heads on the GPU.
+factory-greeter.js owns a visit's rig, fixed waypoints, the on-screen menu (DOM built per visit, styled in style.css, removed on leave), bounded state and one feed subscription. Lines are separately named data for future speech. It never fetches, emits node events, changes accounting, assigns player control or takes over the camera. The visit removes its pick, its keydown capture and unsubscribes on exit. Both renderers use the same procedural geometry. Both detail tiers are retained through the visit’s liveGeometry contract and released when the scene leaves.
 
 ## Validation and next review
 
@@ -62,3 +62,7 @@ Build, the factory browser suite and the unit checks are the repository's valida
 All four routes and their speech are implemented as proposals. Stair and bridge clearance, observation sightlines and mobile readability remain for maintainer play-test before the draft is ready to land.
 
 [PR #112](https://github.com/OogaBoogaX/oogaboogaland/pull/112) preserves the earlier explanations as reference material only. None of its rejected walkthrough implementation is carried over. The hotpixelgroup character landed independently in [PR #117](https://github.com/OogaBoogaX/oogaboogaland/pull/117).
+
+## Close-up detail
+
+Within 6 m of the camera Tess switches to a cached close-up rig: the globe has 51,200 faces versus 10,368 (4.94×), using finer Natural Earth 50m outlines at 1.125 degrees. Ring rails use 480 segments versus 96, the optics and armor use denser curves, and each ring gains 192 fine etched ticks. Beyond 7 m the original tier returns; hysteresis prevents switching at the boundary. Scene pixel resolution remains unchanged. Both tiers are built once and retained only while the visit is live.
