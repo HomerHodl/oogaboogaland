@@ -3670,7 +3670,13 @@ void main() {
       if (res.matrixTexture) gl.deleteTexture(res.matrixTexture);
       for (const p of Object.values(res.programs)) gl.deleteProgram(p.prog);
       if (rigPrograms) {
-        gl.deleteProgram(rigPrograms.mesh.prog); gl.deleteProgram(rigPrograms.shadow.prog);
+        for (const p of [rigPrograms.mesh, rigPrograms.shadow]) {
+          // A canceled entry can leave these lazy variants linking. Release
+          // their shaders even when context loss is unavailable.
+          for (const shader of p.shaders) gl.deleteShader(shader);
+          p.shaders.length = 0;
+          gl.deleteProgram(p.prog);
+        }
         rigPrograms = null; rigProgramsReady = false;
       }
       if (res.quadVao) gl.deleteVertexArray(res.quadVao);
