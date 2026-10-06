@@ -9285,9 +9285,9 @@
     shared.onShot = (cave, from, to) => npcSync.recordShot(cave, from, to);
     BL.net.setHub(true);
     for (const cave of crew.list) crew.setJetpackOwnership(cave, true, hubModels.jetpack(), hubModels.jetFlame());
-    // Sani hosts the island on ordinary visits; explicit activity fixtures still exercise every state.
+    // Sani hosts the island on ordinary visits; debug visits keep activity-derived states.
     const sani = crew.cavemen.get("SaniExp");
-    if (sani && !contributors.debugState && !contributors.debugRoster && preloadedCharacter !== "saniexp") sani.override = "chilling";
+    if (sani && !DEBUG && preloadedCharacter !== "saniexp") sani.override = "chilling";
     mirrorCave.body = BL.mirrorBody.create(mirrorCave.node, crew.cavemen);
     for (const cave of crew.list) entropyLab.phase.body.track(cave.root, cave.traits.height * 2,
       Math.max(cave.headOpen.verts.length, cave.headClosed.verts.length));
