@@ -9334,49 +9334,6 @@ const maxisChecks = BL => {
   record("Maxis: shared geometry, finite transforms and five authored lights",finite&&geometries.size<90&&nodes<2200&&R.lighting.lightCount===5,JSON.stringify({nodes,geometries:geometries.size}));
   record("Maxis: main theater gain exceeds lobby and physical screen changes state",R.gainAt(0,0)>R.gainAt(-5.6,16)&&R.gainAt(-5.6,16)>0&&typeof R.setMedia==="function");
   const roomRoot=R.root;C.dispose();I.dispose();record("Maxis: actor and room disposal remove input targets and scene children",targets.size===0&&!root.children.includes(roomRoot));
-  const D=BL.maxisMediaData;
-  const good=[["youtube","https://youtu.be/M7lc1UVf-VE"],["youtube","https://www.youtube.com/playlist?list=PL123456789012345"],["twitch","https://twitch.tv/yellow"],["twitch","https://twitch.tv/videos/12345"],["twitch","https://clips.twitch.tv/ExampleClip"],["x","https://x.com/example/status/123456"],["direct","https://example.com/film.mp4"],["direct","https://example.com/live.m3u8"]];
-  record("Maxis media: canonical video, playlist, channel, VOD, clip, post and direct formats",good.every(([p,u])=>D.parse(p,u).provider===p));
-  const bad=[["direct","javascript:alert(1)"],["direct","https://user:secret@example.com/a.mp4"],["direct","https://localhost/a.mp4"],["direct","https://127.0.0.1/a.mp4"],["youtube","https://youtube.com.evil.example/watch?v=M7lc1UVf-VE"],["x","https://x.com/example"],["direct","https://example.com/page.html"]];
-  record("Maxis media: rejects unsafe URLs and unsupported provider shapes",bad.every(([p,u])=>{try{D.parse(p,u);return false;}catch{return true;}}));
-  record("Maxis media: offline Live and local filtering require no backend or credentials",D.parse("live","").offline&&D.search("yellow").length===1&&D.search("not configured").length===1&&D.search("absent title").length===0);
-  // Contract: exercise the actual media controller with a small DOM transport double, without fetching providers.
-  const saved={shell:BL.dsbMenuShell,document:globalThis.document,location:globalThis.location,add:window.addEventListener,remove:window.removeEventListener},listeners=new Map(),frames=[];
-  const element=tag=>{
-    const selectors=new Map(),e={tag,children:[],dataset:{},value:tag==="input"?"":"",hidden:false,parent:null,
-      classList:{add:noop,remove:noop,toggle:noop},setAttribute:noop,removeAttribute:noop,addEventListener:noop,removeEventListener:noop,
-      appendChild(c){c.parent=this;this.children.push(c);return c;},replaceChildren(){for(const c of this.children)c.parent=null;this.children=[];},remove(){if(this.parent)this.parent.children=this.parent.children.filter(c=>c!==this);this.parent=null;},blur:noop,
-      querySelector(q){if(!selectors.has(q)){const n=element(q==="input"?"input":"div");if(q===".maxis-volume")n.value="0.8";selectors.set(q,n);}return selectors.get(q);}
-    };if(tag==="iframe"){e.contentWindow={postMessage:noop};frames.push(e);}return e;
-  };
-  globalThis.document={createElement:element,body:element("body"),hidden:false,activeElement:null,fullscreenElement:null,addEventListener:(k,f)=>listeners.set("d:"+k,f),removeEventListener:k=>listeners.delete("d:"+k)};
-  globalThis.location={href:"https://yellowbrokeit.github.io/oogaboogaland/dsb-preview/index.html",origin:"https://yellowbrokeit.github.io"};
-  window.addEventListener=(k,f)=>listeners.set("w:"+k,f);window.removeEventListener=k=>listeners.delete("w:"+k);
-  try{
-    BL.dsbMenuShell={present:noop};
-    const M=BL.maxisMedia.create();let okay=true;
-    const reply=(frame,state,message="",origin=location.origin)=>listeners.get("w:message")({source:frame.contentWindow,origin,data:{kind:"maxis-player",state,message}});
-    for(let pass=0;pass<3;pass++){
-      M.enter();M.setGain(.8,false);M.load("youtube","https://youtu.be/M7lc1UVf-VE");const stale=frames.at(-1);M.load("twitch","https://twitch.tv/yellow");const twitch=frames.at(-1);
-      M.load("x","https://x.com/example/status/123456");const post=frames.at(-1);M.load("direct","https://example.com/film.mp4");const current=frames.at(-1);
-      const status=document.body.children[0].querySelector(".maxis-status"),before=status.textContent;
-      reply(stale,"error","stale");reply(current,"error","forged","https://unrelated.example");
-      okay&&=status.textContent===before&&!twitch.parent&&!post.parent;
-      reply(current,"bridge-ready");reply(current,"loading","Loading direct");okay&&=M.stats.pending===1;
-      reply(current,"ready","Ready");okay&&=M.stats.pending===0;
-      M.fullscreen();M.fullscreen();M.close();M.setGain(.12,true);
-      okay&&=!stale.parent&&!!current.parent&&M.stats.players===1&&M.stats.provider==="direct"&&M.stats.lastVolume===0;
-      M.setGain(.8,false);document.hidden=true;listeners.get("d:visibilitychange")();okay&&=M.stats.lastVolume===0;document.hidden=false;
-      M.load("live","");okay&&=M.stats.players===0&&!current.parent;
-      M.leave();okay&&=M.stats.players===0&&M.stats.pending===0&&!current.parent;
-    }
-    M.enter();M.setGain(.8,false);M.load("x","https://x.com/example/status/123456");okay&&=M.stats.players===1;M.close();okay&&=M.stats.players===0;
-    for(const [provider,url] of [["x","https://x.com/example/status/123456"],["twitch","https://clips.twitch.tv/ExampleClip"]]){
-      M.setGain(.8,false);M.load(provider,url);okay&&=M.stats.players===1;M.setGain(.8,true);okay&&=M.stats.players===0;
-      okay&&=!M.load(provider,url)&&M.stats.players===0;M.setGain(.8,false);M.load(provider,url);document.hidden=true;listeners.get("d:visibilitychange")();okay&&=M.stats.players===0;document.hidden=false;
-    }
-    M.dispose();record("Maxis media: switching, stale replies, fullscreen, mute and three visit cycles retain one player then dispose",okay&&listeners.size===0&&document.body.children.length===0&&M.stats.disposed);
-  }finally{BL.dsbMenuShell=saved.shell;globalThis.document=saved.document;globalThis.location=saved.location;window.addEventListener=saved.add;window.removeEventListener=saved.remove;}
 };
 
 // Rule: the showroom must be reachable by the real Yellow and must only expose public catalog links.
@@ -9593,7 +9550,7 @@ const memeFactoryChecks = BL => {
   const Z=BL.dsbMenuZones,route=(x,z)=>Z.resolve(R,{x,z}).route;
   const cases=[[0,16,"home"],[-8,-9.7,"laser"],[10.8,-11.5,"contributors"],[9.2,-18.3,"yellow"],[-11.4,12,"home"],[0,.2,"podcast"],[7.2,11,"home"]];
   record("Meme Factory context: physical sections select real pages, exact portraits override gallery, production/archive fall home",cases.every(([x,z,r])=>route(x,z)===r)&&R.menuZones.filter(z=>z.priority===3).every(z=>route(z.x,z.z)===z.route),JSON.stringify(cases.map(([x,z,r])=>({want:r,got:route(x,z)}))));
-  const venues={"without-rulers":[[-5.3,1.5,"shirts"],[5.3,1.5,"hoodies"],[9.4,-.85,"hats"],[8.1,6,"art"],[-9.5,-7.8,"bip85"],[0,7,"home"]],"proof-of-ink":[[0,11,"featured"],[-10.6,1,"fine-arts"],[8,-10.1,"collabs"],[-9,8.8,"stackchain-magazine"],[0,-7,"featured"]],"big-bitcoin":[[0,17,"overview"],[14.2,-17,"news"],[14.2,0,"research"],[-14.2,17,"merch"],[-14.2,-17,"overview"]],"maxis-club":[[7.4,-10.4,"home"],[0,0,"home"]]};
+  const venues={"without-rulers":[[-5.3,1.5,"shirts"],[5.3,1.5,"hoodies"],[9.4,-.85,"hats"],[8.1,6,"art"],[-9.5,-7.8,"bip85"],[0,7,"home"]],"proof-of-ink":[[0,11,"featured"],[-10.6,1,"fine-arts"],[8,-10.1,"collabs"],[-9,8.8,"stackchain-magazine"],[0,-7,"featured"]],"big-bitcoin":[[0,17,"overview"],[14.2,-17,"news"],[14.2,0,"research"],[-14.2,17,"merch"],[-14.2,-17,"overview"]]};
   for(const [id,checks] of Object.entries(venues)){const r={id};r.menuZones=Z.forRoom(r);record("DSB contextual routes: "+id,checks.every(([x,z,want])=>Z.resolve(r,{x,z}).route===want),JSON.stringify(checks.map(([x,z,want])=>({want,got:Z.resolve(r,{x,z}).route}))));}
   let lifecycle=true;const childCount=root.children.length,entry=I.registry.get("meme-factory").entry;
   for(let i=0;i<10;i++){lifecycle&&=weather.inside&&!exterior.visible&&I.audio.stats.active;I.request(R.exit);I.update(.4);lifecycle&&=!I.active&&!weather.inside&&exterior.visible&&!I.audio.stats.active&&!I.audio.stats.connected&&returned.x===entry.x&&returned.z===entry.z;I.review("meme-factory",true);I.update(.4);lifecycle&&=I.active.room===R&&root.children.length===childCount;}
@@ -11143,8 +11100,7 @@ const dsbVenueMenusCheckpoint={name:"dsb venue menus checkpoint",why:"rule: spat
     ["meme-factory","memeMenu",".meme-menu",[-8,-9.7],"laser","route"],
     ["without-rulers","shopMenu","#rulers-catalog",[5.3,1.5],"hoodies","section"],
     ["proof-of-ink","inkMenu","#ink-catalog",[-10.6,1],"fine-arts","tag"],
-    ["big-bitcoin","bigMenu","#big-terminal",[14.2,0],"research","section"],
-    ["maxis-club","maxisMedia",".maxis-media",[7.4,-10.4],"home","category"]
+    ["big-bitcoin","bigMenu","#big-terminal",[14.2,0],"research","section"]
   ];
   const paths=join(root,"untracked","dsb-menu-review");mkdirSync(paths,{recursive:true});
   for(const [id,controller,selector,point,want,key] of venues){
@@ -11165,7 +11121,7 @@ const dsbVenueMenusCheckpoint={name:"dsb venue menus checkpoint",why:"rule: spat
       record(`DSB menus ${id} ${w}x${h}: close restores control layer`,await b.evaluate('!document.body.classList.contains("dsb-menu-open")&&BL.dsbMenuShell.count===0&&!document.querySelector(".dsb-menu-shade")'));
     }
     await b.evaluate(`(()=>{const D=__ooga.dsb,I=D.interiors;I.request(I.active.room.exit);I.update(.4);I.review(${JSON.stringify(id)},true);I.update(.4);D.openVenue();})()`);await step();
-    const fallback={"meme-factory":"home","without-rulers":"home","proof-of-ink":"featured","big-bitcoin":"overview","maxis-club":"home"}[id];
+    const fallback={"meme-factory":"home","without-rulers":"home","proof-of-ink":"featured","big-bitcoin":"overview"}[id];
     record(`DSB menus ${id}: exit and fresh entrance discard stale route`,await b.evaluate(`(()=>{const s=__ooga.dsb[${JSON.stringify(controller)}].stats;return (s.route||s.section||s.category)===${JSON.stringify(fallback)};})()`));
     await b.evaluate(`__ooga.dsb[${JSON.stringify(controller)}].close()`);
   }

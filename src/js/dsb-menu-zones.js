@@ -3,7 +3,7 @@
   "use strict";
   const zone=(route,label,x,z,rx,rz,priority=2)=>({route,label,x,z,rx,rz,priority});
   const home=(route,label)=>({route,label,priority:0});
-  const fallbacks={"svrn-society":home("home","Browse SVRN Society"),"meme-factory":home("home","Explore Meme Factory"),"without-rulers":home("home","Browse Without Rulers"),"proof-of-ink":home("featured","Browse Proof of Ink"),"big-bitcoin":home("overview","BIG BITCOIN Info"),"maxis-club":home("home","Open MAXIS MEDIA")};
+  const fallbacks={"svrn-society":home("home","Browse SVRN Society"),"meme-factory":home("home","Explore Meme Factory"),"without-rulers":home("home","Browse Without Rulers"),"proof-of-ink":home("featured","Browse Proof of Ink"),"big-bitcoin":home("overview","BIG BITCOIN Info")};
   const zones={
     "without-rulers":[
       zone("shirts","Browse Shirts",-5.3,1.5,2.5,1.3),zone("hoodies","Browse Hoodies",5.3,1.5,2.5,1.3),
@@ -17,9 +17,7 @@
       zone("collabs","Explore Collabs",8,-10.1,2.8,1.4),zone("stackchain-magazine","Read Stackchain Magazine",-9,8.8,3.4,3.4,3),
       zone("proof-of-work","Explore Proof Of Work",9.5,-1,3.4,9)
     ],
-    "big-bitcoin":[zone("news","Open News",14.2,-17,6.6,8.6),zone("research","Open Research",14.2,0,6.6,7.7),zone("merch","Browse Merch",-14.2,17,6.6,8.6)],
-    // Neither the posters nor the bar are provider stations.
-    "maxis-club":[zone("home","Open MAXIS MEDIA",7.4,-10.4,2,2),zone("home","Open MAXIS MEDIA",0,-10.7,7,2)]
+    "big-bitcoin":[zone("news","Open News",14.2,-17,6.6,8.6),zone("research","Open Research",14.2,0,6.6,7.7),zone("merch","Browse Merch",-14.2,17,6.6,8.6)]
   };
   const forRoom=room=>room.menuZones||zones[room.id]||[];
   const resolve=(room,p)=>{

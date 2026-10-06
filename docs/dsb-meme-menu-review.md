@@ -35,7 +35,6 @@ The twelve contributor portraits are Gregzaj, RD, yellow, Chairforce, Labrahodl,
 | Without Rulers fixtures | `shirts`, `hoodies`, `hats`, `art`, `bip85`, `samourai`, `slavery`, `cartel`, `2140`; fallback `home` |
 | Proof of Ink fixtures | `apparel`, `shirts`, `hats`, `fine-arts`, `collabs`, `stackchain-magazine`, `proof-of-work`; fallback `featured` |
 | BIG BITCOIN press / research / merch | `news`, `research`, `merch`; lobby, boardroom and control room fallback `overview` |
-| Maxis screen / console / other areas | `home` (Media Home). Existing provider pages remain available inside this menu; no provider stations invented. |
 | DSB Studio jukebox | DSB Spaces only. Seating/stage/ticket booth receive no fictitious menu pages. |
 | Noderunner shared physical TV | `main`; explicit Radio target → `radio`; explicit Request target → `jukebox` and request-input focus |
 
@@ -69,7 +68,6 @@ Use the preview, not the stable root. `debug=1` enables these review poses and m
 - [Without Rulers hoodies](https://yellowbrokeit.github.io/oogaboogaland/dsb-preview/index.html?scene=dsb&debug=1&interior=without-rulers&menu=hoodies)
 - [Proof of Ink fine arts](https://yellowbrokeit.github.io/oogaboogaland/dsb-preview/index.html?scene=dsb&debug=1&interior=proof-of-ink&menu=fine-arts)
 - [BIG BITCOIN research](https://yellowbrokeit.github.io/oogaboogaland/dsb-preview/index.html?scene=dsb&debug=1&interior=big-bitcoin&menu=research)
-- [Maxis Media Home](https://yellowbrokeit.github.io/oogaboogaland/dsb-preview/index.html?scene=dsb&debug=1&interior=maxis-club&menu=home)
 - [DSB Studio jukebox](https://yellowbrokeit.github.io/oogaboogaland/dsb-preview/index.html?scene=dsb&debug=1&interior=dsb-studio&view=studio-jukebox&menu=spaces)
 - [Noderunner TV](https://yellowbrokeit.github.io/oogaboogaland/dsb-preview/index.html?scene=dsb&debug=1&view=noderunner&menu=main), [Radio](https://yellowbrokeit.github.io/oogaboogaland/dsb-preview/index.html?scene=dsb&debug=1&view=noderunner&menu=radio), [Jukebox / Request](https://yellowbrokeit.github.io/oogaboogaland/dsb-preview/index.html?scene=dsb&debug=1&view=noderunner&menu=jukebox)
 - [Preserved wormhole arrival](https://yellowbrokeit.github.io/oogaboogaland/dsb-preview/index.html?scene=dsb&debug=1&entrance=1)
