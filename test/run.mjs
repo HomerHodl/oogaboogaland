@@ -9675,7 +9675,24 @@ const terrainGlyphLayoutProof = () => {
 
 };
 
+const rendererReadinessProof = () => {
+  const source = readFileSync(new URL("../src/js/gl-renderer.js", import.meta.url), "utf8");
+  const start = source.indexOf("      get ready() {");
+  const getter = source.slice(start, source.indexOf("      get failure() {", start));
+  const context = { ready: true, lost: false, failure: null, rigMode: true, rigProgramsReady: false };
+  runInNewContext(`this.publicRenderer = { ${getter} };`, context);
+  const outcomes = [context.publicRenderer.ready === false];
+  context.rigProgramsReady = true; outcomes.push(context.publicRenderer.ready === true);
+  context.rigProgramsReady = false; context.rigMode = false; outcomes.push(context.publicRenderer.ready === true);
+  context.lost = true; outcomes.push(context.publicRenderer.ready === false);
+  context.lost = false; context.failure = new Error("Link failed"); outcomes.push(context.publicRenderer.ready === false);
+  context.failure = null; context.ready = false; outcomes.push(context.publicRenderer.ready === false);
+  return { cases: outcomes.length, failures: outcomes.filter(ok => !ok).length };
+};
+
 const unitChecks = async () => {
+  const readiness = rendererReadinessProof();
+  record("renderer readiness: selected race programs must link after restoration, while unused rigs do not block ordinary scenes", readiness.cases === 6 && readiness.failures === 0, JSON.stringify(readiness));
 
 const glyphLayout = terrainGlyphLayoutProof();
 record("terrain glyph layouts: warm visits preserve exact registries and rendered instances with fresh mutable buffers and bounded invalidation", glyphLayout.failures === 0 && glyphLayout.cases >= 100, JSON.stringify(glyphLayout));

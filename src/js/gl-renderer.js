@@ -3735,7 +3735,7 @@ void main() {
         return mirrorDebug;
       },
       get ready() {
-        return ready;
+        return !lost && !failure && ready && (!rigMode || rigProgramsReady);
       },
       get failure() {
         return failure;
