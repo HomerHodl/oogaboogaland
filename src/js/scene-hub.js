@@ -959,7 +959,31 @@
         if (minX <= 2.5 && maxX >= -2.5 && minY >= -1e-6 && maxY <= 1e-6 && minZ <= PORTAL_Z && maxZ >= 0) face.matrixPermanentFallback = true;
       }
     }
-    const sections = [], streams = [], entries = [], nodes = [], horizontalDomains = [];
+    const sections = [], streams = [], nodes = [], horizontalDomains = [];
+    // Registry identities are immutable integer triples, not live glyph state.
+    // Fixed chunks avoid one short-lived object allocation per character.
+    const entryChunks = [];
+    let entryLength = 0, entryChunk = null, entryChunkUsed = 0;
+    const addEntry = (stream, character, rank) => {
+      if (!entryChunk || entryChunkUsed === entryChunk.length) {
+        entryChunk = new Uint32Array(4096 * 3);
+        entryChunks.push(entryChunk); entryChunkUsed = 0;
+      }
+      entryChunk[entryChunkUsed++] = stream;
+      entryChunk[entryChunkUsed++] = character;
+      entryChunk[entryChunkUsed++] = rank;
+      entryLength += 3;
+    };
+    const compactEntries = () => {
+      const result = new Uint32Array(entryLength);
+      let offset = 0;
+      for (const chunk of entryChunks) {
+        const length = chunk === entryChunk ? entryChunkUsed : chunk.length;
+        result.set(length === chunk.length ? chunk : chunk.subarray(0, length), offset);
+        offset += length;
+      }
+      return result;
+    };
     const surfaceCounts = { floor: 0, ceiling: 0, wall: 0, prop: 0 };
     const halfX = 0.0395, halfY = 0.0605, halfZ = 0.005, clearance = 0.01;
     let maximumLocalZ = -Infinity, minEntranceX = Infinity, maxEntranceX = -Infinity, propFaces = 0, terrainFaces = 0, perGlyphCapacity = 0;
@@ -972,11 +996,11 @@
       const speed = MATRIX_STREAM_SPEED_MIN + rand() * MATRIX_STREAM_SPEED_RANGE, phase = rand() * span, brightness = 0.58 + rand() * 0.36;
       const direction = horizontal && ny > 0 ? 1 : -1;
       const characters = Math.ceil((flowMax - flowMin) / MATRIX_SURFACE_GAP) + 1, rank = matrixModulo(column, 8);
-      const stream = { section: sections.length, cross, speed, phase, brightness, trainLength, gapLength, direction, flowMin, flowMax, flowRange: span, seed, head: 0, gap: 0, rank, entryStart: entries.length, entryCount: 0 };
+      const stream = { section: sections.length, cross, speed, phase, brightness, trainLength, gapLength, direction, flowMin, flowMax, flowRange: span, seed, head: 0, gap: 0, rank, entryStart: entryLength / 3, entryCount: 0 };
       const streamIndex = streams.length;
       streams.push(stream);
       if (renderer.kind !== "canvas2d" || rank < MATRIX_DENSITY.canvas2d) {
-        for (let character = 0; character < characters; character++) entries.push({ stream: streamIndex, character, rank });
+        for (let character = 0; character < characters; character++) addEntry(streamIndex, character, rank);
         stream.entryCount = characters;
         // Advected cell identities cover every glyph once per eight consecutive slots (MATRIX_TYPES).
         perGlyphCapacity += Math.ceil(characters / MATRIX_TYPES);
@@ -1084,8 +1108,8 @@
     if (terrainGlyphLayoutMatches(cachedLayout, island.geometry, caveFaces, signature)) {
       for (const section of cachedLayout.sections) sections.push({ ...section });
       for (const stream of cachedLayout.streams) streams.push({ ...stream, head: 0, gap: 0 });
-      const entryData = cachedLayout.entryData;
-      for (let i = 0; i < entryData.length; i += 3) entries.push({ stream: entryData[i], character: entryData[i + 1], rank: entryData[i + 2] });
+      entryChunks.push(cachedLayout.entryData);
+      entryLength = cachedLayout.entryData.length;
       Object.assign(surfaceCounts, cachedLayout.surfaceCounts);
       ({ maximumLocalZ, minEntranceX, maxEntranceX, terrainFaces, perGlyphCapacity } = cachedLayout);
     } else {
@@ -1114,13 +1138,7 @@
         }
       }
       const layout = captureTerrainGlyphSource(island.geometry, caveFaces, signature);
-      // Terrain entry identities are nonnegative indices/ranks. Keep their
-      // cached copy compact; every visit still owns fresh live entry objects.
-      const entryData = new Uint32Array(entries.length * 3);
-      for (let i = 0; i < entries.length; i++) {
-        const entry = entries[i], at = i * 3;
-        entryData[at] = entry.stream; entryData[at + 1] = entry.character; entryData[at + 2] = entry.rank;
-      }
+      const entryData = compactEntries();
       Object.assign(layout, {
         sections: sections.map(section => ({ ...section })), streams: streams.map(stream => ({ ...stream, head: 0, gap: 0 })),
         entryData, surfaceCounts: { ...surfaceCounts },
@@ -1165,6 +1183,7 @@
       const node = createNode({ geometry: { ...hubModels.matrixGlyph(glyph), matrixCave: caveIndex }, instanceData: new Float32Array(perGlyphCapacity * 20), instanceCount: 0, drawInstanceCount: 0, instanceVersion: 0, fixedInstanceCapacity: true });
       addChild(root, node); placed.push(node); nodes.push(node);
     }
+    const entries = compactEntries();
     let registryHash = 2166136261, minBrightness = Infinity, maxBrightness = 0, minTrainLength = Infinity, maxTrainLength = 0, minGapLength = Infinity, maxGapLength = 0;
     let surfaceMetadataBytes = 0;
     for (let i = 0; i < sections.length; i++) {
@@ -1187,7 +1206,7 @@
       rain: buildCaveRain(slot, m, group, caveIndex),
       glyphCount: surfaceCounts.floor + surfaceCounts.ceiling + surfaceCounts.wall + surfaceCounts.prop,
       perGlyphCapacity, capacity: perGlyphCapacity * MATRIX_TYPES, bufferBytes: perGlyphCapacity * MATRIX_TYPES * 80,
-      registryBytes: entries.length * 24 + streams.length * 112 + surfaceMetadataBytes, surfaceMetadataBytes, registryHash: registryHash.toString(16).padStart(8, "0"),
+      registryBytes: entries.byteLength + streams.length * 112 + surfaceMetadataBytes, surfaceMetadataBytes, registryHash: registryHash.toString(16).padStart(8, "0"),
       activeGlyphCount: 0, revealedGlyphCount: 0, drawnGlyphCount: 0, brightTipCount: 0, movingGapCount: 0, maximumLocalZ,
       minimumTravelDistance: matrixEntranceMinimum(m, minEntranceX, maxEntranceX), terrainFaces, propFaces, updates: 0, allocationCount: MATRIX_TYPES, rebuildCount: 1,
       quality: renderer.kind === "canvas2d" ? "canvas2d" : renderer.quality, densityRankLimit: MATRIX_DENSITY[renderer.kind === "canvas2d" ? "canvas2d" : renderer.quality], glyphVersion: -1, previousGlyphVersion: -1, mutationHash: 0, firstGlyphY: 0,
