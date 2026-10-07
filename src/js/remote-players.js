@@ -4,7 +4,12 @@
 // copy of that Ooga is sent `away` while someone else drives it, so no Ooga stands twice, and comes back
 // when they let go; meanwhile its roster row shows the driver online (`remoteControlled`, the green dot).
 // The crew walks round remote bodies through `actors`, its `outsideActors`.
-// One pool per hub visit: `create` in enter, `dispose` in leave, before the crew's.
+// Who is shown is the scene's `visible(rec)`: the island shows players in its own zone (`onIsland` lists the
+// island's places), every other scene those in its zone (`sameZone`). The crew is optional, for a scene that
+// has none until the visitor drives, and `hide(name, on)` lets a scene hide its own decor copy of an Ooga
+// someone drives. A nameplate carries the name, a health bar from the room's `hp` (red while knocked out) and,
+// for a player in voice, the speaker: green while speaking, red with a cross when they muted their microphone.
+// One pool per scene visit: `create` in enter, `dispose` in leave, before the crew's.
 (() => {
   "use strict";
   const BL = window.BL = window.BL || {};
@@ -14,11 +19,29 @@
   const SNAP = 8;
   const WALK_SPEED = 0.35;
   const NAME_FONT = "bold 11px ui-monospace, monospace";
+  // The crew keeps remote bodies at this height for walking round them.
+  const BODY_HEIGHT = 2.2;
+  // Nameplate parts, in CSS pixels: the health bar under the name, the 9-pixel speaker right of it.
+  const BAR_W = 32, BAR_H = 4, BAR_GAP = 3, ICON_GAP = 4;
+  const NAME_STROKE = "rgba(20, 14, 8, 0.85)", NAME_FILL = "#f3efe4", BAR_TRACK = "rgba(0, 0, 0, 0.55)";
+  const BAR_FILL = "#d8892b", BAR_KO = "#e5533d", ICON_IDLE = "#a6a6a2", ICON_SPEAKING = "#22c55e", ICON_MUTED = "#e5533d";
+  // x, y, w, h runs on the speaker's 9x9 grid, as the roster's voice mark draws it.
+  const SPEAKER = [0, 3, 2, 3, 2, 2, 1, 5, 3, 1, 1, 7];
+  const WAVES = [5, 3, 1, 3, 7, 2, 1, 5];
+  const CROSS = [5, 3, 1, 1, 7, 3, 1, 1, 6, 4, 1, 1, 5, 5, 1, 1, 7, 5, 1, 1];
+  const runs = (ctx, cells, x, y) => {
+    for (let i = 0; i < cells.length; i += 4) ctx.fillRect(x + cells[i], y + cells[i + 1], cells[i + 2], cells[i + 3]);
+  };
+
+  // The zones the hub itself reports, which share its coordinates: the island, its bridged lands and its caves
+  // (`cave-<id>` for a mouth with no name of its own). Never a separate scene's zone, such as the Ember Den.
+  const ISLAND_ZONES = new Set(["outside", "sphere", "rainforest", "bifrost", "lab", "factory", "arcade", "mirror", "hq"]);
+  const onIsland = (zone) => ISLAND_ZONES.has(zone) || typeof zone === "string" && zone.startsWith("cave-");
+  const sameZone = (rec) => rec.zone === BL.net.state.zone;
 
   // `posed(cave, feetY)` lets the scene finish a body's pose once it stands where the room says: the hub sets a
   // swimmer's arms by it, from the position the pose transport already carries, with no simulation of its own.
-  const hubZone = rec => rec.zone === "outside" || rec.zone === "hq" || rec.zone?.startsWith("cave-");
-  const create = ({ root, crew, posed = null, visible = hubZone }) => {
+  const create = ({ root, crew = null, posed = null, visible = sameZone, hide = null }) => {
     const net = BL.net;
     const bodies = new Map();
     const actorPool = Array.from({ length: MAX }, () => ({ x: 0, y: 0, z: 0 }));
@@ -26,6 +49,8 @@
 
     // The crew's Ooga of this name goes away while a remote drives it; its own override comes back after.
     const hideLocal = (entry) => {
+      if (hide) hide(entry.name, true);
+      if (!crew) return;
       const cave = crew.cavemen.get(entry.name);
       if (!cave || cave === crew.player) return;
       entry.hidden = cave;
@@ -35,6 +60,7 @@
       crew.refreshStates();
     };
     const restoreLocal = (entry) => {
+      if (hide) hide(entry.name, false);
       const cave = entry.hidden;
       if (!cave) return;
       entry.hidden = null;
@@ -108,7 +134,7 @@
         if (far) entry.dx = entry.dz = 0;
         pose(entry, dt);
         if (posed) posed(entry.cave, entry.cave.root.position.y - entry.baseY);
-        entry.cave.root.visible = visible(rec) && crew.player?.traits.name !== entry.name;
+        entry.cave.root.visible = visible(rec) && !(crew && crew.player && crew.player.traits.name === entry.name);
         if (!entry.cave.root.visible) continue;
         const actor = actorPool[n++];
         actor.x = entry.x; actor.y = entry.y; actor.z = entry.z;
@@ -119,22 +145,40 @@
 
     const actors = () => actorList;
 
-    // Nameplates on the overlay, above each head, in the order the room sent them.
+    // Nameplates on the overlay, above each head, in the order the room sent them: the name, the health bar
+    // under it and the speaker right of the bar.
     const drawNames = (ctx, project) => {
       if (!bodies.size) return;
+      ctx.save();
       ctx.font = NAME_FONT;
       ctx.textAlign = "center";
+      ctx.textBaseline = "alphabetic";
       ctx.lineWidth = 3;
-      ctx.strokeStyle = "rgba(20, 14, 8, 0.85)";
-      ctx.fillStyle = "#f3efe4";
+      ctx.lineJoin = "round";
       for (const entry of bodies.values()) {
         const rec = net.remotes.get(entry.id);
         if (!rec || !entry.cave.root.visible) continue;
         const pos = project(entry.x, entry.y + entry.cave.traits.height * 2 + 0.35, entry.z);
         if (!pos) continue;
-        ctx.strokeText(rec.display, pos.x, pos.y);
-        ctx.fillText(rec.display, pos.x, pos.y);
+        const x = Math.round(pos.x), y = Math.round(pos.y);
+        ctx.strokeStyle = NAME_STROKE;
+        ctx.fillStyle = NAME_FILL;
+        ctx.strokeText(rec.display, x, y);
+        ctx.fillText(rec.display, x, y);
+        const left = x - BAR_W / 2, top = y + BAR_GAP;
+        ctx.fillStyle = NAME_STROKE;
+        ctx.fillRect(left - 1, top - 1, BAR_W + 2, BAR_H + 2);
+        ctx.fillStyle = BAR_TRACK;
+        ctx.fillRect(left, top, BAR_W, BAR_H);
+        ctx.fillStyle = rec.ko ? BAR_KO : BAR_FILL;
+        ctx.fillRect(left, top, Math.round(BAR_W * Math.max(0, Math.min(100, rec.hp)) / 100), BAR_H);
+        if (!rec.voice) continue;
+        const ix = left + BAR_W + ICON_GAP, iy = top + BAR_H / 2 - 4.5;
+        ctx.fillStyle = rec.muted ? ICON_MUTED : BL.voice.speaking(rec.id) ? ICON_SPEAKING : ICON_IDLE;
+        runs(ctx, SPEAKER, ix, iy);
+        runs(ctx, rec.muted ? CROSS : WAVES, ix, iy);
       }
+      ctx.restore();
     };
 
     const liveGeometry = (set) => {
@@ -151,5 +195,5 @@
     return { update, actors, drawNames, liveGeometry, stats, dispose };
   };
 
-  BL.remotePlayers = { create, MAX };
+  BL.remotePlayers = { create, onIsland, sameZone, MAX, BODY_HEIGHT };
 })();
