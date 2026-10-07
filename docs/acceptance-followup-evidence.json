@@ -1,658 +1,1413 @@
 {
-  "testedCodeHead": "c5a290873d2d3007ce6919a323c21833fd5360d2",
-  "base": "81fd9d1fb8c1563dff1a93d318e03c0ef6da5d74",
-  "browser": {
+  "base": "8c11e150d310733d24f79bc150ec941b3e8f4b90",
+  "testedCodeHead": "b9d5f3bda68c981e477daf0fd9a9fd30dc688e1a",
+  "status": "Draft: validated repairs published; original performance targets, intermittent worker recovery and upstream DSB contracts/geometry remain blockers",
+  "priorPublication": {
+    "testedCodeHead": "c5a290873d2d3007ce6919a323c21833fd5360d2",
+    "base": "81fd9d1fb8c1563dff1a93d318e03c0ef6da5d74",
+    "browser": {
+      "variant": "followup",
+      "head": "c5a290873d2d3007ce6919a323c21833fd5360d2",
+      "command": "LANES=4 npm run test:full",
+      "startedAt": "2026-10-06T22:41:28.568596+00:00",
+      "sourceAndTestBefore": "e24719da66f6a996934c6f456916f1c6780cd5b34abf8210216a3113be4507e3",
+      "stoppedAt": "2026-10-06T22:55:52.971088+00:00",
+      "sourceAndTestAfter": "e24719da66f6a996934c6f456916f1c6780cd5b34abf8210216a3113be4507e3",
+      "unchanged": true,
+      "status": "Stopped at user instruction; incomplete; no terminal suite result",
+      "exit": null,
+      "observedLogCounts": {
+        "PASS": 733,
+        "FAIL": 8,
+        "RETRY": 3
+      },
+      "failures": [
+        {
+          "check": "wall movement performance: ordinary movement stays responsive at a high-density desktop size",
+          "detail": {
+            "fps": 52.028306588258744,
+            "p95": 33.30000000000109,
+            "max": 66.59999999999854,
+            "worst": {
+              "gap": 86.80000001192093,
+              "at": 2716.6000000000004,
+              "updateMs": 3.5999999940395355,
+              "renderMs": 3.800000011920929,
+              "overlayMs": 2.5999999940395355,
+              "donated": false
+            },
+            "outlined": 0,
+            "samples": 261,
+            "travel": 3.358074999999994,
+            "donated": false,
+            "particles": 0,
+            "quality": "low"
+          }
+        },
+        {
+          "check": "wall movement performance: moving behind cave walls during a donation stays responsive at a high-density desktop size",
+          "detail": {
+            "fps": 30.10126784147995,
+            "p95": 50,
+            "max": 50.100000000000364,
+            "worst": {
+              "gap": 43.19999998807907,
+              "at": 1049.8999999999996,
+              "updateMs": 4.5999999940395355,
+              "renderMs": 3.7999999821186066,
+              "overlayMs": 31.900000005960464,
+              "donated": true
+            },
+            "outlined": 151,
+            "samples": 151,
+            "travel": 4.132299999999994,
+            "donated": true,
+            "particles": 26,
+            "quality": "low"
+          }
+        },
+        {
+          "check": "work movement cave trips: every surface trail connects to the ring and completes in both directions, including LF and Mine above buried HQ ramps",
+          "detail": {
+            "rows": [
+              {
+                "line": 0,
+                "direction": 1,
+                "pathLength": 16.36567754595337,
+                "connected": true,
+                "arrived": true,
+                "onPath": 0.9463722397476341,
+                "error": 1.6588264077979764,
+                "laneError": 1.3088264077979765,
+                "laneSamples": 264,
+                "rightSamples": 264,
+                "frames": 317,
+                "deviation": {
+                  "x": -1.9059495220446927,
+                  "z": -6.030283294415727,
+                  "targetX": -2.207038404591291,
+                  "targetZ": -6.342518518865939,
+                  "index": 2,
+                  "count": 129,
+                  "mode": 0,
+                  "goalX": -10.968698282192154,
+                  "goalZ": -18.926259086101375
+                },
+                "distance": 0
+              },
+              {
+                "line": 0,
+                "direction": -1,
+                "pathLength": 16.36567754595337,
+                "connected": true,
+                "arrived": true,
+                "onPath": 0.9897610921501706,
+                "error": 0.35778821915073333,
+                "laneError": 0.009207730311326434,
+                "laneSamples": 239,
+                "rightSamples": 239,
+                "frames": 293,
+                "deviation": null,
+                "distance": 0
+              },
+              {
+                "line": 1,
+                "direction": 1,
+                "pathLength": 15.533150135237818,
+                "connected": true,
+                "arrived": true,
+                "onPath": 1,
+                "error": 0.35835745315183787,
+                "laneError": 0.009894283602802478,
+                "laneSamples": 224,
+                "rightSamples": 224,
+                "frames": 278,
+                "deviation": null,
+                "distance": 0
+              },
+              {
+                "line": 1,
+                "direction": -1,
+                "pathLength": 15.533150135237818,
+                "connected": true,
+                "arrived": true,
+                "onPath": 1,
+                "error": 0.36059102321410214,
+                "laneError": 0.010591023214102213,
+                "laneSamples": 221,
+                "rightSamples": 221,
+                "frames": 275,
+                "deviation": null,
+                "distance": 0
+              },
+              {
+                "line": 2,
+                "direction": 1,
+                "pathLength": 15.490485306936314,
+                "connected": true,
+                "arrived": true,
+                "onPath": 1,
+                "error": 0.35802207451429674,
+                "laneError": 0.009478369387234564,
+                "laneSamples": 223,
+                "rightSamples": 223,
+                "frames": 277,
+                "deviation": null,
+                "distance": 0
+              },
+              {
+                "line": 2,
+                "direction": -1,
+                "pathLength": 15.490485306936314,
+                "connected": true,
+                "arrived": true,
+                "onPath": 1,
+                "error": 0.36017619920769417,
+                "laneError": 0.010176199207694137,
+                "laneSamples": 221,
+                "rightSamples": 221,
+                "frames": 274,
+                "deviation": null,
+                "distance": 0
+              },
+              {
+                "line": 3,
+                "direction": 1,
+                "pathLength": 15.314569387665792,
+                "connected": true,
+                "arrived": true,
+                "onPath": 1,
+                "error": 0.37106223372548347,
+                "laneError": 0.021062233725483548,
+                "laneSamples": 218,
+                "rightSamples": 218,
+                "frames": 273,
+                "deviation": null,
+                "distance": 0
+              },
+              {
+                "line": 3,
+                "direction": -1,
+                "pathLength": 15.314569387665792,
+                "connected": true,
+                "arrived": true,
+                "onPath": 1,
+                "error": 0.3614546422114392,
+                "laneError": 0.018486165923007225,
+                "laneSamples": 219,
+                "rightSamples": 219,
+                "frames": 272,
+                "deviation": null,
+                "distance": 0
+              },
+              {
+                "line": 4,
+                "direction": 1,
+                "pathLength": 16.60499660501936,
+                "connected": true,
+                "arrived": true,
+                "onPath": 1,
+                "error": 0.35838672667291394,
+                "laneError": 0.009911476364989735,
+                "laneSamples": 243,
+                "rightSamples": 243,
+                "frames": 297,
+                "deviation": null,
+                "distance": 0
+              },
+              {
+                "line": 4,
+                "direction": -1,
+                "pathLength": 16.60499660501936,
+                "connected": true,
+                "arrived": true,
+                "onPath": 1,
+                "error": 0.3607280853052488,
+                "laneError": 0.010728085305248825,
+                "laneSamples": 240,
+                "rightSamples": 240,
+                "frames": 294,
+                "deviation": null,
+                "distance": 0
+              },
+              {
+                "line": 5,
+                "direction": 1,
+                "pathLength": 16.56015466665486,
+                "connected": true,
+                "arrived": true,
+                "onPath": 1,
+                "error": 0.36019765377357416,
+                "laneError": 0.01838940378353915,
+                "laneSamples": 238,
+                "rightSamples": 238,
+                "frames": 293,
+                "deviation": null,
+                "distance": 0
+              },
+              {
+                "line": 5,
+                "direction": -1,
+                "pathLength": 16.56015466665486,
+                "connected": true,
+                "arrived": true,
+                "onPath": 1,
+                "error": 0.3595705262484175,
+                "laneError": 0.012905440478723385,
+                "laneSamples": 242,
+                "rightSamples": 242,
+                "frames": 296,
+                "deviation": null,
+                "distance": 0
+              },
+              {
+                "line": 6,
+                "direction": 1,
+                "pathLength": 16.655282875786337,
+                "connected": true,
+                "arrived": true,
+                "onPath": 1,
+                "error": 0.357814329055309,
+                "laneError": 0.009213676600070608,
+                "laneSamples": 244,
+                "rightSamples": 244,
+                "frames": 298,
+                "deviation": null,
+                "distance": 9.456937025001033e-19
+              },
+              {
+                "line": 6,
+                "direction": -1,
+                "pathLength": 16.655282875786337,
+                "connected": true,
+                "arrived": true,
+                "onPath": 1,
+                "error": 0.359932701747252,
+                "laneError": 0.009932701747252082,
+                "laneSamples": 241,
+                "rightSamples": 241,
+                "frames": 295,
+                "deviation": null,
+                "distance": 0
+              },
+              {
+                "line": 7,
+                "direction": 1,
+                "pathLength": 16.704455024429375,
+                "connected": true,
+                "arrived": true,
+                "onPath": 1,
+                "error": 0.35815417310637615,
+                "laneError": 0.009675384095398976,
+                "laneSamples": 245,
+                "rightSamples": 245,
+                "frames": 299,
+                "deviation": null,
+                "distance": 1.537323543781021e-18
+              },
+              {
+                "line": 7,
+                "direction": -1,
+                "pathLength": 16.704455024429375,
+                "connected": true,
+                "arrived": true,
+                "onPath": 1,
+                "error": 0.36040227496354965,
+                "laneError": 0.010402274963549674,
+                "laneSamples": 242,
+                "rightSamples": 242,
+                "frames": 295,
+                "deviation": null,
+                "distance": 0
+              },
+              {
+                "line": 8,
+                "direction": 1,
+                "pathLength": 10.092548077347185,
+                "connected": true,
+                "arrived": true,
+                "onPath": 1,
+                "error": 0.3688814401726923,
+                "laneError": 0.3510247787655606,
+                "laneSamples": 125,
+                "rightSamples": 123,
+                "frames": 180,
+                "deviation": null,
+                "distance": 0
+              },
+              {
+                "line": 8,
+                "direction": -1,
+                "pathLength": 10.092548077347185,
+                "connected": true,
+                "arrived": true,
+                "onPath": 1,
+                "error": 0.35909918667593316,
+                "laneError": 0.3697990037809411,
+                "laneSamples": 130,
+                "rightSamples": 116,
+                "frames": 190,
+                "deviation": null,
+                "distance": 6.938893903907228e-18
+              },
+              {
+                "line": 9,
+                "direction": 1,
+                "pathLength": 7.747346708362145,
+                "connected": true,
+                "arrived": true,
+                "onPath": 1,
+                "error": 0.3835778541761024,
+                "laneError": 0.22296164536434304,
+                "laneSamples": 85,
+                "rightSamples": 85,
+                "frames": 139,
+                "deviation": null,
+                "distance": 1.734723475976807e-18
+              },
+              {
+                "line": 9,
+                "direction": -1,
+                "pathLength": 7.747346708362145,
+                "connected": true,
+                "arrived": true,
+                "onPath": 1,
+                "error": 0.3153198645952794,
+                "laneError": 0.2580252326838175,
+                "laneSamples": 90,
+                "rightSamples": 90,
+                "frames": 145,
+                "deviation": null,
+                "distance": 3.469446951953614e-18
+              },
+              {
+                "line": 10,
+                "direction": 1,
+                "pathLength": 24.737706030195692,
+                "connected": true,
+                "arrived": true,
+                "onPath": 1,
+                "error": 0.35215571017771424,
+                "laneError": 0.2618318502455086,
+                "laneSamples": 391,
+                "rightSamples": 391,
+                "frames": 445,
+                "deviation": null,
+                "distance": 0
+              },
+              {
+                "line": 10,
+                "direction": -1,
+                "pathLength": 24.737706030195692,
+                "connected": true,
+                "arrived": true,
+                "onPath": 1,
+                "error": 0.3926367778219586,
+                "laneError": 0.2667053296504499,
+                "laneSamples": 390,
+                "rightSamples": 390,
+                "frames": 444,
+                "deviation": null,
+                "distance": 0
+              },
+              {
+                "line": 11,
+                "direction": 1,
+                "pathLength": 14.782623181206517,
+                "connected": true,
+                "arrived": true,
+                "onPath": 1,
+                "error": 0.3523749767140203,
+                "laneError": 0.012019927046232393,
+                "laneSamples": 210,
+                "rightSamples": 210,
+                "frames": 263,
+                "deviation": null,
+                "distance": 0
+              },
+              {
+                "line": 11,
+                "direction": -1,
+                "pathLength": 14.782623181206517,
+                "connected": true,
+                "arrived": true,
+                "onPath": 1,
+                "error": 0.35123973893376337,
+                "laneError": 0.012352112589027853,
+                "laneSamples": 209,
+                "rightSamples": 209,
+                "frames": 264,
+                "deviation": null,
+                "distance": 0
+              },
+              {
+                "line": 12,
+                "direction": 1,
+                "pathLength": 8,
+                "connected": true,
+                "arrived": true,
+                "onPath": 1,
+                "error": 0.3499999399459354,
+                "laneError": 0.010942651275967163,
+                "laneSamples": 90,
+                "rightSamples": 90,
+                "frames": 144,
+                "deviation": null,
+                "distance": 0
+              },
+              {
+                "line": 12,
+                "direction": -1,
+                "pathLength": 8,
+                "connected": true,
+                "arrived": true,
+                "onPath": 1,
+                "error": 0.34999993994593537,
+                "laneError": 0.010942651275966497,
+                "laneSamples": 90,
+                "rightSamples": 90,
+                "frames": 144,
+                "deviation": null,
+                "distance": 0
+              },
+              {
+                "line": 13,
+                "direction": 1,
+                "pathLength": 14.782623181206521,
+                "connected": true,
+                "arrived": true,
+                "onPath": 1,
+                "error": 0.3509297079804461,
+                "laneError": 0.00986435286257914,
+                "laneSamples": 210,
+                "rightSamples": 210,
+                "frames": 264,
+                "deviation": null,
+                "distance": 0
+              },
+              {
+                "line": 13,
+                "direction": -1,
+                "pathLength": 14.782623181206521,
+                "connected": true,
+                "arrived": true,
+                "onPath": 1,
+                "error": 0.35128941846389067,
+                "laneError": 0.008033999586228524,
+                "laneSamples": 210,
+                "rightSamples": 210,
+                "frames": 263,
+                "deviation": null,
+                "distance": 0
+              },
+              {
+                "line": 14,
+                "direction": 1,
+                "pathLength": 7.999999999999997,
+                "connected": true,
+                "arrived": true,
+                "onPath": 1,
+                "error": 0.34999993994593287,
+                "laneError": 0.010942651275966608,
+                "laneSamples": 90,
+                "rightSamples": 90,
+                "frames": 144,
+                "deviation": null,
+                "distance": 0
+              },
+              {
+                "line": 14,
+                "direction": -1,
+                "pathLength": 7.999999999999997,
+                "connected": true,
+                "arrived": true,
+                "onPath": 1,
+                "error": 0.34999993994593287,
+                "laneError": 0.010942651275966608,
+                "laneSamples": 90,
+                "rightSamples": 90,
+                "frames": 144,
+                "deviation": null,
+                "distance": 0
+              }
+            ],
+            "lines": 15,
+            "nodes": 1787,
+            "capacity": 4096
+          }
+        },
+        {
+          "check": "race tracks: bay builds fast into culled sectors with checkpoints clear of its gaps",
+          "detail": {
+            "ms": 30,
+            "samples": 453,
+            "length": 680,
+            "sectors": 16,
+            "chunks": 30,
+            "checkpoints": 8,
+            "first": 0,
+            "gapNearCheck": false,
+            "maxStep": 0.68,
+            "faces": 45942,
+            "placedFaces": 311308,
+            "bananas": 38,
+            "crates": 10,
+            "pads": 3,
+            "map": 302,
+            "grid": 42,
+            "gridHeight": true,
+            "torches": 0,
+            "spectators": 208,
+            "records": 388,
+            "sky": true
+          }
+        },
+        {
+          "check": "race tracks: gorge builds fast into culled sectors with checkpoints clear of its gaps",
+          "detail": {
+            "ms": 33,
+            "samples": 622,
+            "length": 933,
+            "sectors": 22,
+            "chunks": 60,
+            "checkpoints": 8,
+            "first": 0,
+            "gapNearCheck": false,
+            "maxStep": 0.05,
+            "faces": 47310,
+            "placedFaces": 47310,
+            "bananas": 44,
+            "crates": 10,
+            "pads": 3,
+            "map": 416,
+            "grid": 42,
+            "gridHeight": true,
+            "torches": 45,
+            "spectators": 96,
+            "records": 388,
+            "sky": false
+          }
+        },
+        {
+          "check": "race tracks: peak builds fast into culled sectors with checkpoints clear of its gaps",
+          "detail": {
+            "ms": 33,
+            "samples": 744,
+            "length": 1116,
+            "sectors": 27,
+            "chunks": 30,
+            "checkpoints": 8,
+            "first": 0,
+            "gapNearCheck": false,
+            "maxStep": 0.78,
+            "faces": 64009,
+            "placedFaces": 64009,
+            "bananas": 46,
+            "crates": 8,
+            "pads": 3,
+            "map": 496,
+            "grid": 42,
+            "gridHeight": true,
+            "torches": 17,
+            "spectators": 220,
+            "records": 388,
+            "sky": true
+          }
+        },
+        {
+          "check": "birds-eye lower floors",
+          "detail": "Runtime.evaluate got no reply in 90 s: Chrome hung"
+        },
+        {
+          "check": "dsb lifecycle",
+          "detail": "Error: Scene travel did not settle: {\"wanted\":\"hub\",\"scene\":\"hub\",\"accepted\":true,\"trail\":[{\"state\":\"dsb:false\",\"at\":19.80000001192093,\"frames\":248},{\"state\":\"dsb:true\",\"at\":27,\"frames\":249},{\"state\":\"hub:true\",\"at\":3808.7000000178814,\"frames\":264},{\"state\":\"hub:false\",\"at\":7510.5999999940395,\"frames\":268}],\"framesTotal\":22,\"hidden\":false,\"focus\":true,\"requested\":true,\"tweens\":8,\"framesSinceSwap\":5,\"swap\":3809}"
+        }
+      ],
+      "limits": "Partial log counts are not a terminal acceptance total. Stopped on explicit user instruction; no new browser run. Browser hangs remain unattributed. Surface-trail failure cause unproven. Race source/assertions unchanged from upstream. DSB timed return still fails."
+    },
+    "completedChecks": {
+      "unit": {
+        "passed": 141,
+        "exit": 0
+      },
+      "worker": {
+        "passed": 36,
+        "exit": 0
+      },
+      "build": {
+        "exit": 0
+      },
+      "site": {
+        "pages": 11,
+        "cards": 9,
+        "exit": 0
+      },
+      "syntax": "touched JS and test MJS pass",
+      "whitespace": "git diff --check passes",
+      "lint": "no configured lint command",
+      "sourceReview": "Independent review found no actionable defect; storage user tracking, original race caps and lifecycle ownership preserved"
+    },
+    "historicalEvidence": "hub-clearance-validation.json and lifecycle-canvas-validation.json record historical diagnostics, not acceptance on this head",
+    "heldOut": [
+      "race GPU batching and new rig/context tests",
+      "unvalidated renderer-strategy candidate",
+      "failed bounded visibility query experiments"
+    ],
+    "remainingLimits": [
+      "No demonstrated fix for original performance targets",
+      "Incomplete full browser acceptance",
+      "Physical low-end/mobile and visual play test not complete",
+      "No merge or deployment authorized"
+    ]
+  },
+  "completedRepairRun": {
     "variant": "followup",
-    "head": "c5a290873d2d3007ce6919a323c21833fd5360d2",
+    "head": "2f039632d723d01cc145d1c7423c67939610a769",
     "command": "LANES=4 npm run test:full",
-    "startedAt": "2026-10-06T22:41:28.568596+00:00",
-    "sourceAndTestBefore": "e24719da66f6a996934c6f456916f1c6780cd5b34abf8210216a3113be4507e3",
-    "stoppedAt": "2026-10-06T22:55:52.971088+00:00",
-    "sourceAndTestAfter": "e24719da66f6a996934c6f456916f1c6780cd5b34abf8210216a3113be4507e3",
+    "startedAt": "2026-10-06T23:16:36.366341+00:00",
+    "sourceAndTestBefore": "c666174058d89c64f42ef368a8637f209d43cd9a2d97f79e43d73c960dc80986",
+    "finishedAt": "2026-10-06T23:30:43.682922+00:00",
+    "sourceAndTestAfter": "c666174058d89c64f42ef368a8637f209d43cd9a2d97f79e43d73c960dc80986",
     "unchanged": true,
-    "status": "Stopped at user instruction; incomplete; no terminal suite result",
-    "exit": null,
-    "observedLogCounts": {
-      "PASS": 733,
-      "FAIL": 8,
-      "RETRY": 3
+    "exit": 1
+  },
+  "completedRepairTotals": {
+    "passed": 779,
+    "total": 783,
+    "failed": 4,
+    "infrastructureRetries": 2
+  },
+  "narrowReadinessRepair": {
+    "head": "503891d0cf7b799677265bcd6835dd005543106d",
+    "unitPassed": 149,
+    "raceSuitePassed": 173,
+    "realContextRestoration": {
+      "racers": 42,
+      "records": 166,
+      "gpuBuffers": 330,
+      "vaos": 165,
+      "preservedCPUIdentities": true,
+      "glError": 0
+    }
+  },
+  "integrationValidation": {
+    "unitPassed": 194,
+    "workerPassed": 39,
+    "buildExit": 0,
+    "siteExit": 0,
+    "lint": "No configured lint command"
+  },
+  "diagnostics": {
+    "birdTrace": {
+      "passed": 197,
+      "infrastructureRetries": 0,
+      "acceptanceReplacement": false,
+      "combatBodySeconds": 52.5,
+      "lowerFloorBodySeconds": 46.3,
+      "contentionCauseProven": false
+    },
+    "dsbTrace": {
+      "sixVisitAssertionsPassed": true,
+      "acceptanceReplacement": false,
+      "fullSuiteStallReproduced": false,
+      "postSnapshotHubReturnGCWallSeconds": [
+        1.04,
+        1.63
+      ]
+    },
+    "gpuTimer": {
+      "calibrationEmptyMilliseconds": 0,
+      "singleIdleFrameGPUmilliseconds": 33.226458,
+      "continuousTotalsNotSerialThroughput": true
+    },
+    "discardedContourCandidates": {
+      "exactOutputFields": 52453,
+      "mismatches": 0,
+      "canonicalBaselineMilliseconds": 339.5,
+      "canonicalCandidateMilliseconds": 518.0,
+      "integrated": false
+    }
+  },
+  "limits": {
+    "performanceTargetUnchanged": ">=55 FPS at High, p95<25ms, original maximum-gap limits",
+    "donationParticles": 26,
+    "memoryMeasurementsNotAdditive": true,
+    "mobilePhysicalPlayTest": "Not run",
+    "mergeOrDeploy": "Not authorized"
+  },
+  "latestCombinedRun": {
+    "variant": "followup-integration",
+    "head": "75d7aa354fb2dc113abe0f1f38f023ec9993d528",
+    "command": "LANES=4 npm run test:full",
+    "startedAt": "2026-10-06T23:42:22.686037+00:00",
+    "sourceAndTestBefore": "5934e6ccb7ec9d3bd4c1fb77a856838954835abec09ed749630e545169e85334",
+    "finishedAt": "2026-10-06T23:56:41.540197+00:00",
+    "sourceAndTestAfter": "5934e6ccb7ec9d3bd4c1fb77a856838954835abec09ed749630e545169e85334",
+    "unchanged": true,
+    "exit": 1
+  },
+  "latestCombinedTotals": {
+    "passed": 990,
+    "total": 1036,
+    "failed": 46,
+    "infrastructureRetries": 1
+  },
+  "compactLiveGlyphEntries": {
+    "sourceCommit": "cff8d155039055e1b8082448438df5634c0ced2b",
+    "originalSourceComparisonCases": 182,
+    "permanentOracleCases": 235046,
+    "failures": 0,
+    "nativeInventoryEntries": 103957,
+    "liveTypedBytes": 1247484,
+    "former24ByteEstimate": 2494968,
+    "cacheRetentionUnchanged": true,
+    "nativeDeadlineImprovementProven": false
+  },
+  "failedLightingCandidate": {
+    "integrated": false,
+    "nativePixelRows": 14,
+    "bytesPerRow": 262144,
+    "pixelDifferences": 0,
+    "ordinaryControlFPS": 56.41383434665604,
+    "ordinaryCandidateFPS": 56.22665501072876,
+    "bothOriginalTargetsFailed": true
+  },
+  "latestCombinedFailureClassification": {
+    "status": "Source classification; stage hypotheses require targeted confirmation",
+    "counts": {
+      "performance_target_failure": 2,
+      "inherited_stale_fixture_proven": 6,
+      "infrastructure_or_accumulated_frame_cost_unattributed": 1,
+      "inherited_legacy_scene_contract_mismatch_proven": 21,
+      "inherited_removed_scene_contract_proven": 2,
+      "inherited_new_checkpoint_stage_mismatch_likely": 4,
+      "inherited_new_checkpoint_budget_conflict_proven": 2,
+      "inherited_new_checkpoint_async_race_possible": 2,
+      "inherited_stale_fixture_exit_likely": 2,
+      "inherited_new_checkpoint_lifecycle_or_snapshot_stage_unresolved": 2,
+      "inherited_new_checkpoint_product_minimum_failure": 2
     },
     "failures": [
       {
-        "check": "wall movement performance: ordinary movement stays responsive at a high-density desktop size",
+        "name": "wall movement performance: ordinary movement stays responsive at a high-density desktop size",
+        "detail": "{\"fps\":55.815807834147314,\"p95\":33.29999999999927,\"max\":33.400000000000546,\"worst\":{\"gap\":25.400000005960464,\"at\":2016.5999999999995,\"updateMs\":5.4000000059604645,\"renderMs\":5.5,\"overlayMs\":5.4000000059604645,\"donated\":false},\"outlined\":0,\"samples\":280,\"travel\":3.3580749999999906,\"donated\":false,\"particles\":0,\"quality\":\"high\"}",
+        "classification": "performance_target_failure",
+        "reason": "Recorded FPS/p95 fails unchanged target; not attributed by this source-only audit.",
+        "sourceProof": [
+          "test/run.mjs: wall movement performance checks"
+        ]
+      },
+      {
+        "name": "wall movement performance: moving behind cave walls during a donation stays responsive at a high-density desktop size",
+        "detail": "{\"fps\":30.596837002304692,\"p95\":50,\"max\":200,\"worst\":{\"gap\":208,\"at\":3466.6000000000004,\"updateMs\":6,\"renderMs\":3.800000011920929,\"overlayMs\":30.5,\"donated\":true},\"outlined\":154,\"samples\":154,\"travel\":3.875000000000023,\"donated\":true,\"particles\":26,\"quality\":\"low\"}",
+        "classification": "performance_target_failure",
+        "reason": "Recorded FPS/p95 fails unchanged target; not attributed by this source-only audit.",
+        "sourceProof": [
+          "test/run.mjs: wall movement performance checks"
+        ]
+      },
+      {
+        "name": "bifrost dsb round trip: walking through the DSB window takes the same Ooga into DSB Land, and DSB's gate home brings it back into the chamber, standing before the DSB window",
+        "detail": "{\"there\":{\"scene\":\"dsb\",\"ooga\":\"portlandhodl\"},\"back\":{\"scene\":\"dsb\",\"ooga\":null,\"along\":null,\"across\":null}}",
+        "classification": "inherited_stale_fixture_proven",
+        "reason": "dsbExit fixed(0,27.9)/yawPI cannot cross new gate(-45,-48)/rotation+PI/2. Transform-derived fixture repair prepared, native pending.",
+        "sourceProof": [
+          "test/run.mjs:8278",
+          "src/js/scene-dsb.js:172",
+          "src/js/ooga-portal.js:90"
+        ]
+      },
+      {
+        "name": "birds-eye combat camera",
+        "detail": "the session passed 120 s and its Chrome was killed",
+        "classification": "infrastructure_or_accumulated_frame_cost_unattributed",
+        "reason": "120s watchdog; separate diagnostic completed197/197 with continuous finite progress, not an acceptance run.",
+        "sourceProof": [
+          "verification/bird-trace.jsonl",
+          "src/js/director.js: debug advance synchronous complete frames"
+        ]
+      },
+      {
+        "name": "DSB plaza webgl2: landmark geometry and services absent during transit",
+        "detail": "",
+        "classification": "inherited_legacy_scene_contract_mismatch_proven",
+        "reason": "DirectDSB nowlands immediately; audio debug is entrance?.audio, onlycreated fromBifrost or entrance=1. Old transit/service/ready assumptions fail; many subsequent oldride/feed/ambient capabilities absent or replaced. Adapt only transferable declaredcontracts, do not delete checks or report removedfeatures restored.",
+        "sourceProof": [
+          "docs/dsb-entrance.md:18",
+          "docs/dsb-master-layout.md:59",
+          "src/js/scene-dsb.js:234",
+          "src/js/scene-dsb.js:237"
+        ]
+      },
+      {
+        "name": "Ooga Portal dsb plaza webgl2",
+        "detail": "TypeError: Cannot read properties of undefined (reading 'duration')",
+        "classification": "inherited_legacy_scene_contract_mismatch_proven",
+        "reason": "DirectDSB nowlands immediately; audio debug is entrance?.audio, onlycreated fromBifrost or entrance=1. Old transit/service/ready assumptions fail; many subsequent oldride/feed/ambient capabilities absent or replaced. Adapt only transferable declaredcontracts, do not delete checks or report removedfeatures restored.",
+        "sourceProof": [
+          "docs/dsb-entrance.md:18",
+          "docs/dsb-master-layout.md:59",
+          "src/js/scene-dsb.js:234",
+          "src/js/scene-dsb.js:237"
+        ]
+      },
+      {
+        "name": "DSB plaza canvas2d: landmark geometry and services absent during transit",
+        "detail": "",
+        "classification": "inherited_legacy_scene_contract_mismatch_proven",
+        "reason": "DirectDSB nowlands immediately; audio debug is entrance?.audio, onlycreated fromBifrost or entrance=1. Old transit/service/ready assumptions fail; many subsequent oldride/feed/ambient capabilities absent or replaced. Adapt only transferable declaredcontracts, do not delete checks or report removedfeatures restored.",
+        "sourceProof": [
+          "docs/dsb-entrance.md:18",
+          "docs/dsb-master-layout.md:59",
+          "src/js/scene-dsb.js:234",
+          "src/js/scene-dsb.js:237"
+        ]
+      },
+      {
+        "name": "Ooga Portal dsb plaza canvas2d",
+        "detail": "TypeError: Cannot read properties of undefined (reading 'duration')",
+        "classification": "inherited_legacy_scene_contract_mismatch_proven",
+        "reason": "DirectDSB nowlands immediately; audio debug is entrance?.audio, onlycreated fromBifrost or entrance=1. Old transit/service/ready assumptions fail; many subsequent oldride/feed/ambient capabilities absent or replaced. Adapt only transferable declaredcontracts, do not delete checks or report removedfeatures restored.",
+        "sourceProof": [
+          "docs/dsb-entrance.md:18",
+          "docs/dsb-master-layout.md:59",
+          "src/js/scene-dsb.js:234",
+          "src/js/scene-dsb.js:237"
+        ]
+      },
+      {
+        "name": "dsb zuzu agent",
+        "detail": "TypeError: Cannot read properties of undefined (reading 'snapshot')",
+        "classification": "inherited_removed_scene_contract_proven",
+        "reason": "NewDSB explicitly doesnotinstantiateZuzu/conversation; modules retained onlyforselectivereuse. Cannot restore scene assertions with readiness aliases.",
+        "sourceProof": [
+          "docs/dsb-master-layout.md:51",
+          "docs/dsb-master-layout.md:59",
+          "src/js/scene-dsb.js:234"
+        ]
+      },
+      {
+        "name": "dsb entrance audio blocked",
+        "detail": "TypeError: Object.defineProperty called on non-object",
+        "classification": "inherited_legacy_scene_contract_mismatch_proven",
+        "reason": "DirectDSB nowlands immediately; audio debug is entrance?.audio, onlycreated fromBifrost or entrance=1. Old transit/service/ready assumptions fail; many subsequent oldride/feed/ambient capabilities absent or replaced. Adapt only transferable declaredcontracts, do not delete checks or report removedfeatures restored.",
+        "sourceProof": [
+          "docs/dsb-entrance.md:18",
+          "docs/dsb-master-layout.md:59",
+          "src/js/scene-dsb.js:234",
+          "src/js/scene-dsb.js:237"
+        ]
+      },
+      {
+        "name": "dsb compatibility: built CSP preserves exactly the weather and DSB network permissions",
+        "detail": "",
+        "classification": "inherited_stale_fixture_proven",
+        "reason": "Exactoldmedia origin set omits newStudio https://hodlerhiq.net. Preserve exact authorized origin set, not broad allowances.",
+        "sourceProof": [
+          "src/index.html:8",
+          "test/run.mjs:8338"
+        ]
+      },
+      {
+        "name": "dsb zuzu conversation",
+        "detail": "TypeError: Cannot read properties of undefined (reading 'duration')",
+        "classification": "inherited_removed_scene_contract_proven",
+        "reason": "NewDSB explicitly doesnotinstantiateZuzu/conversation; modules retained onlyforselectivereuse. Cannot restore scene assertions with readiness aliases.",
+        "sourceProof": [
+          "docs/dsb-master-layout.md:51",
+          "docs/dsb-master-layout.md:59",
+          "src/js/scene-dsb.js:234"
+        ]
+      },
+      {
+        "name": "dsb entrance audio enabled",
+        "detail": "TypeError: Cannot read properties of undefined (reading 'ready')",
+        "classification": "inherited_legacy_scene_contract_mismatch_proven",
+        "reason": "DirectDSB nowlands immediately; audio debug is entrance?.audio, onlycreated fromBifrost or entrance=1. Old transit/service/ready assumptions fail; many subsequent oldride/feed/ambient capabilities absent or replaced. Adapt only transferable declaredcontracts, do not delete checks or report removedfeatures restored.",
+        "sourceProof": [
+          "docs/dsb-entrance.md:18",
+          "docs/dsb-master-layout.md:59",
+          "src/js/scene-dsb.js:234",
+          "src/js/scene-dsb.js:237"
+        ]
+      },
+      {
+        "name": "dsb gameplay webgl2",
+        "detail": "TypeError: Cannot read properties of undefined (reading 'ready')",
+        "classification": "inherited_legacy_scene_contract_mismatch_proven",
+        "reason": "DirectDSB nowlands immediately; audio debug is entrance?.audio, onlycreated fromBifrost or entrance=1. Old transit/service/ready assumptions fail; many subsequent oldride/feed/ambient capabilities absent or replaced. Adapt only transferable declaredcontracts, do not delete checks or report removedfeatures restored.",
+        "sourceProof": [
+          "docs/dsb-entrance.md:18",
+          "docs/dsb-master-layout.md:59",
+          "src/js/scene-dsb.js:234",
+          "src/js/scene-dsb.js:237"
+        ]
+      },
+      {
+        "name": "dsb television webgl2",
+        "detail": "TypeError: Cannot read properties of undefined (reading 'ready')",
+        "classification": "inherited_legacy_scene_contract_mismatch_proven",
+        "reason": "DirectDSB nowlands immediately; audio debug is entrance?.audio, onlycreated fromBifrost or entrance=1. Old transit/service/ready assumptions fail; many subsequent oldride/feed/ambient capabilities absent or replaced. Adapt only transferable declaredcontracts, do not delete checks or report removedfeatures restored.",
+        "sourceProof": [
+          "docs/dsb-entrance.md:18",
+          "docs/dsb-master-layout.md:59",
+          "src/js/scene-dsb.js:234",
+          "src/js/scene-dsb.js:237"
+        ]
+      },
+      {
+        "name": "dsb gameplay canvas2d",
+        "detail": "TypeError: Cannot read properties of undefined (reading 'ready')",
+        "classification": "inherited_legacy_scene_contract_mismatch_proven",
+        "reason": "DirectDSB nowlands immediately; audio debug is entrance?.audio, onlycreated fromBifrost or entrance=1. Old transit/service/ready assumptions fail; many subsequent oldride/feed/ambient capabilities absent or replaced. Adapt only transferable declaredcontracts, do not delete checks or report removedfeatures restored.",
+        "sourceProof": [
+          "docs/dsb-entrance.md:18",
+          "docs/dsb-master-layout.md:59",
+          "src/js/scene-dsb.js:234",
+          "src/js/scene-dsb.js:237"
+        ]
+      },
+      {
+        "name": "dsb radio controls",
+        "detail": "TypeError: Cannot read properties of undefined (reading 'ready')",
+        "classification": "inherited_legacy_scene_contract_mismatch_proven",
+        "reason": "DirectDSB nowlands immediately; audio debug is entrance?.audio, onlycreated fromBifrost or entrance=1. Old transit/service/ready assumptions fail; many subsequent oldride/feed/ambient capabilities absent or replaced. Adapt only transferable declaredcontracts, do not delete checks or report removedfeatures restored.",
+        "sourceProof": [
+          "docs/dsb-entrance.md:18",
+          "docs/dsb-master-layout.md:59",
+          "src/js/scene-dsb.js:234",
+          "src/js/scene-dsb.js:237"
+        ]
+      },
+      {
+        "name": "dsb automatic feeds",
+        "detail": "TypeError: Cannot read properties of undefined (reading 'duration')",
+        "classification": "inherited_legacy_scene_contract_mismatch_proven",
+        "reason": "DirectDSB nowlands immediately; audio debug is entrance?.audio, onlycreated fromBifrost or entrance=1. Old transit/service/ready assumptions fail; many subsequent oldride/feed/ambient capabilities absent or replaced. Adapt only transferable declaredcontracts, do not delete checks or report removedfeatures restored.",
+        "sourceProof": [
+          "docs/dsb-entrance.md:18",
+          "docs/dsb-master-layout.md:59",
+          "src/js/scene-dsb.js:234",
+          "src/js/scene-dsb.js:237"
+        ]
+      },
+      {
+        "name": "dsb television canvas2d",
+        "detail": "TypeError: Cannot read properties of undefined (reading 'ready')",
+        "classification": "inherited_legacy_scene_contract_mismatch_proven",
+        "reason": "DirectDSB nowlands immediately; audio debug is entrance?.audio, onlycreated fromBifrost or entrance=1. Old transit/service/ready assumptions fail; many subsequent oldride/feed/ambient capabilities absent or replaced. Adapt only transferable declaredcontracts, do not delete checks or report removedfeatures restored.",
+        "sourceProof": [
+          "docs/dsb-entrance.md:18",
+          "docs/dsb-master-layout.md:59",
+          "src/js/scene-dsb.js:234",
+          "src/js/scene-dsb.js:237"
+        ]
+      },
+      {
+        "name": "dsb feeds and audio",
+        "detail": "TypeError: Cannot read properties of undefined (reading 'ready')",
+        "classification": "inherited_legacy_scene_contract_mismatch_proven",
+        "reason": "DirectDSB nowlands immediately; audio debug is entrance?.audio, onlycreated fromBifrost or entrance=1. Old transit/service/ready assumptions fail; many subsequent oldride/feed/ambient capabilities absent or replaced. Adapt only transferable declaredcontracts, do not delete checks or report removedfeatures restored.",
+        "sourceProof": [
+          "docs/dsb-entrance.md:18",
+          "docs/dsb-master-layout.md:59",
+          "src/js/scene-dsb.js:234",
+          "src/js/scene-dsb.js:237"
+        ]
+      },
+      {
+        "name": "dsb arrival camera",
+        "detail": "TypeError: Cannot read properties of undefined (reading 'ready')",
+        "classification": "inherited_legacy_scene_contract_mismatch_proven",
+        "reason": "DirectDSB nowlands immediately; audio debug is entrance?.audio, onlycreated fromBifrost or entrance=1. Old transit/service/ready assumptions fail; many subsequent oldride/feed/ambient capabilities absent or replaced. Adapt only transferable declaredcontracts, do not delete checks or report removedfeatures restored.",
+        "sourceProof": [
+          "docs/dsb-entrance.md:18",
+          "docs/dsb-master-layout.md:59",
+          "src/js/scene-dsb.js:234",
+          "src/js/scene-dsb.js:237"
+        ]
+      },
+      {
+        "name": "dsb ambience",
+        "detail": "TypeError: Cannot read properties of undefined (reading 'ready')",
+        "classification": "inherited_legacy_scene_contract_mismatch_proven",
+        "reason": "DirectDSB nowlands immediately; audio debug is entrance?.audio, onlycreated fromBifrost or entrance=1. Old transit/service/ready assumptions fail; many subsequent oldride/feed/ambient capabilities absent or replaced. Adapt only transferable declaredcontracts, do not delete checks or report removedfeatures restored.",
+        "sourceProof": [
+          "docs/dsb-entrance.md:18",
+          "docs/dsb-master-layout.md:59",
+          "src/js/scene-dsb.js:234",
+          "src/js/scene-dsb.js:237"
+        ]
+      },
+      {
+        "name": "dsb phone",
+        "detail": "TypeError: Cannot read properties of undefined (reading 'ready')",
+        "classification": "inherited_legacy_scene_contract_mismatch_proven",
+        "reason": "DirectDSB nowlands immediately; audio debug is entrance?.audio, onlycreated fromBifrost or entrance=1. Old transit/service/ready assumptions fail; many subsequent oldride/feed/ambient capabilities absent or replaced. Adapt only transferable declaredcontracts, do not delete checks or report removedfeatures restored.",
+        "sourceProof": [
+          "docs/dsb-entrance.md:18",
+          "docs/dsb-master-layout.md:59",
+          "src/js/scene-dsb.js:234",
+          "src/js/scene-dsb.js:237"
+        ]
+      },
+      {
+        "name": "dsb entrance: starts dark without constructing live feeds",
+        "detail": "{\"phase\":\"land\",\"live\":false}",
+        "classification": "inherited_legacy_scene_contract_mismatch_proven",
+        "reason": "DirectDSB nowlands immediately; audio debug is entrance?.audio, onlycreated fromBifrost or entrance=1. Old transit/service/ready assumptions fail; many subsequent oldride/feed/ambient capabilities absent or replaced. Adapt only transferable declaredcontracts, do not delete checks or report removedfeatures restored.",
+        "sourceProof": [
+          "docs/dsb-entrance.md:18",
+          "docs/dsb-master-layout.md:59",
+          "src/js/scene-dsb.js:234",
+          "src/js/scene-dsb.js:237"
+        ]
+      },
+      {
+        "name": "dsb land webgl2",
+        "detail": "TypeError: Cannot read properties of undefined (reading 'ready')",
+        "classification": "inherited_legacy_scene_contract_mismatch_proven",
+        "reason": "DirectDSB nowlands immediately; audio debug is entrance?.audio, onlycreated fromBifrost or entrance=1. Old transit/service/ready assumptions fail; many subsequent oldride/feed/ambient capabilities absent or replaced. Adapt only transferable declaredcontracts, do not delete checks or report removedfeatures restored.",
+        "sourceProof": [
+          "docs/dsb-entrance.md:18",
+          "docs/dsb-master-layout.md:59",
+          "src/js/scene-dsb.js:234",
+          "src/js/scene-dsb.js:237"
+        ]
+      },
+      {
+        "name": "dsb shared player",
+        "detail": "TypeError: Cannot read properties of undefined (reading 'ready')",
+        "classification": "inherited_legacy_scene_contract_mismatch_proven",
+        "reason": "DirectDSB nowlands immediately; audio debug is entrance?.audio, onlycreated fromBifrost or entrance=1. Old transit/service/ready assumptions fail; many subsequent oldride/feed/ambient capabilities absent or replaced. Adapt only transferable declaredcontracts, do not delete checks or report removedfeatures restored.",
+        "sourceProof": [
+          "docs/dsb-entrance.md:18",
+          "docs/dsb-master-layout.md:59",
+          "src/js/scene-dsb.js:234",
+          "src/js/scene-dsb.js:237"
+        ]
+      },
+      {
+        "name": "dsb entrance: starts dark without constructing live feeds",
+        "detail": "{\"phase\":\"land\",\"live\":false}",
+        "classification": "inherited_legacy_scene_contract_mismatch_proven",
+        "reason": "DirectDSB nowlands immediately; audio debug is entrance?.audio, onlycreated fromBifrost or entrance=1. Old transit/service/ready assumptions fail; many subsequent oldride/feed/ambient capabilities absent or replaced. Adapt only transferable declaredcontracts, do not delete checks or report removedfeatures restored.",
+        "sourceProof": [
+          "docs/dsb-entrance.md:18",
+          "docs/dsb-master-layout.md:59",
+          "src/js/scene-dsb.js:234",
+          "src/js/scene-dsb.js:237"
+        ]
+      },
+      {
+        "name": "dsb land canvas2d",
+        "detail": "TypeError: Cannot read properties of undefined (reading 'ready')",
+        "classification": "inherited_legacy_scene_contract_mismatch_proven",
+        "reason": "DirectDSB nowlands immediately; audio debug is entrance?.audio, onlycreated fromBifrost or entrance=1. Old transit/service/ready assumptions fail; many subsequent oldride/feed/ambient capabilities absent or replaced. Adapt only transferable declaredcontracts, do not delete checks or report removedfeatures restored.",
+        "sourceProof": [
+          "docs/dsb-entrance.md:18",
+          "docs/dsb-master-layout.md:59",
+          "src/js/scene-dsb.js:234",
+          "src/js/scene-dsb.js:237"
+        ]
+      },
+      {
+        "name": "DSB water trip 0: Portara crossing preserves identity and releases textures",
+        "detail": "{\"crossed\":true,\"released\":0,\"returned\":{\"name\":\"YellowBrokeIt\",\"textures\":0}}",
+        "classification": "inherited_new_checkpoint_stage_mismatch_likely",
+        "reason": "Identity/crossing/release pass; only returned textures0 vs2. Returning fromBifrost creates entrance which can hide exterior; wait checks scene/nottransition, not entrance complete or water draw. Needs phase/render probe before treating GPU leak.",
+        "sourceProof": [
+          "test/run.mjs:11963",
+          "src/js/scene-dsb.js:237",
+          "src/js/gl-renderer.js:3315"
+        ]
+      },
+      {
+        "name": "DSB water trip 1: Portara crossing preserves identity and releases textures",
+        "detail": "{\"crossed\":true,\"released\":0,\"returned\":{\"name\":\"YellowBrokeIt\",\"textures\":0}}",
+        "classification": "inherited_new_checkpoint_stage_mismatch_likely",
+        "reason": "Identity/crossing/release pass; only returned textures0 vs2. Returning fromBifrost creates entrance which can hide exterior; wait checks scene/nottransition, not entrance complete or water draw. Needs phase/render probe before treating GPU leak.",
+        "sourceProof": [
+          "test/run.mjs:11963",
+          "src/js/scene-dsb.js:237",
+          "src/js/gl-renderer.js:3315"
+        ]
+      },
+      {
+        "name": "DSB water trip 0: Portara crossing preserves identity and releases textures",
+        "detail": "{\"crossed\":true,\"released\":0,\"returned\":{\"name\":\"YellowBrokeIt\",\"textures\":0}}",
+        "classification": "inherited_new_checkpoint_stage_mismatch_likely",
+        "reason": "Identity/crossing/release pass; only returned textures0 vs2. Returning fromBifrost creates entrance which can hide exterior; wait checks scene/nottransition, not entrance complete or water draw. Needs phase/render probe before treating GPU leak.",
+        "sourceProof": [
+          "test/run.mjs:11963",
+          "src/js/scene-dsb.js:237",
+          "src/js/gl-renderer.js:3315"
+        ]
+      },
+      {
+        "name": "DSB water trip 1: Portara crossing preserves identity and releases textures",
+        "detail": "{\"crossed\":true,\"released\":0,\"returned\":{\"name\":\"YellowBrokeIt\",\"textures\":0}}",
+        "classification": "inherited_new_checkpoint_stage_mismatch_likely",
+        "reason": "Identity/crossing/release pass; only returned textures0 vs2. Returning fromBifrost creates entrance which can hide exterior; wait checks scene/nottransition, not entrance complete or water draw. Needs phase/render probe before treating GPU leak.",
+        "sourceProof": [
+          "test/run.mjs:11963",
+          "src/js/scene-dsb.js:237",
+          "src/js/gl-renderer.js:3315"
+        ]
+      },
+      {
+        "name": "DSB weather: flash expires, exterior gate silences and resumes, tiers bound pools and clear recovers",
+        "detail": "{\"base\":{\"light\":1,\"sky\":[0.46000000834465027,0.5349999666213989,0.6850000023841858],\"wave\":1,\"drops\":0},\"rain\":{\"light\":0.5288043584461306,\"drops\":291,\"cloud\":0.6199942652024597,\"wave\":1.5950000286102295},\"storm\":{\"light\":0.24000267134600728,\"drops\":1062,\"cloud\":0.999996485071043,\"wave\":2.759999990463257,\"strikes\":1},\"flash\":1,\"expired\":true,\"gated\":true,\"resumed\":true,\"bounded\":false,\"recovered\":true,\"finite\":true,\"thunders\":2,\"kind\":\"webgl2\",\"textures\":2}",
+        "classification": "inherited_new_checkpoint_budget_conflict_proven",
+        "reason": "Only bounded=false; checkpoint demandslow drops<=260/clouds<=22 but shared weather production caps low380/28, unchanged frompre171fabdec255. No automatic threshold relaxation: resolve declared target or reduce actual resource pools with proof.",
+        "sourceProof": [
+          "test/run.mjs:11998",
+          "src/js/weather.js:43",
+          "src/js/weather.js:67",
+          "src/js/weather.js:377"
+        ]
+      },
+      {
+        "name": "DSB weather: flash expires, exterior gate silences and resumes, tiers bound pools and clear recovers",
+        "detail": "{\"base\":{\"light\":1,\"sky\":[0.46000000834465027,0.5349999666213989,0.6850000023841858],\"wave\":1,\"drops\":0},\"rain\":{\"light\":0.5288043584461306,\"drops\":190,\"cloud\":0.6199942652024597,\"wave\":1.5950000286102295},\"storm\":{\"light\":0.24000267134600728,\"drops\":695,\"cloud\":0.999996485071043,\"wave\":2.759999990463257,\"strikes\":1},\"flash\":1,\"expired\":true,\"gated\":true,\"resumed\":true,\"bounded\":false,\"recovered\":true,\"finite\":true,\"thunders\":2,\"kind\":\"webgl2\",\"textures\":2}",
+        "classification": "inherited_new_checkpoint_budget_conflict_proven",
+        "reason": "Only bounded=false; checkpoint demandslow drops<=260/clouds<=22 but shared weather production caps low380/28, unchanged frompre171fabdec255. No automatic threshold relaxation: resolve declared target or reduce actual resource pools with proof.",
+        "sourceProof": [
+          "test/run.mjs:11998",
+          "src/js/weather.js:43",
+          "src/js/weather.js:67",
+          "src/js/weather.js:377"
+        ]
+      },
+      {
+        "name": "DSB TV correction: copy succeeds or selects the full invoice",
+        "detail": "",
+        "classification": "inherited_new_checkpoint_async_race_possible",
+        "reason": "Test clicks then immediately samples status; copy handler awaits clipboard.writeText before setting success/fallback. Could pending clipboard operation; unsupported claim of root cause until bounded status/selection observation.",
+        "sourceProof": [
+          "test/run.mjs:12033",
+          "src/js/dsb-tv.js:137"
+        ]
+      },
+      {
+        "name": "dsb character: YellowBrokeIt returns possessed",
+        "detail": "{\"rebuilt\":true}",
+        "classification": "inherited_stale_fixture_exit_likely",
+        "reason": "Uses Escape toleave direct hub->DSB. New exterior Escape no longer returnsBifrost; real Portara exit required. returned player missing despite rebuilttrue. Verify real exitbefore continuity assertion.",
+        "sourceProof": [
+          "test/run.mjs:8947",
+          "src/js/scene-dsb.js:135",
+          "docs/dsb-entrance.md:13"
+        ]
+      },
+      {
+        "name": "dsb character: rules-without-rulers returns possessed",
+        "detail": "{\"rebuilt\":true}",
+        "classification": "inherited_stale_fixture_exit_likely",
+        "reason": "Uses Escape toleave direct hub->DSB. New exterior Escape no longer returnsBifrost; real Portara exit required. returned player missing despite rebuilttrue. Verify real exitbefore continuity assertion.",
+        "sourceProof": [
+          "test/run.mjs:8947",
+          "src/js/scene-dsb.js:135",
+          "docs/dsb-entrance.md:13"
+        ]
+      },
+      {
+        "name": "DSB TV correction: copy succeeds or selects the full invoice",
+        "detail": "",
+        "classification": "inherited_new_checkpoint_async_race_possible",
+        "reason": "Test clicks then immediately samples status; copy handler awaits clipboard.writeText before setting success/fallback. Could pending clipboard operation; unsupported claim of root cause until bounded status/selection observation.",
+        "sourceProof": [
+          "test/run.mjs:12033",
+          "src/js/dsb-tv.js:137"
+        ]
+      },
+      {
+        "name": "DSB interior: ten complete door cycles retain bounded nodes, geometry, handlers and audio sources",
+        "detail": "{\"cycles\":10,\"base\":{\"nodes\":3398,\"geometries\":466,\"rooms\":1,\"targets\":7,\"audio\":3,\"contexts\":1,\"radioSources\":1,\"radioStarts\":1,\"records\":453,\"room\":null,\"lights\":32,\"textures\":0,\"remotes\":0},\"end\":{\"nodes\":3398,\"geometries\":466,\"rooms\":1,\"targets\":7,\"audio\":3,\"contexts\":1,\"radioSources\":1,\"radioStarts\":1,\"records\":454,\"room\":null,\"lights\":0,\"textures\":0,\"remotes\":0},\"listeners\":13,\"listenersEnd\":13}",
+        "classification": "inherited_new_checkpoint_lifecycle_or_snapshot_stage_unresolved",
+        "reason": "Exact budget retained. First adds1GPUrecord and lights32->0; second textures2->0. Dynamic render state snapshots differ after UIcycles; actual record owner and exterior/render stage needed. Cannot certify bounded cleanup or redefine count.",
+        "sourceProof": [
+          "test/run.mjs:12141",
+          "test/run.mjs:12151",
+          "src/js/gl-renderer.js:3315"
+        ]
+      },
+      {
+        "name": "DSB interior: ten complete door cycles retain bounded nodes, geometry, handlers and audio sources",
+        "detail": "{\"cycles\":10,\"base\":{\"nodes\":3377,\"geometries\":465,\"rooms\":1,\"targets\":7,\"audio\":3,\"contexts\":1,\"radioSources\":1,\"radioStarts\":1,\"records\":453,\"room\":null,\"lights\":0,\"textures\":2,\"remotes\":0},\"end\":{\"nodes\":3377,\"geometries\":465,\"rooms\":1,\"targets\":7,\"audio\":3,\"contexts\":1,\"radioSources\":1,\"radioStarts\":1,\"records\":453,\"room\":null,\"lights\":0,\"textures\":0,\"remotes\":0},\"listeners\":13,\"listenersEnd\":13}",
+        "classification": "inherited_new_checkpoint_lifecycle_or_snapshot_stage_unresolved",
+        "reason": "Exact budget retained. First adds1GPUrecord and lights32->0; second textures2->0. Dynamic render state snapshots differ after UIcycles; actual record owner and exterior/render stage needed. Cannot certify bounded cleanup or redefine count.",
+        "sourceProof": [
+          "test/run.mjs:12141",
+          "test/run.mjs:12151",
+          "src/js/gl-renderer.js:3315"
+        ]
+      },
+      {
+        "name": "DSB exterior: seated props leave routes and rear Olympus clear with seven bounded facades",
+        "detail": "{\"floating\":0,\"buried\":0,\"blocked\":0,\"invalid\":0,\"geometries\":42,\"facades\":7,\"coast\":9,\"rear\":false}",
+        "classification": "inherited_new_checkpoint_product_minimum_failure",
+        "reason": "All positioning/collision/finiteness/facade constraints pass; authored coastal dressing count9 fails>10. Source bounded2400placement attempts only yields9; no proof fixture wrong. Repair seeded eligible coastal placements preserving masks and minimum.",
+        "sourceProof": [
+          "test/run.mjs:12240",
+          "src/js/dsb-exterior.js:106"
+        ]
+      },
+      {
+        "name": "DSB nature: visit 2 preserves seeded layout and releases old scene",
+        "detail": "{\"same\":true,\"cleared\":true,\"fields\":11,\"total\":10829,\"textures\":2}",
+        "classification": "inherited_stale_fixture_proven",
+        "reason": "Fixture expects10group children; production has10TYPES batch nodes plus separate gull flock=11. Same seeded signature and disposed roots pass. Preserve feature and lifecycle equality; derive expected authored batches rather than removing flock.",
+        "sourceProof": [
+          "test/run.mjs:12291",
+          "src/js/dsb-nature.js:6",
+          "src/js/dsb-nature.js:143",
+          "src/js/dsb-nature.js:151"
+        ]
+      },
+      {
+        "name": "DSB nature: visit 3 preserves seeded layout and releases old scene",
+        "detail": "{\"same\":true,\"cleared\":true,\"fields\":11,\"total\":10829,\"textures\":2}",
+        "classification": "inherited_stale_fixture_proven",
+        "reason": "Fixture expects10group children; production has10TYPES batch nodes plus separate gull flock=11. Same seeded signature and disposed roots pass. Preserve feature and lifecycle equality; derive expected authored batches rather than removing flock.",
+        "sourceProof": [
+          "test/run.mjs:12291",
+          "src/js/dsb-nature.js:6",
+          "src/js/dsb-nature.js:143",
+          "src/js/dsb-nature.js:151"
+        ]
+      },
+      {
+        "name": "DSB exterior: seated props leave routes and rear Olympus clear with seven bounded facades",
+        "detail": "{\"floating\":0,\"buried\":0,\"blocked\":0,\"invalid\":0,\"geometries\":42,\"facades\":7,\"coast\":9,\"rear\":false}",
+        "classification": "inherited_new_checkpoint_product_minimum_failure",
+        "reason": "All positioning/collision/finiteness/facade constraints pass; authored coastal dressing count9 fails>10. Source bounded2400placement attempts only yields9; no proof fixture wrong. Repair seeded eligible coastal placements preserving masks and minimum.",
+        "sourceProof": [
+          "test/run.mjs:12240",
+          "src/js/dsb-exterior.js:106"
+        ]
+      },
+      {
+        "name": "DSB nature: visit 2 preserves seeded layout and releases old scene",
+        "detail": "{\"same\":true,\"cleared\":true,\"fields\":11,\"total\":10829,\"textures\":2}",
+        "classification": "inherited_stale_fixture_proven",
+        "reason": "Fixture expects10group children; production has10TYPES batch nodes plus separate gull flock=11. Same seeded signature and disposed roots pass. Preserve feature and lifecycle equality; derive expected authored batches rather than removing flock.",
+        "sourceProof": [
+          "test/run.mjs:12291",
+          "src/js/dsb-nature.js:6",
+          "src/js/dsb-nature.js:143",
+          "src/js/dsb-nature.js:151"
+        ]
+      },
+      {
+        "name": "DSB nature: visit 3 preserves seeded layout and releases old scene",
+        "detail": "{\"same\":true,\"cleared\":true,\"fields\":11,\"total\":10829,\"textures\":2}",
+        "classification": "inherited_stale_fixture_proven",
+        "reason": "Fixture expects10group children; production has10TYPES batch nodes plus separate gull flock=11. Same seeded signature and disposed roots pass. Preserve feature and lifecycle equality; derive expected authored batches rather than removing flock.",
+        "sourceProof": [
+          "test/run.mjs:12291",
+          "src/js/dsb-nature.js:6",
+          "src/js/dsb-nature.js:143",
+          "src/js/dsb-nature.js:151"
+        ]
+      }
+    ]
+  },
+  "finalFocusedRun": {
+    "variant": "followup-current",
+    "head": "4dc912cea5ea6eb65b776e536c085d9b05eab9b9",
+    "command": "VERBOSE=1 LANES=4 ONLY=race,bifrost,work movement cave trips,gorilla,hub matrix,factory lifecycle,dsb lifecycle,water checkpoint,interior checkpoint,nature checkpoint,dsb compatibility npm test -- hub factory bifrost race dsb",
+    "startedAt": "2026-10-07T00:00:31.332111+00:00",
+    "sourceAndTestBefore": "96ff62140f39ee3dd7ac1c460eccc1d4869c2e4f6f6eb3267795deae71b34dec",
+    "finishedAt": "2026-10-07T00:05:10.361455+00:00",
+    "sourceAndTestAfter": "96ff62140f39ee3dd7ac1c460eccc1d4869c2e4f6f6eb3267795deae71b34dec",
+    "unchanged": true,
+    "exit": 1
+  },
+  "finalFocusedTotals": {
+    "passed": 339,
+    "total": 342,
+    "failed": 3,
+    "infrastructureRetries": 0,
+    "includesOneAccidentalDuplicateUnitInvocation": true,
+    "laterSuiteRepair": "b9d5f3b removes only duplicate invocation; every distinct assertion remains"
+  },
+  "workerRouteDiagnostic": {
+    "acceptanceReplacement": false,
+    "originalAssertionsPassed": 3,
+    "recoveryEvents": 0,
+    "traceErrors": 0,
+    "previousFailureCleared": false
+  },
+  "confirmedFixtureRepairPasses": [
+    "Actual transformed Portara return: complete original Bifrost DSB round trip",
+    "Water Portara trips preserve identity and 0/2 WebGL textures across desktop, touch and Canvas",
+    "Ten interior door cycles retain original counts, listeners and resource bounds on desktop and touch",
+    "Nature repeat visits retain 11 authored batches, seeded layout and textures"
+  ],
+  "remainingFocusedFailures": [
+    "Intermittent five-worker route watchdog relocation: one DrNeski reset, 0.9m step and missing route",
+    "DSB exterior geometry: coastal dressing count 9 and rear Olympus clearance false, desktop and touch"
+  ],
+  "finalPerformance": {
+    "head": "b9d5f3bda68c981e477daf0fd9a9fd30dc688e1a",
+    "passed": 1,
+    "total": 3,
+    "exit": 1,
+    "failures": [
+      {
+        "name": "wall movement performance: ordinary movement stays responsive at a high-density desktop size",
         "detail": {
-          "fps": 52.028306588258744,
-          "p95": 33.30000000000109,
-          "max": 66.59999999999854,
+          "fps": 56.41383434665604,
+          "p95": 33.29999999999927,
+          "max": 33.399999999999636,
           "worst": {
-            "gap": 86.80000001192093,
-            "at": 2716.6000000000004,
-            "updateMs": 3.5999999940395355,
-            "renderMs": 3.800000011920929,
-            "overlayMs": 2.5999999940395355,
+            "gap": 23.5,
+            "at": 3299.8999999999996,
+            "updateMs": 5.9000000059604645,
+            "renderMs": 4.5999999940395355,
+            "overlayMs": 1.5,
             "donated": false
           },
           "outlined": 0,
-          "samples": 261,
-          "travel": 3.358074999999994,
+          "samples": 283,
+          "travel": 3.3588500000000003,
           "donated": false,
           "particles": 0,
-          "quality": "low"
+          "quality": "high"
         }
       },
       {
-        "check": "wall movement performance: moving behind cave walls during a donation stays responsive at a high-density desktop size",
+        "name": "wall movement performance: moving behind cave walls during a donation stays responsive at a high-density desktop size",
         "detail": {
-          "fps": 30.10126784147995,
+          "fps": 28.013987125486775,
           "p95": 50,
           "max": 50.100000000000364,
           "worst": {
-            "gap": 43.19999998807907,
-            "at": 1049.8999999999996,
-            "updateMs": 4.5999999940395355,
-            "renderMs": 3.7999999821186066,
-            "overlayMs": 31.900000005960464,
+            "gap": 50.80000001192093,
+            "at": 3466.5,
+            "updateMs": 17.899999976158142,
+            "renderMs": 3,
+            "overlayMs": 29.69999998807907,
             "donated": true
           },
-          "outlined": 151,
-          "samples": 151,
-          "travel": 4.132299999999994,
+          "outlined": 141,
+          "samples": 141,
+          "travel": 4.908849999999974,
           "donated": true,
           "particles": 26,
           "quality": "low"
         }
-      },
-      {
-        "check": "work movement cave trips: every surface trail connects to the ring and completes in both directions, including LF and Mine above buried HQ ramps",
-        "detail": {
-          "rows": [
-            {
-              "line": 0,
-              "direction": 1,
-              "pathLength": 16.36567754595337,
-              "connected": true,
-              "arrived": true,
-              "onPath": 0.9463722397476341,
-              "error": 1.6588264077979764,
-              "laneError": 1.3088264077979765,
-              "laneSamples": 264,
-              "rightSamples": 264,
-              "frames": 317,
-              "deviation": {
-                "x": -1.9059495220446927,
-                "z": -6.030283294415727,
-                "targetX": -2.207038404591291,
-                "targetZ": -6.342518518865939,
-                "index": 2,
-                "count": 129,
-                "mode": 0,
-                "goalX": -10.968698282192154,
-                "goalZ": -18.926259086101375
-              },
-              "distance": 0
-            },
-            {
-              "line": 0,
-              "direction": -1,
-              "pathLength": 16.36567754595337,
-              "connected": true,
-              "arrived": true,
-              "onPath": 0.9897610921501706,
-              "error": 0.35778821915073333,
-              "laneError": 0.009207730311326434,
-              "laneSamples": 239,
-              "rightSamples": 239,
-              "frames": 293,
-              "deviation": null,
-              "distance": 0
-            },
-            {
-              "line": 1,
-              "direction": 1,
-              "pathLength": 15.533150135237818,
-              "connected": true,
-              "arrived": true,
-              "onPath": 1,
-              "error": 0.35835745315183787,
-              "laneError": 0.009894283602802478,
-              "laneSamples": 224,
-              "rightSamples": 224,
-              "frames": 278,
-              "deviation": null,
-              "distance": 0
-            },
-            {
-              "line": 1,
-              "direction": -1,
-              "pathLength": 15.533150135237818,
-              "connected": true,
-              "arrived": true,
-              "onPath": 1,
-              "error": 0.36059102321410214,
-              "laneError": 0.010591023214102213,
-              "laneSamples": 221,
-              "rightSamples": 221,
-              "frames": 275,
-              "deviation": null,
-              "distance": 0
-            },
-            {
-              "line": 2,
-              "direction": 1,
-              "pathLength": 15.490485306936314,
-              "connected": true,
-              "arrived": true,
-              "onPath": 1,
-              "error": 0.35802207451429674,
-              "laneError": 0.009478369387234564,
-              "laneSamples": 223,
-              "rightSamples": 223,
-              "frames": 277,
-              "deviation": null,
-              "distance": 0
-            },
-            {
-              "line": 2,
-              "direction": -1,
-              "pathLength": 15.490485306936314,
-              "connected": true,
-              "arrived": true,
-              "onPath": 1,
-              "error": 0.36017619920769417,
-              "laneError": 0.010176199207694137,
-              "laneSamples": 221,
-              "rightSamples": 221,
-              "frames": 274,
-              "deviation": null,
-              "distance": 0
-            },
-            {
-              "line": 3,
-              "direction": 1,
-              "pathLength": 15.314569387665792,
-              "connected": true,
-              "arrived": true,
-              "onPath": 1,
-              "error": 0.37106223372548347,
-              "laneError": 0.021062233725483548,
-              "laneSamples": 218,
-              "rightSamples": 218,
-              "frames": 273,
-              "deviation": null,
-              "distance": 0
-            },
-            {
-              "line": 3,
-              "direction": -1,
-              "pathLength": 15.314569387665792,
-              "connected": true,
-              "arrived": true,
-              "onPath": 1,
-              "error": 0.3614546422114392,
-              "laneError": 0.018486165923007225,
-              "laneSamples": 219,
-              "rightSamples": 219,
-              "frames": 272,
-              "deviation": null,
-              "distance": 0
-            },
-            {
-              "line": 4,
-              "direction": 1,
-              "pathLength": 16.60499660501936,
-              "connected": true,
-              "arrived": true,
-              "onPath": 1,
-              "error": 0.35838672667291394,
-              "laneError": 0.009911476364989735,
-              "laneSamples": 243,
-              "rightSamples": 243,
-              "frames": 297,
-              "deviation": null,
-              "distance": 0
-            },
-            {
-              "line": 4,
-              "direction": -1,
-              "pathLength": 16.60499660501936,
-              "connected": true,
-              "arrived": true,
-              "onPath": 1,
-              "error": 0.3607280853052488,
-              "laneError": 0.010728085305248825,
-              "laneSamples": 240,
-              "rightSamples": 240,
-              "frames": 294,
-              "deviation": null,
-              "distance": 0
-            },
-            {
-              "line": 5,
-              "direction": 1,
-              "pathLength": 16.56015466665486,
-              "connected": true,
-              "arrived": true,
-              "onPath": 1,
-              "error": 0.36019765377357416,
-              "laneError": 0.01838940378353915,
-              "laneSamples": 238,
-              "rightSamples": 238,
-              "frames": 293,
-              "deviation": null,
-              "distance": 0
-            },
-            {
-              "line": 5,
-              "direction": -1,
-              "pathLength": 16.56015466665486,
-              "connected": true,
-              "arrived": true,
-              "onPath": 1,
-              "error": 0.3595705262484175,
-              "laneError": 0.012905440478723385,
-              "laneSamples": 242,
-              "rightSamples": 242,
-              "frames": 296,
-              "deviation": null,
-              "distance": 0
-            },
-            {
-              "line": 6,
-              "direction": 1,
-              "pathLength": 16.655282875786337,
-              "connected": true,
-              "arrived": true,
-              "onPath": 1,
-              "error": 0.357814329055309,
-              "laneError": 0.009213676600070608,
-              "laneSamples": 244,
-              "rightSamples": 244,
-              "frames": 298,
-              "deviation": null,
-              "distance": 9.456937025001033e-19
-            },
-            {
-              "line": 6,
-              "direction": -1,
-              "pathLength": 16.655282875786337,
-              "connected": true,
-              "arrived": true,
-              "onPath": 1,
-              "error": 0.359932701747252,
-              "laneError": 0.009932701747252082,
-              "laneSamples": 241,
-              "rightSamples": 241,
-              "frames": 295,
-              "deviation": null,
-              "distance": 0
-            },
-            {
-              "line": 7,
-              "direction": 1,
-              "pathLength": 16.704455024429375,
-              "connected": true,
-              "arrived": true,
-              "onPath": 1,
-              "error": 0.35815417310637615,
-              "laneError": 0.009675384095398976,
-              "laneSamples": 245,
-              "rightSamples": 245,
-              "frames": 299,
-              "deviation": null,
-              "distance": 1.537323543781021e-18
-            },
-            {
-              "line": 7,
-              "direction": -1,
-              "pathLength": 16.704455024429375,
-              "connected": true,
-              "arrived": true,
-              "onPath": 1,
-              "error": 0.36040227496354965,
-              "laneError": 0.010402274963549674,
-              "laneSamples": 242,
-              "rightSamples": 242,
-              "frames": 295,
-              "deviation": null,
-              "distance": 0
-            },
-            {
-              "line": 8,
-              "direction": 1,
-              "pathLength": 10.092548077347185,
-              "connected": true,
-              "arrived": true,
-              "onPath": 1,
-              "error": 0.3688814401726923,
-              "laneError": 0.3510247787655606,
-              "laneSamples": 125,
-              "rightSamples": 123,
-              "frames": 180,
-              "deviation": null,
-              "distance": 0
-            },
-            {
-              "line": 8,
-              "direction": -1,
-              "pathLength": 10.092548077347185,
-              "connected": true,
-              "arrived": true,
-              "onPath": 1,
-              "error": 0.35909918667593316,
-              "laneError": 0.3697990037809411,
-              "laneSamples": 130,
-              "rightSamples": 116,
-              "frames": 190,
-              "deviation": null,
-              "distance": 6.938893903907228e-18
-            },
-            {
-              "line": 9,
-              "direction": 1,
-              "pathLength": 7.747346708362145,
-              "connected": true,
-              "arrived": true,
-              "onPath": 1,
-              "error": 0.3835778541761024,
-              "laneError": 0.22296164536434304,
-              "laneSamples": 85,
-              "rightSamples": 85,
-              "frames": 139,
-              "deviation": null,
-              "distance": 1.734723475976807e-18
-            },
-            {
-              "line": 9,
-              "direction": -1,
-              "pathLength": 7.747346708362145,
-              "connected": true,
-              "arrived": true,
-              "onPath": 1,
-              "error": 0.3153198645952794,
-              "laneError": 0.2580252326838175,
-              "laneSamples": 90,
-              "rightSamples": 90,
-              "frames": 145,
-              "deviation": null,
-              "distance": 3.469446951953614e-18
-            },
-            {
-              "line": 10,
-              "direction": 1,
-              "pathLength": 24.737706030195692,
-              "connected": true,
-              "arrived": true,
-              "onPath": 1,
-              "error": 0.35215571017771424,
-              "laneError": 0.2618318502455086,
-              "laneSamples": 391,
-              "rightSamples": 391,
-              "frames": 445,
-              "deviation": null,
-              "distance": 0
-            },
-            {
-              "line": 10,
-              "direction": -1,
-              "pathLength": 24.737706030195692,
-              "connected": true,
-              "arrived": true,
-              "onPath": 1,
-              "error": 0.3926367778219586,
-              "laneError": 0.2667053296504499,
-              "laneSamples": 390,
-              "rightSamples": 390,
-              "frames": 444,
-              "deviation": null,
-              "distance": 0
-            },
-            {
-              "line": 11,
-              "direction": 1,
-              "pathLength": 14.782623181206517,
-              "connected": true,
-              "arrived": true,
-              "onPath": 1,
-              "error": 0.3523749767140203,
-              "laneError": 0.012019927046232393,
-              "laneSamples": 210,
-              "rightSamples": 210,
-              "frames": 263,
-              "deviation": null,
-              "distance": 0
-            },
-            {
-              "line": 11,
-              "direction": -1,
-              "pathLength": 14.782623181206517,
-              "connected": true,
-              "arrived": true,
-              "onPath": 1,
-              "error": 0.35123973893376337,
-              "laneError": 0.012352112589027853,
-              "laneSamples": 209,
-              "rightSamples": 209,
-              "frames": 264,
-              "deviation": null,
-              "distance": 0
-            },
-            {
-              "line": 12,
-              "direction": 1,
-              "pathLength": 8,
-              "connected": true,
-              "arrived": true,
-              "onPath": 1,
-              "error": 0.3499999399459354,
-              "laneError": 0.010942651275967163,
-              "laneSamples": 90,
-              "rightSamples": 90,
-              "frames": 144,
-              "deviation": null,
-              "distance": 0
-            },
-            {
-              "line": 12,
-              "direction": -1,
-              "pathLength": 8,
-              "connected": true,
-              "arrived": true,
-              "onPath": 1,
-              "error": 0.34999993994593537,
-              "laneError": 0.010942651275966497,
-              "laneSamples": 90,
-              "rightSamples": 90,
-              "frames": 144,
-              "deviation": null,
-              "distance": 0
-            },
-            {
-              "line": 13,
-              "direction": 1,
-              "pathLength": 14.782623181206521,
-              "connected": true,
-              "arrived": true,
-              "onPath": 1,
-              "error": 0.3509297079804461,
-              "laneError": 0.00986435286257914,
-              "laneSamples": 210,
-              "rightSamples": 210,
-              "frames": 264,
-              "deviation": null,
-              "distance": 0
-            },
-            {
-              "line": 13,
-              "direction": -1,
-              "pathLength": 14.782623181206521,
-              "connected": true,
-              "arrived": true,
-              "onPath": 1,
-              "error": 0.35128941846389067,
-              "laneError": 0.008033999586228524,
-              "laneSamples": 210,
-              "rightSamples": 210,
-              "frames": 263,
-              "deviation": null,
-              "distance": 0
-            },
-            {
-              "line": 14,
-              "direction": 1,
-              "pathLength": 7.999999999999997,
-              "connected": true,
-              "arrived": true,
-              "onPath": 1,
-              "error": 0.34999993994593287,
-              "laneError": 0.010942651275966608,
-              "laneSamples": 90,
-              "rightSamples": 90,
-              "frames": 144,
-              "deviation": null,
-              "distance": 0
-            },
-            {
-              "line": 14,
-              "direction": -1,
-              "pathLength": 7.999999999999997,
-              "connected": true,
-              "arrived": true,
-              "onPath": 1,
-              "error": 0.34999993994593287,
-              "laneError": 0.010942651275966608,
-              "laneSamples": 90,
-              "rightSamples": 90,
-              "frames": 144,
-              "deviation": null,
-              "distance": 0
-            }
-          ],
-          "lines": 15,
-          "nodes": 1787,
-          "capacity": 4096
-        }
-      },
-      {
-        "check": "race tracks: bay builds fast into culled sectors with checkpoints clear of its gaps",
-        "detail": {
-          "ms": 30,
-          "samples": 453,
-          "length": 680,
-          "sectors": 16,
-          "chunks": 30,
-          "checkpoints": 8,
-          "first": 0,
-          "gapNearCheck": false,
-          "maxStep": 0.68,
-          "faces": 45942,
-          "placedFaces": 311308,
-          "bananas": 38,
-          "crates": 10,
-          "pads": 3,
-          "map": 302,
-          "grid": 42,
-          "gridHeight": true,
-          "torches": 0,
-          "spectators": 208,
-          "records": 388,
-          "sky": true
-        }
-      },
-      {
-        "check": "race tracks: gorge builds fast into culled sectors with checkpoints clear of its gaps",
-        "detail": {
-          "ms": 33,
-          "samples": 622,
-          "length": 933,
-          "sectors": 22,
-          "chunks": 60,
-          "checkpoints": 8,
-          "first": 0,
-          "gapNearCheck": false,
-          "maxStep": 0.05,
-          "faces": 47310,
-          "placedFaces": 47310,
-          "bananas": 44,
-          "crates": 10,
-          "pads": 3,
-          "map": 416,
-          "grid": 42,
-          "gridHeight": true,
-          "torches": 45,
-          "spectators": 96,
-          "records": 388,
-          "sky": false
-        }
-      },
-      {
-        "check": "race tracks: peak builds fast into culled sectors with checkpoints clear of its gaps",
-        "detail": {
-          "ms": 33,
-          "samples": 744,
-          "length": 1116,
-          "sectors": 27,
-          "chunks": 30,
-          "checkpoints": 8,
-          "first": 0,
-          "gapNearCheck": false,
-          "maxStep": 0.78,
-          "faces": 64009,
-          "placedFaces": 64009,
-          "bananas": 46,
-          "crates": 8,
-          "pads": 3,
-          "map": 496,
-          "grid": 42,
-          "gridHeight": true,
-          "torches": 17,
-          "spectators": 220,
-          "records": 388,
-          "sky": true
-        }
-      },
-      {
-        "check": "birds-eye lower floors",
-        "detail": "Runtime.evaluate got no reply in 90 s: Chrome hung"
-      },
-      {
-        "check": "dsb lifecycle",
-        "detail": "Error: Scene travel did not settle: {\"wanted\":\"hub\",\"scene\":\"hub\",\"accepted\":true,\"trail\":[{\"state\":\"dsb:false\",\"at\":19.80000001192093,\"frames\":248},{\"state\":\"dsb:true\",\"at\":27,\"frames\":249},{\"state\":\"hub:true\",\"at\":3808.7000000178814,\"frames\":264},{\"state\":\"hub:false\",\"at\":7510.5999999940395,\"frames\":268}],\"framesTotal\":22,\"hidden\":false,\"focus\":true,\"requested\":true,\"tweens\":8,\"framesSinceSwap\":5,\"swap\":3809}"
       }
-    ],
-    "limits": "Partial log counts are not a terminal acceptance total. Stopped on explicit user instruction; no new browser run. Browser hangs remain unattributed. Surface-trail failure cause unproven. Race source/assertions unchanged from upstream. DSB timed return still fails."
+    ]
   },
-  "completedChecks": {
-    "unit": {
-      "passed": 141,
-      "exit": 0
-    },
-    "worker": {
-      "passed": 36,
-      "exit": 0
-    },
-    "build": {
-      "exit": 0
-    },
-    "site": {
-      "pages": 11,
-      "cards": 9,
-      "exit": 0
-    },
-    "syntax": "touched JS and test MJS pass",
-    "whitespace": "git diff --check passes",
-    "lint": "no configured lint command",
-    "sourceReview": "Independent review found no actionable defect; storage user tracking, original race caps and lifecycle ownership preserved"
+  "finalCspAndLegacyContract": {
+    "head": "b9d5f3bda68c981e477daf0fd9a9fd30dc688e1a",
+    "passed": 205,
+    "total": 206,
+    "exit": 1,
+    "cspExactOriginCheckPassed": true,
+    "remainingFailure": "dsb zuzu conversation: TypeError reading removed audio.duration"
   },
-  "historicalEvidence": "hub-clearance-validation.json and lifecycle-canvas-validation.json record historical diagnostics, not acceptance on this head",
-  "heldOut": [
-    "race GPU batching and new rig/context tests",
-    "unvalidated renderer-strategy candidate",
-    "failed bounded visibility query experiments"
-  ],
-  "remainingLimits": [
-    "No demonstrated fix for original performance targets",
-    "Incomplete full browser acceptance",
-    "Physical low-end/mobile and visual play test not complete",
-    "No merge or deployment authorized"
-  ]
+  "finalSourceAndTestFingerprint": "b0daa21b901db9e8fad0b17a98d03c9d1b39c5536e6a0f02f15658f07f715539"
 }
