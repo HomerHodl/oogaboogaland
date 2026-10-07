@@ -9808,6 +9808,9 @@ const vacancyChecks = async BL => {
   V.dispose();V.dispose();record("Vacancies: repeat disposal removes every sign and visit-owned reference",V.group.children.length===0&&V.properties.length===0&&W.root.children.length===children);W.dispose();
 };
 
+// Cycle-safe JSON.stringify: an already-seen object becomes a fixed marker, so equal structures still stringify equal.
+const cycleSafe = value => { const seen=new Set(); return JSON.stringify(value,(key,v)=>v&&typeof v==="object"?seen.has(v)?"[cycle]":(seen.add(v),v):v); };
+
 // Rule: exterior dressing must preserve the exact support surface and usable routes at every tier.
 const exteriorEnrichmentChecks = BL => {
   const S=BL.scene,root=S.createNode(),land=BL.dsbGeography.build(),renderer={kind:"webgl2",quality:"high"},camera=S.createCamera();camera.position.y=110;
@@ -9846,7 +9849,7 @@ const exteriorEnrichmentChecks = BL => {
   const after=[];for(let x=-90;x<90;x+=3)for(let z=-90;z<80;z+=3)after.push(land.heightAt(x,z));
   const sand=E.surfaces[0],coastal=E.placements.filter(p=>["beach","outcrop","coast"].includes(p.region));
   record("Exterior enrichment: approved terrain is byte-identical and no new beach reaches rear Olympus",original===JSON.stringify(land.root.children[0].geometry)&&JSON.stringify(after)===JSON.stringify(heightSamples)&&coastal.every(p=>p.z>=-23)&&sand.verts.every((v,i)=>i%3!==2||v>=60),JSON.stringify({coastal:coastal.length,sandFaces:sand.faces.length}));
-  const signature=JSON.stringify(E.placements),buffers=E.fields.map(f=>f.node.instanceData),high=E.stats.visible,foam=E.fields.find(f=>f.kind==="foam");
+  const signature=cycleSafe(E.placements),buffers=E.fields.map(f=>f.node.instanceData),high=E.stats.visible,foam=E.fields.find(f=>f.kind==="foam");
   renderer.quality="medium";E.update(1,1);const medium=E.stats.visible;renderer.quality="low";E.update(2,1);const low=E.stats.visible,lowFoam=Array.from(foam.node.instanceData);E.update(10,1);
   const stable=JSON.stringify(lowFoam)===JSON.stringify(Array.from(foam.node.instanceData));
   renderer.kind="canvas2d";renderer.quality="high";E.update(11,0);const canvas=E.stats.visible;
@@ -9856,7 +9859,7 @@ const exteriorEnrichmentChecks = BL => {
   const children=root.children.length;let lifecycle=true;
   E.dispose();E.dispose();
   lifecycle&&=E.group.children.length===0&&root.children.length===children-1&&E.fields.length===0;
-  for(let i=0;i<2;i++){const next=BL.dsbEnrichment.create({root,land,nature,detail,renderer,camera});next.update(i,0);lifecycle&&=JSON.stringify(next.placements)===signature&&root.children.length===children;next.dispose();lifecycle&&=next.group.children.length===0&&root.children.length===children-1;}
+  for(let i=0;i<2;i++){const next=BL.dsbEnrichment.create({root,land,nature,detail,renderer,camera});next.update(0,0);lifecycle&&=cycleSafe(next.placements)===signature&&root.children.length===children;next.dispose();lifecycle&&=next.group.children.length===0&&root.children.length===children-1;}
   detail.dispose();nature.dispose();
   record("Exterior enrichment: repeat visits release every node and rebuild the same bounded layout",lifecycle&&root.children.length===0);
 };
@@ -12443,13 +12446,13 @@ const dsbNatureCheckpoint = { name: "dsb nature checkpoint", why: "rule: terrain
     const geometries=new Set(),visit=n=>{if(n.geometry)geometries.add(n.geometry);for(const c of n.children)visit(c);};visit(E.group);
     for(const n of E.group.children)if(n.instanceData){const a=n.instanceData,v=n.geometry.verts;for(let o=0;o<a.length;o+=20){let top=-Infinity;for(let j=0;j<v.length;j+=3){const x=a[o]*v[j]+a[o+8]*v[j+2]+a[o+12],y=a[o+1]*v[j]+a[o+5]*v[j+1]+a[o+9]*v[j+2]+a[o+13],z=a[o+2]*v[j]+a[o+10]*v[j+2]+a[o+14];if(![x,y,z].every(Number.isFinite))invalid++;if(Math.abs(v[j+1])<.001&&y>L.heightAt(x,z)+.005)floating++;top=Math.max(top,y);}if(top<L.heightAt(a[o+12],a[o+14])+.06)buried++;}}
     for(const p of E.placements)if(p.region!=="pier")for(const line of [L.trail,L.waterfront,...L.lanes])for(let i=1;i<line.length;i++){const a=line[i-1],b=line[i],n=Math.ceil(Math.hypot(b[0]-a[0],b[1]-a[1])*2);for(let j=0;j<=n;j++)if(Math.hypot(p.x-a[0]-(b[0]-a[0])*j/n,p.z-a[1]-(b[1]-a[1])*j/n)<p.r+1.5)blocked++;}
-    window.__exteriorCheck={signature:JSON.stringify(E.placements),old:E};
+    window.__exteriorCheck={signature:(v=>{const m=new Set();return JSON.stringify(v,(k,x)=>x&&typeof x==="object"?m.has(x)?"[cycle]":(m.add(x),x):x)})(E.placements),old:E};
     return {floating,buried,blocked,invalid,geometries:geometries.size,facades:E.facades.length,coast:E.placements.filter(p=>p.region==="coast").length,rear:E.placements.some(p=>p.region==="coast"&&p.x<0&&p.z<-28)};
   })()`);
   record("DSB exterior: seated props leave routes and rear Olympus clear with seven bounded facades",!exterior.floating&&!exterior.buried&&!exterior.blocked&&!exterior.invalid&&!exterior.rear&&exterior.facades===7&&exterior.coast>10&&exterior.geometries<65,JSON.stringify(exterior));
   const r=await b.evaluate(`(() => {
     const B=__ooga,D=B.dsb,N=D.nature,L=D.land;
-    const signature=JSON.stringify(N.placements),counts={};let floating=0,buried=0,blocked=0,invalid=0;
+    const signature=(v=>{const m=new Set();return JSON.stringify(v,(k,x)=>x&&typeof x==="object"?m.has(x)?"[cycle]":(m.add(x),x):x)})(N.placements),counts={};let floating=0,buried=0,blocked=0,invalid=0;
     for(const f of N.fields) {
       counts[f.kind]=f.list.length;
       const v=f.node.geometry.verts,a=f.source;
@@ -12496,9 +12499,9 @@ const dsbNatureCheckpoint = { name: "dsb nature checkpoint", why: "rule: terrain
   record("DSB nature: low tier retains trees, reduces detail and shares storm wind",r.tiers.high.visible>r.tiers.medium.visible&&r.tiers.medium.visible>r.tiers.low.visible&&r.tiers.low.trees>40&&r.tiers.low.gulls===0&&r.windy,JSON.stringify(r));
   for(let visit=0;visit<2;visit++) {
     await b.evaluate('__ooga.go("dsb",null,true);__ooga.advance(.05)');
-    const state=await b.evaluate(`(()=>{const p=window.__natureCheck,n=__ooga.dsb.nature;return {same:JSON.stringify(n.placements)===p.signature,cleared:p.oldRoot.children.length===0&&p.old.group.children.length===0,fields:n.group.children.length,total:n.stats.total,textures:__ooga.renderer.stats.waterTextures};})()`);
+    const state=await b.evaluate(`(()=>{const p=window.__natureCheck,n=__ooga.dsb.nature;return {same:(v=>{const m=new Set();return JSON.stringify(v,(k,x)=>x&&typeof x==="object"?m.has(x)?"[cycle]":(m.add(x),x):x)})(n.placements)===p.signature,cleared:p.oldRoot.children.length===0&&p.old.group.children.length===0,fields:n.group.children.length,total:n.stats.total,textures:__ooga.renderer.stats.waterTextures};})()`);
     record(`DSB nature: visit ${visit+2} preserves seeded layout and releases old scene`,state.same&&state.cleared&&state.fields===11&&state.total>1000&&state.textures===2,JSON.stringify(state));
-    const detail=await b.evaluate('({same:JSON.stringify(__ooga.dsb.detail.placements)===__exteriorCheck.signature,cleared:__exteriorCheck.old.group.children.length===0})');
+    const detail=await b.evaluate('({same:(v=>{const m=new Set();return JSON.stringify(v,(k,x)=>x&&typeof x==="object"?m.has(x)?"[cycle]":(m.add(x),x):x)})(__ooga.dsb.detail.placements)===__exteriorCheck.signature,cleared:__exteriorCheck.old.group.children.length===0})');
     record(`DSB exterior: visit ${visit+2} releases dressing without duplicates`,detail.same&&detail.cleared,JSON.stringify(detail));
   }
   await b.evaluate('delete window.__natureCheck;delete window.__exteriorCheck');
