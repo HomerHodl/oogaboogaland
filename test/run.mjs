@@ -8257,6 +8257,17 @@ scene("hub", { label: "birds-eye combat", query: "solo=1&character=portlandhodl&
 scene("hub", { label: "birds-eye combat projection and targets", query: "solo=1&character=portlandhodl&weapon=1&mode=shoulder&combat=1", steps: [hubBirdsEyeProjection, hubBirdsEyeTargets, hubCombatReplay] });
 scene("hub", { label: "birds-eye lower floors", query: "solo=1&character=portlandhodl&weapon=1&mode=shoulder&combat=1", steps: [hubBirdsEyeFloors] });
 scene("hub", { label: "mirror", steps: [hubJumbotron, hubMatrix, hubMirror] });
+scene("hub", { label: "reset storage race", steps: [{ name: "reset storage race", why: "regression: a page timer or pagehide storage write once survived the pooled browser reset and leaked state into the next task", run: async (b) => {
+  await b.evaluate('localStorage.setItem("race-marker", "first"); addEventListener("pagehide", () => localStorage.setItem("race-pagehide", "retained")); setTimeout(() => localStorage.setItem("race-timer", "retained"), 40)');
+  await b.sleep(0);
+  await b.close();
+  const b2 = await acquire({});
+  try {
+    await b2.open(sceneUrl("hub"));
+    const kept = await b2.evaluate('({ marker: localStorage.getItem("race-marker"), timer: localStorage.getItem("race-timer"), pagehide: localStorage.getItem("race-pagehide") })');
+    record("browser reset: a final timer or pagehide storage write cannot survive into the next pooled task", kept.marker === null && kept.timer === null && kept.pagehide === null, JSON.stringify(kept));
+  } finally { await b2.close(); }
+} }] });
 scene("hub", { label: "side panel", query: "pos=0", steps: [hubSheetPersistence] });
 scene("hub", { label: "clock and block height", query: "pos=0&time=0900", steps: [hubBlockHeight, hubDestinationNames] });
 scene("hub", { label: "canvas2d", query: "canvas2d=1", steps: [canvasTour] });

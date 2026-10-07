@@ -265,6 +265,7 @@ export const launch = async ({ w = 1440, h = 900, mobile = false, perf = false, 
   // to 30 fps and leaked device metrics render it at the wrong viewport.
   const reset = async () => {
     // Storage first, while the task's own document and its file:// origin are still loaded.
+    const origin = await evaluate("location.origin").catch(() => null);
     await evaluate("(() => { try { localStorage.clear(); sessionStorage.clear(); } catch {} })()").catch(() => {});
     await send("Page.setWebLifecycleState", { state: "active" }).catch(() => {});
     await send("Emulation.clearDeviceMetricsOverride").catch(() => {});
@@ -281,6 +282,9 @@ export const launch = async ({ w = 1440, h = 900, mobile = false, perf = false, 
       await sleep(25);
     }
     if (!blank) throw driverError("Chrome reset did not reach a complete blank page");
+    // The old page's timers (debounced saves) and its pagehide handler can re-write storage between
+    // the first clear and its death; clear once more now that no frame callback can touch the next task.
+    if (origin) await send("Storage.clearDataForOrigin", { origin, storageTypes: "local_storage" }).catch(() => {});
     // Clear log buffers last: late console and log events from the old document have landed by now.
     await send("Log.clear").catch(() => {});
     await send("Runtime.discardConsoleEntries").catch(() => {});
