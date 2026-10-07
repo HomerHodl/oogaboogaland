@@ -97,3 +97,14 @@ The two failures are the original eight-second lifecycle travel deadlines. DSB r
 The unchanged original performance benchmark completed **1/3**, exit 1: ordinary movement 55.0195 FPS, High, p95 33.3 ms, max 200 ms; covered donation 30.2001 FPS, Low, p95 50 ms, max 66.6 ms. All 26 particles and outlines remain. Both acceptance targets fail. These current measurements supersede the earlier interrupted source-page attempts for this scoped acceptance, while preserving their historical records.
 
 Final composed Worker checks pass 39/39; build, site generation (11 pages/9 cards), syntax for all 13 touched JS/MJS files and whitespace checks pass. No lint command is configured. The PR remains draft because lifecycle travel and original performance requirements remain unmet.
+
+
+## Terminal lifecycle investigation
+
+No production change was made after the reviewed source head. A final uninstrumented original lifecycle pair on documentation successor `0be0a0f` completed **198/200**, exit 1, with the same source/test fingerprint and all 197 global units passing again. DSB exceeded the original eight-second deadline before entry: Hub remained current, with two delivered frames, visible and focused. Factory exceeded its unchanged 120-second session watchdog, which killed its owned Chrome. Complete six-visit retention acceptance remains unresolved. These failures are retained alongside the earlier 271/273 result.
+
+Four complete native diagnostic traces were captured separately. The first two used unlocked flags and are explicitly corrected as diagnostic comparisons; the helper now defaults to the actual capped-frame suite policy. Both corrected flag-matched traces passed all five original DSB/Factory lifecycle assertions without production edits. Every trace contains phase wrappers and native tracing, so its passes do not replace uninstrumented acceptance or prove a fix.
+
+The unlocked failed DSB return measured 3.413 seconds of Hub entry, with approximately 2.03 seconds of overlapping Minor/Major GC. A later 2.621-second Hub update recorded only about 26 ms of main-thread CPU and no overlapping recorded Minor/Major GC or identifying nested wait/layout event. GC explains part of construction, but the later pause remains unattributed; no claim of a particular source defect, GPU wait or host cause is supported. Flag-matched passing post-snapshot Hub entries ranged from 2.471–3.604 seconds for DSB and 1.746–3.076 seconds for Factory. Their complete retained node/DOM/GPU/listener/heap assertions passed diagnostically.
+
+The remaining review blockers are the unchanged original FPS targets and intermittent uninstrumented travel/session stalls. Proven fixes are published; no speculative transition change, deadline relaxation, density reduction or performance-target weakening was made. Physical mobile/low-end performance and human play-testing were not run.

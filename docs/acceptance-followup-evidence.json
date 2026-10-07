@@ -1,7 +1,7 @@
 {
   "base": "8c11e150d310733d24f79bc150ec941b3e8f4b90",
   "testedCodeHead": "9c74d969e20f6888234d1b93587f671c7d0a32ee",
-  "status": "Draft: final composed targeted acceptance 271/273; original DSB/Factory travel deadlines and both FPS targets fail; local gates pass",
+  "status": "Draft: repairs verified; targeted271/273 and lifecycle198/200; both FPS targets remain unmet; intermittent travel/session stalls remain unclassified",
   "priorPublication": {
     "testedCodeHead": "c5a290873d2d3007ce6919a323c21833fd5360d2",
     "base": "81fd9d1fb8c1563dff1a93d318e03c0ef6da5d74",
@@ -1971,5 +1971,116 @@
     "independentReview": "PASS",
     "originalSourceWorkerChecks": "PASS 3/3 individual; also PASS in composed original runner",
     "performanceClaim": "Bounded redundant-loop repair only; original covered FPS target remains unmet"
+  },
+  "currentUninstrumentedLifecycleRecheck": {
+    "variant": "followup-current",
+    "head": "0be0a0ff625951d085b583d51a6a1ea37a7cc3a4",
+    "command": "VERBOSE=1 LANES=1 ONLY='dsb lifecycle,factory lifecycle' node test/run.mjs dsb factory",
+    "startedAt": "2026-10-07T01:45:11.088550+00:00",
+    "sourceAndTestBefore": "82129ad8945abe6d4e546980888204cd81101d052558e26edaca52bfdfb0c806",
+    "provenanceCaptureNote": "Fingerprint captured after launch before first browser assertion; code unchanged from published source9c74.",
+    "finishedAt": "2026-10-07T01:48:32.442030+00:00",
+    "sourceAndTestAfter": "82129ad8945abe6d4e546980888204cd81101d052558e26edaca52bfdfb0c806",
+    "unchanged": true,
+    "exit": 1,
+    "summary": "198/200 checks passed in 3.0 min",
+    "failures": [
+      "FAIL dsb lifecycle \u00b7 Error: Scene travel did not settle: {\"wanted\":\"dsb\",\"scene\":\"hub\",\"accepted\":true,\"trail\":[{\"state\":\"hub:false\",\"at\":1002.1000000238419,\"frames\":103},{\"state\":\"hub:true\",\"at\":8072.300000011921,\"frames\":104}],\"framesTotal\":2,\"hidden\":false,\"focus\":true,\"requested\":true,\"tweens\":0,\"framesSinceSwap\":-1,\"swap\":0}",
+      "FAIL factory lifecycle \u00b7 the session passed 120 s and its Chrome was killed"
+    ],
+    "infrastructureRetries": 0
+  },
+  "travelDiagnosticCaptures": {
+    "runtimeSourceCommit": "9c74d969e20f6888234d1b93587f671c7d0a32ee",
+    "lockedRepositoryCommit": "0be0a0ff625951d085b583d51a6a1ea37a7cc3a4",
+    "lockedRepositoryDifference": "Documentation only; runtime source unchanged.",
+    "testSha256": "44aad7cf5231fefacd74afec540c9bd2690ff2c82badb00f7787cf68e45b2365",
+    "productionChanges": [],
+    "unchangedContracts": {
+      "travelDeadlineMs": 8000,
+      "sessionWatchdogMs": 120000,
+      "roundTrips": 6,
+      "originalHeapSnapshots": true,
+      "originalResourceAssertions": true
+    },
+    "diagnostics": [
+      {
+        "report": "dsb-stall-9c74.json",
+        "flags": "launch({perf:false}); unlocked comparison",
+        "result": "Original DSB return deadline failed",
+        "assertionsPassed": 0,
+        "cpuSampler": false
+      },
+      {
+        "report": "factory-stall-9c74.json",
+        "flags": "launch({perf:false}); unlocked comparison",
+        "result": "Original Factory lifecycle passed",
+        "assertionsPassed": 3,
+        "cpuSampler": false
+      },
+      {
+        "report": "dsb-stall-9c74-locked.json",
+        "flags": "launch({perf:true}); actual suite default",
+        "result": "Original DSB lifecycle passed",
+        "assertionsPassed": 2,
+        "cpuSampler": false
+      },
+      {
+        "report": "factory-stall-9c74-locked.json",
+        "flags": "launch({perf:true}); actual suite default",
+        "result": "Original Factory lifecycle passed",
+        "assertionsPassed": 3,
+        "cpuSampler": false
+      }
+    ],
+    "lockedOriginalAssertionsPassed": 5,
+    "instrumentationCaveat": "All diagnostics contain phase wrappers and native tracing. Passing traces are not equivalent to an uninstrumented acceptance pass or a demonstrated production fix.",
+    "flagCorrection": "The first two raw reports initially label unlocked launch as suite default. That label was wrong; preserve the raw files and apply this explicit correction. The helper now defaults perf:true unless --unlocked is requested.",
+    "flagCausalityLimit": "The actual locked uninstrumented reviewed targeted run also failed both deadlines. Flags alone cannot explain or clear those original failures.",
+    "unlockedFailure": {
+      "requestAcceptedMs": 12.1,
+      "firstObservedHubMs": 3963.5,
+      "renderedFramesTotal": 20,
+      "renderedFramesSinceSwap": 3,
+      "remainingTweens": 9,
+      "hidden": false,
+      "focused": true,
+      "hubEnterMs": 3413.2,
+      "hubEnterMinorMajorGcMsApprox": 2030,
+      "hubEnterGcFractionApprox": 0.595,
+      "gcAttribution": "Overlapping recorded Minor/Major GC intervals demonstrate a partial Hub-entry cost; approximately 59.5 percent in this unlocked failing return.",
+      "subsequentHubUpdateWallMs": [
+        2620.9,
+        720.7
+      ],
+      "firstSlowUpdateEnclosingCallbackCpuMs": 26.1,
+      "firstSlowUpdateMinorMajorGcEvents": 0,
+      "unattributedPause": "The 2620.9 ms update has no identifying nested layout/GC/native wait event. Do not assume GC, forced layout, GPU wait, host descheduling or a specific source defect."
+    },
+    "lockedHubEntryMs": {
+      "dsbWarm": 623,
+      "dsbPostSnapshot": [
+        3604,
+        2555,
+        2471,
+        2570,
+        2582,
+        2720
+      ],
+      "factoryWarm": 449,
+      "factoryPostSnapshot": [
+        3076,
+        1812,
+        2221,
+        2094,
+        1746,
+        2133
+      ],
+      "gcFraction": null,
+      "gcFractionCaveat": "Per-return locked GC fractions were not derived; do not extrapolate the unlocked failing entry fraction."
+    },
+    "traceIntegrity": "All four current traces streamed complete JSON directly to disk; no former 32 MiB truncation.",
+    "remainingBlocker": "A suite-default failing return still needs attribution of its multi-second post-swap update/wait. The historical six-second pre-request callback gap also remains unclassified. No further production fix is supported by these captures.",
+    "markdownSummary": "lifecycle-stall-9c74-summary.md"
   }
 }
