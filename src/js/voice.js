@@ -33,7 +33,9 @@
   const samples = new Float32Array(SAMPLES);
   const mutedLogins = new Set();
   let mic = null, pubPc = null, subPc = null, desired = [], queue = Promise.resolve();
-  let audio = null, micMeter = null, speakTimer = 0, changed = false, dropTimer = 0;
+  let audio = null, micMeter = null, speakTimer = 0, changed = false;
+  // Each connection's own pending restart after a drop, so one connection's change never cancels the other's.
+  const dropTimers = new Map();
   try {
     const saved = JSON.parse(localStorage.getItem(MUTED_KEY));
     if (Array.isArray(saved)) for (const login of saved.slice(0, MUTED_MAX)) if (typeof login === "string" && login.length <= 39) mutedLogins.add(login.toLowerCase());
@@ -143,11 +145,13 @@
   const watch = (pc) => {
     pc.addEventListener("connectionstatechange", () => {
       if (pc !== pubPc && pc !== subPc) return;
-      window.clearTimeout(dropTimer);
+      window.clearTimeout(dropTimers.get(pc));
+      dropTimers.delete(pc);
       if (pc.connectionState === "failed") restart();
-      else if (pc.connectionState === "disconnected") dropTimer = window.setTimeout(() => {
+      else if (pc.connectionState === "disconnected") dropTimers.set(pc, window.setTimeout(() => {
+        dropTimers.delete(pc);
         if ((pc === pubPc || pc === subPc) && pc.connectionState !== "connected") restart();
-      }, DROP_GRACE_MS);
+      }, DROP_GRACE_MS));
     });
   };
 
@@ -177,7 +181,8 @@
 
   const teardown = () => {
     window.clearTimeout(retryTimer);
-    window.clearTimeout(dropTimer);
+    for (const timer of dropTimers.values()) window.clearTimeout(timer);
+    dropTimers.clear();
     window.clearInterval(speakTimer);
     speakTimer = 0;
     for (const s of subs.values()) silence(s);

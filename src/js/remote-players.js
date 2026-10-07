@@ -4,7 +4,7 @@
 // copy of that Ooga is sent `away` while someone else drives it, so no Ooga stands twice, and comes back
 // when they let go; meanwhile its roster row shows the driver online (`remoteControlled`, the green dot).
 // The crew walks round remote bodies through `actors`, its `outsideActors`.
-// Who is shown is the scene's `visible(rec)`: the island shows players in its own zone (`onIsland` names the
+// Who is shown is the scene's `visible(rec)`: the island shows players in its own zone (`onIsland` lists the
 // island's places), every other scene those in its zone (`sameZone`). The crew is optional, for a scene that
 // has none until the visitor drives, and `hide(name, on)` lets a scene hide its own decor copy of an Ooga
 // someone drives. A nameplate carries the name, a health bar from the room's `hp` (red while knocked out) and,
@@ -33,9 +33,10 @@
     for (let i = 0; i < cells.length; i += 4) ctx.fillRect(x + cells[i], y + cells[i + 1], cells[i + 2], cells[i + 3]);
   };
 
-  // The island's own places share its coordinates: every zone without a `.place`, apart from nowhere, the games
-  // (`scene-*`) and DSB Land.
-  const onIsland = (zone) => typeof zone === "string" && zone !== "none" && zone.indexOf(".") < 0 && !zone.startsWith("scene-") && !zone.startsWith("dsb-");
+  // The zones the hub itself reports, which share its coordinates: the island, its bridged lands and its caves
+  // (`cave-<id>` for a mouth with no name of its own). Never a separate scene's zone, such as the Ember Den.
+  const ISLAND_ZONES = new Set(["outside", "sphere", "rainforest", "bifrost", "lab", "factory", "arcade", "mirror", "hq"]);
+  const onIsland = (zone) => ISLAND_ZONES.has(zone) || typeof zone === "string" && zone.startsWith("cave-");
   const sameZone = (rec) => rec.zone === BL.net.state.zone;
 
   // `posed(cave, feetY)` lets the scene finish a body's pose once it stands where the room says: the hub sets a
