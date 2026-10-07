@@ -2424,5 +2424,255 @@
       "productionStorageAdded": false,
       "scope": "Count-only instrumentation, not elapsed-time or FPS evidence. Prefix-only span data does not justify a one-outlier hybrid index. Adaptive coarsening was already rejected and will not be repeated."
     }
+  },
+  "syncedRockVerificationAndRejectedIndex": {
+    "scope": "Documentation only. Upstream verification and an isolated rejected experiment; no PR-head runtime/test change or new PR-head acceptance result.",
+    "priorPublishedPRHead": "0ac6c3ac0f934753bf3367cc9fe05c36aecc4e37",
+    "unchangedPRSourceTestHead": "9c74d969e20f6888234d1b93587f671c7d0a32ee",
+    "upstreamVerification": {
+      "remote": "https://github.com/hotpixelgroup/oogaboogaland.git",
+      "ref": "refs/heads/rock",
+      "previousFetchedHead": "3bb61da3828aa1cdfee6d4143cfdd0a2b7c4546c",
+      "syncedHead": "e1ec73854c8455f88137342fed202aeb9875215d",
+      "checkout": "Fresh detached isolated checkout; existing PR work and older artifacts preserved.",
+      "conditions": "Mac on AC Power, charged; Low Power Mode disabled. Original browser flags, readiness, workload, visuals and thresholds retained; owned browsers closed afterward.",
+      "performance": {
+        "command": "VERBOSE=1 LANES=1 npm run test:perf",
+        "build": "pass",
+        "checksPassed": 1,
+        "checksTotal": 3,
+        "exitCode": 1,
+        "assertions": [
+          {
+            "name": "FAIL wall movement performance: ordinary movement stays responsive at a high-density desktop size",
+            "metrics": {
+              "fps": 55.61757435611196,
+              "p95": 33.30000000000109,
+              "max": 33.400000000001455,
+              "worst": {
+                "gap": 41.80000001192093,
+                "at": 749.8999999999996,
+                "updateMs": 21.399999976158142,
+                "renderMs": 3.300000011920929,
+                "overlayMs": 8,
+                "donated": false
+              },
+              "outlined": 0,
+              "samples": 279,
+              "travel": 3.358074999999994,
+              "donated": false,
+              "particles": 0,
+              "quality": "high"
+            }
+          },
+          {
+            "name": "FAIL wall movement performance: moving behind cave walls during a donation stays responsive at a high-density desktop size",
+            "metrics": {
+              "fps": 30.994198521815143,
+              "p95": 50,
+              "max": 50.100000000000364,
+              "worst": {
+                "gap": 47.69999998807907,
+                "at": 1600,
+                "updateMs": 9.099999994039536,
+                "renderMs": 6.4000000059604645,
+                "overlayMs": 32,
+                "donated": true
+              },
+              "outlined": 156,
+              "samples": 156,
+              "travel": 3.4867249999999856,
+              "donated": true,
+              "particles": 26,
+              "quality": "low"
+            }
+          }
+        ],
+        "nativeCPUAttributionRepeated": false
+      },
+      "dsb": {
+        "command": "VERBOSE=1 LANES=1 ONLY='dsb lifecycle' node test/run.mjs dsb",
+        "browserChecksPassed": 3,
+        "browserChecksTotal": 3,
+        "sixRoundTrips": true,
+        "nodeTargetTweenDOMRetention": "pass",
+        "GPUListenerHeapBounds": "pass",
+        "console": "clean",
+        "launchSeconds": 0.8,
+        "bootSeconds": 5.1,
+        "bodySeconds": 82.8,
+        "wallSeconds": 88.7,
+        "reportedSceneBudgetSeconds": 25,
+        "sceneBudgetResult": "SLOW advisory, not a new assertion threshold",
+        "sessionWatchdog": "clear",
+        "travelDeadlineMilliseconds": 8000,
+        "sessionDeadlineMilliseconds": 120000,
+        "overallExitCode": 1,
+        "retryObserved": false,
+        "limitation": "Single browser pass does not establish the intermittent deadline issue fixed or supersede historical PR-head failures; overall command did not complete successfully."
+      },
+      "runnerBlocker": {
+        "error": "TypeError: Converting circular structure to JSON",
+        "function": "exteriorEnrichmentChecks",
+        "source": "test/run.mjs:9466 at synced upstream head",
+        "expression": "JSON.stringify(E.placements)",
+        "cycle": "Object.children[0].parent closes the circle",
+        "phase": "Global unit checks after successful DSB browser checks",
+        "alsoObserved": "Candidate full unit command, after the new visibility check passed",
+        "repairValidated": false,
+        "scope": "Reproduced on upstream, separate from unchanged PR-head 197/197 unit result. A narrow fixture repair requires validation; no fix or assertion weakening included."
+      }
+    },
+    "rejectedExactOverflowIndex": {
+      "baseHead": "e1ec73854c8455f88137342fed202aeb9875215d",
+      "published": false,
+      "productionCodeIncluded": false,
+      "candidateTestsIncluded": false,
+      "mechanism": "Demand-filled complete fine screen-cell lists reuse existing bounded typed index buffers; incomplete/full-capacity cells retain exact BVH fallback; reprojection resets caches.",
+      "correctness": {
+        "compared": 16876,
+        "differences": 0,
+        "overflow": 3,
+        "complete": 173,
+        "fallback": 2899,
+        "bounded": true,
+        "reset": true,
+        "replaced": true,
+        "removed": true,
+        "disposed": true
+      },
+      "memory": {
+        "control": {
+          "gridPayloadBytes": 47364,
+          "comparisons": 16876,
+          "differences": 0
+        },
+        "candidate": {
+          "gridPayloadBytes": 47364,
+          "comparisons": 16876,
+          "differences": 0
+        }
+      },
+      "memoryLimit": "Focused fixture typed payload only; whole-browser heap not measured. Candidate adds two primitive grid fields; no additional typed buffers or per-query allocations.",
+      "workloadHashes": {
+        "control": "99d226d40710f2ccb06ebb367ca1c91467285045671f5343d877b058b36d09f0",
+        "candidate": "99d226d40710f2ccb06ebb367ca1c91467285045671f5343d877b058b36d09f0"
+      },
+      "performance": {
+        "control": [
+          {
+            "name": "FAIL wall movement performance: ordinary movement stays responsive at a high-density desktop size",
+            "metrics": {
+              "fps": 55.41712349247484,
+              "p95": 33.30000000000018,
+              "max": 33.5,
+              "worst": {
+                "gap": 40.69999998807907,
+                "at": 683.3999999999996,
+                "updateMs": 18.899999976158142,
+                "renderMs": 3.600000023841858,
+                "overlayMs": 5.899999976158142,
+                "donated": false
+              },
+              "outlined": 0,
+              "samples": 278,
+              "travel": 3.48904999999999,
+              "donated": false,
+              "particles": 0,
+              "quality": "high"
+            }
+          },
+          {
+            "name": "FAIL wall movement performance: moving behind cave walls during a donation stays responsive at a high-density desktop size",
+            "metrics": {
+              "fps": 29.50264128376359,
+              "p95": 50,
+              "max": 50.100000000000364,
+              "worst": {
+                "gap": 48.79999998211861,
+                "at": 1499.8999999999996,
+                "updateMs": 8.900000005960464,
+                "renderMs": 6.5,
+                "overlayMs": 33.19999998807907,
+                "donated": true
+              },
+              "outlined": 148,
+              "samples": 148,
+              "travel": 3.48905000000002,
+              "donated": true,
+              "particles": 26,
+              "quality": "low"
+            }
+          }
+        ],
+        "candidate": [
+          {
+            "name": "FAIL wall movement performance: ordinary movement stays responsive at a high-density desktop size",
+            "metrics": {
+              "fps": 56.214492175819785,
+              "p95": 33.30000000000018,
+              "max": 33.400000000001455,
+              "worst": {
+                "gap": 36.79999998211861,
+                "at": 700,
+                "updateMs": 19.900000005960464,
+                "renderMs": 3.199999988079071,
+                "overlayMs": 8.299999982118607,
+                "donated": false
+              },
+              "outlined": 0,
+              "samples": 282,
+              "travel": 3.3603999999999985,
+              "donated": false,
+              "particles": 0,
+              "quality": "high"
+            }
+          },
+          {
+            "name": "FAIL wall movement performance: moving behind cave walls during a donation stays responsive at a high-density desktop size",
+            "metrics": {
+              "fps": 29.007967256760246,
+              "p95": 50,
+              "max": 50.099999999998545,
+              "worst": {
+                "gap": 46.70000001788139,
+                "at": 1533.199999999999,
+                "updateMs": 8.599999994039536,
+                "renderMs": 6.5,
+                "overlayMs": 31.30000001192093,
+                "donated": true
+              },
+              "outlined": 146,
+              "samples": 146,
+              "travel": 4.133850000000001,
+              "donated": true,
+              "particles": 26,
+              "quality": "low"
+            }
+          }
+        ]
+      },
+      "conditions": "One serial matched pair on AC with Low Power Mode disabled, original unchanged wallPerformance including construction/rebuild work, original Chrome flags and adaptive quality.",
+      "decision": "Rejected: no demonstrated end-to-end benefit. Both retain full outlines and 26 particles, Low quality and p95 50 ms. Small throughput difference is not causal slowdown evidence.",
+      "attribution": "Synthetic proof observed 173 complete and 2899 BVH-only capacity cells across three overflow projections; these are not live-workload saturation/reuse counters. The available covered profile predates the candidate. Source establishes per-new-cell triangle-bound scans and per-reprojection invalidation, not their actual cost or profitability.",
+      "singleMissingMeasurement": "One bounded per-rebuild live overflow-cache census recording construction time, completed-cell query reuse and capacity-fallback queries during the original covered interval. Existing evidence cannot separate construction overhead, saturation, low reuse and remaining unaffected work.",
+      "scope": "Rejected patch retained locally; no candidate code/tests, cache experiments or FPS-fix claim are shipped."
+    },
+    "localArtifacts": {
+      "publiclyUploaded": false,
+      "note": "Raw artifacts and rejected patch retained locally. Hashes identify preserved evidence without publishing machine paths.",
+      "sha256": {
+        "origin-rock-synced-20261007-perf.log": "7f9181c2d50909711318838353f3888d2bb44defe3c637aadb3f069e103c27a8",
+        "origin-rock-synced-20261007-dsb.log": "3a5a48afd06850e97e92f5016535b75028f6fcd1f447706b4c9bd834c191576e",
+        "origin-rock-synced-20261007-workload-hashes.json": "07889a8eab8d3f8d192a9c848965df2b21442132226dd79b0d905ca52d034a57",
+        "overflow-index-control-perf.log": "92852482e39c317faa9821c9e1c5ae2cd1f63c388b9adc6f2feb18880fb34915",
+        "overflow-index-candidate-perf.log": "7356c2dbfb545b7e431f4067c9546f6bf7d7ae4aa22bad70b34f1fd655ad2a13",
+        "overflow-index-candidate-proof.json": "a41262ed2f27d2628c2eb8557738d610bf73de29d7dbebe01248697cb3fff8ba",
+        "overflow-index-memory-proof.json": "15bd355a52552551a44fae10b780ebe7a45d0129a350c87d9c42b3d6e7fe88d1",
+        "overflow-index-candidate-outcome.json": "73068991b2038ce327779c07ee91f9ebbde906bcd2df4692ea2401ebec7501f1",
+        "overflow-index-rejected-candidate.patch": "47e7b6b797550ca02313816af64b8e5bd99bebacb4285c8dfb834f8450f306f8"
+      }
+    },
+    "readiness": "Draft unchanged; no merge, deployment or new production repair."
   }
 }
