@@ -2016,7 +2016,8 @@
         "flags": "launch({perf:false}); unlocked comparison",
         "result": "Original Factory lifecycle passed",
         "assertionsPassed": 3,
-        "cpuSampler": false
+        "cpuSampler": false,
+        "fixtureMatch": false
       },
       {
         "report": "dsb-stall-9c74-locked.json",
@@ -2030,7 +2031,8 @@
         "flags": "launch({perf:true}); actual suite default",
         "result": "Original Factory lifecycle passed",
         "assertionsPassed": 3,
-        "cpuSampler": false
+        "cpuSampler": false,
+        "fixtureMatch": false
       }
     ],
     "lockedOriginalAssertionsPassed": 5,
@@ -2081,6 +2083,83 @@
     },
     "traceIntegrity": "All four current traces streamed complete JSON directly to disk; no former 32 MiB truncation.",
     "remainingBlocker": "A suite-default failing return still needs attribution of its multi-second post-swap update/wait. The historical six-second pre-request callback gap also remains unclassified. No further production fix is supported by these captures.",
-    "markdownSummary": "lifecycle-stall-9c74-summary.md"
+    "markdownSummary": "lifecycle-stall-9c74-summary.md",
+    "fixtureCorrection": "The old Factory helper also installed DSB-only Audio/fetch/WebSocket fixtures. Both old Factory captures are diagnostic comparisons, not exact Factory fixture controls. DSB fixtures are unaffected. New descriptor-based native recorder installs fixtures only for the original DSB case."
+  },
+  "currentAttributionInvestigation": {
+    "repositoryCommit": "5a1487c8bc7e5e3f5a04e53750949bb8687ba2c0",
+    "runtimeSourceCommit": "9c74d969e20f6888234d1b93587f671c7d0a32ee",
+    "productionChanges": [],
+    "coveredNative": {
+      "report": "covered-native-attribution-5a.json",
+      "ordinary": {
+        "fps": 57.212,
+        "quality": "high",
+        "p95Ms": 16.8
+      },
+      "covered": {
+        "fps": 31.695,
+        "quality": "low",
+        "p95Ms": 50,
+        "particles": 26,
+        "outlinedSamples": "159/159"
+      },
+      "callbackMedianMs": {
+        "wall": 36.571,
+        "threadCpu": 36.422
+      },
+      "categoryDiscoveryCorrection": "Legacy category discovery returned empty; categories=\"\" used default capture. Actual emitted native events support positive thread-CPU measurements, but requested-channel availability and data-loss metadata were not established. No absence-of-wait/GC proof is inferred.",
+      "scope": "Original performance function and readiness; no additional JS phase/RAF wrappers. Original benchmark instrumentation remains."
+    },
+    "coveredCpuProfile": {
+      "report": "covered-cpu-attribution-5a.json",
+      "samplingIntervalUs": 1000,
+      "coveredFps": 30.89865,
+      "quality": "low",
+      "p95Ms": 50,
+      "particles": 26,
+      "outlinedSamples": "155/155",
+      "profileMs": 5705.074,
+      "samples": 3653,
+      "startupProgramMsExcludedFromFunctionConclusions": 471.075,
+      "elapsedSelfWeightsMs": {
+        "objectGuidesModule": 2224.07,
+        "terrainModule": 861.99,
+        "cameraCoverPlusNativeCanvasApprox": 586,
+        "glRenderer": 300.7
+      },
+      "limit": "Elapsed sample weights include setup and are not per-frame measured CPU; separate sampled/native trajectories cannot be subtracted causally."
+    },
+    "lifecycleNative": {
+      "preflightReport": "lifecycle-native-descriptor-preflight-5a.json",
+      "categoryDiscovery": "Official Tracing.getTrackEventDescriptor; 292 registered categories despite empty legacy enumeration",
+      "dsbReport": "lifecycle-native-descriptor-dsb-5a.json",
+      "factoryReport": "lifecycle-native-descriptor-factory-5a.json",
+      "completeClockAlignedLossless": true,
+      "exactOriginalBodies": true,
+      "fixtureMatch": true,
+      "travelDeadlineMs": 8000,
+      "sessionWatchdogMs": 120000,
+      "roundTrips": 6,
+      "additionalJsPhaseOrRafWrappers": false,
+      "dsb": "Original entry travel failed while Hub remained current; accepted=true, visible/focused, three delivered frames.",
+      "dsbLongestTasksMs": [
+        {
+          "wall": 2867.827,
+          "threadCpu": 80.529
+        },
+        {
+          "wall": 3999.957,
+          "threadCpu": 122.875
+        },
+        {
+          "wall": 1139.834,
+          "threadCpu": 73.38
+        }
+      ],
+      "dsbCause": "Unattributed wall/CPU gap. Recorded GC and main-thread GPU waits do not identify the full pause; OS scheduling/page-fault/native-blocking data are not yet captured.",
+      "factory": "Original three assertions passed diagnostically with correct Factory-only fixtures; does not supersede uninstrumented deadline/watchdog failures."
+    },
+    "nextGates": "Bounded observational query-elimination censuses and active owned-renderer OS sampling; no production optimization approved before evidence and exactness gates."
   }
 }
