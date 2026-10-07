@@ -11,22 +11,31 @@
 // received, read every SPEAK_MS while voice is on (`stats.speaking` for this page, `speaking(id)` for
 // others). A player muted for this page alone (`muteLocal`, by GitHub login, kept in localStorage) is still
 // pulled and measured, only not played.
+// The room's lists carry each voice's publication count, so a microphone published again (its owner
+// reconnected or restarted) is pulled again rather than left on a dead track; a connection that fails or stays
+// dropped after it was up starts voice over on its own, and a pull that misses a wanted voice is retried.
 // Exports enable, toggle, restart, stop, setPeers, subscribe, dispose, inspect, speaking, muteLocal, mutedLocally and stats.
 (() => {
   "use strict";
   const BL = window.BL = window.BL || {};
   const ICE = { iceServers: [{ urls: "stun:stun.cloudflare.com:3478" }], bundlePolicy: "max-bundle" };
   const ICE_GATHER_MS = 1500, CONNECT_MS = 10000, RETRY_MS = 2000;
+  // A connection that drops after it was up gets this long to come back on its own before voice starts over.
+  const DROP_GRACE_MS = 5000;
   // Speaking: RMS over SPEAK_ON starts it at once; SPEAK_HOLD quiet reads in a row end it, so words do not flicker.
   const SPEAK_MS = 150, SPEAK_ON = 0.02, SPEAK_HOLD = 4, SAMPLES = 1024;
   const MUTED_KEY = "oogaboogaland.voice-muted", MUTED_MAX = 512;
   const subscribers = new Set();
   const subs = new Map();
+  // Each wanted voice's publication count from the room: a new count is a microphone published again.
+  const wantedGen = new Map();
   const stats = { enabled: false, muted: false, speaking: false, joining: false, peers: 0, hearing: 0, error: "" };
   const samples = new Float32Array(SAMPLES);
   const mutedLogins = new Set();
   let mic = null, pubPc = null, subPc = null, desired = [], queue = Promise.resolve();
   let audio = null, micMeter = null, speakTimer = 0, changed = false;
+  // Each connection's own pending restart after a drop, so one connection's change never cancels the other's.
+  const dropTimers = new Map();
   try {
     const saved = JSON.parse(localStorage.getItem(MUTED_KEY));
     if (Array.isArray(saved)) for (const login of saved.slice(0, MUTED_MAX)) if (typeof login === "string" && login.length <= 39) mutedLogins.add(login.toLowerCase());
@@ -131,8 +140,49 @@
     return data;
   };
 
+  // Either connection failing, or staying disconnected past DROP_GRACE_MS, after it was up: start voice over, which
+  // publishes the microphone again (a new count, so every listener pulls it anew) and pulls every voice again.
+  const watch = (pc) => {
+    pc.addEventListener("connectionstatechange", () => {
+      if (pc !== pubPc && pc !== subPc) return;
+      window.clearTimeout(dropTimers.get(pc));
+      dropTimers.delete(pc);
+      if (pc.connectionState === "failed") restart();
+      else if (pc.connectionState === "disconnected") dropTimers.set(pc, window.setTimeout(() => {
+        dropTimers.delete(pc);
+        if ((pc === pubPc || pc === subPc) && pc.connectionState !== "connected") restart();
+      }, DROP_GRACE_MS));
+    });
+  };
+
+  // The microphone's session and connection, announced only once connected; one more try on a fresh session
+  // when the first connection does not come up.
+  const publish = async () => {
+    for (let attempt = 0; ; attempt++) {
+      await api("session", { kind: "pub" });
+      pubPc = new RTCPeerConnection(ICE);
+      const tx = pubPc.addTransceiver(mic.getAudioTracks()[0], { direction: "sendonly" });
+      await pubPc.setLocalDescription(await pubPc.createOffer());
+      await gathered(pubPc);
+      const pub = await api("publish", { sdp: pubPc.localDescription.sdp, mid: tx.mid });
+      await pubPc.setRemoteDescription(pub.sessionDescription);
+      try {
+        await connected(pubPc);
+        break;
+      } catch (err) {
+        pubPc.close();
+        pubPc = null;
+        if (attempt) throw err;
+      }
+    }
+    watch(pubPc);
+    await api("live");
+  };
+
   const teardown = () => {
     window.clearTimeout(retryTimer);
+    for (const timer of dropTimers.values()) window.clearTimeout(timer);
+    dropTimers.clear();
     window.clearInterval(speakTimer);
     speakTimer = 0;
     for (const s of subs.values()) silence(s);
@@ -156,15 +206,7 @@
     try {
       mic = mic || await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } });
       micMeter = micMeter || meter(mic);
-      await api("session", { kind: "pub" });
-      pubPc = new RTCPeerConnection(ICE);
-      const tx = pubPc.addTransceiver(mic.getAudioTracks()[0], { direction: "sendonly" });
-      await pubPc.setLocalDescription(await pubPc.createOffer());
-      await gathered(pubPc);
-      const pub = await api("publish", { sdp: pubPc.localDescription.sdp, mid: tx.mid });
-      await pubPc.setRemoteDescription(pub.sessionDescription);
-      await connected(pubPc);
-      await api("live");
+      await publish();
       await openReceiver();
       stats.enabled = true;
       // A restart after a reconnect keeps the visitor's mute.
@@ -189,6 +231,7 @@
     subPc = null;
     await api("session", { kind: "sub" });
     subPc = new RTCPeerConnection(ICE);
+    watch(subPc);
     subPc.addEventListener("track", (e) => {
       for (const s of subs.values()) {
         if (s.mid !== e.transceiver.mid) continue;
@@ -226,6 +269,7 @@
     stats.muted = false;
     BL.net.setMuted(false);
     desired = [];
+    wantedGen.clear();
     if (was) api("leave").catch(() => {});
     emit();
   };
@@ -238,8 +282,11 @@
     await enable();
   };
 
-  const setPeers = (ids) => {
+  // Whom the room wants heard, and each one's publication count (`gens`; none from an older room).
+  const setPeers = (ids, gens = null) => {
     desired = ids.slice();
+    wantedGen.clear();
+    for (let i = 0; i < ids.length; i++) wantedGen.set(ids[i], gens ? gens[i] : 0);
     for (const [id, s] of subs) s.el.muted = !heard(id);
     schedule();
   };
@@ -269,13 +316,15 @@
     });
   };
 
-  // Close whom the room no longer wants heard, pull whom it newly does, renegotiate when the SFU asks.
+  // Close whom the room no longer wants heard, and anyone whose microphone was published again; pull whom it
+  // newly wants; renegotiate when the SFU asks. A wanted voice the pull did not deliver fails the change, so
+  // it is retried rather than left silent.
   const apply = async () => {
     if (!stats.enabled || !subPc) return;
     const want = new Set(desired);
     const mids = [];
     for (const [id, s] of subs) {
-      if (want.has(id)) continue;
+      if (want.has(id) && s.gen === wantedGen.get(id)) continue;
       silence(s);
       const tx = subPc.getTransceivers().find((t) => t.mid === s.mid);
       try {
@@ -295,7 +344,7 @@
         const el = new Audio();
         el.autoplay = true;
         el.muted = !heard(t.id);
-        subs.set(t.id, { mid: t.mid, el, meter: null });
+        subs.set(t.id, { mid: t.mid, el, meter: null, gen: wantedGen.get(t.id) });
       }
       if (res.requiresImmediateRenegotiation && res.sessionDescription) {
         await subPc.setRemoteDescription(res.sessionDescription);
@@ -303,6 +352,7 @@
         await gathered(subPc);
         await api("renegotiate", { sdp: subPc.localDescription.sdp });
       }
+      for (const id of add) if (!subs.has(id) && want.has(id)) throw new Error("voice pull incomplete");
     }
     if (stats.peers !== subs.size) {
       stats.peers = subs.size;

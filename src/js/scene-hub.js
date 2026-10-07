@@ -7228,7 +7228,7 @@
       if (cave.root.visible) floatPose(cave, cave.root.position.y - cave.baseY, cave.bodyHeight, cave.phase, elapsed);
     }
     npcSync.update(dt);
-    shareDrivenOoga();
+    shareDrivenOoga(dt);
     remotes.update(dt);
     mempoolIsland.wildlife.update(dt, elapsed);
     for (const cave of crew.list) if (cave.root.visible) {
@@ -7358,24 +7358,71 @@
     pilot.possess(cave);
     if (crew.player === cave) hud.toast(`Welcome back, ${BL.characters.displayOf(character.handle)}: this Ooga is yours`);
   };
-  // The place the driven Ooga is in, as the room names it for voice: out on the island, HQ (every HQ
-  // entrance leads to the one HQ), or one cave by its mouth. Named once per opening, never per frame.
+  // Where the driven Ooga is, as the room names it for voice and for who is shown (docs/auth-and-presence.md):
+  // a cave by its mouth (EntropyLab, the Factory's tunnel and the Arcade's mouth share their halls' groups, HQ
+  // is one place whichever entrance), a bridged land from the foot of its bridge (the Timechain Sphere, the
+  // Mempool rainforest with its chamber and tunnels, the Bifrost isle), the island itself (`outside`), or
+  // nowhere past its edge: on a cloud, flying or falling off it. Allocation-free; a cave is named once.
+  const CAVE_ZONES = { c11: "lab", c2: "factory", c3: "arcade", c1: "mirror" };
+  const ZONE_HOLD = 0.25;
   const zoneNames = [];
   const zoneName = (index) => {
-    if (!index) return "outside";
     if (!zoneNames[index]) {
       const opening = CAMERA_OPENINGS[index - 1];
-      zoneNames[index] = opening.headquarters ? "hq" : `cave-${String(opening.id).toLowerCase().replace(/[^a-z0-9-]/g, "-").slice(0, 27)}`;
+      zoneNames[index] = opening.headquarters ? "hq" : CAVE_ZONES[opening.id] || `cave-${String(opening.id).toLowerCase().replace(/[^a-z0-9-]/g, "-").slice(0, 27)}`;
     }
     return zoneNames[index];
   };
-  // The room sees the Ooga this visitor drives, by name, and where its feet are; none when free roaming.
-  const shareDrivenOoga = () => {
+  const onSphere = (x, z) => {
+    if (!timechainIsland) return false;
+    const p = timechainIsland.place, s = BL.timechainModels.SITE, dx = x - p.x, dz = z - p.z;
+    const across = dx * timechainIsland.cos - dz * timechainIsland.sin, along = dx * timechainIsland.sin + dz * timechainIsland.cos;
+    return Math.abs(across) <= s.width / 2 && along >= p.bridgeZ && along <= p.bridgeZ + s.span + 0.5 || dx * dx + dz * dz < s.radius * s.radius;
+  };
+  const inRainforest = (x, feet, z) => {
+    if (!mempoolIsland) return false;
+    if (mempoolIsland.overAt(x, z) || mempoolIsland.coveredAt(x, feet + 0.5, z)) return true;
+    const p = mempoolIsland.place, s = poolModels.SITE, dx = x - p.x, dz = z - p.z;
+    const across = dx * mempoolIsland.cos - dz * mempoolIsland.sin, along = dx * mempoolIsland.sin + dz * mempoolIsland.cos;
+    return Math.abs(across) < s.width / 2 && along >= p.bridgeLocalZ + s.deckStart && along <= p.bridgeLocalZ + s.span;
+  };
+  // The isle's ground is -Infinity off it; on it, a body up to 3 m under the top (on the bridge's head) counts.
+  const onBifrostIsle = (x, feet, z) => {
+    if (!bifrostIsle) return false;
+    const ground = bifrostIsle.site.groundAt(x, z);
+    return ground > -Infinity && feet > ground - 3;
+  };
+  const zoneOf = (cave) => {
+    const p = cave.root.position, feet = p.y - cave.baseY;
+    if (playerCaveIndex) return zoneName(playerCaveIndex);
+    if (onSphere(p.x, p.z)) return "sphere";
+    if (inRainforest(p.x, feet, p.z)) return "rainforest";
+    if (onBifrostIsle(p.x, feet, p.z)) return "bifrost";
+    return island.onLand(p.x, p.z) ? "outside" : "none";
+  };
+  // A new zone holds ZONE_HOLD seconds before it is reported, so a bridge's foot does not flicker voice.
+  let zoneHeld = null, zoneHeldFor = 0;
+  // The room sees the Ooga this visitor drives, by name, where it is, its feet and its health; none when free
+  // roaming.
+  const shareDrivenOoga = (dt) => {
     const driven = crew.player;
     BL.net.setBody(driven ? driven.traits.name : null);
-    // The chamber and tunnels under the Mempool island are one room of their own, as a cave is.
-    if (driven) BL.net.setZone(!playerCaveIndex && mempoolIsland.coveredAt(driven.root.position.x, driven.root.position.y - driven.baseY + 0.5, driven.root.position.z) ? "cave-mempool" : zoneName(playerCaveIndex));
-    if (driven) BL.net.sendPose(driven.root.position.x, driven.root.position.y - driven.baseY, driven.root.position.z, driven.root.rotation.y);
+    if (!driven) return;
+    const zone = zoneOf(driven);
+    if (zone === BL.net.state.zone) zoneHeld = null;
+    else if (zone !== zoneHeld) {
+      zoneHeld = zone;
+      zoneHeldFor = 0;
+    } else if ((zoneHeldFor += dt) >= ZONE_HOLD) BL.net.setZone(zone);
+    BL.net.sendPose(driven.root.position.x, driven.root.position.y - driven.baseY, driven.root.position.z, driven.root.rotation.y);
+    BL.net.setHealth(driven.health.value, driven.health.stunned);
+  };
+  // Signed-in players are shown where this one is: the same zone while driving, every place on the island
+  // while looking round free (no zone, no voice).
+  const remoteShown = (rec) => {
+    const net = BL.net.state;
+    if (net.body) return rec.zone === net.zone;
+    return BL.remotePlayers.onIsland(rec.zone);
   };
   const drawExtra = (ctx2d, project, drawBubble) => {
     crew.drawQuotes(ctx2d, project, drawBubble);
@@ -9420,7 +9467,7 @@
     shared.outsideActorHeight = REMOTE_BODY_HEIGHT;
     shared.localOnline = localOnline;
     crew = shared.crew = crewMod.create(shared);
-    remotes = BL.remotePlayers.create({ root, crew, posed: (cave, feet) => {
+    remotes = BL.remotePlayers.create({ root, crew, visible: remoteShown, posed: (cave, feet) => {
       const p = cave.root.position, height = cave.bodyHeight || 1.4;
       floatPose(cave, feet, height, 0, now);
       mempoolIsland.wake(cave.root, p.x, feet, p.z, height, 0.35);
@@ -10027,6 +10074,7 @@
     }
     clankerEquipment.length = 0;
     BL.net.setBody(null);
+    zoneHeld = null;
     BL.net.setHub(false);
     npcSync.dispose();
     remotes.dispose();
@@ -10132,6 +10180,8 @@
     return { visibleNodes: nodes, allNodes: all(root), tweens: tweenCount(), targets: input.targetCount, ...fx.stats(), ...crates.stats(), ...crew.stats(), ...pile.stats(), ...critters.stats(), ...mempoolIsland.water.stats(), ...breakables.stats(), ...weather.stats(), ...remotes.stats() };
   };
   const hubScene = {
+    // The island reports its own zone as soon as an Ooga is driven (see `zoneOf`); until then it is nowhere.
+    voiceZone: "none",
     id: "hub", enter, update, overlay, onDonation, onKey, onLootCleared, renderOpts: RENDER_OPTS, leave, stats, liveGeometry,
     root: null, camera: null, input: null, debug: null,
     get inMotion() {

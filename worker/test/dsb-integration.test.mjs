@@ -46,6 +46,46 @@ test("room broadcasts DSB zone changes, persists them and keeps ownership enforc
   assert.equal(room.view(player).zone, "scene-bifrost");
 });
 
+test("voice lists survive the room sleeping and follow a microphone published again", () => {
+  const Room = roomClass();
+  const socket = (id, store) => ({ sent: [], deserializeAttachment: () => store.a, serializeAttachment(value) { store.a = JSON.parse(JSON.stringify(value)); }, send(text) { this.sent.push(JSON.parse(text)); } });
+  const stores = { 1: {}, 2: {} }, sockets = { 1: socket(1, stores[1]), 2: socket(2, stores[2]) };
+  const wake = () => {
+    const room = Object.create(Room.prototype);
+    room.sfu = {};
+    room.players = new Map();
+    for (const id of [1, 2]) if (stores[id].a) room.players.set(id, room.record(sockets[id], stores[id].a));
+    return room;
+  };
+  const room = Object.create(Room.prototype);
+  room.sfu = {};
+  room.players = new Map();
+  for (const id of [1, 2]) {
+    const p = room.record(sockets[id], { id, login: `p${id}`, display: `p${id}`, body: `ooga-${id}`, zone: "factory.hall", x: 0, y: 0, z: 0, yaw: 0 });
+    p.voice = { pub: `pub${id}`, sub: `sub${id}`, track: "mic", gen: 10 + id };
+    room.players.set(id, p);
+    sockets[id].serializeAttachment(room.attachment(p));
+  }
+  room.updateVoice();
+  const last = (id) => sockets[id].sent.filter((m) => m.t === "voice").at(-1);
+  assert.deepEqual(last(1), { t: "voice", peers: [2], gens: [12] });
+  // Asleep and woken: the room still knows what it sent, so nothing repeats...
+  const woken = wake();
+  const before = sockets[1].sent.length;
+  woken.updateVoice();
+  assert.equal(sockets[1].sent.length, before);
+  // ...and when the other leaves, the list that just went empty is sent (it used to be assumed sent).
+  woken.players.delete(2);
+  woken.updateVoice();
+  assert.deepEqual(last(1), { t: "voice", peers: [], gens: [] });
+  // The other back with a microphone published again: a new count, so the listener pulls it anew.
+  const back = woken.record(sockets[2], { id: 2, login: "p2", display: "p2", body: "ooga-2", zone: "factory", x: 0, y: 0, z: 0, yaw: 0 });
+  back.voice = { pub: "pub2b", sub: "sub2b", track: "mic", gen: 99 };
+  woken.players.set(2, back);
+  woken.updateVoice();
+  assert.deepEqual(last(1), { t: "voice", peers: [2], gens: [99] }, "the tunnel and the hall share voice");
+});
+
 test("SFU stays unavailable without secrets and uses bounded upstream calls with mocked transport", async () => {
   assert.equal(sfuClient({}), null);
   const original = globalThis.fetch, calls = [];

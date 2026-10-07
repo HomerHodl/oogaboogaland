@@ -12625,7 +12625,7 @@ const dsbIntegrationCheckpoint={name:"dsb integration checkpoint",why:"contract:
     record("DSB integration: exit "+id+" restores exterior voice",await b.evaluate('BL.net.state.zone==="dsb-outside"&&!__ooga.dsb.interiors.active'));
   }
   await b.evaluate('__ooga.go("bifrost");__ooga.advance(.6,.3)');
-  record("DSB integration: short direct return clears DSB presence and keeps global sheet",await b.evaluate('__ooga.scene==="bifrost"&&BL.net.state.zone==="scene-bifrost"&&!document.querySelector(".dsb-entry")&&document.getElementById("sheet").dataset.open==="true"'));
+  record("DSB integration: short direct return clears DSB presence and keeps global sheet",await b.evaluate('__ooga.scene==="bifrost"&&BL.net.state.zone==="bifrost.chamber"&&!document.querySelector(".dsb-entry")&&document.getElementById("sheet").dataset.open==="true"'));
   await b.evaluate('__ooga.go("dsb");__ooga.advance(.6,.3)');
   record("DSB integration: outbound Bifrost journey uses special tunnel without island voice",await b.evaluate('__ooga.dsb.entrance.phase==="tunnel"&&BL.net.state.zone==="dsb-transit"&&document.getElementById("sheet").dataset.open==="true"'));
   await b.evaluate('__ooga.dsb.entrance.skip();__ooga.advance(.1,.1)');

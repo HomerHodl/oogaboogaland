@@ -127,7 +127,8 @@
   };
 
   let renderer, canvas, game, world, go, root, camera, hud, hooks, input, pilot, fx, agentPlay = null;
-  let people = null, avatar = null, playerWorld = null, scene = null, leaving = false, dust = null, pictureTries = 0, pictureWait = 0, unsubscribeAccount = null;
+  let people = null, avatar = null, playerWorld = null, scene = null, leaving = false, dust = null, pictureTries = 0, pictureWait = 0, unsubscribeAccount = null, remotes = null;
+  const NO_ACTORS = [];
   // On the Worker's page the island's driving rules hold in here too, and the Ooga driven is reported to the
   // room every frame, so signed-in players in the chamber hear each other (voice needs a driven Ooga).
   const mayPossess = (cave) => BL.net.mayDrive(cave.traits.name, contributors.stateFor(cave.contributor) === "working");
@@ -494,7 +495,7 @@
     world.pilot = null;
     if (playerName) {
       playerWorld = { level: 0, weapons: new Map(), magazine: { owned: false, count: 0, ammo: 0, carrier: null } };
-      const shared = { root, input, hud, game, world: playerWorld, playerName, fx, viewYaw: 0, groundAt: groundFor, walkable: walkableFor };
+      const shared = { root, input, hud, game, world: playerWorld, playerName, fx, viewYaw: 0, outsideActors: () => remotes ? remotes.actors() : NO_ACTORS, outsideActorHeight: BL.remotePlayers.BODY_HEIGHT, groundAt: groundFor, walkable: walkableFor };
       people = shared.crew = BL.crew.create(shared);
       pilot.bind(shared);
       avatar = people.cavemen.get(playerName);
@@ -510,6 +511,8 @@
       else if (ctx.from === "hub") pilot.navigate(GATE);
     }
     unsubscribeAccount = BL.net.subscribe(accountChanged);
+    // Other signed-in players in the chamber, as the Oogas they drive.
+    remotes = BL.remotePlayers.create({ root, crew: people });
     lightUp(scene);
     leaving = false;
 
@@ -668,7 +671,15 @@
     pilot.readInput(dt);
     if (people) people.update(dt, elapsed);
     pilot.update(dt);
-    BL.net.setBody(people && people.player ? people.player.traits.name : null);
+    // The Ooga driven here goes to the room with where it stands and its health; other players here are shown.
+    const drivenHere = people && people.player;
+    BL.net.setBody(drivenHere ? drivenHere.traits.name : null);
+    if (drivenHere) {
+      const p = drivenHere.root.position;
+      BL.net.sendPose(p.x, p.y - drivenHere.baseY, p.z, drivenHere.root.rotation.y);
+      BL.net.setHealth(drivenHere.health.value, drivenHere.health.stunned);
+    }
+    remotes.update(dt);
     mechanism(s, dt, elapsed);
     heavens(s, dt);
     // The way out's field hums and shows the outline of whoever walks through it.
@@ -738,7 +749,7 @@
       for (const w of s.windows) if (w.kind === "travel") hangPicture(w);
     }
   };
-  const drawExtra = () => {};
+  const drawExtra = (ctx2d, project) => remotes.drawNames(ctx2d, project);
   const overlay = (dt) => fx.drawOverlay(dt, drawExtra);
 
   const leave = () => {
@@ -754,6 +765,8 @@
       if (w.picture && w.picture.owned) renderer.releaseGeometry(w.picture.geometry);
     }
     scene.gate.phase.dispose();
+    remotes.dispose();
+    remotes = null;
     if (people) people.dispose();
     fx.dispose();
     pilot.dispose();
@@ -779,15 +792,18 @@
       }
     }
     if (avatar) set.add(avatar.headOpen).add(avatar.headClosed);
+    if (remotes) remotes.liveGeometry(set);
   };
   const stats = () => {
     let nodes = 0;
     traverseVisible(root, () => nodes++);
     const all = (n) => 1 + n.children.reduce((sum, c) => sum + all(c), 0);
-    return { visibleNodes: nodes, allNodes: all(root), tweens: tweenCount(), targets: input.targetCount, ...fx.stats() };
+    return { visibleNodes: nodes, allNodes: all(root), tweens: tweenCount(), targets: input.targetCount, ...fx.stats(), ...(remotes ? remotes.stats() : {}) };
   };
 
   const bifrostScene = {
+    // Voice zone: the Bifrost group, which the isle and its bridge share (`bifrost`).
+    voiceZone: "bifrost.chamber",
     id: "bifrost", enter, update, overlay, onDonation, onKey, onLootCleared, renderOpts: RENDER_OPTS, leave, stats, liveGeometry,
     root: null, camera: null, input: null, debug: null, agent: null, agentView: null, agentControls: null, agentHandoff: null,
     get inMotion() {

@@ -203,7 +203,8 @@
     // The page styles by scene too: the games hide the island's sheet, see style.css.
     document.body.dataset.activeScene = next.id;
     window.BL.net.setBody(null);
-    window.BL.net.setZone(next.id === "hub" ? "outside" : next.id === "dsb" ? "dsb-outside" : `scene-${next.id}`);
+    // The scene's own zone (`voiceZone`), else one of its own; the island and DSB Land report theirs as they go.
+    window.BL.net.setZone(next.voiceZone || (next.id === "dsb" ? "dsb-outside" : `scene-${next.id}`));
     next.enter(ctx);
     activeMeshRigs = next.renderOpts?.meshRigs === true;
     active = next;

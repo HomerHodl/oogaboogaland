@@ -27,12 +27,16 @@
 // The roster's marks (who is in voice, muted, the host) follow `subscribeRoster`, which also fires on a
 // body or voice change; `subscribe` stays for the account and the room. `setMuted` tells the room this
 // page muted its microphone, and `state.body` is the Ooga this page reports driving.
-// Exports start, subscribe, subscribeRoster, dispose, login, logout, rejoin, setBody, setZone, setHub, setMuted, sendNpc, npcFrame, sendPose,
-// mayDrive, ownCharacter, characterOf, serverNow, remotes and state.
+// `setHealth` reports the driven Ooga's health (on a change, at most HP_MS apart), which other pages draw over
+// it; remote records carry `hp` and `ko`.
+// Exports start, subscribe, subscribeRoster, dispose, login, logout, rejoin, setBody, setZone, setHub, setMuted, setHealth, sendNpc,
+// npcFrame, sendPose, mayDrive, ownCharacter, characterOf, serverNow, remotes and state.
 (() => {
   "use strict";
   const BL = window.BL = window.BL || {};
   const POSE_MS = 1000 / 10;
+  // Health in steps of the smallest hit, a few reports a second at most; the room's own bounds for poses.
+  const HP_MS = 250, HP_STEP = 4, BOUND_XZ = 160, BOUND_Y_MIN = -130, BOUND_Y_MAX = 100;
   const PING_MS = 10000;
   const HIDDEN_PAUSE_MS = 5 * 60000;
   const BACKOFF_MS = 500, BACKOFF_MAX_MS = 15000;
@@ -44,7 +48,7 @@
   const state = { backend: false, me: null, started: false, room: "off", selfId: 0, online: 0, released: null, loopEpoch: 0, zone: "outside", body: null, hostId: 0, followers: 0, npcVersion: 0 };
   let ws = null, retry = 0, retryTimer = 0, pingTimer = 0, hiddenTimer = 0, stopped = false;
   let npcFrame = null, inHub = false, hubSent = null;
-  let zone = "outside", body = null, muted = false, poseAt = 0, px = NaN, py = NaN, pz = NaN, pyaw = NaN;
+  let zone = "outside", body = null, muted = false, hpSent = 100, koSent = false, hpAt = 0, poseAt = 0, px = NaN, py = NaN, pz = NaN, pyaw = NaN;
   let clockOffset = 0, clockKnown = false;
   // A server timestamp minus the arrival time is the true offset less the trip; the largest such
   // sample is the one that travelled fastest, so it is the best estimate yet.
@@ -93,12 +97,14 @@
 
   const upsert = (p) => {
     if (!p || !Number.isSafeInteger(p.id) || p.id === state.selfId) return;
-    const rec = remotes.get(p.id) || { id: p.id, login: "", display: "", body: null, zone: "outside", voice: false, muted: false, x: 0, y: 0, z: 0, yaw: 0 };
+    const rec = remotes.get(p.id) || { id: p.id, login: "", display: "", body: null, zone: "outside", voice: false, muted: false, hp: 100, ko: false, x: 0, y: 0, z: 0, yaw: 0 };
     rec.login = String(p.login);
     rec.display = String(p.display || p.login);
     rec.body = typeof p.body === "string" ? p.body : null;
     rec.zone = typeof p.zone === "string" ? p.zone : "outside";
     rec.voice = p.voice === true;
+    rec.hp = Number.isFinite(p.hp) ? p.hp : 100;
+    rec.ko = p.ko === true;
     rec.muted = p.muted === true;
     rec.x = +p.x || 0; rec.y = +p.y || 0; rec.z = +p.z || 0; rec.yaw = +p.yaw || 0;
     remotes.set(p.id, rec);
@@ -141,6 +147,8 @@
       sendZone();
       sendBody();
       if (muted) sendMute();
+      // A fresh room record starts at full health; the next report sends ours if it differs.
+      hpSent = 100; koSent = false; hpAt = 0;
       hubSent = null;
       sendHub();
       BL.voice.restart();
@@ -154,7 +162,11 @@
       setRoom("live");
     } else if (msg.t === "body") {
       const rec = remotes.get(msg.id);
-      if (rec) rec.body = typeof msg.name === "string" ? msg.name : null;
+      if (rec) {
+        rec.body = typeof msg.name === "string" ? msg.name : null;
+        rec.hp = 100;
+        rec.ko = false;
+      }
       rosterChanged();
     } else if (msg.t === "vstate") {
       const rec = remotes.get(msg.id);
@@ -162,6 +174,11 @@
       rec.voice = msg.voice === true;
       rec.muted = msg.muted === true;
       rosterChanged();
+    } else if (msg.t === "hp") {
+      const rec = remotes.get(msg.id);
+      if (!rec || !Number.isFinite(msg.v)) return;
+      rec.hp = msg.v;
+      rec.ko = msg.ko === true;
     } else if (msg.t === "zone") {
       const rec = remotes.get(msg.id);
       if (rec && typeof msg.name === "string") rec.zone = msg.name;
@@ -170,7 +187,7 @@
       state.followers = Number.isSafeInteger(msg.followers) ? msg.followers : 0;
       emit();
     } else if (msg.t === "voice") {
-      if (Array.isArray(msg.peers)) BL.voice.setPeers(msg.peers);
+      if (Array.isArray(msg.peers)) BL.voice.setPeers(msg.peers, Array.isArray(msg.gens) ? msg.gens : null);
     } else if (msg.t === "release") {
       state.released = { name: String(msg.name), reason: String(msg.reason) };
       emit();
@@ -268,11 +285,22 @@
   };
 
   // Where the driven Ooga is ("outside", "hq", "cave-<id>"): voice is shared within one place.
+  // Zones are `<group>` or `<group>.<place>` (the Factory's tunnel and its hall); voice is shared within a group,
+  // so only leaving the group lets go of every voice here. The room answers every zone with the list to hear.
+  const groupLength = (name) => {
+    const dot = name.indexOf(".");
+    return dot < 0 ? name.length : dot;
+  };
+  const sameGroup = (a, b) => {
+    const n = groupLength(a);
+    return n === groupLength(b) && a.startsWith(b.slice(0, n));
+  };
   const setZone = (name) => {
     if (name === zone) return;
+    const moved = !sameGroup(name, zone);
     zone = state.zone = name;
     poseAt = 0; px = NaN;
-    BL.voice.setPeers([]);
+    if (moved) BL.voice.setPeers([]);
     sendZone();
   };
 
@@ -310,7 +338,23 @@
     if (name === body) return;
     body = state.body = name;
     sendBody();
+    // The room starts another Ooga at full health.
+    hpSent = 100; koSent = false;
     rosterChanged();
+  };
+
+  // The driven Ooga's health, called every frame: sent only when its step or knockout changed, HP_MS apart, so a
+  // fight costs a few messages a second and an Ooga at full health none.
+  const setHealth = (value, stunned) => {
+    if (state.room !== "live" || !body) return;
+    const v = Math.max(0, Math.min(100, Math.round(value / HP_STEP) * HP_STEP)), ko = !!stunned;
+    if (v === hpSent && ko === koSent) return;
+    const now = performance.now();
+    if (now - hpAt < HP_MS) return;
+    hpAt = now;
+    hpSent = v;
+    koSent = ko;
+    send(`{"t":"hp","v":${v},"ko":${ko}}`);
   };
 
   // This page's own microphone muted or not, for every other page's roster.
@@ -325,6 +369,10 @@
     if (state.room !== "live") return;
     const now = performance.now();
     if (now - poseAt < POSE_MS) return;
+    // The room drops a pose outside its bounds, which would freeze this Ooga on other pages: hold it at the edge.
+    x = Math.max(-BOUND_XZ, Math.min(BOUND_XZ, x));
+    z = Math.max(-BOUND_XZ, Math.min(BOUND_XZ, z));
+    y = Math.max(BOUND_Y_MIN, Math.min(BOUND_Y_MAX, y));
     if (Math.abs(x - px) < 0.005 && Math.abs(y - py) < 0.005 && Math.abs(z - pz) < 0.005 && Math.abs(yaw - pyaw) < 0.01) return;
     poseAt = now;
     px = x; py = y; pz = z; pyaw = yaw;
@@ -375,5 +423,5 @@
     close("off");
   };
 
-  BL.net = { start, subscribe, subscribeRoster, dispose, login, logout, rejoin, setBody, setZone, setHub, setMuted, sendNpc, sendPose, mayDrive, ownCharacter, characterOf, serverNow, remotes, state, get npcFrame() { return npcFrame; } };
+  BL.net = { start, subscribe, subscribeRoster, dispose, login, logout, rejoin, setBody, setZone, setHub, setMuted, setHealth, sendNpc, sendPose, mayDrive, ownCharacter, characterOf, serverNow, remotes, state, get npcFrame() { return npcFrame; } };
 })();
