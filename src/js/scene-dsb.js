@@ -195,7 +195,7 @@
     const STEP=BL.pilot.WALK.step;
     const groundAt=(x,z,feet,_top,actor)=>{
       if(interiors?.active)return interiors.groundAt(x,z);
-      const ground=land.heightAt(x,z),at=Number.isFinite(feet)?feet:ground;
+      const ground=land.groundAt(x,z),at=Number.isFinite(feet)?feet:ground;
       // A falling body's edge can meet a roof or stair while its centre is still outside the top face.
       return collision?Math.max(ground,collision.solids.supportAt(x,z,at,STEP,actor?.bodyRadius||0)):ground;
     };
@@ -204,7 +204,8 @@
     const splatGeometry=BL.models.particleGeometry("#e34d32",.12,0);
     const walkable=(ax,az,bx,bz,y,h=1.5,a)=>{
       if(interiors?.active)return interiors.walkable(ax,az,bx,bz,y,h,a);
-      if(Math.hypot(bx,bz)>125)return false;
+      // The approved geography keeps its depth, deck-edge and slope gates; the collision set adds solid props on top.
+      if(Math.hypot(bx,bz)>125||!land.walkable(ax,az,bx,bz,y,h,a))return false;
       const floor=groundAt(bx,bz,y),feet=Math.max(y,floor),r=a?.bodyRadius||.4;
       if(floor-y>STEP+1e-7)return false;
       const solids=collision?.solids;
@@ -317,7 +318,7 @@
     studioReview=false;maxisReview=false;shopReview=false;shopMenuReview=0;inkReview=false;inkMenuReview=0;
     bigReview=false;bigMenuReview=0;memeReview=false;contextReview=false;stackchainReview=false;svrnReview=false;
     scene.renderOpts=renderOpts;
-    Object.assign(scene,{root,camera,input,setInterior:weather.setInterior,debug:{get audio(){return entrance?.audio;},weather:weather.shared,renderOpts,daylight:clock,camera,pilot,crew,controls:pilot.controls,hud,dsb:{get presence(){return {zone:BL.net.state.zone,body:crew.player?.traits.name||null,...remotes.stats()};},land,vacancies,water,waterInteraction,weather,nature,detail,enrichment,get town(){return town;},get atmosphere(){return atmosphere;},get entrance(){return entrance;},get olympus(){return olympus;},noderunner,tv,spaces,shopMenu,inkMenu,bigMenu,memeMenu,stackchainMenu,svrnMenu,menuZone,openVenue,interiors,exterior,setInterior:weather.setInterior,gate,avatar,get phase(){return interiors?.active?"interior":"land";},overview:OVERVIEW}}});
+    Object.assign(scene,{root,camera,input,setInterior:weather.setInterior,debug:{get audio(){return entrance?.audio;},weather:weather.shared,renderOpts,daylight:clock,camera,pilot,crew,controls:pilot.controls,hud,dsb:{get presence(){return {zone:BL.net.state.zone,body:crew.player?.traits.name||null,...remotes.stats()};},land,vacancies,water,waterInteraction,weather,nature,detail,enrichment,groundAt:(x,z,feet)=>groundAt(x,z,feet,undefined,avatar),get town(){return town;},get atmosphere(){return atmosphere;},get entrance(){return entrance;},get olympus(){return olympus;},noderunner,tv,spaces,shopMenu,inkMenu,bigMenu,memeMenu,stackchainMenu,svrnMenu,menuZone,openVenue,interiors,exterior,setInterior:weather.setInterior,gate,avatar,get phase(){return interiors?.active?"interior":"land";},overview:OVERVIEW}}});
     walk();
     unsubscribeAccount=BL.net.subscribe(accountChanged);accountChanged();
     if(ctx.from==="bifrost"||DEBUG&&params.has("entrance"))entrance=BL.dsbEntrance.create({root,camera,avatar,pilot,fx,exterior,scene,renderOpts,land,gate,hold:on=>{overview=on;},muted:()=>weather.shared.state.muted,onArrive:walk,onLeave:()=>{if(leaving)return;world.pilot=avatar.traits.name;leaving=go("bifrost");}});
