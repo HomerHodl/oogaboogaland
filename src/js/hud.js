@@ -6,6 +6,9 @@
   const { createNode, addChild, createCamera, boundsOf } = BL.scene;
   const STATE_LABELS = { working: "clank", chilling: "chill", sleeping: "sleep", away: "away", online: "online" };
   const ROSTER_ORDER = { working: 0, chilling: 1, sleeping: 2, away: 3 };
+  // Signed-in players online lead the roster, ahead of every activity.
+  const ONLINE_RANK = -1;
+  const stampOf = (contributor) => contributor.lastContributionAt || contributor.lastCommitAt;
   // Tooltip dots retain their human-presence color without changing NPC activity.
   const statusFor = (cave) => {
     const actor = cave.tooltipOwner || cave;
@@ -365,7 +368,7 @@
       }
       li.append(presence, name, age, state);
       el.roster.append(li);
-      rosterRows.set(contributor.name, { li, presence, state, age, contributor, rosterIndex, online: false, host, voice, look: "", login: "", hostOn: false, blocked: false, nextLook: "", nextLogin: "", nextHost: false });
+      rosterRows.set(contributor.name, { li, presence, state, age, contributor, rosterIndex, online: false, sceneOnline: false, netOnline: false, nextOnline: false, placedStamp: stampOf(contributor), host, voice, look: "", login: "", hostOn: false, blocked: false, nextLook: "", nextLogin: "", nextHost: false });
     }
     if (!awayRow.parentElement) el.roster.append(awayRow);
     updateAwayButton();
@@ -375,27 +378,45 @@
       button.blur();
       BL.voice.muteLocal(button.dataset.login, button.getAttribute("aria-pressed") !== "true");
     });
-    liveRows = rosterRows;
-    showVoices();
     on(awayButton, "click", () => {
       showAway = !showAway;
       awayButton.setAttribute("aria-expanded", String(showAway));
-      for (const row of rosterRows.values()) if (row.state.dataset.state === "away") row.li.hidden = !showAway;
+      for (const row of rosterRows.values()) if (row.state.dataset.state === "away") row.li.hidden = !showAway && !row.online;
       updateAwayButton();
     });
+    // Online players lead the roster, by their activity's stamp; an away player who is online is never folded away.
+    const rankOf = (row) => row.online ? ONLINE_RANK : ROSTER_ORDER[row.state.dataset.state];
+    const countAway = () => {
+      awayCount = 0;
+      for (const row of rosterRows.values()) if (row.state.dataset.state === "away" && !row.online) awayCount++;
+      updateAwayButton();
+    };
     const placeRosterRow = (row) => {
-      const rank = ROSTER_ORDER[row.state.dataset.state], stamp = row.contributor.lastContributionAt || row.contributor.lastCommitAt;
+      const rank = rankOf(row), stamp = stampOf(row.contributor);
       let before = rank === ROSTER_ORDER.away ? null : awayRow;
       for (const sibling of el.roster.children) {
         if (sibling === row.li || sibling === awayRow) continue;
         const other = rosterRows.get(sibling.dataset.name);
-        const otherRank = ROSTER_ORDER[other.state.dataset.state], otherStamp = other.contributor.lastContributionAt || other.contributor.lastCommitAt;
+        const otherRank = rankOf(other), otherStamp = stampOf(other.contributor);
         if (otherRank > rank) { before = otherRank === ROSTER_ORDER.away ? awayRow : sibling; break; }
         if (otherRank === rank && (otherStamp < stamp || otherStamp === stamp && other.rosterIndex > row.rosterIndex)) { before = sibling; break; }
       }
       if (before) {
         if (row.li.nextElementSibling !== before) el.roster.insertBefore(row.li, before);
       } else if (el.roster.lastElementChild !== row.li) el.roster.append(row.li);
+    };
+    // Online is the scene's word (its driven and remote Oogas) or the room's (any signed-in player's own Ooga or
+    // the one they drive); a change repaints the dot and moves the row.
+    const showOnline = (row) => {
+      const online = row.sceneOnline || row.netOnline;
+      if (row.online === online) return false;
+      row.online = online;
+      row.presence.dataset.online = online ? "true" : "false";
+      row.presence.title = online ? "Online" : "Offline";
+      row.presence.setAttribute("aria-label", row.presence.title);
+      row.li.hidden = row.state.dataset.state === "away" && !showAway && !online;
+      countAway();
+      return true;
     };
     const setRosterRow = (name, _stateKey, _ageText, online = false) => {
       const row = rosterRows.get(name);
@@ -404,23 +425,30 @@
       // contributor's latest recorded activity instead.
       const activity = BL.contributors.contributionStateFor(row.contributor);
       const ageText = BL.contributors.contributionAgeLabel(row.contributor);
+      let moved = false;
       if (row.state.dataset.state !== activity) {
-        if (row.state.dataset.state === "away") awayCount--;
-        if (activity === "away") awayCount++;
         row.state.dataset.state = activity;
         row.state.firstChild.data = STATE_LABELS[activity] || activity;
-        row.li.hidden = activity === "away" && !showAway;
-        updateAwayButton();
+        row.li.hidden = activity === "away" && !showAway && !row.online;
+        countAway();
+        moved = true;
       }
       if (row.age.firstChild.data !== ageText) row.age.firstChild.data = ageText;
-      if (row.online !== online) {
-        row.online = online;
-        row.presence.dataset.online = online ? "true" : "false";
-        row.presence.title = online ? "Online" : "Offline";
-        row.presence.setAttribute("aria-label", row.presence.title);
+      row.sceneOnline = online;
+      if (showOnline(row)) moved = true;
+      const stamp = stampOf(row.contributor);
+      if (row.placedStamp !== stamp) {
+        row.placedStamp = stamp;
+        moved = true;
       }
-      placeRosterRow(row);
+      if (moved) placeRosterRow(row);
     };
+    // The page-level pass marks rows online from the room and moves only those that changed.
+    liveRows = rosterRows;
+    liveOnline = (row) => {
+      if (showOnline(row)) placeRosterRow(row);
+    };
+    showVoices();
     // Seed empty text nodes so later updates only mutate text, never the DOM.
     for (const node of [el.meterCount, el.meterForecast]) if (!node.firstChild) node.append("");
     let shownBananas = -1, shownWidth = "", shownBand = "", shownForecast = null;
@@ -1750,7 +1778,7 @@
       window.clearTimeout(hintHideTimer);
       window.clearTimeout(copyTimer);
       for (const off of listeners) off();
-      if (liveRows === rosterRows) liveRows = null;
+      if (liveRows === rosterRows) liveRows = liveOnline = null;
       el.roster.replaceChildren();
       el.inventory.replaceChildren();
       el.toast.classList.remove("show");
@@ -1800,7 +1828,7 @@
   // The roster's marks are page-level too: whichever scene's roster is up, each signed-in player's row
   // (their own Ooga, else the one they drive) shows the host dot and their voice. The director hands every
   // room and voice change here; only marks that changed are touched, and rows never move for them.
-  let liveRows = null;
+  let liveRows = null, liveOnline = null;
   const VOICE_WORDS = { on: "In voice", speaking: "Speaking", muted: "Muted their microphone" };
   const voiceRowOf = (login, body) => {
     const character = BL.net.characterOf(login);
@@ -1827,14 +1855,22 @@
       row.host.hidden = !row.hostOn;
     }
   };
+  // A signed-in player is online on their own Ooga's row and on the row of the Ooga they drive.
+  const markOnline = (login, body) => {
+    const character = BL.net.characterOf(login), own = character && liveRows.get(character.handle), driven = body && liveRows.get(body);
+    if (own) own.nextOnline = true;
+    if (driven) driven.nextOnline = true;
+  };
   const showVoices = () => {
     if (!liveRows) return;
     for (const row of liveRows.values()) {
       row.nextLook = row.nextLogin = "";
-      row.nextHost = false;
+      row.nextHost = row.nextOnline = false;
     }
     const net = BL.net.state, voice = BL.voice.stats;
     if (net.room === "live" && net.me) {
+      markOnline(net.me.login, net.body);
+      for (const rec of BL.net.remotes.values()) markOnline(rec.login, rec.body);
       const self = voiceRowOf(net.me.login, net.body);
       if (self) {
         if (voice.enabled) self.nextLook = voice.muted ? "muted" : voice.speaking ? "speaking" : "on";
@@ -1850,7 +1886,12 @@
         if (rec.id === net.hostId) row.nextHost = true;
       }
     }
-    for (const row of liveRows.values()) paintMarks(row);
+    for (const row of liveRows.values()) {
+      paintMarks(row);
+      if (row.netOnline === row.nextOnline) continue;
+      row.netOnline = row.nextOnline;
+      liveOnline(row);
+    }
   };
   BL.hud = { create, renderIcon, signLettering, showAccount, showVoices, STATE_LABELS, statusFor };
 })();

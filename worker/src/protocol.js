@@ -2,9 +2,10 @@
 //
 // Client → room:  { t: "pose", x, y, z, yaw }   the driven Ooga's feet and heading, at most MOVE_HZ
 //                 { t: "body", name }            the Ooga being driven, or null when driving none
-//                 { t: "zone", name }            where that Ooga is: "outside", "hq" or "cave-<id>"
+//                 { t: "zone", name }            where that Ooga is (see Zones below)
 //                 { t: "hub", on }               this page shows the island and is visible (host candidates)
 //                 { t: "mute", on }              this page muted its own microphone, for everyone's roster
+//                 { t: "hp", v, ko }             the driven Ooga's health (0-100) and whether it is knocked out
 //                 binary                         the NPC host's frame of every Ooga's pose, relayed as is
 // Room → client:  welcome { you, players, tickHz, now, loopEpoch }, join { p }, leave { id, reason },
 //                 body { id, name }, state { now, ps: [id, x, y, z, yaw, ...] }, kick { reason },
@@ -12,7 +13,13 @@
 //                 host { id, followers }     who runs the NPCs now (0 for nobody) and how many pages follow
 //                                            them (a host with none sends nothing); binary NPC frames from them
 //                 vstate { id, voice, muted }  a player's microphone went live or off, or they muted it; welcome
-//                                            and join carry the same two fields on every player
+//                                            and join carry the same two fields on every player, and hp and ko
+//                 hp { id, v, ko }           a player's driven Ooga's health changed
+//                 voice { peers, gens }      whom to hear, and each one's publication count (a new count is a
+//                                            microphone published again, to be pulled again)
+// Zones: `<group>` or `<group>.<place>`. Voice is shared within a group; who is shown is matched on the whole
+// name, since a place inside a group can have coordinates of its own (the Factory's tunnel on the island and
+// its hall). `none` is nowhere: off the island's edge, or between scenes; it shares voice with nobody.
 // "ping" answers "pong" without waking the room (setWebSocketAutoResponse).
 
 export const TICK_HZ = 15;
@@ -28,8 +35,11 @@ export const BOUND_XZ = 160;
 export const BOUND_Y_MIN = -130;
 export const BOUND_Y_MAX = 100;
 export const BODY_NAME = /^[A-Za-z0-9_.-]{1,40}$/;
-export const ZONE_NAME = /^[a-z0-9-]{1,32}$/;
+export const ZONE_NAME = /^[a-z0-9-]{1,24}(\.[a-z0-9-]{1,16})?$/;
 export const OUTSIDE = "outside";
+export const NOWHERE = "none";
+// Health reports: a fight sends a few a second at most; at full health nothing is sent.
+export const HP_HZ = 4;
 // Close codes: 4000 follows a `kick` (replaced, stale, full); 4400 is a message the room cannot read.
 export const CLOSE_KICK = 4000;
 // NPC frames: the host sends about 4 a second, only while a page follows; a frame of every Ooga's pose is a few kilobytes.
@@ -64,6 +74,7 @@ export const parseClientMessage = (text) => {
   }
   if (msg.t === "hub") return typeof msg.on === "boolean" ? { t: "hub", on: msg.on } : null;
   if (msg.t === "mute") return typeof msg.on === "boolean" ? { t: "mute", on: msg.on } : null;
+  if (msg.t === "hp") return finite(msg.v) && typeof msg.ko === "boolean" ? { t: "hp", v: Math.max(0, Math.min(100, Math.round(msg.v))), ko: msg.ko } : null;
   if (msg.t === "zone") return typeof msg.name === "string" && ZONE_NAME.test(msg.name) ? { t: "zone", name: msg.name } : null;
   return null;
 };
@@ -129,17 +140,25 @@ export const claimRefusal = (index, login, body, players, contributor = false) =
 };
 
 // Voice: who hears whom. Players driving an Ooga hear each other at one volume while they are in the same
-// place: out on the island, in HQ, or inside one cave. A listener with a receiving session hears every
-// other player in its place with a published microphone. The room decides and re-checks it on every pull.
+// zone group (the island, a bridged land, one cave or portal; see Zones above). A listener with a receiving
+// session hears every other player in its group with a published microphone; nobody hears anyone `none`.
+// The room decides and re-checks it on every pull.
 export const VOICE_TRACK = "mic";
+
+/** The voice group of a zone name: the part before its `.place`. */
+export const zoneGroup = (zone) => {
+  const dot = typeof zone === "string" ? zone.indexOf(".") : -1;
+  return dot < 0 ? zone : zone.slice(0, dot);
+};
 
 /** Map of player id → sorted ids that player should hear. */
 export const voicePeers = (players) => {
   const out = new Map();
   for (const p of players) {
     const ids = [];
-    if (p.body && p.voice && p.voice.sub) {
-      for (const q of players) if (q !== p && q.body && q.zone === p.zone && q.voice && q.voice.track) ids.push(q.id);
+    const group = zoneGroup(p.zone);
+    if (p.body && p.voice && p.voice.sub && group !== NOWHERE) {
+      for (const q of players) if (q !== p && q.body && zoneGroup(q.zone) === group && q.voice && q.voice.track) ids.push(q.id);
       ids.sort((a, b) => a - b);
     }
     out.set(p.id, ids);
