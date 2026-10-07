@@ -4212,8 +4212,31 @@
         }
       }
       if (work.phase === "station") {
+        // A nonworker can occupy a reserved shooting place after it was
+        // selected. Walking around that body cannot reach its exact center.
+        let occupied = false;
+        for (let i = 0; i < crewList.length; i++) {
+          const other = crewList[i], q = other.root.position, floor = q.y - other.baseY;
+          if (other !== cave && other.root.visible && work.position.y < floor + other.bodyHeight
+            && work.position.y + cave.bodyHeight > floor && Math.hypot(work.position.x - q.x, work.position.z - q.z)
+              < Math.max(SHOULDER_GAP, cave.bodyRadius + other.bodyRadius)) { occupied = true; break; }
+        }
+        const near = Math.hypot(cave.root.position.x - work.position.x, cave.root.position.z - work.position.z) < 1.5;
+        work.blockedTime = occupied && near ? work.blockedTime + dt : 0;
+        if (work.blockedTime >= 0.8 && site.position) {
+          work.blockedTime = 0;
+          const x = work.position.x, y = work.position.y, z = work.position.z, place = work.place;
+          if (site.position(cave, work.position, true) !== false && Number.isFinite(work.position.x)
+            && Number.isFinite(work.position.y) && Number.isFinite(work.position.z)) {
+            if (work.position.x !== x || work.position.y !== y || work.position.z !== z) {
+              resetWalkerRoute(cave); cave.progress.backoff = 0;
+            }
+          } else {
+            setVec(work.position, x, y, z); work.place = place;
+          }
+        }
         if (walkWorkTo(cave, work.position, dt, !site.approachDistance)) {
-          work.phase = "shoot"; work.direct = false; work.timer = 0.2 + cave.index * 0.07; work.emptyTime = 0;
+          work.phase = "shoot"; work.direct = false; work.timer = 0.2 + cave.index * 0.07; work.emptyTime = work.blockedTime = 0;
           aimWork(cave, site);
         }
       } else if (work.phase === "shoot") {

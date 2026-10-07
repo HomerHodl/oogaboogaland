@@ -9358,7 +9358,11 @@
             let occupied = false;
             for (let i = 0; i < crew.list.length; i++) {
               const other = crew.list[i];
-              if (other === cave || other === crew.player || other.state !== "working"
+              if (other === cave) continue;
+              const p = other.root.position, floor = p.y - other.baseY;
+              if (other.root.visible && mouth.floorY < floor + other.bodyHeight && mouth.floorY + cave.bodyHeight > floor
+                && Math.hypot(p.x - px, p.z - pz) < Math.max(0.68, cave.bodyRadius + other.bodyRadius)) { occupied = true; break; }
+              if (other === crew.player || other.state !== "working"
                 || other.work.phase !== "outbound" && other.work.phase !== "station" && other.work.phase !== "shoot"
                 || shared.workSites[other.work.site]?.repo !== slot.repo) continue;
               if (Math.hypot(other.work.position.x - px, other.work.position.z - pz) < 0.9) { occupied = true; break; }

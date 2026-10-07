@@ -11212,6 +11212,59 @@ record("character visibility source bakes: ownership wrappers share exact immuta
     } finally { crew.dispose(); }
   }
   {
+    // A late body at a reserved station must select another place through
+    // real walking, while a short crossing keeps the original reservation.
+    const S = BL.scene, root = S.createNode(), noop = () => {};
+    const roster = BL.contributors.activeRoster, savedRoster = [...roster];
+    roster.splice(2);
+    const island = { path: { version: 0, debug: { active: false, ringCenterRadius: 0 }, centerlines: [[{ x: 0, z: -10 }, { x: 0, z: 10 }]] }, surfaceAt: () => 0, isPath: () => true };
+    const npcPaths = BL.npcPaths.create({ island, walkable: () => true });
+    let retries = 0, refuse = false, unchanged = false, searching = false;
+    const site = { repo: "oogaboogax/entropylab", route: [{ x: 0, z: 6 }], approachDistance: 2.5,
+      position: (c, out, retry) => { if (retry) retries++; if (retry && searching && retries === 1) return false; if (retry && unchanged) return; Object.assign(out, { x: retry ? 2.2 : -2.2, y: 0, z: 5.504 }); if (retry && refuse) { out.x = NaN; c.work.place = 99; return false; } return true; } };
+    const crew = BL.crew.create({ root, world: { level: 0 }, npcPaths, workSites: [site],
+      input: { add: noop, remove: noop }, hud: { setRosterRow: noop }, game: { state: { assignments: {}, inventory: [] } },
+      pile: { footprintEdge: 1, pileEdge: () => 1 }, viewYaw: 0, buildSpots: [], walkIn: { x: 0, z: 3 },
+      groundAt: () => 0, walkable: () => true, bedrolls: [],
+      fx: { say: noop, zzzAt: noop, burst: noop, puff: noop, spawnParticle: noop, damageNumber: noop } });
+    const rows = [];
+    try {
+      for (const c of crew.list) { c.root.visible = false; c.state = "away"; c.bedTravel.mode = ""; }
+      const c = crew.list[0], blocker = crew.list[1];
+      for (const scenario of ["occupied", "transient", "searching", "refused", "unchanged"]) {
+        const transient = scenario === "transient";
+        retries = 0; refuse = scenario === "refused"; unchanged = scenario === "unchanged"; searching = scenario === "searching";
+        for (const actor of [c, blocker]) {
+          actor.root.visible = true; actor.root.quaternion = null; actor.bedTravel.mode = "";
+          actor.hop = actor.hopV = 0; actor.walk = null; actor.act.kind = "eat";
+          actor.nextBuildAt = actor.yawnAt = actor.act.until = 1e12; actor.bedroll = null;
+          Object.assign(actor.progress, { x: NaN, z: NaN, stalled: 0, motionless: 0, retry: 0, backoff: 0, replanned: false, escaped: false, navigationHop: false, resets: 0 });
+          actor.avoidance.tx = actor.pathing.tx = NaN; actor.avoidance.navigation.mode = 0; actor.shoulder.phase = 0;
+        }
+        c.override = c.state = "working"; blocker.override = blocker.state = "chilling";
+        Object.assign(c.root.position, { x: -2.2, y: c.baseY, z: 3.504 });
+        Object.assign(blocker.root.position, { x: -2.2, y: blocker.baseY, z: 5.504 });
+        Object.assign(c.work, { phase: "station", site: 0, direct: true, blockedTime: 0, place: 0 });
+        site.position(c, c.work.position, false);
+        let frames = 0, maximumStep = 0, separation = Infinity;
+        for (; frames < (refuse || unchanged ? 48 : 160) && c.work.phase === "station"; frames++) {
+          if (transient && frames === 10) blocker.root.visible = false;
+          const p = c.root.position, x = p.x, z = p.z;
+          crew.update(1 / 20, frames / 20); S.updateWorld(root);
+          maximumStep = Math.max(maximumStep, Math.hypot(p.x - x, p.z - z));
+          if (blocker.root.visible) separation = Math.min(separation, Math.hypot(p.x - blocker.root.position.x, p.z - blocker.root.position.z));
+        }
+        rows.push({ scenario, frames, maximumStep, separation, retries, phase: c.work.phase, resets: c.progress.resets, targetX: c.work.position.x,
+          navigation: c.avoidance.navigation.mode, place: c.work.place });
+      }
+      record("NPC station: persistent endpoint occupants reselect a free place without relocation or collision; brief crossings retain their place",
+        rows.every(r => r.maximumStep <= 2.8 / 20 + 1e-6 && r.separation >= 0.68 - 1e-6 && !r.resets)
+          && [rows[0], rows[2]].every(r => r.phase === "shoot" && r.frames < 160 && r.retries === (r.scenario === "searching" ? 2 : 1) && r.targetX === 2.2 && !r.navigation)
+          && rows[1].phase === "shoot" && !rows[1].retries && rows[1].targetX === -2.2
+          && [rows[3], rows[4]].every(r => r.phase === "station" && r.retries > 0 && r.targetX === -2.2 && r.place === 0), JSON.stringify(rows));
+    } finally { crew.dispose(); roster.splice(0, roster.length, ...savedRoster); }
+  }
+  {
     // Bed priority must work both on entry and when a vacancy opens mid-session.
     const S = BL.scene, root = S.createNode(), noop = () => {}, C = BL.contributors, now = Date.now();
     const saved = C.roster.map(c => ({ lastCommitAt: c.lastCommitAt, lastContributionAt: c.lastContributionAt, maintainer: c.maintainer }));
