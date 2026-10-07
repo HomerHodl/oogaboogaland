@@ -582,7 +582,7 @@
         roofEscape: { active: false, jumping: false, blocked: 0 },
         ladder: ctx.ladders ? { plane: null, cooldown: 0, across: 0, along: 0, descentHeld: false, mix: 0,
           flat: { width: 0, depth: 0, overlap: 0 }, vertical: { width: 0, height: 0, overlap: 0 } } : null,
-        avoidance: { active: false, side: i & 1 ? 1 : -1, stalled: 0, best: Infinity, tx: NaN, tz: NaN,
+        avoidance: { active: false, side: i & 1 ? 1 : -1, stalled: 0, best: Infinity, tx: NaN, tz: NaN, pathIndex: -1, pathVersion: -1,
           detour: { site: -1, phase: 0, side: 1, entryX: 0, goalX: NaN, goalZ: NaN, x: 0, z: 0 },
           navigation: { mode: 0, x: 0, z: 0, count: 0, index: 0, searches: 0, expansions: 0,
             jumpCandidate: 0, jumps: 0, jumpX: 0, jumpZ: 0, clearance: 0, double: false, boosted: false, moving: false,
@@ -3684,10 +3684,18 @@
         return;
       }
     };
-    const recoverWalker = (cave, tx, tz, dt) => {
-      const a = cave.avoidance, nav = a.navigation, p = cave.root.position, distance = Math.hypot(tx - p.x, tz - p.z);
+    const recoverWalker = (cave, tx, tz, dt, usePath = false) => {
+      const a = cave.avoidance, nav = a.navigation, p = cave.root.position, path = cave.pathing;
+      // Look-ahead hints move with the walker. Measure progress toward the
+      // current authored segment end, keeping the route's destination stable.
+      const stable = usePath && path && Number.isFinite(path.tx) && Number.isFinite(path.tz) && path.count > 1;
+      const gx = stable ? path.tx : tx, gz = stable ? path.tz : tz;
+      const leg = stable && path.index < path.count - 1 ? path.index : -1, version = stable ? path.version : -1;
+      const distance = Math.hypot((leg >= 0 ? path.laneX[leg + 1] : gx) - p.x, (leg >= 0 ? path.laneZ[leg + 1] : gz) - p.z);
       if (cave.traffic.waiting) { a.stalled = 0; a.best = Infinity; nav.mode = 0; return; }
-      if (tx !== a.tx || tz !== a.tz) { a.tx = tx; a.tz = tz; a.best = distance; a.stalled = 0; nav.mode = 0; }
+      if (gx !== a.tx || gz !== a.tz || leg !== a.pathIndex || version !== a.pathVersion) {
+        a.tx = gx; a.tz = gz; a.pathIndex = leg; a.pathVersion = version; a.best = distance; a.stalled = 0; nav.mode = 0;
+      }
       if (distance < a.best - 0.1) { a.best = distance; a.stalled = 0; }
       else a.stalled += dt;
       if (!nav.mode && a.stalled > 0.75 && distance > 0.15) {
@@ -3709,6 +3717,13 @@
       for (let i = 1; i <= steps; i++) {
         const along = Math.min(distance, i * step) / distance;
         const nx = fromX + dx * along, nz = fromZ + dz * along;
+        if (!outsideClear(x, z, nx, nz, y, cave.bodyHeight)) return NaN;
+        for (let n = 0; n < crewList.length; n++) {
+          const other = crewList[n], p = other.root.position, floor = p.y - other.baseY;
+          if (other === cave || !other.root.visible || other.state === "away" || other.root.quaternion || other.camp.seat
+            || y >= floor + other.bodyHeight - 0.05 || y + cave.bodyHeight <= floor + 0.05 || Math.abs(y - floor) >= STEP) continue;
+          if (!gapClear(x, z, nx, nz, p)) return NaN;
+        }
         if (!npcWalkable(x, z, nx, nz, y, cave.bodyHeight, cave)) return NaN;
         const height = groundAt(nx, nz, y, y, cave);
         if (height < y - STEP - 1e-7 || height > y + STEP + 1e-7) return NaN;
@@ -3814,8 +3829,8 @@
       }
       if (cave.traffic.waiting) return 0;
       const nav = cave.avoidance.navigation;
-      if (nav.mode === 1) { searchWalker(cave, tx, tz, Math.min(distance, PLAYER_STEP)); return 0; }
-      if (nav.mode === 3) { jumpWalker(cave, tx, tz); return 0; }
+      if (nav.mode === 1) { searchWalker(cave, cave.avoidance.tx, cave.avoidance.tz, Math.min(distance, PLAYER_STEP)); return 0; }
+      if (nav.mode === 3) { jumpWalker(cave, cave.avoidance.tx, cave.avoidance.tz); return 0; }
       if (nav.mode === 4) return 0;
       if (nav.mode === 2) {
         while (nav.index >= 0) {
@@ -4070,7 +4085,7 @@
         if (cave.pathing) { cave.pathing.tx = NaN; cave.pathing.index = cave.pathing.count; cave.pathing.targetX = w.tx; cave.pathing.targetZ = w.tz; }
       }
       if (paths && (!cave.avoidance.navigation.mode || cave.pathing.tx !== w.tx || cave.pathing.tz !== w.tz)) paths.target(cave, w.tx, w.tz);
-      recoverWalker(cave, detour ? diversion.x : paths ? cave.pathing.targetX : w.tx, detour ? diversion.z : paths ? cave.pathing.targetZ : w.tz, dt);
+      recoverWalker(cave, detour ? diversion.x : paths ? cave.pathing.targetX : w.tx, detour ? diversion.z : paths ? cave.pathing.targetZ : w.tz, dt, !!paths);
       let remaining = w.speed * dt * (inBananas(cave) ? 0.5 : 1), moved = 0;
       while (remaining > 1e-8 && Math.hypot(w.tx - p.x, w.tz - p.z) > 1e-6) {
         if (paths && (!cave.avoidance.navigation.mode || cave.pathing.tx !== w.tx || cave.pathing.tz !== w.tz)) paths.target(cave, w.tx, w.tz);
@@ -4143,7 +4158,7 @@
       }
       if (Math.hypot(target.x - p.x, target.z - p.z) < 0.12) { standPose(cave); return true; }
       if (paths && (!cave.avoidance.navigation.mode || cave.pathing.tx !== target.x || cave.pathing.tz !== target.z)) paths.target(cave, target.x, target.z);
-      recoverWalker(cave, paths ? cave.pathing.targetX : target.x, paths ? cave.pathing.targetZ : target.z, dt);
+      recoverWalker(cave, paths ? cave.pathing.targetX : target.x, paths ? cave.pathing.targetZ : target.z, dt, !!paths);
       let remaining = RUSH_SPEED * dt * (inBananas(cave) ? 0.5 : 1), moved = 0;
       while (remaining > 1e-8 && Math.hypot(target.x - p.x, target.z - p.z) >= 0.12) {
         if (paths && (!cave.avoidance.navigation.mode || cave.pathing.tx !== target.x || cave.pathing.tz !== target.z)) paths.target(cave, target.x, target.z);

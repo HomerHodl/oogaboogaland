@@ -11265,6 +11265,62 @@ record("character visibility source bakes: ownership wrappers share exact immuta
     } finally { crew.dispose(); roster.splice(0, roster.length, ...savedRoster); }
   }
   {
+    // A crowd pocket has an open backward exit; recovery must discover it
+    // instead of restarting on moving look-ahead hints until relocation.
+    const S = BL.scene, root = S.createNode(), noop = () => {}, roster = BL.contributors.activeRoster, savedRoster = [...roster], rows = [];
+    roster.splice(2);
+    try {
+      for (const scenario of ["persistent", "transient", "absent", "curved", "detour"]) {
+        const rectangle = (x, z, tx, tz, x0, x1, z0, z1) => {
+          let lo = 0, hi = 1;
+          for (const [p, d, a, b] of [[x, tx - x, x0, x1], [z, tz - z, z0, z1]]) {
+            if (Math.abs(d) < 1e-12) { if (p < a || p > b) return false; continue; }
+            const u = (a - p) / d, v = (b - p) / d;
+            lo = Math.max(lo, Math.min(u, v)); hi = Math.min(hi, Math.max(u, v)); if (lo > hi) return false;
+          }
+          return true;
+        };
+        const clear = (x, z, tx, tz) => !rectangle(x, z, tx, tz, -1, -0.2, -6.2, -5.4) && !rectangle(x, z, tx, tz, 0.2, 1, -6.2, -5.4);
+        const centerlines = scenario === "curved" ? [[{ x: 0, z: -6 }, { x: 0, z: -8 }, { x: 2, z: -8 }, { x: 2, z: 0 }, { x: 0, z: 0 }]] : [[{ x: 0, z: -10 }, { x: 0, z: 10 }]];
+        const island = { path: { version: 0, debug: { active: false, ringCenterRadius: 0 }, centerlines }, surfaceAt: () => 0, isPath: () => true };
+        const npcPaths = BL.npcPaths.create({ island, walkable: clear });
+        const detour = [{ x: 0, z: -6.5 }, { x: 1.5, z: -6.5 }, { x: 1.5, z: 0 }, { x: 0, z: 0 }]; let detourIndex = 0;
+        const crew = BL.crew.create({ root, world: { level: 0 }, npcPaths, input: { add: noop, remove: noop }, hud: { setRosterRow: noop },
+          npcDetour: scenario === "detour" ? (c) => {
+            const p = c.root.position;
+            while (detourIndex < detour.length - 1 && Math.hypot(p.x - detour[detourIndex].x, p.z - detour[detourIndex].z) < 1e-6) detourIndex++;
+            Object.assign(c.avoidance.detour, detour[detourIndex]); return true;
+          } : null,
+          game: { state: { assignments: {}, inventory: [] } }, pile: { footprintEdge: 1, pileEdge: () => 1 }, viewYaw: 0, buildSpots: [], walkIn: { x: 0, z: 3 },
+          groundAt: () => 0, walkable: clear, bedrolls: [], fx: { say: noop, zzzAt: noop, burst: noop, puff: noop, spawnParticle: noop, damageNumber: noop } });
+        try {
+          const c = crew.list[0], blocker = crew.list[1];
+          for (const actor of crew.list) {
+            actor.root.visible = true; actor.root.quaternion = null; actor.bedTravel.mode = ""; actor.hop = actor.hopV = 0;
+            actor.nextBuildAt = actor.yawnAt = actor.act.until = 1e12; actor.walk = null; actor.act.kind = "eat"; actor.bedroll = null;
+          }
+          c.override = c.state = "working"; blocker.override = blocker.state = "chilling";
+          blocker.root.visible = scenario === "persistent" || scenario === "transient";
+          Object.assign(c.root.position, { x: 0, y: c.baseY, z: -6 }); Object.assign(blocker.root.position, { x: 0, y: blocker.baseY, z: -5.25 });
+          c.act.kind = "wander"; Object.assign(c.act.spot, { x: 0, z: 0, ry: 0 });
+          c.walk = { tx: 0, tz: 0, speed: 1.7, phase: 0, heading: 0, to: "spot" }; npcPaths.target(c, 0, scenario === "detour" ? 8 : 0);
+          let frames = 0, maximumStep = 0, separation = Infinity, collisions = 0;
+          for (; frames < 160 && c.walk; frames++) {
+            if (scenario === "transient" && frames === 20) blocker.root.visible = false;
+            const p = c.root.position, x = p.x, z = p.z; crew.update(1 / 20, frames / 20); S.updateWorld(root);
+            maximumStep = Math.max(maximumStep, Math.hypot(p.x - x, p.z - z)); if (!clear(x, z, p.x, p.z)) collisions++;
+            if (blocker.root.visible) separation = Math.min(separation, Math.hypot(p.x - blocker.root.position.x, p.z - blocker.root.position.z));
+          }
+          rows.push({ scenario, frames, maximumStep, separation, collisions, arrived: !c.walk, resets: c.progress.resets, jumps: c.avoidance.navigation.jumps, searches: c.avoidance.navigation.searches });
+        } finally { crew.dispose(); }
+      }
+      record("NPC recovery: changing look-ahead hints retain progress and search around real bodies without relocation; clear straight and curved routes need no search",
+        rows.every(r => r.arrived && r.frames < 160 && r.maximumStep <= 1.7 / 20 + 1e-6 && r.separation >= 0.68 - 1e-6 && !r.collisions && !r.resets && !r.jumps)
+          && rows[0].searches === 1 && !rows[2].searches && rows[2].frames === 72 && !rows[3].searches && rows[3].frames === 143
+          && !rows[4].searches, JSON.stringify(rows));
+    } finally { roster.splice(0, roster.length, ...savedRoster); }
+  }
+  {
     // Bed priority must work both on entry and when a vacancy opens mid-session.
     const S = BL.scene, root = S.createNode(), noop = () => {}, C = BL.contributors, now = Date.now();
     const saved = C.roster.map(c => ({ lastCommitAt: c.lastCommitAt, lastContributionAt: c.lastContributionAt, maintainer: c.maintainer }));
