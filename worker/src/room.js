@@ -11,7 +11,8 @@
 // page showing the island, and keeps the latest frame for pages that arrive or come back.
 // Cost: the room hibernates whenever nothing is happening, so no timer runs while idle: a snapshot is a
 // one-shot flush scheduled by a pose, voice lists are sent when who hears whom can change, and the host
-// is told how many pages follow it (`host { id, followers }`) so a lone host sends no frames.
+// is told how many pages follow it (`host { id, followers }`) so a lone host sends no frames, and who is
+// in voice or muted goes out (`vstate`) only when it changes.
 
 import { DurableObject } from "cloudflare:workers";
 import {
@@ -53,15 +54,15 @@ export class Room extends DurableObject {
   }
 
   record(ws, a) {
-    return { ws, voice: { pub: null, sub: null, track: null }, zone: OUTSIDE, inHub: false, joinedAt: Date.now(), ...a, bucket: { tokens: MOVE_HZ, at: Date.now() }, npcBucket: { tokens: NPC_HZ, at: Date.now() }, seenAt: Date.now() };
+    return { ws, voice: { pub: null, sub: null, track: null }, muted: false, zone: OUTSIDE, inHub: false, joinedAt: Date.now(), ...a, bucket: { tokens: MOVE_HZ, at: Date.now() }, npcBucket: { tokens: NPC_HZ, at: Date.now() }, seenAt: Date.now() };
   }
 
   attachment(p) {
-    return { id: p.id, login: p.login, display: p.display, contributor: p.contributor, body: p.body, x: p.x, y: p.y, z: p.z, yaw: p.yaw, voice: p.voice, zone: p.zone, inHub: p.inHub, joinedAt: p.joinedAt };
+    return { id: p.id, login: p.login, display: p.display, contributor: p.contributor, body: p.body, x: p.x, y: p.y, z: p.z, yaw: p.yaw, voice: p.voice, muted: p.muted, zone: p.zone, inHub: p.inHub, joinedAt: p.joinedAt };
   }
 
   view(p) {
-    return { id: p.id, login: p.login, display: p.display, body: p.body, zone: p.zone, x: p.x, y: p.y, z: p.z, yaw: p.yaw };
+    return { id: p.id, login: p.login, display: p.display, body: p.body, zone: p.zone, x: p.x, y: p.y, z: p.z, yaw: p.yaw, voice: !!p.voice.track, muted: p.muted };
   }
 
   send(ws, msg) {
@@ -150,6 +151,10 @@ export class Room extends DurableObject {
       p.zone = msg.name;
       this.broadcast({ t: "zone", id: p.id, name: p.zone });
       this.updateVoice();
+    } else if (msg.t === "mute") {
+      if (msg.on === p.muted) return;
+      p.muted = msg.on;
+      this.voiceState(p);
     } else if (msg.t === "body") {
       if (msg.name === p.body) return;
       const refusal = claimRefusal(CAST, p.login, msg.name, this.players.values(), p.contributor);
@@ -263,6 +268,11 @@ export class Room extends DurableObject {
     }
   }
 
+  // Every other page's roster shows who is in voice (a live microphone) and who muted it: sent on a change only.
+  voiceState(p) {
+    this.broadcast({ t: "vstate", id: p.id, voice: !!p.voice.track, muted: p.muted }, p.ws);
+  }
+
   // /voice/<op> from the Worker, which checked the session and set x-player-id. Ops: session (a publish
   // or receive session), publish (the mic's offer), live (the publishing connection is up: only now is the
   // mic announced, since pulling a publication before it connects fails), pull (peers the room allows),
@@ -278,6 +288,7 @@ export class Room extends DurableObject {
     } catch {
       // No body.
     }
+    const was = !!p.voice.track;
     try {
       if (op === "session") {
         const kind = body.kind === "pub" ? "pub" : "sub";
@@ -286,6 +297,7 @@ export class Room extends DurableObject {
         if (kind === "pub") p.voice.track = p.voice.pending = null;
         p.ws.serializeAttachment(this.attachment(p));
         this.updateVoice();
+        if (was && !p.voice.track) this.voiceState(p);
         return json({ ok: true });
       }
       if (op === "publish") {
@@ -305,6 +317,7 @@ export class Room extends DurableObject {
         p.voice.track = p.voice.pending;
         p.ws.serializeAttachment(this.attachment(p));
         this.updateVoice();
+        if (!was) this.voiceState(p);
         return json({ ok: true });
       }
       if (op === "pull") {
@@ -340,6 +353,7 @@ export class Room extends DurableObject {
         p.voice = { pub: null, sub: null, track: null, pending: null };
         p.ws.serializeAttachment(this.attachment(p));
         this.updateVoice();
+        if (was) this.voiceState(p);
         return json({ ok: true });
       }
       return json({ error: "unknown voice op" }, 404);

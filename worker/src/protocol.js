@@ -4,12 +4,15 @@
 //                 { t: "body", name }            the Ooga being driven, or null when driving none
 //                 { t: "zone", name }            where that Ooga is: "outside", "hq" or "cave-<id>"
 //                 { t: "hub", on }               this page shows the island and is visible (host candidates)
+//                 { t: "mute", on }              this page muted its own microphone, for everyone's roster
 //                 binary                         the NPC host's frame of every Ooga's pose, relayed as is
 // Room → client:  welcome { you, players, tickHz, now, loopEpoch }, join { p }, leave { id, reason },
 //                 body { id, name }, state { now, ps: [id, x, y, z, yaw, ...] }, kick { reason },
 //                 release { name, reason }   the Ooga this socket claimed is not, or no longer, its to drive
 //                 host { id, followers }     who runs the NPCs now (0 for nobody) and how many pages follow
 //                                            them (a host with none sends nothing); binary NPC frames from them
+//                 vstate { id, voice, muted }  a player's microphone went live or off, or they muted it; welcome
+//                                            and join carry the same two fields on every player
 // "ping" answers "pong" without waking the room (setWebSocketAutoResponse).
 
 export const TICK_HZ = 15;
@@ -60,6 +63,7 @@ export const parseClientMessage = (text) => {
     return typeof msg.name === "string" && BODY_NAME.test(msg.name) ? { t: "body", name: msg.name } : null;
   }
   if (msg.t === "hub") return typeof msg.on === "boolean" ? { t: "hub", on: msg.on } : null;
+  if (msg.t === "mute") return typeof msg.on === "boolean" ? { t: "mute", on: msg.on } : null;
   if (msg.t === "zone") return typeof msg.name === "string" && ZONE_NAME.test(msg.name) ? { t: "zone", name: msg.name } : null;
   return null;
 };
