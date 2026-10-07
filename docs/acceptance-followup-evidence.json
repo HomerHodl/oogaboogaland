@@ -2161,5 +2161,170 @@
       "factory": "Original three assertions passed diagnostically with correct Factory-only fixtures; does not supersede uninstrumented deadline/watchdog failures."
     },
     "nextGates": "Bounded observational query-elimination censuses and active owned-renderer OS sampling; no production optimization approved before evidence and exactness gates."
+  },
+  "boundedContinuationDiagnostics": {
+    "publishedRuntimeHead": "9c74d969e20f6888234d1b93587f671c7d0a32ee",
+    "productionChanges": [],
+    "liveBatchCensus": {
+      "coveredRecomputations": 5,
+      "originalDdaSteps": 1340609,
+      "certifiedEmptySteps": 882694,
+      "performanceClaim": false
+    },
+    "isolatedGuardedPrototype": {
+      "repositoryHead": "5a1487c8bc7e5e3f5a04e53750949bb8687ba2c0",
+      "terrainSha256": "4145da0482b7248f9075f6510b1882868caacfeb7fb95e8e9e064064ab2bb922",
+      "guidesSha256": "82761621050af8bde8f78c7251bff83ad8380201360c9f219719e79c30fa0a4d",
+      "exactRayComparisons": 31392,
+      "rayBatches": 327,
+      "guideViews": 2223,
+      "guideContexts": 642,
+      "typedOutputComparisons": 9999150,
+      "wrapperGetterEventComparisons": 879818,
+      "objectCallbacksCompared": 70077,
+      "mismatches": 0,
+      "disposed": true,
+      "typedBufferPayloadBytes": 237177,
+      "terrainMaskBytes": 149916,
+      "guideStagingBytes": 87261,
+      "actualRayCapacity": 1711,
+      "temporaryDescriptorsPerSuccessfulBatch": 4,
+      "scope": "Guarded prototype before subsequent alias-only extension; no published production/test change or FPS acceptance claim. Final alias-focused proof, setup/staging/scatter timing and unchanged native performance gates pending."
+    },
+    "systemTrace": {
+      "firstAttempt": "35-second capture ended during64.86-second heap snapshot, before failed travel; no scheduler attribution from nonoverlapping tables.",
+      "postSnapshotAttempt": {
+        "firstTravelSettledMs": 993.9,
+        "addedFrozenHoldMs": 2887.5,
+        "scope": "Perturbed diagnostic first-hop subset; not six-visit retention acceptance or proven repair.",
+        "report": "lifecycle-system-post-snapshot-5a.json"
+      },
+      "originalTravelDeadlineMs": 8000,
+      "originalSessionDeadlineMs": 120000,
+      "ownedProcessesClosed": true,
+      "next": "Reviewed asynchronous post-snapshot recorder start without awaiting before thaw; actual coverage must be established."
+    },
+    "finalAliasPrototype": {
+      "terrainSha256": "6e5578116e8ef199a6882af4b4daacb3cef0702b7c29ea6efdd0fb50382c4868",
+      "guidesSha256": "82761621050af8bde8f78c7251bff83ad8380201360c9f219719e79c30fa0a4d",
+      "privateReadBuffers": 12,
+      "exposedBufferAliasRejectionCases": 16,
+      "exactRayComparisons": 31392,
+      "rayBatches": 327,
+      "focusedGuideViews": 213,
+      "typedOutputComparisons": 966210,
+      "wrapperGetterEventComparisons": 879818,
+      "objectCallbacksCompared": 2740,
+      "mismatches": 0,
+      "disposed": true,
+      "coveredRepresentativeTrialsMs": [
+        {
+          "baseline": 5585.502625,
+          "candidate": 5545.376167
+        },
+        {
+          "baseline": 5577.290709,
+          "candidate": 5550.737584
+        },
+        {
+          "baseline": 5597.994875,
+          "candidate": 5637.743833
+        }
+      ],
+      "framesPerTrial": 72,
+      "identicalRayCountPerTrial": 156392,
+      "identicalCertificatesPerTrial": 171,
+      "identicalChecksumPerTrial": 49801,
+      "scope": "Warmed alternating actual-guide VM timing includes all batch setup/staging/query/scatter costs; representative trajectory, not original full-scene native FPS. Successful batch execution is supported by source/guard proofs but was not counted during timing.",
+      "decision": "Rejected: neutral covered timing does not support added buffer/storage/API complexity. No native candidate trial or production merge.",
+      "ordinaryRepresentativeMedianMs": {
+        "baseline": 6501.250667,
+        "candidate": 6447.509125
+      },
+      "coveredRepresentativeMedianMs": {
+        "baseline": 5585.502625,
+        "candidate": 5550.737584
+      },
+      "cutoff24RoiSupported": false,
+      "forcedWallMedianMs": [
+        {
+          "authoredOrderSize": 8,
+          "actualRaysPerFrame": 8,
+          "baseline": 6.197583,
+          "candidate": 6.229709
+        },
+        {
+          "authoredOrderSize": 28,
+          "actualRaysPerFrame": 28,
+          "baseline": 27.904625,
+          "candidate": 28.345208
+        },
+        {
+          "authoredOrderSize": 1711,
+          "actualRaysPerFrame": 1536,
+          "baseline": 2678.199833,
+          "candidate": 2606.427083
+        }
+      ],
+      "forcedWallFramesPerTrial": 96
+    },
+    "asyncSchedulerFailure": {
+      "report": "lifecycle-system-async-scheduler-summary.json",
+      "internalTravelElapsedMs": 8639.3,
+      "hostCommandElapsedMs": 8766.274125,
+      "hostEnvelopeMs": 126.974125,
+      "observedHostTailStartMs": 2393.790771,
+      "observedHostTailEndMs": 8766.274125,
+      "launchOverheadMs": 44.128916,
+      "awaitedFrozenReadiness": false,
+      "preemptedWithEffectiveBackgroundMs": 5686.578,
+      "mainRunningMs": 115.627686,
+      "runningECoreMs": 82.0625,
+      "runningPCoreMs": 33.565186,
+      "interruptedMs": 1.995361,
+      "clockUncertaintyMs": 22,
+      "unknownStateMs": 401.288818,
+      "unknownQosMs": 401.421387,
+      "nonOverlapAuditToleranceMs": 0.01,
+      "finalNativeCaptureComplete": false,
+      "osRecordingSaved": true,
+      "scope": "Observed partial host-command tail, not exact full internal page deadline. Scheduler starvation/Background QoS directly observed; why Chrome assigned Background remains unproved. No native CPU or missing-GC inference."
+    },
+    "ownerBranchCensus": {
+      "report": "owner-branch-census.json",
+      "sourcePage": true,
+      "coveredInstrumentedFrames": 140,
+      "triangleCalls": 57538393,
+      "screenBoxRejects": 38449805,
+      "screenBoxRejectPercent": 66.83,
+      "gridBvhScreenBoxRejectPercent": 75.49,
+      "preservedPredicatesAndOutcomes": true,
+      "sourceRestoredClean": true,
+      "scope": "Operation-count diagnostic; instrumentation changes elapsed performance. No speedup or branch CPU-time inference."
+    },
+    "coveredSystemCapture": {
+      "status": "Incomplete: save timeout; malformed OS trace and incomplete native trace",
+      "ordinary": {
+        "fps": 57.21,
+        "quality": "high",
+        "p95Ms": 16.8
+      },
+      "covered": {
+        "fps": 25.83,
+        "quality": "low",
+        "p95Ms": 50.1,
+        "particles": 26
+      },
+      "qosOrCoreAttributionSupported": false,
+      "acceptanceReplacement": false
+    },
+    "rendererPriorityControl": {
+      "productionOrRunnerChanged": false,
+      "singleFlag": "--disable-renderer-backgrounding",
+      "isolatedRoot": "scheduler-control",
+      "upstreamMechanismSource": "https://chromium.googlesource.com/chromium/src/+/refs/heads/main/content/browser/renderer_host/render_process_host_impl.cc",
+      "installedTagVerified": false,
+      "scope": "Control changes process visibility state as well as OS priority. Native frozen/focus/pool fidelity, actual priority difference and original lifecycle/performance gates pending; no fixture repair or causal fix claimed."
+    }
   }
 }
