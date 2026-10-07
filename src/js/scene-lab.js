@@ -296,6 +296,8 @@
     fx.update(dt);
     stepTweens(dt);
     pilot.update(dt);
+    // The Ooga driven is reported to the room, so signed-in players here hear each other (voice needs one).
+    BL.net.setBody(crew.player ? crew.player.traits.name : null);
     dust.update(elapsed, pilot.orbit.target.x, pilot.orbit.target.z);
     meterTimer -= dt;
     if (meterTimer <= 0) {
@@ -513,6 +515,7 @@
     mark("visibility");
   };
   const leave = () => {
+    BL.net.setBody(null);
     window.clearInterval(stateTimer);
     unsubscribeActivity();
     unsubscribeActivity = null;

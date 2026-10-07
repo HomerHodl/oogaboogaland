@@ -6214,6 +6214,16 @@
         break;
       }
     }
+    // An Ooga taken over where it already stands in a cave never crossed the mouth: bind it by the carved column
+    // under its feet, once it is behind that cave's doorway plane (the mouth's columns reach out onto the apron).
+    if (!playerCaveIndex && island.cavityAt(p.x, p.z, CAMERA_COLUMN, 0, PLAYER_POSITION.y) && CAMERA_COLUMN.caveIndex !== island.headquarters.caveIndex && PLAYER_POSITION.y >= CAMERA_COLUMN.floor - 1e-6 && PLAYER_POSITION.y + player.bodyHeight <= CAMERA_COLUMN.ceiling) {
+      for (let i = 0; i < CAMERA_OPENINGS.length; i++) {
+        const opening = CAMERA_OPENINGS[i];
+        if (opening.caveIndex !== CAMERA_COLUMN.caveIndex) continue;
+        if (!opening.blocked && !opening.headquarters && (p.x - opening.mouth.x) * opening.sr + (p.z - opening.mouth.z) * opening.cr - opening.planeZ < -PLAYER_RADIUS) playerCaveIndex = opening.caveIndex;
+        break;
+      }
+    }
     setVec(PLAYER_PREVIOUS, PLAYER_POSITION.x, PLAYER_POSITION.y, PLAYER_POSITION.z);
   };
   // Destination placement is explicit travel, not a sweep across the island in between.

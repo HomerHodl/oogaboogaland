@@ -111,6 +111,9 @@ test("voice: players driving an Ooga hear each other while in the same place; no
   assert.deepEqual(peers.get(6), [], "no receiving session, nothing to hear");
   assert.deepEqual(parseClientMessage('{"t":"zone","name":"cave-lab"}'), { t: "zone", name: "cave-lab" });
   assert.equal(parseClientMessage('{"t":"zone","name":"Cave Lab!"}'), null);
+  assert.deepEqual(parseClientMessage('{"t":"mute","on":true}'), { t: "mute", on: true }, "a muted microphone reaches every roster");
+  assert.equal(parseClientMessage('{"t":"mute","on":"yes"}'), null);
+  assert.equal(parseClientMessage('{"t":"mute"}'), null);
 });
 
 test("NPC host: the page longest in the room among those showing the island; nobody when none does", async () => {
