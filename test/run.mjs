@@ -8278,7 +8278,18 @@ const dsbClick = async (b, selector, mobile = false) => {
 const dsbExit = async (b, home = "bifrost") => {
   await b.evaluate(`__ooga.dsb.gate.activate(0); if (typeof __gateClock === "number") { __gateClock += 2000; __ooga.dsb.gate.update(); }`);
   await untilPage(b, 'B.dsb.gate.state === "ACTIVE"', 5000);
-  await b.evaluate(`(() => { const B = __ooga; B.pilot.navigate({ position: { x: 0, y: 0, z: 27.9 }, yaw: Math.PI, pitch: 0.3, dist: 4 }); window.dispatchEvent(new KeyboardEvent("keydown", { key: "w" })); for (let i = 0; i < 20 && !B.transitioning; i++) BL.scenes.dsb.update(0.05, 4 + i * 0.05); window.dispatchEvent(new KeyboardEvent("keyup", { key: "w" })); })()`);
+  await b.evaluate(`(() => {
+    const B = __ooga, d = B.dsb, root = d.gate.root;
+    BL.scene.updateWorld(root, root.parent ? root.parent.world : undefined);
+    const m = root.world, normalLength = Math.hypot(m[4], m[6]);
+    if (!(normalLength > 0)) throw new Error("DSB return gate must have a horizontal approach normal");
+    const nx = m[4] / normalLength, nz = m[6] / normalLength;
+    const x = m[12] + nx * 0.9, z = m[14] + nz * 0.9;
+    B.pilot.navigate({ position: { x, y: d.land.groundAt(x, z), z }, yaw: Math.atan2(nx, nz), pitch: 0.3, dist: 4 });
+    window.dispatchEvent(new KeyboardEvent("keydown", { key: "w" }));
+    try { for (let i = 0; i < 20 && !B.transitioning; i++) BL.scenes.dsb.update(0.05, 4 + i * 0.05); }
+    finally { window.dispatchEvent(new KeyboardEvent("keyup", { key: "w" })); }
+  })()`);
   await untilPage(b, `B.scene === "${home}" && !B.transitioning`, 15000);
 };
 // Placement contract exercises the moved landmarks without changing travel fixtures.
@@ -8322,7 +8333,7 @@ scene("dsb", { label: "dsb zuzu conversation", url: hubPage(dist), steps: [{ nam
   record("dsb compatibility: built CSP preserves exactly the weather and DSB network permissions", await b.evaluate(`(() => {
     const policy = document.querySelector('meta[http-equiv="Content-Security-Policy"]').content;
     const sources = name => policy.split(";").map(s => s.trim().split(/\\s+/)).find(s => s[0] === name).slice(1).sort().join("|");
-    return sources("connect-src") === ["'self'", "https:", "wss:"].sort().join("|") && sources("worker-src") === "'self'" && sources("media-src") === "https://stream.noderunnersradio.com" && !policy.includes("unsafe-");
+    return sources("connect-src") === ["'self'", "https:", "wss:"].sort().join("|") && sources("worker-src") === "'self'" && sources("media-src") === ["https://stream.noderunnersradio.com", "https://hodlerhiq.net"].sort().join("|") && !policy.includes("unsafe-");
   })()`));
   record("dsb registry: c10 stays sealed and DSB is internally addressable without a cave", await b.evaluate(`(BL.caves.slots.find(s => s.id === "c10").status === "dark" && BL.caves.slots.find(s => s.id === "c10").scene === null) && !BL.caves.slots.some(s => s.scene === "dsb") && !!BL.scenes.dsb`));
   record("dsb compatibility: hub keeps the Agent module without spawning a standalone gorilla", await b.evaluate(`__ooga.scene === "hub" && !__ooga.agent && !!BL.agent && !!BL.characters.get("rules-without-rulers") && Object.hasOwn(__ooga, "agent") && Object.hasOwn(__ooga, "dsb") && !__ooga.dsb`));
@@ -10592,7 +10603,10 @@ const terrainGlyphLayoutProof = () => {
   // Original uncached builder's exact registry hashes for the real island and this prop fixture.
   const hashes = ["d4c73397", "838b0d54", "2a66543d", "26c1d671", "1b1079a0", "84f53811", "4c0e8983", "0c0f13b7"];
   const metadata = caves => JSON.stringify(caves.map(cave => ({ hash: cave.registryHash, count: cave.glyphCount, capacity: cave.capacity,
-    sections: cave.sections, streams: cave.streams, entries: cave.entries, bytes: cave.bufferBytes, surfaces: cave.surfaceCounts })));
+    sections: cave.sections, streams: cave.streams,
+    entries: Array.from({ length: cave.entries.length / 3 }, (_, index) => ({
+      stream: cave.entries[index * 3], character: cave.entries[index * 3 + 1], rank: cave.entries[index * 3 + 2]
+    })), bytes: cave.bufferBytes, surfaces: cave.surfaceCounts })));
   for (const kind of ["webgl2", "canvas2d"]) {
     const start = Date.now(), cold = visit(kind), built = Date.now(), warm = visit(kind);
     timings.push({ kind, coldMs: built - start, warmMs: Date.now() - built });
@@ -10600,7 +10614,17 @@ const terrainGlyphLayoutProof = () => {
     check(metadata(cold) === metadata(warm));
     for (let i = 0; i < warm.length; i++) {
       check(warm[i].streams !== cold[i].streams && (!warm[i].streams.length || warm[i].streams[0] !== cold[i].streams[0]));
-      check(!warm[i].entries.length || warm[i].entries[0] !== cold[i].entries[0]);
+      check(Object.prototype.toString.call(warm[i].entries) === "[object Uint32Array]" && warm[i].entries !== cold[i].entries);
+      check(warm[i].entries.buffer !== cold[i].entries.buffer);
+      check(warm[i].entries.length % 3 === 0);
+      for (let streamIndex = 0; streamIndex < warm[i].streams.length; streamIndex++) {
+        const stream = warm[i].streams[streamIndex];
+        for (let character = 0; character < stream.entryCount; character++) {
+          const at = (stream.entryStart + character) * 3;
+          check(warm[i].entries[at] === streamIndex);
+          check(warm[i].entries[at + 1] === character && warm[i].entries[at + 2] === stream.rank);
+        }
+      }
       check(warm[i].nodes.every((node, n) => node.instanceData !== cold[i].nodes[n].instanceData));
       check(warm[i].bufferBytes === cold[i].bufferBytes);
     }
@@ -10650,6 +10674,10 @@ const terrainGlyphLayoutProof = () => {
   return { cases, failures, timings, cacheSlots: proof.layouts().size, snapshotBytes, entryBytes, entryCount, streamObjects, surfaceMetadataEstimate };
 
 };
+// In unitChecks:
+const glyphLayout = terrainGlyphLayoutProof();
+record("terrain glyph layouts: warm visits preserve exact registries and rendered instances with fresh mutable buffers and bounded invalidation", glyphLayout.failures === 0 && glyphLayout.cases >= 100, JSON.stringify(glyphLayout));
+
 
 const selectedWaterProgramProof = () => {
   const source = readFileSync(new URL("../src/js/gl-renderer.js", import.meta.url), "utf8");
@@ -11955,6 +11983,12 @@ const dsbWaterCheckpoint = { name: "dsb water checkpoint", why: "contract: Aegea
     const released=await b.evaluate('__ooga.renderer.stats.waterTextures');
     await b.evaluate('__ooga.go("dsb")');
     await untilPage(b,'B.scene==="dsb"&&!B.transitioning',20000);
+    const transit=await b.evaluate('({entrance:!!__ooga.dsb.entrance,phase:__ooga.dsb.entrance?.phase,exterior:__ooga.dsb.exterior.visible})');
+    record("DSB water trip "+i+": return enters the Bifrost tunnel before exterior resources are measured",transit.entrance&&transit.phase==="tunnel"&&!transit.exterior,JSON.stringify(transit));
+    const touch=await b.evaluate('matchMedia("(pointer: coarse)").matches');
+    await dsbClick(b,'[data-action="dsb-skip-entry"]',touch);
+    const landed=await untilPage(b,'B.scene==="dsb"&&!B.transitioning&&B.dsb.entrance?.phase==="done"&&B.dsb.exterior.visible&&(B.renderer.kind==="canvas2d"||B.renderer.ready)',20000);
+    record("DSB water trip "+i+": the real Skip entry control reaches a drawn exterior",landed);
     const returned=await b.evaluate('({name:__ooga.dsb.avatar.traits.name,textures:__ooga.renderer.stats.waterTextures})');
     record("DSB water trip "+i+": Portara crossing preserves identity and releases textures",crossed&&released===0&&returned.name===name&&returned.textures===(canvas?0:2),JSON.stringify({crossed,released,returned}));
   }
@@ -12127,6 +12161,7 @@ const dsbInteriorCheckpoint = { name: "dsb interior checkpoint", why: "rule: a r
   const exit=await b.evaluate(`(()=>{const B=__ooga,D=B.dsb,I=D.interiors,p=D.avatar.root.position,e=I.registry.get("meme-factory").entry;return {active:!!I.active,same:D.avatar===__interiorCheck.avatar&&D.land===__interiorCheck.land&&D.water===__interiorCheck.water&&D.nature===__interiorCheck.nature,distance:Math.hypot(p.x-e.x,p.z-e.z),floor:p.y-D.avatar.baseY-D.land.heightAt(p.x,p.z),cameraClear:D.land.clearAt(B.camera.position.x,B.camera.position.z,.1),weather:D.weather.state.mode,night:B.renderOpts.day,lamps:B.renderOpts.lampFactor,drops:D.weather.shared.state.drops,master:D.weather.shared.state.masterLevel,audio:I.audio.stats};})()`);
   record("DSB interior: touch exit restores the same player/building and current night rain, not entry weather",isolation.same&&!isolation.exterior&&isolation.drops===0&&isolation.night===0&&!exit.active&&exit.same&&exit.distance<.01&&exit.cameraClear&&Math.abs(exit.floor)<.01&&exit.weather==="rain"&&exit.night===0&&exit.lamps>.9&&exit.drops>0&&exit.master>0&&!exit.audio.connected,JSON.stringify({isolation,exit}));
   await b.evaluate('__ooga.daylight.read=__interiorCheck.read');
+  if(!await untilPage(b,'B.scene==="dsb"&&!B.transitioning&&!B.dsb.interiors.active&&(B.renderer.kind==="canvas2d"||B.renderer.ready)'))throw Error("DSB exterior did not draw after restoring daylight");
   const snapshot=()=>b.evaluate(`(()=>{const B=__ooga,I=B.dsb.interiors;let nodes=0;const geometries=new Set();const visit=n=>{nodes++;if(n.geometry)geometries.add(n.geometry);for(const c of n.children)visit(c);};visit(BL.scenes.dsb.root);return {nodes,geometries:geometries.size,rooms:I.rooms.size,targets:BL.scenes.dsb.input.targetCount,audio:I.audio.stats.sources,contexts:I.audio.stats.contexts,radioSources:B.dsb.noderunner.audio?.stats.sources,radioStarts:B.dsb.noderunner.audio?.stats.starts,records:B.renderer.stats.records,room:I.active?.room.id||null,lights:B.renderOpts.lightCount,textures:B.renderer.stats.waterTextures||0,remotes:BL.scenes.dsb.stats().remotePlayers};})()`);
   const listenerCount=async()=>{
     const obj=await b.send("Runtime.evaluate",{expression:"document"});
@@ -12136,6 +12171,7 @@ const dsbInteriorCheckpoint = { name: "dsb interior checkpoint", why: "rule: a r
   const base=await snapshot(),listeners=await listenerCount();
   let cycles=1;
   for(;cycles<10;cycles++){await tap();await tap();}
+  if(!await untilPage(b,'B.scene==="dsb"&&!B.transitioning&&!B.dsb.interiors.active&&(B.renderer.kind==="canvas2d"||B.renderer.ready)'))throw Error("DSB exterior did not draw after ten door cycles");
   const end=await snapshot(),listenersEnd=await listenerCount();
   record("DSB interior: ten complete door cycles retain bounded nodes, geometry, handlers and audio sources",Object.keys(base).every(key=>key==="records"?end[key]<=base[key]:end[key]===base[key])&&listeners===listenersEnd,JSON.stringify({cycles,base,end,listeners,listenersEnd}));
   await b.evaluate('window.__interiorCheck.old=__ooga.dsb.interiors;__ooga.go("dsb",null,true);__ooga.advance(.05)');
@@ -12277,7 +12313,7 @@ const dsbNatureCheckpoint = { name: "dsb nature checkpoint", why: "rule: terrain
   for(let visit=0;visit<2;visit++) {
     await b.evaluate('__ooga.go("dsb",null,true);__ooga.advance(.05)');
     const state=await b.evaluate(`(()=>{const p=window.__natureCheck,n=__ooga.dsb.nature;return {same:JSON.stringify(n.placements)===p.signature,cleared:p.oldRoot.children.length===0&&p.old.group.children.length===0,fields:n.group.children.length,total:n.stats.total,textures:__ooga.renderer.stats.waterTextures};})()`);
-    record(`DSB nature: visit ${visit+2} preserves seeded layout and releases old scene`,state.same&&state.cleared&&state.fields===10&&state.total>1000&&state.textures===2,JSON.stringify(state));
+    record(`DSB nature: visit ${visit+2} preserves seeded layout and releases old scene`,state.same&&state.cleared&&state.fields===11&&state.total>1000&&state.textures===2,JSON.stringify(state));
     const detail=await b.evaluate('({same:JSON.stringify(__ooga.dsb.detail.placements)===__exteriorCheck.signature,cleared:__exteriorCheck.old.group.children.length===0})');
     record(`DSB exterior: visit ${visit+2} releases dressing without duplicates`,detail.same&&detail.cleared,JSON.stringify(detail));
   }
