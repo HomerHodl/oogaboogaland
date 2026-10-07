@@ -11270,7 +11270,7 @@ record("character visibility source bakes: ownership wrappers share exact immuta
     const S = BL.scene, root = S.createNode(), noop = () => {}, roster = BL.contributors.activeRoster, savedRoster = [...roster], rows = [];
     roster.splice(2);
     try {
-      for (const scenario of ["persistent", "transient", "absent", "curved", "detour"]) {
+      for (const scenario of ["persistent", "transient", "absent", "curved", "detour", "tiny"]) {
         const rectangle = (x, z, tx, tz, x0, x1, z0, z1) => {
           let lo = 0, hi = 1;
           for (const [p, d, a, b] of [[x, tx - x, x0, x1], [z, tz - z, z0, z1]]) {
@@ -11280,7 +11280,8 @@ record("character visibility source bakes: ownership wrappers share exact immuta
           }
           return true;
         };
-        const clear = (x, z, tx, tz) => !rectangle(x, z, tx, tz, -1, -0.2, -6.2, -5.4) && !rectangle(x, z, tx, tz, 0.2, 1, -6.2, -5.4);
+        let queries = 0;
+        const clear = (x, z, tx, tz) => { queries++; return !rectangle(x, z, tx, tz, -1, -0.2, -6.2, -5.4) && !rectangle(x, z, tx, tz, 0.2, 1, -6.2, -5.4); };
         const centerlines = scenario === "curved" ? [[{ x: 0, z: -6 }, { x: 0, z: -8 }, { x: 2, z: -8 }, { x: 2, z: 0 }, { x: 0, z: 0 }]] : [[{ x: 0, z: -10 }, { x: 0, z: 10 }]];
         const island = { path: { version: 0, debug: { active: false, ringCenterRadius: 0 }, centerlines }, surfaceAt: () => 0, isPath: () => true };
         const npcPaths = BL.npcPaths.create({ island, walkable: clear });
@@ -11300,24 +11301,27 @@ record("character visibility source bakes: ownership wrappers share exact immuta
             actor.nextBuildAt = actor.yawnAt = actor.act.until = 1e12; actor.walk = null; actor.act.kind = "eat"; actor.bedroll = null;
           }
           c.override = c.state = "working"; blocker.override = blocker.state = "chilling";
-          blocker.root.visible = scenario === "persistent" || scenario === "transient";
+          blocker.root.visible = scenario === "persistent" || scenario === "transient" || scenario === "tiny";
           Object.assign(c.root.position, { x: 0, y: c.baseY, z: -6 }); Object.assign(blocker.root.position, { x: 0, y: blocker.baseY, z: -5.25 });
           c.act.kind = "wander"; Object.assign(c.act.spot, { x: 0, z: 0, ry: 0 });
           c.walk = { tx: 0, tz: 0, speed: 1.7, phase: 0, heading: 0, to: "spot" }; npcPaths.target(c, 0, scenario === "detour" ? 8 : 0);
-          let frames = 0, maximumStep = 0, separation = Infinity, collisions = 0;
+          let frames = 0, maximumStep = 0, separation = Infinity, collisions = 0, tinyQueries = null;
           for (; frames < 160 && c.walk; frames++) {
             if (scenario === "transient" && frames === 20) blocker.root.visible = false;
             const p = c.root.position, x = p.x, z = p.z; crew.update(1 / 20, frames / 20); S.updateWorld(root);
             maximumStep = Math.max(maximumStep, Math.hypot(p.x - x, p.z - z)); if (!clear(x, z, p.x, p.z)) collisions++;
             if (blocker.root.visible) separation = Math.min(separation, Math.hypot(p.x - blocker.root.position.x, p.z - blocker.root.position.z));
+            if (scenario === "tiny" && tinyQueries === null && c.avoidance.navigation.mode === 1) {
+              queries = 0; crew.update(0.0001, frames / 20 + 0.0001); tinyQueries = queries;
+            }
           }
-          rows.push({ scenario, frames, maximumStep, separation, collisions, arrived: !c.walk, resets: c.progress.resets, jumps: c.avoidance.navigation.jumps, searches: c.avoidance.navigation.searches });
+          rows.push({ scenario, frames, maximumStep, separation, collisions, tinyQueries, arrived: !c.walk, resets: c.progress.resets, jumps: c.avoidance.navigation.jumps, searches: c.avoidance.navigation.searches });
         } finally { crew.dispose(); }
       }
       record("NPC recovery: changing look-ahead hints retain progress and search around real bodies without relocation; clear straight and curved routes need no search",
         rows.every(r => r.arrived && r.frames < 160 && r.maximumStep <= 1.7 / 20 + 1e-6 && r.separation >= 0.68 - 1e-6 && !r.collisions && !r.resets && !r.jumps)
           && rows[0].searches === 1 && !rows[2].searches && rows[2].frames === 72 && !rows[3].searches && rows[3].frames === 143
-          && !rows[4].searches, JSON.stringify(rows));
+          && !rows[4].searches && rows[5].tinyQueries > 0 && rows[5].tinyQueries <= 2000, JSON.stringify(rows));
     } finally { roster.splice(0, roster.length, ...savedRoster); }
   }
   {

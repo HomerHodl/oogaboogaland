@@ -3829,7 +3829,7 @@
       }
       if (cave.traffic.waiting) return 0;
       const nav = cave.avoidance.navigation;
-      if (nav.mode === 1) { searchWalker(cave, cave.avoidance.tx, cave.avoidance.tz, Math.min(distance, PLAYER_STEP)); return 0; }
+      if (nav.mode === 1) { searchWalker(cave, cave.avoidance.tx, cave.avoidance.tz, NAV_STEP); return 0; }
       if (nav.mode === 3) { jumpWalker(cave, cave.avoidance.tx, cave.avoidance.tz); return 0; }
       if (nav.mode === 4) return 0;
       if (nav.mode === 2) {
