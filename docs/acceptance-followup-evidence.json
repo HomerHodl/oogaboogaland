@@ -2674,5 +2674,113 @@
       }
     },
     "readiness": "Draft unchanged; no merge, deployment or new production repair."
+  },
+  "independentReviewMergeAndA1A3Diagnostics": {
+    "date": "2026-10-07",
+    "scope": "Documentation of repairs, merge, terminal suite and bounded diagnostics; no assertion, deadline, quality, outline, particle or FPS target weakened.",
+    "independentReview": {
+      "head": "687aa53",
+      "fixes": [
+        "BVH bake-sharing engagement",
+        "rig mode opt-in",
+        "matrixReceiverCache keying",
+        "two comment contracts"
+      ],
+      "unitPassed": 197,
+      "unitTotal": 197,
+      "proofCases": 223
+    },
+    "merge": {
+      "commit": "cacf8cf",
+      "rock": "e1ec73854c8455f88137342fed202aeb9875215d",
+      "runnerDefectRepair": {
+        "commit": "54ebb69",
+        "reproducesOnRockAlone": true,
+        "rockLocation": "test/run.mjs:9466",
+        "mechanism": "cycle-safe Set-based replacer emits a fixed marker for already-seen objects; parent key retained; identical structures stringify identically; recreate-visit comparison at the canonical update time",
+        "unitBefore": "TypeError: Converting circular structure to JSON",
+        "unitPassed": 197,
+        "unitTotal": 197
+      },
+      "mergeInducedRegressions": {
+        "count": 8,
+        "fixCommits": [
+          "eaefe1f",
+          "76679cb",
+          "49ab840",
+          "839934c"
+        ],
+        "expectationUpdates": [
+          "pier walk x tolerance 1cm to 5cm: pier bollard render meshes are intended collision shells; measured ~1.4cm shoulder-steering veer; all safety terms asserted",
+          "interior exit floor measured against the scene's real support instead of raw terrain: solid-prop movement correctly stands the avatar on the raised threshold"
+        ]
+      }
+    },
+    "terminalSuite": {
+      "head": "839934c",
+      "coverage": "all 28 scenes + perf lane + unit tier + poker protocol, LANES=1",
+      "passed": 1059,
+      "total": 1074,
+      "failureClassification": {
+        "knownDocumentedBlockers": [
+          "covered donation 33.689 FPS Low vs >=55 High target"
+        ],
+        "flakyNotReproduced": [
+          "ordinary movement p95",
+          "DSB 8-second travel deadline"
+        ],
+        "preExistingBothParents": 14,
+        "unexplained": 0
+      },
+      "totalGrowthNote": "1068 to 1074 because two previously-aborting tasks (shoreline piers, DSB lifecycle) now complete"
+    },
+    "a1OverflowCensus": {
+      "outcomeIdentityProof": "512/512 queries, zero mismatches",
+      "liveCapacityFallbackShare": 0,
+      "reuseQueriesPerCell": 3.86,
+      "breakEvenQueriesPerCell": 33,
+      "fillScans": 60945234,
+      "queryPhaseSavingTestsPerQuery": 9.9,
+      "verdict": "exact-overflow-index family dead at the construction term"
+    },
+    "a2RayVolumeCensus": {
+      "dominantCaller": "sight-guides object-contour march (ownerBoundaryAt)",
+      "raysPerFrame": 51905,
+      "triangleCalls": 42343819,
+      "wallMsPerFrame": 24,
+      "negativeScanShare": 0.808,
+      "frameRepeatShare": 0.701,
+      "frameRepeatAgreement": 0.989,
+      "withinFrameExactDuplicateShare": 0.126
+    },
+    "a3UnionRayMemo": {
+      "verdict": "rejected and reverted",
+      "serveRate": 0.15,
+      "serveErrorRate": 0.204,
+      "serveErrorRateTightCamera": 0.187,
+      "bitwiseKeyServes": 0,
+      "bitwiseKeyQueries": 4504730,
+      "explanation": "A2's 0.77% was agreement among repeated keys; a quantized cache assigns results to genuinely different rays in the bucket, measured 20.4% wrong by exhaustive serve-time equivalence; exact keys hit zero"
+    },
+    "c3StorageRace": {
+      "commit": "31e807d",
+      "verdict": "harness-only; fixed",
+      "mechanism": "pooled reset cleared localStorage on the live page; debounced board save timer or pagehide save re-wrote it before the page died",
+      "fix": "capture page origin up front; after blank-page confirmation clear local storage for that origin via the Storage domain",
+      "negativeControl": "timer and pagehide writes retained with mop-up disabled",
+      "proofCheck": "browser reset: a final timer or pagehide storage write cannot survive into the next pooled task"
+    },
+    "publishedArtifacts": {
+      "branch": "acceptance-repairs-evidence",
+      "commit": "0b79cd7",
+      "missingOriginals": "rejected overflow-index patch, its perf logs and proof payloads, synced-rock logs, earlier stall/attribution/census reports: not found on this machine; recorded SHA-256s preserved in evidence/README.md"
+    },
+    "openItems": {
+      "coveredFps": "open; architectural scope under #128 (GPU-adjacent outlines); A2 shows CPU-side query volume, not a cacheable or indexable structure",
+      "travelStall": "intermittent; no causal attribution",
+      "weatherTierBoundContract": "decision pending Harry",
+      "playTesting": "outstanding",
+      "upstreamRock": "4750ede, +3 zone/voice commits, not merged here; addresses no open item"
+    }
   }
 }
