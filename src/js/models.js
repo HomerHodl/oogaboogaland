@@ -590,7 +590,8 @@
   // adds its own look through `dress` hooks, each called with the build kit `k` at a fixed
   // point, so the hashed jitter draws in the same order for every build:
   //   torso(k, v)  before the belly holes       club(k)      the left-hand item
-  //   gear(k)      arm and body attachments      skull(k, v)  replaces the head block
+  //   gun(k)       the rifle's look              gear(k)      arm and body attachments
+  //   skull(k, v)  replaces the head block
   //   crown(k, v)  hats and hair over the head    eyes(k, v)   replaces the eyes
   //   mark(k, v)   face paint after the pupils    hatY(k)      where swag hats sit
   //   headgear(k)  nodes on the head              extras(k)    nodes on the root, last
@@ -743,10 +744,14 @@
     const clubV = club.voxels || clubVoxels(rand);
     const clubOrigin = { x: -1 * u, y: -1 * u, z: -1 * u };
     const clubRest = club.rest || CLUB_REST, clubCarry = club.carry || clubRest;
+    // gun(k) returns { default, gold } geometry in the rifle's own space: the same grip, sights,
+    // muzzle (z 0.67 h) and magazine, since shots and the ammo bananas keep them;
+    // `magazine: false` leaves the magazine off and hangs no ammo bananas.
+    const gun = dress.gun ? dress.gun(k) : {};
     const skins = {
       club: club.default ? { default: club.default, gold: club.gold }
         : { default: voxelGeometry(clubV, { unit: u, palette: club.palette || CLUB_PALETTE, origin: clubOrigin }), gold: voxelGeometry(clubV, { unit: u, palette: club.goldPalette || GOLD_CLUB_PALETTE, origin: clubOrigin }) },
-      gun: { default: gunGeometry(h, GUN_PALETTE), gold: gunGeometry(h, GOLD_GUN_PALETTE) }
+      gun: gun.default ? { default: gun.default, gold: gun.gold, magazine: gun.magazine !== false } : { default: gunGeometry(h, GUN_PALETTE), gold: gunGeometry(h, GOLD_GUN_PALETTE), magazine: true }
     };
     parts.club = createNode({
       position: { x: 0, y: -0.62 * h, z: 0.08 * h },
@@ -767,7 +772,7 @@
     parts.gunBody = createNode({ geometry: skins.gun.default });
     addChild(parts.gun, parts.gunBody);
     parts.gunBananas = [];
-    for (let i = 0; i < 9; i++) {
+    if (gun.magazine !== false) for (let i = 0; i < 9; i++) {
       const curve = i * 5 / 8;
       const round = createNode({ geometry: magazineBananaGeometry(), position: { x: 0, y: (-0.1063 - i * 0.023) * h, z: (0.045 + curve * curve * 0.0018) * h }, rotation: { x: 0, y: Math.PI / 2, z: 0 }, scale: { x: 0.135 * h, y: 0.175 * h, z: 0.11 * h } });
       round.ammoPopAt = -Infinity;

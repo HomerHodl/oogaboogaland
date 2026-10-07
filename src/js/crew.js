@@ -879,8 +879,9 @@
       const magazineHandRotation = magazineModel.handRotation, magazineArmRotation = magazineModel.armRotation;
       const magazineArmStart = magazineModel.armStart, magazineArmRest = magazineModel.armRest;
       const node = magazineModel.node, loading = reloadingSpare(holder) && holder.weapon.reloadMagazine === index;
-      node.visible = !(holder.state === "sleeping" && holder.bedroll?.outdoor);
       const swapping = holder.weapon.swapTime > 0 && holder.weapon.swapMagazine === index;
+      // A gun built without a magazine is topped up by an empty hand: the spare stays out of sight while it swaps.
+      node.visible = !(holder.state === "sleeping" && holder.bedroll?.outdoor) && !(swapping && !holder.skins.gun.magazine);
       const parent = swapping ? holder.root : loading ? holder.parts.armR : holder.parts.torso;
       const attached = !node.parent;
       if (node.parent !== parent) {

@@ -2969,7 +2969,7 @@ const contributorActivityChecks = async () => {
 const characterChecks = async () => {
   const context = { window: {}, URLSearchParams, location: { search: "" } };
   for (const name of CONTRIBUTOR_SOURCES) runInNewContext(await readFile(new URL(`../src/js/${name}.js`, import.meta.url), "utf8"), context);
-  const BL = context.window.BL, all = BL.characters.all(), hooks = ["torso", "club", "gear", "skull", "crown", "eyes", "mark", "hatY", "headgear", "extras", "tint"];
+  const BL = context.window.BL, all = BL.characters.all(), hooks = ["torso", "club", "gun", "gear", "skull", "crown", "eyes", "mark", "hatY", "headgear", "extras", "tint"];
   const rows = all.map((c) => {
     const traits = BL.contributors.traitsFor(c.handle), m = BL.models.caveman(traits);
     // A second colourway has to pair every voxel part both ways, heads included,
