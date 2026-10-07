@@ -1899,6 +1899,7 @@
     if (avatar) world.pilot = avatar.traits.name;
     unsubscribeAccount();
     unsubscribeAccount = null;
+    BL.net.setBody(null);
     prizeUi.panel.removeEventListener("click", onPrizeClick);
     prizeUi.panel.hidden = true;
     window.removeEventListener("keydown", armsKeys, true);

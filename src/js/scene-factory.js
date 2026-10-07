@@ -1277,6 +1277,7 @@
     unsubscribe = null;
     unsubscribeAccount();
     unsubscribeAccount = null;
+    BL.net.setBody(null);
     for (const node of [scene.switchLabel]) if (node.owned) {
       renderer.releaseGeometry(node.face.geometry);
       renderer.releaseGeometry(node.back.geometry);
