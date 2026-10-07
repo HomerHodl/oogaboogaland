@@ -6,7 +6,12 @@
   const meshes = new WeakMap(), sourceVertices = new WeakMap();
   const meshOf = (geometry, trackSource = false) => {
     let mesh = meshes.get(geometry);
-    if (mesh) return mesh;
+    // A direct bake can precede the first wrapper alias attempt. Record the
+    // snapshot lazily so a later wrapper can still share this source's bake.
+    if (mesh) {
+      if (trackSource && !sourceVertices.has(geometry)) sourceVertices.set(geometry, new Float64Array(mesh.vertices));
+      return mesh;
+    }
     // Cave ownership changes material tags, not triangle topology. Reuse the
     // immutable source bake across visits only when every index array agrees.
     const source = geometry.matrixSourceGeometry;

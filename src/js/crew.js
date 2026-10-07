@@ -4238,6 +4238,8 @@
         }
         const near = Math.hypot(cave.root.position.x - work.position.x, cave.root.position.z - work.position.z) < 1.5;
         work.blockedTime = occupied && near ? work.blockedTime + dt : 0;
+        // An occupied place re-invokes the site's position hook every 0.8 s by
+        // design. It is also the place-cycling hook, so it must be total and bounded.
         if (work.blockedTime >= 0.8 && site.position) {
           work.blockedTime = 0;
           const x = work.position.x, y = work.position.y, z = work.position.z, place = work.place;

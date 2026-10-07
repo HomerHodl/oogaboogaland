@@ -348,13 +348,15 @@
     const hasMatrixReceiver = (node) => {
       const g = node.geometry;
       if (matrixModeOf(node) || node.tip || g.matrixCave || g.matrixRevealBacking || g.matrixWorldGlyphSurface) return true;
-      let receiver = matrixReceiverCache.get(g);
-      if (receiver !== undefined) return receiver;
-      receiver = false;
+      // Face flags are mutable until first render, so a cached verdict holds
+      // only while the face array is the same object.
+      let entry = matrixReceiverCache.get(g);
+      if (entry && entry.faces === g.faces) return entry.receiver;
+      let receiver = false;
       if (g.faces) for (const face of g.faces) {
         if (face.matrixCave || face.matrixPermanentFallback || face.matrixLocalGlyphSurface || face.matrixWorldGlyphSurface || face.color?.[3] < 0) { receiver = true; break; }
       }
-      matrixReceiverCache.set(g, receiver);
+      matrixReceiverCache.set(g, { faces: g.faces, receiver });
       return receiver;
     };
     const outsideView = (node) => {

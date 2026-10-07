@@ -10452,6 +10452,10 @@ const visibilitySourceBakeProof = () => {
     const truncated=wrapper();truncated.faces.pop();check(meshOf(truncated)!==baked,'Face count changed');
     const cyclic=wrapper();cyclic.matrixSourceGeometry=cyclic;check(!!meshOf(cyclic),'Self reference failed');
     const a=wrapper(),b=wrapper();a.matrixSourceGeometry=b;b.matrixSourceGeometry=a;check(!!meshOf(a),'Source cycle failed');
+    // A direct non-tracking bake of the source can precede the first wrapper alias attempt.
+    const plain={verts:new Float64Array([0,0,0, 1,0,0, 0,1,0, 0,0,1]),faces:[{i:[0,1,2]},{i:[0,2,3]}]};
+    const plainBake=meshOf(plain), alias={...plain,faces:plain.faces.map(f=>({...f,matrixCave:2,matrixLocalGlyphSurface:true})),matrixSourceGeometry:plain};
+    check(meshOf(alias)===plainBake,'Direct bake blocks wrapper sharing');
     // Each rejected wrapper remains exactly equivalent to a fresh geometry bake.
     for(const g of [changedVerts,changedFaces,reordered,truncated]){const fresh={verts:g.verts,faces:g.faces};const l=meshOf(g),r=meshOf(fresh);check(JSON.stringify(Array.from(l.indices))===JSON.stringify(Array.from(r.indices)),'Rejected topology differs');check(JSON.stringify(Array.from(l.order))===JSON.stringify(Array.from(r.order)),'Rejected ordering differs');}
     source.verts[0]=.125;

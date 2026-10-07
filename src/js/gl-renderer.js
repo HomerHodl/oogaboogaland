@@ -3257,7 +3257,9 @@ void main() {
       gl.drawArrays(gl.TRIANGLES, 0, 3);
     };
     let collectForRender = collect, cullForRender = writeCullSphere, uploadForRender = uploadInstances;
-    const render = (root, camera, opts = {}, meshRigs = opts.meshRigs ?? rigProgramsRequested) => {
+    // Rig mode is per-call opt-in: the director passes the scene's choice
+    // explicitly every frame, so snapshot callers never inherit a live rig.
+    const render = (root, camera, opts = {}, meshRigs = opts.meshRigs === true) => {
       if (lost || !pollPrograms()) return false;
       rigMode = !!meshRigs && !!rigPrograms;
       if (rigMode && !pollRigPrograms()) return false;
