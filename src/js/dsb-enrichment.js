@@ -159,7 +159,7 @@
     for(const [text,cx,cz] of [["APOLLO'S COVE",34,67],["AEGEAN RUINS",69,16],["HARBOR",-20,35]]){
       let spot=null;for(let i=0;i<30&&!spot;i++){const a=i*2.4,r=i*.15,x=cx+Math.cos(a)*r,z=cz+Math.sin(a)*r;if(land.clearAt(x,z,1.9)&&!reserved(x,z,1.7,text==="HARBOR")&&!placements.some(p=>p.r&&Math.hypot(x-p.x,z-p.z)<p.r+1.8))spot={x,z};}
       if(!spot)continue;const {x,z}=spot,y=Math.min(land.heightAt(x-.06,z),land.heightAt(x+.06,z),land.heightAt(x,z-.06),land.heightAt(x,z+.06))-.025,g=S.createNode({position:{x,y,z},sightHidden:true});S.addChild(group,g);
-      placements.push({kind:"wayfinding",x,y,z,r:1.7,region:"wayfinding"});
+      placements.push({kind:"wayfinding",x,y,z,r:1.7,region:"wayfinding",node:g});
       BL.dsbModels.block(g,"#94704a",0,.8,0,.12,1.6,.12);BL.dsbModels.block(g,"#eadcc0",0,1.5,0,3.2,.65,.14);BL.dsbModels.sign(g,text,0,1.34,.09,Math.min(.32,2.8/(text.length*.64)),"#376e9a");
     }
     // Bounded contact foam follows the mean-water contour extracted from the approved mesh.

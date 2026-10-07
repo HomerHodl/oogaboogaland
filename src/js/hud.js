@@ -101,6 +101,24 @@
     el.replaceChildren(signLettering(text));
   };
   for (const el of document.querySelectorAll("[data-sign]")) letterSign(el);
+  // The roster's voice mark, a 9x9 pixel speaker; the stylesheet shows the parts each state needs.
+  const VOICE_PARTS = [
+    ["voice-speaker", "M0 3h2v3H0zM2 2h1v5H2zM3 1h1v7H3z"],
+    ["voice-near", "M5 3h1v3H5z"],
+    ["voice-far", "M7 2h1v5H7z"],
+    ["voice-cross", "M5 3h1v1H5zM7 3h1v1H7zM6 4h1v1H6zM5 5h1v1H5zM7 5h1v1H7z"],
+    ["voice-slash", "M0 0h1v1H0zM1 1h1v1H1zM2 2h1v1H2zM3 3h1v1H3zM4 4h1v1H4zM5 5h1v1H5zM6 6h1v1H6zM7 7h1v1H7zM8 8h1v1H8z"],
+  ];
+  const voiceIcon = document.createElementNS(SIGN_NS, "svg");
+  voiceIcon.setAttribute("viewBox", "0 0 9 9");
+  voiceIcon.setAttribute("aria-hidden", "true");
+  for (const [part, d] of VOICE_PARTS) {
+    const path = document.createElementNS(SIGN_NS, "path");
+    path.setAttribute("class", part);
+    path.setAttribute("d", d);
+    path.setAttribute("fill", "currentColor");
+    voiceIcon.append(path);
+  }
   // Icons are rasterized once into an offscreen canvas.
   const ICON_PX = 48;
   const renderIcon = (item) => {
@@ -319,6 +337,20 @@
       const name = document.createElement("span");
       name.className = "roster-name";
       name.textContent = contributor.display;
+      // The signed-in player on this Ooga, when there is one: the room's host and their voice.
+      const marks = document.createElement("span"), host = document.createElement("span"), voice = document.createElement("button");
+      marks.className = "roster-marks";
+      host.className = "roster-host";
+      host.hidden = true;
+      host.setAttribute("role", "img");
+      host.setAttribute("aria-label", "Host: runs the Oogas for everyone");
+      host.title = "Host: runs the Oogas for everyone";
+      voice.className = "roster-voice";
+      voice.type = "button";
+      voice.hidden = true;
+      voice.append(voiceIcon.cloneNode(true));
+      marks.append(host, voice);
+      name.append(marks);
       const age = document.createElement("span");
       age.className = "roster-age";
       age.append(BL.contributors.contributionAgeLabel(contributor));
@@ -333,10 +365,18 @@
       }
       li.append(presence, name, age, state);
       el.roster.append(li);
-      rosterRows.set(contributor.name, { li, presence, state, age, contributor, rosterIndex, online: false });
+      rosterRows.set(contributor.name, { li, presence, state, age, contributor, rosterIndex, online: false, host, voice, look: "", login: "", hostOn: false, blocked: false, nextLook: "", nextLogin: "", nextHost: false });
     }
     if (!awayRow.parentElement) el.roster.append(awayRow);
     updateAwayButton();
+    on(el.roster, "click", (e) => {
+      const button = e.target.closest(".roster-voice");
+      if (!button || button.disabled) return;
+      button.blur();
+      BL.voice.muteLocal(button.dataset.login, button.getAttribute("aria-pressed") !== "true");
+    });
+    liveRows = rosterRows;
+    showVoices();
     on(awayButton, "click", () => {
       showAway = !showAway;
       awayButton.setAttribute("aria-expanded", String(showAway));
@@ -1710,6 +1750,7 @@
       window.clearTimeout(hintHideTimer);
       window.clearTimeout(copyTimer);
       for (const off of listeners) off();
+      if (liveRows === rosterRows) liveRows = null;
       el.roster.replaceChildren();
       el.inventory.replaceChildren();
       el.toast.classList.remove("show");
@@ -1756,5 +1797,60 @@
     voiceButton.textContent = voice.joining ? "Joining voice" : voice.error && !voice.enabled ? `Voice: ${voice.error}` : !voice.enabled ? "Join voice" : voice.muted ? "Unmute" : "Mute";
     voiceButton.setAttribute("aria-pressed", String(voice.enabled && !voice.muted));
   };
-  BL.hud = { create, renderIcon, signLettering, showAccount, STATE_LABELS, statusFor };
+  // The roster's marks are page-level too: whichever scene's roster is up, each signed-in player's row
+  // (their own Ooga, else the one they drive) shows the host dot and their voice. The director hands every
+  // room and voice change here; only marks that changed are touched, and rows never move for them.
+  let liveRows = null;
+  const VOICE_WORDS = { on: "In voice", speaking: "Speaking", muted: "Muted their microphone" };
+  const voiceRowOf = (login, body) => {
+    const character = BL.net.characterOf(login);
+    return character && liveRows.get(character.handle) || body && liveRows.get(body) || null;
+  };
+  const paintMarks = (row) => {
+    const blocked = !!row.nextLogin && BL.voice.mutedLocally(row.nextLogin);
+    if (row.look !== row.nextLook || row.login !== row.nextLogin || row.blocked !== blocked) {
+      row.look = row.nextLook;
+      row.login = row.nextLogin;
+      row.blocked = blocked;
+      const button = row.voice;
+      button.hidden = !row.look;
+      button.dataset.voice = row.look;
+      button.dataset.login = row.login;
+      button.disabled = !row.login;
+      button.setAttribute("aria-pressed", String(blocked));
+      const words = !row.look ? "" : `${VOICE_WORDS[row.look]}${blocked ? ". Muted for you: click to unmute" : row.login ? ". Click to mute for you" : ""}`;
+      button.title = words;
+      button.setAttribute("aria-label", words);
+    }
+    if (row.hostOn !== row.nextHost) {
+      row.hostOn = row.nextHost;
+      row.host.hidden = !row.hostOn;
+    }
+  };
+  const showVoices = () => {
+    if (!liveRows) return;
+    for (const row of liveRows.values()) {
+      row.nextLook = row.nextLogin = "";
+      row.nextHost = false;
+    }
+    const net = BL.net.state, voice = BL.voice.stats;
+    if (net.room === "live" && net.me) {
+      const self = voiceRowOf(net.me.login, net.body);
+      if (self) {
+        if (voice.enabled) self.nextLook = voice.muted ? "muted" : voice.speaking ? "speaking" : "on";
+        if (net.hostId === net.selfId) self.nextHost = true;
+      }
+      for (const rec of BL.net.remotes.values()) {
+        const row = voiceRowOf(rec.login, rec.body);
+        if (!row) continue;
+        if (rec.voice) {
+          row.nextLook = rec.muted ? "muted" : BL.voice.speaking(rec.id) ? "speaking" : "on";
+          row.nextLogin = rec.login;
+        }
+        if (rec.id === net.hostId) row.nextHost = true;
+      }
+    }
+    for (const row of liveRows.values()) paintMarks(row);
+  };
+  BL.hud = { create, renderIcon, signLettering, showAccount, showVoices, STATE_LABELS, statusFor };
 })();

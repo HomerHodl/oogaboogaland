@@ -1018,6 +1018,88 @@ body[data-active-scene="arcade"] .magazine-hud {
   overflow-wrap: anywhere;
 }
 
+/* A signed-in player's marks follow the name inside its cell, so the roster's columns stay as they are:
+   the host's black dot, then their voice (grey in voice, green speaking, red muted at their end; the
+   slash is this visitor's own mute, which a click on the mark toggles). */
+.roster-marks {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin-left: 6px;
+  vertical-align: middle;
+  white-space: nowrap;
+}
+
+.roster-marks:not(:has(> :not([hidden]))),
+.roster-host[hidden],
+.roster-voice[hidden] {
+  display: none;
+}
+
+.roster-host {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #000;
+  box-shadow: 0 0 0 1px var(--paper);
+}
+
+.roster-voice {
+  display: inline-flex;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.roster-voice svg {
+  width: 12px;
+  height: 12px;
+  shape-rendering: crispEdges;
+}
+
+.roster-voice:disabled {
+  cursor: default;
+}
+
+.roster-voice:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.roster-voice[data-voice="speaking"] {
+  color: var(--ok);
+}
+
+.roster-voice[data-voice="muted"] {
+  color: var(--danger);
+}
+
+.roster-voice .voice-far,
+.roster-voice .voice-cross,
+.roster-voice .voice-slash,
+.roster-voice[data-voice="muted"] .voice-near {
+  display: none;
+}
+
+.roster-voice[data-voice="speaking"] .voice-far,
+.roster-voice[data-voice="muted"] .voice-cross,
+.roster-voice[aria-pressed="true"] .voice-slash {
+  display: inline;
+}
+
+.roster-voice[aria-pressed="true"] {
+  opacity: 0.55;
+}
+
+@media (pointer: coarse) {
+  .roster-voice {
+    padding: 6px;
+    margin: -6px -3px;
+  }
+}
+
 .roster-age {
   color: var(--muted);
   font-size: 10px;

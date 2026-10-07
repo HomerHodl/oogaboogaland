@@ -76,6 +76,40 @@
   let sceneTime = 0;
   let transition = null;
   let fade = 0;
+  const positionDebug = $("position-debug"), POSITION_DEBUG = DEBUG && params.get("pos") !== "0";
+  let positionDebugNext = 0, positionDebugState = "";
+  const positionText = p => `${p.x.toFixed(5)},${p.y.toFixed(5)},${p.z.toFixed(5)}`;
+  const updatePositionDebug = force => {
+    if (!POSITION_DEBUG || !active || active.id === "hub" || !active.camera) return;
+    const debug = active.debug, actor = debug?.pilot?.player || debug?.crew?.player;
+    const actorPosition = actor?.root?.position;
+    const room = debug?.dsb?.interiors?.active?.room?.id;
+    const camera = active.camera;
+    const state = `${active.id}${room ? ` · ${room}` : ""}${actor?.traits?.name ? ` · ${actor.traits.name}` : ""}`
+      + (actorPosition ? `\npos=${positionText(actorPosition)}` : "")
+      + `\ncamera=${positionText(camera.position)}\nlook=${positionText(camera.target)}`;
+    if (!force && state === positionDebugState) return;
+    positionDebugState = state;
+    positionDebug.dataset.copied = "false";
+    positionDebug.textContent = `${state}\nclick to copy debug snapshot`;
+  };
+  const copyPositionDebug = () => {
+    updatePositionDebug(true);
+    const url = new URL(location.href);
+    url.searchParams.set("debug", "1");
+    const value = `${positionDebugState}\nurl=${url.href}`;
+    if (navigator.clipboard?.writeText) navigator.clipboard.writeText(value).catch(() => {});
+    else {
+      const field = document.createElement("textarea");
+      field.value = value;
+      document.body.appendChild(field);
+      field.select();
+      document.execCommand("copy");
+      field.remove();
+    }
+    positionDebug.dataset.copied = "true";
+    positionDebug.blur();
+  };
   const CLOCK_NS = "http://www.w3.org/2000/svg";
   const clockSvg = document.createElementNS(CLOCK_NS, "svg");
   const clockPath = document.createElementNS(CLOCK_NS, "path");
@@ -163,6 +197,7 @@
   const enter = (next, place = null) => {
     ctx.from = active ? active.id : null;
     ctx.place = place;
+    positionDebug.removeEventListener("click", copyPositionDebug);
     for (const el of sceneSections) el.hidden = el.classList.contains("hub-presets") || el.dataset.scene !== next.id;
     for (const el of intros) el.hidden = el.dataset.intro !== next.id;
     // The page styles by scene too: the games hide the island's sheet, see style.css.
@@ -174,6 +209,14 @@
     active = next;
     sceneTime = 0;
     router.arrive(next.id, place, ctx.from === null);
+    if (POSITION_DEBUG && next.id !== "hub") {
+      positionDebug.hidden = false;
+      positionDebug.setAttribute("aria-label", "Debug scene, character and camera state. Click to copy a debug snapshot.");
+      positionDebugState = "";
+      positionDebugNext = 0;
+      positionDebug.addEventListener("click", copyPositionDebug);
+      updatePositionDebug(true);
+    }
   };
   const live = new Set();
   const visit = (node) => {
@@ -303,6 +346,10 @@
     if (transition) stepTransition(dt);
     sceneTime += dt;
     active.update(dt, sceneTime);
+    if (POSITION_DEBUG && active.id !== "hub" && elapsed >= positionDebugNext) {
+      positionDebugNext = elapsed + 0.1;
+      updatePositionDebug(false);
+    }
     agentPlay.update(dt);
     updateWorldClock(now);
     const drawn = renderer.render(active.root, active.camera, active.renderOpts, activeMeshRigs);
@@ -433,6 +480,9 @@
   const net = window.BL.net;
   const unsubscribeAccount = net.subscribe(window.BL.hud.showAccount);
   const unsubscribeVoice = window.BL.voice.subscribe(() => window.BL.hud.showAccount(net.state));
+  // The roster's host dot and voice marks follow the room and voice, on whichever scene's roster is up.
+  const unsubscribeRosterMarks = net.subscribeRoster(window.BL.hud.showVoices);
+  const unsubscribeVoiceMarks = window.BL.voice.subscribe(window.BL.hud.showVoices);
   const accountReady = !params.has("nosim") && params.get("net") !== "0" ? net.start() : Promise.resolve();
   // A tab opened in the background waits for its first look before it holds any socket.
   if (document.hidden) {
@@ -576,12 +626,15 @@
     window.BL.oogatronLive.dispose();
     unsubscribeAccount();
     unsubscribeVoice();
+    unsubscribeRosterMarks();
+    unsubscribeVoiceMarks();
     window.BL.voice.dispose();
     net.dispose();
     window.removeEventListener("keydown", onKeyDown);
     window.removeEventListener("keyup", clearRightShift);
     window.removeEventListener("blur", clearRightShift);
     document.removeEventListener("visibilitychange", onVisibility);
+    positionDebug.removeEventListener("click", copyPositionDebug);
     if (active) active.leave();
     renderer.dispose();
   };

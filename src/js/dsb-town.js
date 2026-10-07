@@ -12,9 +12,10 @@
     const kinds={white:{geometry:M.box({color:"#f8f4ea"}),list:[]},stone:{geometry:M.box({color:"#c8b898"}),list:[]},cap:{geometry:M.box({color:"#e6dcc6"}),list:[]},step:{geometry:M.box({color:"#efe9db"}),list:[]},
       pot:{geometry:BL.dressing.mediterranean("planter"),list:[]},vine:{geometry:BL.dressing.mediterranean("bougainvillea"),list:[]}};
     // Solids are oriented boxes: x, z, half width, half depth, cos, sin. A grid of cells indexes them.
-    const solids=[],grid=new Map(),stats={walls:0,stairs:0,flights:0,gateways:0,pots:0,solids:0};
+    const solids=[],grid=new Map(),stats={walls:0,stairs:0,flights:0,gateways:0,pots:0,solids:0},collision=S.createNode();
     const put=(kind,x,y,z,w,h,d,ry,solid)=>{
       kinds[kind].list.push(x,y,z,w,h,d,ry);
+      if(kind!=="vine")S.addChild(collision,S.createNode({geometry:kinds[kind].geometry,position:{x,y,z},rotation:{x:0,y:ry,z:0},scale:{x:w,y:h,z:d}}));
       if(!solid)return;
       const at=solids.length/6,reach=Math.hypot(w,d)/2+.6;solids.push(x,z,w/2,d/2,Math.cos(ry),Math.sin(ry));
       for(let i=Math.floor((x-reach)/CELL);i<=Math.floor((x+reach)/CELL);i++)for(let j=Math.floor((z-reach)/CELL);j<=Math.floor((z+reach)/CELL);j++){const key=i*4096+j;if(!grid.has(key))grid.set(key,[]);grid.get(key).push(at);}
@@ -106,7 +107,7 @@
       return true;
     };
     const dispose=()=>{S.removeChild(root,group);while(group.children.length)S.removeChild(group,group.children[group.children.length-1]);solids.length=taken.length=0;grid.clear();};
-    return {group,stats,inside,clearSegment,dispose};
+    return {group,collision,stats,inside,clearSegment,dispose};
   };
   BL.dsbTown={create};
 })();
