@@ -1,7 +1,7 @@
 {
   "base": "8c11e150d310733d24f79bc150ec941b3e8f4b90",
-  "testedCodeHead": "5b88453ea165c7a3f4a99dcb5994c7c481e53a75",
-  "status": "Draft: composed repair chunk passes units/Worker/build/site/syntax; original source-page browser acceptance and performance targets remain unresolved",
+  "testedCodeHead": "9c74d969e20f6888234d1b93587f671c7d0a32ee",
+  "status": "Draft: final composed targeted acceptance 271/273; original DSB/Factory travel deadlines and both FPS targets fail; local gates pass",
   "priorPublication": {
     "testedCodeHead": "c5a290873d2d3007ce6919a323c21833fd5360d2",
     "base": "81fd9d1fb8c1563dff1a93d318e03c0ef6da5d74",
@@ -1657,92 +1657,6 @@
     "scope": "Actual-source visible-far full-roster pocket, baseline relocation vs candidate safe arrival",
     "result": "No material roster-cost regression established; speculative broadphase optimization excluded"
   },
-  "rootComposedLocalValidation": {
-    "unit": {
-      "exit": 0,
-      "seconds": 38.22624241700396
-    },
-    "worker": {
-      "exit": 0,
-      "seconds": 0.9631632920063566
-    },
-    "build": {
-      "exit": 0,
-      "seconds": 1.024096749984892
-    },
-    "site": {
-      "exit": 0,
-      "seconds": 1.6797342079808004
-    },
-    "syntax": {
-      "files": [
-        {
-          "file": "src/js/agent.js",
-          "exit": 0
-        },
-        {
-          "file": "src/js/canvas-renderer.js",
-          "exit": 0
-        },
-        {
-          "file": "src/js/character-visibility.js",
-          "exit": 0
-        },
-        {
-          "file": "src/js/crew.js",
-          "exit": 0
-        },
-        {
-          "file": "src/js/director.js",
-          "exit": 0
-        },
-        {
-          "file": "src/js/dsb-exterior.js",
-          "exit": 0
-        },
-        {
-          "file": "src/js/gl-renderer.js",
-          "exit": 0
-        },
-        {
-          "file": "src/js/pilot.js",
-          "exit": 0
-        },
-        {
-          "file": "src/js/racers.js",
-          "exit": 0
-        },
-        {
-          "file": "src/js/scene-hub.js",
-          "exit": 0
-        },
-        {
-          "file": "src/js/scene-race.js",
-          "exit": 0
-        },
-        {
-          "file": "test/browser.mjs",
-          "exit": 0
-        },
-        {
-          "file": "test/run.mjs",
-          "exit": 0
-        }
-      ],
-      "exit": 0
-    },
-    "whitespace": {
-      "exit": 0
-    },
-    "head": "5b88453ea165c7a3f4a99dcb5994c7c481e53a75",
-    "lint": "No lint command configured",
-    "unitPassed": 196,
-    "unitTotal": 196,
-    "workerPassed": 39,
-    "workerTotal": 39,
-    "sitePages": 11,
-    "siteCards": 9
-  },
   "continuationSerialIncompleteNativeAttempt": {
     "variant": "followup-current",
     "head": "5b88453ea165c7a3f4a99dcb5994c7c481e53a75",
@@ -1834,5 +1748,228 @@
     "remainingFailure": "dsb zuzu conversation: TypeError reading removed audio.duration"
   },
   "historicalSourceAndTestFingerprint": "b0daa21b901db9e8fad0b17a98d03c9d1b39c5536e6a0f02f15658f07f715539",
-  "currentSourceAndTestFingerprint": "ce74f9e70532c88e1f9f1aa8d822391873a349a0392c9a31b86c9ba4cb4d5144"
+  "currentSourceAndTestFingerprint": "82129ad8945abe6d4e546980888204cd81101d052558e26edaca52bfdfb0c806",
+  "previousComposedLocalValidation": {
+    "unit": {
+      "exit": 0,
+      "seconds": 38.22624241700396
+    },
+    "worker": {
+      "exit": 0,
+      "seconds": 0.9631632920063566
+    },
+    "build": {
+      "exit": 0,
+      "seconds": 1.024096749984892
+    },
+    "site": {
+      "exit": 0,
+      "seconds": 1.6797342079808004
+    },
+    "syntax": {
+      "files": [
+        {
+          "file": "src/js/agent.js",
+          "exit": 0
+        },
+        {
+          "file": "src/js/canvas-renderer.js",
+          "exit": 0
+        },
+        {
+          "file": "src/js/character-visibility.js",
+          "exit": 0
+        },
+        {
+          "file": "src/js/crew.js",
+          "exit": 0
+        },
+        {
+          "file": "src/js/director.js",
+          "exit": 0
+        },
+        {
+          "file": "src/js/dsb-exterior.js",
+          "exit": 0
+        },
+        {
+          "file": "src/js/gl-renderer.js",
+          "exit": 0
+        },
+        {
+          "file": "src/js/pilot.js",
+          "exit": 0
+        },
+        {
+          "file": "src/js/racers.js",
+          "exit": 0
+        },
+        {
+          "file": "src/js/scene-hub.js",
+          "exit": 0
+        },
+        {
+          "file": "src/js/scene-race.js",
+          "exit": 0
+        },
+        {
+          "file": "test/browser.mjs",
+          "exit": 0
+        },
+        {
+          "file": "test/run.mjs",
+          "exit": 0
+        }
+      ],
+      "exit": 0
+    },
+    "whitespace": {
+      "exit": 0
+    },
+    "head": "5b88453ea165c7a3f4a99dcb5994c7c481e53a75",
+    "lint": "No lint command configured",
+    "unitPassed": 196,
+    "unitTotal": 196,
+    "workerPassed": 39,
+    "workerTotal": 39,
+    "sitePages": 11,
+    "siteCards": 9
+  },
+  "rootComposedLocalValidation": {
+    "head": "9c74d969e20f6888234d1b93587f671c7d0a32ee",
+    "results": [
+      {
+        "check": "worker",
+        "exit": 0
+      },
+      {
+        "check": "build",
+        "exit": 0
+      },
+      {
+        "check": "site",
+        "exit": 0
+      },
+      {
+        "syntax": "src/js/agent.js",
+        "exit": 0
+      },
+      {
+        "syntax": "src/js/canvas-renderer.js",
+        "exit": 0
+      },
+      {
+        "syntax": "src/js/character-visibility.js",
+        "exit": 0
+      },
+      {
+        "syntax": "src/js/crew.js",
+        "exit": 0
+      },
+      {
+        "syntax": "src/js/director.js",
+        "exit": 0
+      },
+      {
+        "syntax": "src/js/dsb-exterior.js",
+        "exit": 0
+      },
+      {
+        "syntax": "src/js/gl-renderer.js",
+        "exit": 0
+      },
+      {
+        "syntax": "src/js/pilot.js",
+        "exit": 0
+      },
+      {
+        "syntax": "src/js/racers.js",
+        "exit": 0
+      },
+      {
+        "syntax": "src/js/scene-hub.js",
+        "exit": 0
+      },
+      {
+        "syntax": "src/js/scene-race.js",
+        "exit": 0
+      },
+      {
+        "syntax": "test/browser.mjs",
+        "exit": 0
+      },
+      {
+        "syntax": "test/run.mjs",
+        "exit": 0
+      },
+      {
+        "check": "whitespace",
+        "exit": 0
+      }
+    ],
+    "units": {
+      "passed": 197,
+      "total": 197,
+      "includedInTargetedRun": true
+    },
+    "worker": {
+      "passed": 39,
+      "total": 39
+    },
+    "lint": "No configured lint command"
+  },
+  "currentTargetedAcceptance": {
+    "variant": "followup-current",
+    "head": "9c74d969e20f6888234d1b93587f671c7d0a32ee",
+    "command": "VERBOSE=1 LANES=1 ONLY='work movement cave trips,gorilla roof descent,gorilla work apron descent,chilling Ooga placement,gorilla lab exit through Oogas,Oogas walk over gorillas,nature checkpoint,dsb zuzu conversation,dsb lifecycle,factory lifecycle' npm test -- hub factory dsb",
+    "startedAt": "2026-10-07T01:34:06.783302+00:00",
+    "sourceAndTestBefore": "82129ad8945abe6d4e546980888204cd81101d052558e26edaca52bfdfb0c806",
+    "provenanceCaptureNote": "Fingerprint captured after command launch/build, before browser assertions; generated build artifact is excluded.",
+    "finishedAt": "2026-10-07T01:37:49.125308+00:00",
+    "sourceAndTestAfter": "82129ad8945abe6d4e546980888204cd81101d052558e26edaca52bfdfb0c806",
+    "unchanged": true,
+    "exit": 1,
+    "summary": "271/273 checks passed in 3.7 min",
+    "failures": [
+      "FAIL dsb lifecycle \u00b7 Error: Scene travel did not settle: {\"wanted\":\"hub\",\"scene\":\"hub\",\"accepted\":true,\"trail\":[{\"state\":\"dsb:false\",\"at\":370.30000001192093,\"frames\":230},{\"state\":\"dsb:true\",\"at\":621.5,\"frames\":231},{\"state\":\"hub:true\",\"at\":9723.300000011921,\"frames\":233}],\"framesTotal\":4,\"hidden\":false,\"focus\":true,\"requested\":true,\"tweens\":9,\"framesSinceSwap\":0,\"swap\":9723}",
+      "FAIL factory lifecycle \u00b7 Error: Scene travel did not settle: {\"wanted\":\"hub\",\"scene\":\"hub\",\"accepted\":true,\"trail\":[{\"state\":\"lab:false\",\"at\":18.899999976158142,\"frames\":627},{\"state\":\"lab:true\",\"at\":32.19999998807907,\"frames\":628},{\"state\":\"hub:true\",\"at\":2559.2999999821186,\"frames\":641}],\"framesTotal\":17,\"hidden\":false,\"focus\":true,\"requested\":true,\"tweens\":9,\"framesSinceSwap\":2,\"swap\":2559}"
+    ],
+    "infrastructureRetries": 0
+  },
+  "currentPerformance": {
+    "variant": "followup-current",
+    "head": "9c74d969e20f6888234d1b93587f671c7d0a32ee",
+    "command": "VERBOSE=1 LANES=1 npm run test:perf",
+    "startedAt": "2026-10-07T01:37:55.060700+00:00",
+    "sourceAndTestBefore": "82129ad8945abe6d4e546980888204cd81101d052558e26edaca52bfdfb0c806",
+    "provenanceCaptureNote": "Fingerprint captured after launch/build before benchmark result; no source edits occurred.",
+    "finishedAt": "2026-10-07T01:38:14.881939+00:00",
+    "sourceAndTestAfter": "82129ad8945abe6d4e546980888204cd81101d052558e26edaca52bfdfb0c806",
+    "unchanged": true,
+    "exit": 1,
+    "summary": "1/3 checks passed in 0.3 min",
+    "failures": [
+      "FAIL wall movement performance: ordinary movement stays responsive at a high-density desktop size \u00b7 {\"fps\":55.01953592217526,\"p95\":33.29999999999927,\"max\":200,\"worst\":{\"gap\":209.90000000596046,\"at\":616.5999999999995,\"updateMs\":3.4000000059604645,\"renderMs\":2.7999999821186066,\"overlayMs\":6.4000000059604645,\"donated\":false},\"outlined\":0,\"samples\":276,\"travel\":5.552874999999981,\"donated\":false,\"particles\":0,\"quality\":\"high\"}",
+      "FAIL wall movement performance: moving behind cave walls during a donation stays responsive at a high-density desktop size \u00b7 {\"fps\":30.20007550018876,\"p95\":50,\"max\":66.60000000000036,\"worst\":{\"gap\":66.40000000596046,\"at\":3016.5999999999985,\"updateMs\":22.69999998807907,\"renderMs\":2.800000011920929,\"overlayMs\":34,\"donated\":true},\"outlined\":152,\"samples\":152,\"travel\":3.7494499999999764,\"donated\":true,\"particles\":26,\"quality\":\"low\"}"
+    ],
+    "infrastructureRetries": 0
+  },
+  "certifiedEmptyPeerRepair": {
+    "codeHead": "9c74d969e20f6888234d1b93587f671c7d0a32ee",
+    "scope": "Sole private pure false terrain sampler skips only dead vertex queries; pose, peers, hulls, tiny-climb center queries, callback semantics and restoration preserved",
+    "oracleCases": 291,
+    "originalSolidProbes": 124992,
+    "identicalPeerCallbacks": 2448,
+    "weightedSourceProfile": {
+      "samples": 4442,
+      "durationSeconds": 4.91,
+      "peerInclusivePercentBefore": 10.73,
+      "peerInclusivePercentAfter": 9.7,
+      "climbSelfPercentBefore": 2.27,
+      "climbSelfPercentAfter": 0.92
+    },
+    "independentReview": "PASS",
+    "originalSourceWorkerChecks": "PASS 3/3 individual; also PASS in composed original runner",
+    "performanceClaim": "Bounded redundant-loop repair only; original covered FPS target remains unmet"
+  }
 }

@@ -79,8 +79,21 @@ A separate recovery validation hazard is also repaired: a fixed A* edge previous
 
 The first composed parallel browser attempt on `c7e0be3` was interrupted after pre-assertion page-readiness stalls and two infrastructure retries. It has no terminal acceptance result. Fresh built-page individual diagnostics using the same capped frame flags, focus and original readiness wait passed, including worker/chilling first assertions. The original Hub tests instead load `src/index.html`; those built-page passes do not clear source-page acceptance. A serial source-page attempt on `5b88453` also stalled and was interrupted. The full 42-contributor source proof did not establish a material roster-cost regression, so no speculative broadphase change was made.
 
-## Published repair chunk
+## Earlier published repair chunk
 
 Composed code `5b88453` passes 196/196 units, 39/39 Worker tests, build, 11-page/9-card site staging and all 13 touched JavaScript/module syntax checks plus whitespace. No lint command is configured. The coastal placement, retained component fixture, occupied station, stable body-aware recovery and bounded tiny-frame recovery changes are independently reviewed and published with these exact limits.
 
 Final original source-page browser acceptance is still incomplete. A bounded actual-source debugger capture reaches the worker evaluation and samples scene-hub → clankers.update → poseEntry → clankerWalkingPeersClear → agent.climbPoseClear → poseManaged → measureBody. Those agent/clanker/peer-preview functions are unchanged from `9e81e17`. Weighted cost and the exact cause remain under investigation; a sampled stack alone is not a performance diagnosis. The built-page successes and source-page interrupted attempts are explicitly separate.
+
+
+## Current composed verification
+
+The reviewed source/test head `9c74d969e20f6888234d1b93587f671c7d0a32ee` adds one measured repair: only the private, pure always-false clanker peer sampler certifies that terrain vertex probes cannot reject its preview. Pose construction, bounds, real peer and hull checks, tiny-climb center queries, ordinary terrain fallback and restored state remain unchanged. The permanent actual-agent oracle covers 291 combinations, with 124,992 original solid probes, 2,448 identical peer callbacks and zero result/contact-mask/pose differences. Independent review passes. Source-page weighted profiling shows the peer subtree at 10.73% before versus 9.70% after, and its climb-preview self cost at 2.27% versus 0.92%. This bounded reduction is not a general FPS fix.
+
+The original serial runner completed **271/273 checks**, exit 1, with **zero infrastructure retries**, on an unchanged source/test fingerprint `82129ad8945abe6d4e546980888204cd81101d052558e26edaca52bfdfb0c806`. All 197 global units pass. Original source-page repeated worker trips (2,319 frames, five workers, no resets/jumps/missing routes), displaced rejoining, all surface trails, chilling/body support, lab departure, roof and apron descent, retained conversation and both nature checkpoints pass. This is a targeted completed run, not the full suite.
+
+The two failures are the original eight-second lifecycle travel deadlines. DSB return was accepted around 621.5 ms and reached Hub around 9,723.3 ms with no post-swap frame. Factory returned from Lab to Hub around 2,559.3 ms, but only two more frames arrived before the unchanged deadline, with nine tweens still active. Consequently the complete six-visit retention gates were not cleared on this head. Their different blocked intervals are being traced; no deadline relaxation or travel-fix claim is made.
+
+The unchanged original performance benchmark completed **1/3**, exit 1: ordinary movement 55.0195 FPS, High, p95 33.3 ms, max 200 ms; covered donation 30.2001 FPS, Low, p95 50 ms, max 66.6 ms. All 26 particles and outlines remain. Both acceptance targets fail. These current measurements supersede the earlier interrupted source-page attempts for this scoped acceptance, while preserving their historical records.
+
+Final composed Worker checks pass 39/39; build, site generation (11 pages/9 cards), syntax for all 13 touched JS/MJS files and whitespace checks pass. No lint command is configured. The PR remains draft because lifecycle travel and original performance requirements remain unmet.
