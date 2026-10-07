@@ -12537,7 +12537,14 @@ const dsbStudioCheckpoint = {name:"dsb studio checkpoint",why:"playthrough: Stud
     HTMLMediaElement.prototype.pause=function(){Object.defineProperty(this,"paused",{configurable:true,value:true});check.active.delete(this);this.dispatchEvent(new Event("pause"));};
   })()`);
   const listeners=async()=>{const a=await b.send("Runtime.evaluate",{expression:"document"}),r=await b.send("DOMDebugger.getEventListeners",{objectId:a.result.result.objectId});await b.send("Runtime.releaseObject",{objectId:a.result.result.objectId});return r.result.listeners.length;};
-  const startListeners=await listeners();let baseline=null;
+  const startListeners=await listeners();
+  // Draw the shared tomato-splat geometry once before the records baseline: pooled effects upload on first visibility, not per visit.
+  await b.evaluate(`(()=>{const B=__ooga,R=B.dsb.interiors.active.room,s=R.stageSeats[0];
+    B.pilot.navigate({position:{x:s.walkAt.x,y:s.floor,z:s.walkAt.z},yaw:0,pitch:.12,dist:3});B.crew.sitPlayer(s);B.crew.throwTomato();B.advance(1);B.crew.standPlayer();
+    let splat=null;const visit=n=>{if(n.visible&&n.geometry&&n.geometry.verts.length===24&&n.geometry.faces[0].color[0]===227)splat=n;for(const c of n.children)visit(c);};visit(BL.scenes.dsb.root);
+    if(splat){const x=splat.world[12],z=splat.world[14];B.pilot.navigate({position:{x,y:B.dsb.interiors.groundAt(x,z),z},yaw:0,pitch:.6,dist:4});B.advance(.5);}})()`);
+  const throws0=await b.evaluate('__ooga.crew.stats().tomatoesThrown');
+  let baseline=null;
   for(let cycle=0;cycle<3;cycle++){
     if(cycle){await tap("#dsb-context");await step();}
     await b.evaluate(`(()=>{const B=__ooga,s=B.dsb.interiors.active.room.stageSeats[${cycle}];B.pilot.navigate({position:{x:s.walkAt.x,y:s.floor,z:s.walkAt.z},yaw:0,pitch:.12,dist:3});})()`);await step();await tap("#dsb-context");
@@ -12546,7 +12553,7 @@ const dsbStudioCheckpoint = {name:"dsb studio checkpoint",why:"playthrough: Stud
     await tap("#weapon-hud");await tap("#weapon-hud");await tap(".dsb-studio-tools button");
     await b.evaluate('if(!__ooga.dsb.avatar.weapon.aiming)__ooga.pilot.modeAction("mode-toggle");__ooga.crew.look(2.7,.1,1)');await step();
     const fired=await b.evaluate('({seat:!!__ooga.dsb.avatar.camp.seat,p:{...__ooga.dsb.avatar.root.position},yaw:__ooga.dsb.avatar.root.rotation.y,shots:__ooga.dsb.avatar.weapon.shotsFired,throws:__ooga.crew.stats().tomatoesThrown,aim:__ooga.dsb.avatar.weapon.aiming,audio:__ooga.dsb.interiors.audio.stats})');
-    record("Studio: seat "+cycle+" locks walking with seated pose and allows gun/throw controls",seated.seat&&seated.close&&seated.leg<-1.5&&Math.cos(seated.yaw)>.9&&fired.seat&&Math.hypot(fired.p.x-seated.p.x,fired.p.z-seated.p.z)<.001&&fired.shots>cycle&&fired.throws===cycle+1&&fired.aim&&fired.audio.sources===3&&!fired.audio.cues,JSON.stringify({seated,fired}));
+    record("Studio: seat "+cycle+" locks walking with seated pose and allows gun/throw controls",seated.seat&&seated.close&&seated.leg<-1.5&&Math.cos(seated.yaw)>.9&&fired.seat&&Math.hypot(fired.p.x-seated.p.x,fired.p.z-seated.p.z)<.001&&fired.shots>cycle&&fired.throws===throws0+cycle+1&&fired.aim&&fired.audio.sources===3&&!fired.audio.cues,JSON.stringify({seated,fired}));
     const standControls=await b.evaluate('Array.from(document.querySelectorAll("button")).filter(e=>/stand up/i.test(e.textContent)&&e.getClientRects().length&&getComputedStyle(e).visibility!=="hidden").length');
     record("Studio: seated control "+cycle+" has one stand action and no lighting button",standControls===1&&!await b.evaluate('Array.from(document.querySelectorAll("button")).some(e=>/stage lights|studio lights/i.test(e.textContent))'));
     await tap("#act");
