@@ -1,7 +1,7 @@
 {
   "base": "8c11e150d310733d24f79bc150ec941b3e8f4b90",
-  "testedCodeHead": "b9d5f3bda68c981e477daf0fd9a9fd30dc688e1a",
-  "status": "Draft: validated repairs published; original performance targets, intermittent worker recovery and upstream DSB contracts/geometry remain blockers",
+  "testedCodeHead": "5b88453ea165c7a3f4a99dcb5994c7c481e53a75",
+  "status": "Draft: composed repair chunk passes units/Worker/build/site/syntax; original source-page browser acceptance and performance targets remain unresolved",
   "priorPublication": {
     "testedCodeHead": "c5a290873d2d3007ce6919a323c21833fd5360d2",
     "base": "81fd9d1fb8c1563dff1a93d318e03c0ef6da5d74",
@@ -1345,11 +1345,435 @@
     "Ten interior door cycles retain original counts, listeners and resource bounds on desktop and touch",
     "Nature repeat visits retain 11 authored batches, seeded layout and textures"
   ],
-  "remainingFocusedFailures": [
+  "historicalFocusedFailures": [
     "Intermittent five-worker route watchdog relocation: one DrNeski reset, 0.9m step and missing route",
-    "DSB exterior geometry: coastal dressing count 9 and rear Olympus clearance false, desktop and touch"
+    "DSB exterior coast count 9 did not meet >10, on desktop and touch; rear:false passed its unchanged !rear predicate"
   ],
-  "finalPerformance": {
+  "remainingFocusedFailures": [
+    "Historical intermittent worker watchdog relocation remains causally unconfirmed; occupied station defect separately repaired"
+  ],
+  "continuationRepairs": {
+    "coastalPlacement": {
+      "codeHead": "902acac7b6cbcf4223bc6c2ed42c4eab6bc0ffc8",
+      "productionChange": "Continue the same seeded candidate sequence for 6000 rather than 2400 attempts; no masks, terrain or successful-placement cap changed",
+      "coastBefore": 9,
+      "coastAfter": 14,
+      "originalNinePreserved": true,
+      "rearFalseWasPassing": true,
+      "clearanceFailures": 0,
+      "nativeChecks": {
+        "passed": 214,
+        "total": 214,
+        "exit": 0,
+        "scope": "Original desktop and touch nature checkpoints plus units; individual repair checkout"
+      },
+      "constructionCost": {
+        "beforeMs": 152.542667,
+        "afterMs": 244.819458,
+        "scope": "One actual-source Node VM sample; no device deadline claim"
+      }
+    },
+    "retainedConversation": {
+      "codeHead": "d8228b4f82b8331fe0e812c7e76b81bcb8b8bd7d",
+      "contract": "DSB explicitly defers live Zuzu and conversation; verify retained actual BL.dsbAgent/BL.dsbConversation components independently, with real native input and transport",
+      "fakeSceneFields": false,
+      "nativeChecks": {
+        "passed": 231,
+        "total": 231,
+        "exit": 0,
+        "scope": "Component browser session and units on individual repair checkout"
+      },
+      "identity": "Actual canonical actor possession, DSB entry and strict Portara return",
+      "cleanup": "Restore transport, dispose component and model, unregister pick targets, remove dialog, reset mobile overrides in finally"
+    },
+    "occupiedStation": {
+      "codeHead": "0902b6393e1f5d171a0939e83d3a5dca009467d4",
+      "contract": "Reserve only unoccupied visible-body station footprints; retry after persistent occupancy and accept only finite changed goals",
+      "proof": {
+        "originalFailsAfterSeconds": 20,
+        "fixedArrivalSeconds": 2.35,
+        "maximumStep": 0.14,
+        "minimumBodySeparation": 0.680527,
+        "jumps": 0,
+        "resets": 0,
+        "transientCrossingUnchanged": true
+      },
+      "unitChecks": {
+        "passed": 195,
+        "total": 195
+      },
+      "originalWorkerBrowserChecks": {
+        "passed": 3,
+        "total": 3,
+        "scope": "Individual repair source with diagnostic observer; no performance acceptance"
+      },
+      "historicalWatchdogCauseConfirmed": false
+    },
+    "weatherContract": {
+      "status": "Pending explicit density choice; unchanged",
+      "documentedDSB": {
+        "rain": [
+          720,
+          480,
+          260
+        ],
+        "clouds": [
+          48,
+          36,
+          22
+        ],
+        "canvasRain": 120,
+        "canvasClouds": 14
+      },
+      "currentShared": {
+        "rain": [
+          1100,
+          720,
+          380
+        ],
+        "clouds": [
+          64,
+          46,
+          28
+        ],
+        "canvasRain": 160,
+        "canvasClouds": 16
+      },
+      "reason": "Changing DSB density changes current visual behavior; keeping it requires an explicit acceptance-contract revision. No automatic quality or threshold reduction.",
+      "provenance": {
+        "earlierDSBContractCommit": "091c9a2a",
+        "earlierDSBDateUTC": "2026-10-03T10:27:04Z",
+        "laterSharedIncreaseCommit": "af0b36728d6d12e5f4db945352b8269efa9f4b02",
+        "laterSharedDateUTC": "2026-10-04T00:15:18Z",
+        "laterIntent": "Mempool rainforest weather remap and larger island footprint",
+        "interpretation": "Old DSB text/check retained earlier shared limits; later shared increase was deliberate. DSB-specific visual intent remains unresolved."
+      }
+    },
+    "pathRecovery": {
+      "codeHead": "c7e0be30969cd141e0dcd47d77ffb7844b5cc8bf",
+      "productionChange": "Track progress toward the authored segment end and retain the actual path destination across moving look-ahead hints; collision-check actual roster and outside bodies during bounded recovery search",
+      "callerContract": "Only actual path callers opt in; direct, bed and authored detour callers retain local targets, including with stale valid path state",
+      "proof": {
+        "baselinePersistentRelocatesAfterFrames": 162,
+        "frameSeconds": 0.05,
+        "stableGoalOnlyStillRelocates": true,
+        "bodyChecksOnlyStillRelocates": true,
+        "combinedArrivalFrames": 124,
+        "combinedArrivalSeconds": 6.2,
+        "maximumStep": 0.085,
+        "minimumBodyGap": 0.6804984481673875,
+        "staticCollisions": 0,
+        "jumps": 0,
+        "resets": 0,
+        "unobstructedStraightFramesUnchanged": 72,
+        "unobstructedAwayFacingCurvedFramesUnchanged": 143,
+        "unobstructedSearches": 0,
+        "transientArrivalFrames": 124,
+        "transientBaselineArrivalFrames": 91,
+        "transientDelaySeconds": 1.65,
+        "stalePathAuthoredDetourPassed": true
+      },
+      "unitChecks": {
+        "passed": 196,
+        "total": 196
+      },
+      "independentSourceReview": "Passed: caller intent, route resets, swept collision parity, bounded search and no new per-frame allocation or retained references",
+      "historicalRandomEventLinkage": "Not directly captured; controlled source reproduction proves this failure mechanism, not every historical relocation",
+      "diagnostics": {
+        "composedCappedWorkerFirstAssertion": {
+          "passed": true,
+          "frames": 2260,
+          "allTripsRepeated": true,
+          "resets": 0,
+          "jumps": 0
+        },
+        "composedCappedChillingFirstAssertion": {
+          "passed": true
+        },
+        "startup": "Original capped frame flags, focus and readiness wait completed in fresh diagnostic boots",
+        "acceptanceReplacement": false
+      }
+    },
+    "boundedRecoveryValidation": {
+      "codeHead": "5b88453ea165c7a3f4a99dcb5994c7c481e53a75",
+      "productionChange": "Use the existing canonical NAV_STEP of 0.025 m for fixed recovery edges, independent of the current frame walking budget",
+      "precision": "Existing maximum recovery sampling step, swept roster/outside/static collision and support/deep-step rejection are unchanged",
+      "proof": {
+        "initialization": "18 normal actual crew updates, then one 0.0001-second update",
+        "queriesBefore": 91003,
+        "queriesAfter": 629,
+        "millisecondsBefore": 1364,
+        "millisecondsAfter": 10.9,
+        "searchModeCountPositionUnchanged": true,
+        "permanentRegression": "Normally initialized recovery, positive bounded query count and eventual collision-free arrival without jump or relocation"
+      },
+      "unitChecks": {
+        "passed": 196,
+        "total": 196
+      },
+      "independentSourceReview": "Passed",
+      "startupStallCauseClaimed": false
+    }
+  },
+  "excludedRecentPerformanceCandidates": [
+    {
+      "name": "Interior terrain slab fast path",
+      "rayOracleCases": 323554,
+      "mismatches": 0,
+      "cpuGainPercent": [
+        8.5,
+        12.8
+      ],
+      "nativeCoveredFPS": {
+        "control": 29.8,
+        "candidate": 27.53
+      },
+      "status": "Excluded: representative native regression"
+    },
+    {
+      "name": "Adaptive projected grid coarsening",
+      "oracleQueries": 755982,
+      "mismatches": 0,
+      "cpuGainPercent": 31,
+      "nativeCoveredFPS": {
+        "control": 30.7,
+        "candidate": 29.1
+      },
+      "status": "Excluded: representative native regression"
+    },
+    {
+      "name": "Exact projected grid membership reuse",
+      "oracleQueries": 1151682,
+      "mismatches": 0,
+      "nativeOrdinaryFPS": {
+        "control": 57.212,
+        "candidate": 57.211
+      },
+      "nativeCoveredFPS": {
+        "control": 31.496,
+        "candidate": 30.399
+      },
+      "status": "Excluded: ordinary unchanged and covered slower; both ordinary samples pass, neither covered sample passes"
+    },
+    {
+      "base": "9e81e17",
+      "status": "All prototypes excluded; tracked production restored clean; no native test justified",
+      "fixture": "Actual canonical BL.models.caveman, 24 camera/clip/mutation states and full sight-guide output/provenance comparison",
+      "eachVariantOutputChecks": 19353,
+      "eachVariantMismatches": 0,
+      "results": [
+        {
+          "variant": "Full positive-confirmed DDA after previous hint miss",
+          "originalMilliseconds": 333.792542,
+          "candidateMilliseconds": 494.991917,
+          "attempts": 74587,
+          "confirmedHits": 56894,
+          "originalTriangleChecks": 250223,
+          "candidateTriangleChecks": 221018
+        },
+        {
+          "variant": "Same-plane voxel-face proposal deriving previous plane",
+          "originalMilliseconds": 341.052874,
+          "candidateMilliseconds": 382.62192,
+          "attempts": 80157,
+          "confirmedHits": 35155
+        },
+        {
+          "variant": "Same-plane proposal using cached emitted-face plane metadata",
+          "originalMilliseconds": 331.821665,
+          "candidateMilliseconds": 361.15175,
+          "attempts": 80157,
+          "confirmedHits": 35155
+        },
+        {
+          "variant": "Cached-plane proposal only on existing BVH fallback",
+          "originalMilliseconds": 336.867624,
+          "candidateMilliseconds": 337.464584,
+          "attempts": 9663,
+          "confirmedHits": 4261,
+          "originalBVHNodes": 89393,
+          "candidateBVHNodes": 56758
+        },
+        {
+          "variant": "Bounded 8-cell DDA only on existing BVH fallback",
+          "originalMilliseconds": 336.155373,
+          "candidateMilliseconds": 364.509457,
+          "attempts": 10364,
+          "confirmedHits": 8357,
+          "originalTriangleChecks": 250223,
+          "candidateTriangleChecks": 248637,
+          "originalBVHNodes": 89393,
+          "candidateBVHNodes": 28689
+        }
+      ],
+      "metadata": {
+        "optIn": "Default false; character vg/tint only; direct-emission WeakMap provenance",
+        "canonicalDenseFaceIdsBytes": 52644,
+        "canonicalExtraCachedPlaneBytesEstimated": 15560,
+        "snapshotBytes": 0,
+        "bounds": "16384 dense cells and 128 cells per axis; integral safe voxel keys; finite positive unit and finite extents; Uint16 emitted face IDs bounded below 65535",
+        "retention": "CPU metadata would survive with cached character geometries, separately from visit GPU retention; no metadata shipped"
+      },
+      "safety": "All true results were confirmed by unchanged original boundaryTriangle after integer/range checks. All failed proposals retained complete original scan; no false-answer certificate, threshold, shader or particle change.",
+      "notRun": "Large adversarial 505k oracle and native comparison were prepared but not run because representative CPU gates showed no material gain; no full correctness or performance acceptance claim.",
+      "cause": "Most triangle queries already use a cheap projected grid and successful previous-triangle hints. DDA setup/steps and surface proposal arithmetic cost more than the remaining triangle work they avoid. Even cutting BVH node visits by 68% removed fewer than 1% of all canonical triangle checks and increased total time.",
+      "targets": "Original >=55 FPS at High, p95<25ms and original maximum gaps remain unmet; these results reject the tested hint implementations, not every possible architecture."
+    }
+  ],
+  "travelDeadlineInvestigation": {
+    "head": "0902b6393e1f5d171a0939e83d3a5dca009467d4",
+    "status": "No new source change justified",
+    "failedIntervalBeforeDSBRequestMs": 6032.9,
+    "sourceAudit": "Repeated travel does not await account startup; scene leave clears input/debug/per-visit state; Hub cancels idle warming/timers/subscriptions and disposes visibility; renderer releases unused records after enter",
+    "observedHubReturnGCSeconds": [
+      1.04,
+      1.63
+    ],
+    "limitation": "The exact blocking task or GC in the failed pre-request interval remains uncaptured. Passing traces do not prove the unchanged eight-second deadline is fixed."
+  },
+  "continuationIncompleteNativeAttempt": {
+    "variant": "followup-current",
+    "head": "c7e0be30969cd141e0dcd47d77ffb7844b5cc8bf",
+    "command": "VERBOSE=1 LANES=2 ONLY='work movement cave trips,gorilla roof descent,gorilla work apron descent,chilling Ooga placement,gorilla lab exit through Oogas,Oogas walk over gorillas,nature checkpoint,dsb zuzu conversation,dsb lifecycle,factory lifecycle' npm test -- hub factory dsb",
+    "startedAt": "2026-10-07T01:04:03.513129+00:00",
+    "sourceAndTestBefore": "fce3d91e512a50be27266b9ae3bd47e7a595a2eda353a8395885840345faedf8",
+    "finishedAt": "2026-10-07T01:07:52.285829+00:00",
+    "sourceAndTestAfter": "fce3d91e512a50be27266b9ae3bd47e7a595a2eda353a8395885840345faedf8",
+    "unchanged": true,
+    "exit": 143,
+    "status": "Stopped owned run after pre-assertion 90-second evaluation stalls and infrastructure retries; incomplete, no terminal acceptance result",
+    "observedInfrastructureRetries": 2,
+    "observedAssertions": 0,
+    "suspicion": "Page readiness never returned on the interrupted parallel run; neither fixed test evaluation nor exact capped/focused readiness reproduced the stall in fresh individual diagnostics. No cause or fix is claimed.",
+    "observedDriverFailures": 2
+  },
+  "fullRosterRecoveryCostDiagnostic": {
+    "actualRosterCount": 42,
+    "candidate": "Path/body recovery before tiny-dt correction",
+    "millisecondsApproximate": [
+      420,
+      500
+    ],
+    "scope": "Actual-source visible-far full-roster pocket, baseline relocation vs candidate safe arrival",
+    "result": "No material roster-cost regression established; speculative broadphase optimization excluded"
+  },
+  "rootComposedLocalValidation": {
+    "unit": {
+      "exit": 0,
+      "seconds": 38.22624241700396
+    },
+    "worker": {
+      "exit": 0,
+      "seconds": 0.9631632920063566
+    },
+    "build": {
+      "exit": 0,
+      "seconds": 1.024096749984892
+    },
+    "site": {
+      "exit": 0,
+      "seconds": 1.6797342079808004
+    },
+    "syntax": {
+      "files": [
+        {
+          "file": "src/js/agent.js",
+          "exit": 0
+        },
+        {
+          "file": "src/js/canvas-renderer.js",
+          "exit": 0
+        },
+        {
+          "file": "src/js/character-visibility.js",
+          "exit": 0
+        },
+        {
+          "file": "src/js/crew.js",
+          "exit": 0
+        },
+        {
+          "file": "src/js/director.js",
+          "exit": 0
+        },
+        {
+          "file": "src/js/dsb-exterior.js",
+          "exit": 0
+        },
+        {
+          "file": "src/js/gl-renderer.js",
+          "exit": 0
+        },
+        {
+          "file": "src/js/pilot.js",
+          "exit": 0
+        },
+        {
+          "file": "src/js/racers.js",
+          "exit": 0
+        },
+        {
+          "file": "src/js/scene-hub.js",
+          "exit": 0
+        },
+        {
+          "file": "src/js/scene-race.js",
+          "exit": 0
+        },
+        {
+          "file": "test/browser.mjs",
+          "exit": 0
+        },
+        {
+          "file": "test/run.mjs",
+          "exit": 0
+        }
+      ],
+      "exit": 0
+    },
+    "whitespace": {
+      "exit": 0
+    },
+    "head": "5b88453ea165c7a3f4a99dcb5994c7c481e53a75",
+    "lint": "No lint command configured",
+    "unitPassed": 196,
+    "unitTotal": 196,
+    "workerPassed": 39,
+    "workerTotal": 39,
+    "sitePages": 11,
+    "siteCards": 9
+  },
+  "continuationSerialIncompleteNativeAttempt": {
+    "variant": "followup-current",
+    "head": "5b88453ea165c7a3f4a99dcb5994c7c481e53a75",
+    "command": "VERBOSE=1 LANES=1 ONLY='work movement cave trips,gorilla roof descent,gorilla work apron descent,chilling Ooga placement,gorilla lab exit through Oogas,Oogas walk over gorillas,nature checkpoint,dsb zuzu conversation,dsb lifecycle,factory lifecycle' npm test -- hub factory dsb",
+    "startedAt": "2026-10-07T01:16:52.686271+00:00",
+    "sourceAndTestBefore": "ce74f9e70532c88e1f9f1aa8d822391873a349a0392c9a31b86c9ba4cb4d5144",
+    "finishedAt": "2026-10-07T01:19:22.771222+00:00",
+    "sourceAndTestAfter": "ce74f9e70532c88e1f9f1aa8d822391873a349a0392c9a31b86c9ba4cb4d5144",
+    "unchanged": true,
+    "exit": 143,
+    "status": "Stopped after repeated source-page readiness stall; incomplete, no terminal acceptance result",
+    "observedInfrastructureRetries": 1,
+    "diagnosticCorrection": "Original Hub fixture loads src/index.html; previous passing helper boots loaded the built page, so they did not clear source-page acceptance."
+  },
+  "sourcePageDiagnostic": {
+    "status": "Actual source-page stack captured; investigation continues",
+    "stage": "Original worker evaluate after readiness",
+    "stack": [
+      "scene-hub.update",
+      "clankers.update",
+      "updateEntry",
+      "poseEntry",
+      "clankerWalkingPeersClear",
+      "agent.climbPoseClear",
+      "poseManaged",
+      "measureBody"
+    ],
+    "sourceRelationship": "agent.js, clankers.js and peer-preview scene-hub code are byte-identical between 9e81e17 and current repair chunk",
+    "limit": "A sampled stack does not establish weighted cost or a complete root cause; built-page diagnostic passes are not substitutes for original source-page acceptance."
+  },
+  "priorPerformance": {
     "head": "b9d5f3bda68c981e477daf0fd9a9fd30dc688e1a",
     "passed": 1,
     "total": 3,
@@ -1401,7 +1825,7 @@
       }
     ]
   },
-  "finalCspAndLegacyContract": {
+  "priorCspAndLegacyContract": {
     "head": "b9d5f3bda68c981e477daf0fd9a9fd30dc688e1a",
     "passed": 205,
     "total": 206,
@@ -1409,5 +1833,6 @@
     "cspExactOriginCheckPassed": true,
     "remainingFailure": "dsb zuzu conversation: TypeError reading removed audio.duration"
   },
-  "finalSourceAndTestFingerprint": "b0daa21b901db9e8fad0b17a98d03c9d1b39c5536e6a0f02f15658f07f715539"
+  "historicalSourceAndTestFingerprint": "b0daa21b901db9e8fad0b17a98d03c9d1b39c5536e6a0f02f15658f07f715539",
+  "currentSourceAndTestFingerprint": "ce74f9e70532c88e1f9f1aa8d822391873a349a0392c9a31b86c9ba4cb4d5144"
 }
