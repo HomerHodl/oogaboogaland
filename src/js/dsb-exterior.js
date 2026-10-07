@@ -38,7 +38,7 @@
       if(!Number.isFinite(low)||high-low>.1||Math.hypot(gx,gz)>.8)return false;
       if(!fields.has(kind))fields.set(kind,{geometry,data:[]});
       fields.get(kind).data.push(c*scale,(gx*c-gz*s)*scale,-s*scale,0,0,scale,0,0,s*scale,(gx*s+gz*c)*scale,c*scale,0,x,low-.015,z,1,0,0,0,0);
-      placements.push({kind,x,y:low-.015,z,r,low,high,gx,gz,centre,region});return true;
+      placements.push({kind,x,y:low-.015,z,r,low,high,gx,gz,centre,region,yaw,scale});return true;
     };
     for(let index=0;index<land.buildings.length;index++){
       const b=land.buildings[index];if(b.name==="Noderunner waterfront")continue;
