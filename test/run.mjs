@@ -9,6 +9,31 @@ import { createHash, webcrypto } from "node:crypto";
 import { externalizeAudio } from "../scripts/distribution-audio.mjs";
 import { launch, acquire, dispose, driverError } from "./browser.mjs";
 import { writeCharacters } from "../scripts/characters.mjs";
+const emptyPeerPreviewProof = async () => {
+  const context={window:{}};
+  for(const name of ['math','scene','models','convex'])runInNewContext(await readFile(join(root,'src/js/'+name+'.js'),'utf8'),context);
+  Object.assign(context.window.BL,{pilot:{WALK:{speed:2.8,gravity:9.8}},crew:{JUMP_SPEED:4}});
+  runInNewContext(await readFile(join(root,'src/js/agent.js'),'utf8'),context);
+  const B=context.window.BL;
+  const snapshot=g=>{const rows=[];const visit=n=>{rows.push([n.position,n.rotation,n.quaternion,n.scale,n.visible]);for(const c of n.children)visit(c);};visit(g.root);return JSON.stringify(rows);};
+  let samples=0,callbacks=0,cases=0,failures=0;
+  for(const speed of [0,.9,2.8])for(const heading of [0,.5,Math.PI])for(const biped of [false,true])for(const reject of [false,true])for(const sequence of [false,true])for(const hullReject of [false,true])for(const climb of [0,1e-12]){
+   const first=B.agent.create({groundAt:()=>0,managed:true}),second=B.agent.create({groundAt:()=>0,managed:true});
+   let count=0,skipCount=0,firstCallbacks=0,secondCallbacks=0;
+   const solid=()=>{count++;return false;},empty=()=>{skipCount++;return false;};empty.emptySolid=true;
+   const args=[sequence?.15:1/30,0,0,0,heading,{climb},solid,()=>{firstCallbacks++;return !reject;},null,speed,false,'',null,sequence?.05:0,hullReject?()=>false:null,null,null,biped];
+   const a=first.climbPoseClear(...args);args[6]=empty;args[7]=()=>{secondCallbacks++;return !reject;};const b=second.climbPoseClear(...args);
+   if(a!==b||first.climbBlockedArm!==second.climbBlockedArm||first.climbContactMask!==second.climbContactMask||(climb ? skipCount!==count : skipCount!==0)||firstCallbacks!==secondCallbacks||snapshot(first)!==snapshot(second))failures++;
+   samples+=count;callbacks+=firstCallbacks;cases++;first.dispose();second.dispose();
+  }
+  for(const flag of [undefined,false,1]){
+   const rig=B.agent.create({groundAt:()=>0,managed:true});let count=0;
+   const solid=()=>{count++;return true;};solid.emptySolid=flag;
+   if(rig.climbPoseClear(1/30,0,0,0,0,{},solid)!==false||!count)failures++;
+   cases++;rig.dispose();
+  }
+  return {cases,samples,callbacks,failures};
+};
 // Execute the actual north update branch at the replay deadline and worst arc.
 const northTrajectoryProof = async () => {
   const source = await readFile(join(root, "src/js/pilot.js"), "utf8");
@@ -10777,6 +10802,8 @@ record("terrain glyph layouts: warm visits preserve exact registries and rendere
 const sharedBake = visibilitySourceBakeProof();
 record("character visibility source bakes: ownership wrappers share exact immutable triangles and reject changed topology or source vertices", sharedBake.failures === 0 && sharedBake.cases >= 200, JSON.stringify(sharedBake));
 
+  const emptyPeers = await emptyPeerPreviewProof();
+  record("peer pose previews: certified empty terrain preserves exact poses and peer rejection while omitting vertex probes", emptyPeers.cases === 291 && emptyPeers.failures === 0 && emptyPeers.samples > 0 && emptyPeers.callbacks > 0, JSON.stringify(emptyPeers));
   await raceRigChecks();
   await qualityFramebufferChecks();
   const north = await northTrajectoryProof();

@@ -7653,6 +7653,8 @@
   const CLANKER_PEER_FROM = { root: { scale: { x: 1 } }, gorilla: { torsoSitCompact: false, torsoLabCompact: false, torsoStandCompact: false, torsoQuadCompact: false, torsoRadius: 0 }, height: 0, x: 0, y: 0, z: 0, heading: 0 };
   let clankerPeerPoseChecked = false, clankerPeerPoseClear = true;
   const clankerPeerEmptyStone = () => false;
+  // This preview checks peers only; no terrain sample can reject it.
+  clankerPeerEmptyStone.emptySolid = true;
   const clankerPeerPoseTransition = entry => {
     if (clankerPeerPoseChecked) return clankerPeerPoseClear;
     clankerPeerPoseChecked = true;

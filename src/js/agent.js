@@ -1617,6 +1617,7 @@
     const climbPoseClear = (dt, px, py, pz, facing, motion, solidAt, clearAt = null, entry = null, speed = 0, staticPose = false, lounge = "", fromLounge = null, sequenceStep = 0, hullAt = null, fromWalk = null, supportAt = null, biped = false) => {
       climbBlockedArm = climbContactMask = 0;
       if (!managed || !solidAt) return true;
+      const emptySolid = solidAt.emptySolid === true;
       for (let i = 0; i < previewKeys.length; i++) previewState[i] = state[previewKeys[i]];
       for (let i = 0; i < previewNodes.length; i++) {
         const n = previewNodes[i], at = i * 10, q = n.quaternion;
@@ -1696,7 +1697,9 @@
           }
           if (!clear) break;
           if (hullAt && !hullAt(previewHull)) { clear = false; break; }
-          for (let v = 0; v < vertices.length; v += 3) {
+          // A private peer-only sampler explicitly certifies every stone query
+          // false. Pose bounds and the peer/hull predicates above still run.
+          for (let v = 0; !emptySolid && v < vertices.length; v += 3) {
             const x = vertices[v], y = vertices[v + 1], z = vertices[v + 2];
             const lx = (m[offset] * x + m[offset + 4] * y + m[offset + 8] * z + m[offset + 12]) * scale;
             const ly = (m[offset + 1] * x + m[offset + 5] * y + m[offset + 9] * z + m[offset + 13]) * scale;
