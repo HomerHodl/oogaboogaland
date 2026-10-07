@@ -10674,11 +10674,6 @@ const terrainGlyphLayoutProof = () => {
   return { cases, failures, timings, cacheSlots: proof.layouts().size, snapshotBytes, entryBytes, entryCount, streamObjects, surfaceMetadataEstimate };
 
 };
-// In unitChecks:
-const glyphLayout = terrainGlyphLayoutProof();
-record("terrain glyph layouts: warm visits preserve exact registries and rendered instances with fresh mutable buffers and bounded invalidation", glyphLayout.failures === 0 && glyphLayout.cases >= 100, JSON.stringify(glyphLayout));
-
-
 const selectedWaterProgramProof = () => {
   const source = readFileSync(new URL("../src/js/gl-renderer.js", import.meta.url), "utf8");
   const start = source.indexOf("      skyHaze=opts.hazeDrop");
