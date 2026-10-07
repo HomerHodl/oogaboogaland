@@ -8329,7 +8329,36 @@ for (const mobile of [false, true]) scene("dsb", { label: "Ooga Portal dsb plaza
   check("Zuzu routes around both moved structures to landmark-derived destinations", cat.every(r=>r.accepted==="accepted" && r.clear && r.done), JSON.stringify(cat));
 } }] });
 
-scene("dsb", { label: "dsb zuzu conversation", url: hubPage(dist), steps: [{ name: "dsb zuzu conversation", why: "contract: preserve DSB scene behavior independently of the hub entrance", run: async (b) => {
+// Retained modules are exercised independently: the replacement DSB scene does not spawn Zuzu.
+const mountZuzuConversationFixture = async b => b.evaluate(`(() => {
+  const B = __ooga, S = BL.scene, parent = S.createNode(), land = BL.dsbModels.build();
+  const targets = new Set(), changes = [];
+  const input = { add: node => targets.add(node), remove: node => targets.delete(node) };
+  const clearAt = (x, z, radius) => land.landmarks.shop.clearAt(x,z,radius) && land.landmarks.tv.clearAt(x,z,radius);
+  const agent = BL.dsbAgent.create({ parent, input, clearAt, landmarks: land.landmarks });
+  let clock = 0, disposed = false;
+  const sense = { name: B.dsb.avatar.traits.name, x: -4, y: 0, z: 21, food: 0, active: true };
+  agent.update(0, clock, sense);
+  const conversation = BL.dsbConversation.create({ agent, onChange: open => changes.push(open) });
+  const button = document.createElement("button");
+  button.id = "zuzu-component-talk"; button.textContent = "Talk to Zuzu";
+  Object.assign(button.style, { position: "fixed", left: "12px", top: "90px", zIndex: "10000" });
+  const open = () => { if (agent.talk()) conversation.open(); };
+  button.addEventListener("click", open); document.body.append(button);
+  window.__zuzuFixture = {
+    agent, conversation, changes, parent, targets, button,
+    prepare() { clock += 3.1; sense.x = agent.root.position.x; sense.z = agent.root.position.z - 2; agent.update(0,clock,sense); },
+    advance(seconds, dt) { B.advance(seconds,dt); clock += seconds; agent.update(seconds,clock,sense); },
+    dispose() {
+      if (disposed) return; disposed = true;
+      conversation.dispose(); agent.dispose(); button.removeEventListener("click",open); button.remove();
+      while (land.root.children.length) S.removeChild(land.root,land.root.children[0]);
+    },
+    get disposed() { return disposed; }
+  };
+})()`);
+
+scene("dsb", { label: "dsb zuzu conversation", url: hubPage(dist), steps: [{ name: "dsb zuzu conversation", why: "contract: retained agent/conversation components preserve native UI, validated transport and disposal independently of the replacement geography", run: async (b) => {
   record("dsb compatibility: built CSP preserves exactly the weather and DSB network permissions", await b.evaluate(`(() => {
     const policy = document.querySelector('meta[http-equiv="Content-Security-Policy"]').content;
     const sources = name => policy.split(";").map(s => s.trim().split(/\\s+/)).find(s => s[0] === name).slice(1).sort().join("|");
@@ -8389,78 +8418,94 @@ scene("dsb", { label: "dsb zuzu conversation", url: hubPage(dist), steps: [{ nam
     } finally { window.fetch = saved; }
   })()`);
   record("dsb chat: fixed HTTP transport rejects unsafe responses and defaults to mock", transport);
-  const approachTalk = async () => { await b.evaluate(`      (() => { const B = __ooga, z = B.dsb.zuzu.root.position;
-      for (let i = 0; i < 16; i++) { const a = i * Math.PI / 8, x = z.x + Math.cos(a) * 2, q = z.z + Math.sin(a) * 2; if (!B.dsb.clearAt(x, q, B.dsb.avatar.bodyRadius)) continue; B.pilot.navigate({ yaw: 0, pitch: 0.2, dist: 7, target: { x, y: 1.7, z: q }, position: { x, y: 0, z: q } }); B.advance(1 / 60, 1 / 60); const e = document.getElementById("dsb-context"); if (!e.hidden && e.textContent === "Talk to Zuzu") break; }
-      if (document.getElementById("dsb-context").textContent !== "Talk to Zuzu") throw Error("No eligible Talk position near Zuzu"); })();`); };
-  const settle = async () => {
-    await b.evaluate(`window.dispatchEvent(new KeyboardEvent("keydown", { key: "w" })); __ooga.advance(__ooga.audio.duration + 1, 0.1); window.dispatchEvent(new KeyboardEvent("keyup", { key: "w" }));`);
+  record("retained Zuzu components: replacement DSB deliberately has no live cat or conversation", await b.evaluate('!__ooga.dsb.zuzu && !__ooga.dsb.conversation && !!BL.dsbAgent && !!BL.dsbConversation'));
+  try {
+    await mountZuzuConversationFixture(b);
+    const approachTalk = async () => b.evaluate('__zuzuFixture.prepare()');
+    const settle = async () => approachTalk();
+    const click = async selector => { await b.focus(true); await b.send("Page.bringToFront"); await b.evaluate(`if (document.pointerLockElement) document.exitPointerLock();`); await untilPage(b, "!document.pointerLockElement", 3000); const p = await b.evaluate(`(() => { const e = document.querySelector(${JSON.stringify(selector)}), r = e.getBoundingClientRect(), x = r.x + r.width / 2, y = r.y + r.height / 2; if (!e.contains(document.elementFromPoint(x, y))) throw Error("Blocked pointer: " + ${JSON.stringify(selector)}); return { x, y }; })()`); await b.click(p.x, p.y); };
+    const send = async message => { await b.evaluate(`document.getElementById("zuzu-message").value = ${JSON.stringify(message)}; document.getElementById("zuzu-form").requestSubmit();`); if (!await untilPage(b, "!__zuzuFixture.conversation.busy", 3000)) throw Error("Conversation did not settle"); };
+    await settle(); await b.key("2");
+    await click("#zuzu-component-talk");
+    record("retained Zuzu components: eligible agent Talk opens a focused mock panel and reports its callback", await b.evaluate(`document.getElementById("zuzu-conversation").open && document.activeElement.id === "zuzu-message" && document.getElementById("zuzu-mode").textContent.includes("no AI connected") && __zuzuFixture.changes.at(-1) === true`));
+    await b.send("Input.dispatchKeyEvent", { type: "keyUp", key: "w" });
+    const before = await b.evaluate(`({ x: __ooga.dsb.avatar.root.position.x, z: __ooga.dsb.avatar.root.position.z, shots: __ooga.dsb.avatar.weapon.shotsFired })`);
+    await b.key("w"); await b.key("v"); await b.key("t");
+    await b.send("Input.insertText", { text: " Why is the moon round? Καλημέρα 🐈" });
+    const typing = await b.evaluate(`(() => { const B = __ooga; B.advance(0.5); return { x: B.dsb.avatar.root.position.x, z: B.dsb.avatar.root.position.z, shots: B.dsb.avatar.weapon.shotsFired, text: document.getElementById("zuzu-message").value, trigger: B.dsb.avatar.weapon.triggerHeld }; })()`);
+    record("dsb chat: desktop free-form typing never moves or shoots", typing.x === before.x && typing.z === before.z && typing.shots === before.shots && !typing.trigger && typing.text.includes("wvt") && typing.text.includes("Καλημέρα"), JSON.stringify(typing));
+    await b.key("Enter");
+    record("dsb chat: Enter sends and receives validated mock text", await untilPage(b, '__zuzuFixture.conversation.history.length === 2 && !__zuzuFixture.conversation.busy && __zuzuFixture.conversation.history[1].source === "mock"', 3000));
+    await b.evaluate(`__zuzuFixture.advance(3.2);`);
+    record("dsb chat: response reaches her physical world dialogue", await b.evaluate(`__zuzuFixture.agent.dialogue.includes("local mock reply")`));
+    const validation = await b.evaluate(`(() => { const R = BL.dsbAgentRemote, context = __zuzuFixture.agent.conversationContext(), rows = Array.from({ length: 30 }, () => ({ role: "player", text: "hello" })); context.unapproved = "DO_NOT_SEND"; context.recentEvents = Array.from({ length: 40 }, (_, i) => ({ seq: i + 1, time: i, type: "food_seen", value: 1, extra: "DO_NOT_SEND" })); const body = R.makeRequest("Any ordinary topic", context, rows); const bad = ["not json", "null", JSON.stringify({ version: 2, text: "x" }), JSON.stringify({ version: 1, text: "x", actions: [] }), JSON.stringify({ version: 1, text: "<img src=x onerror=alert(1)>" }), JSON.stringify({ version: 1, text: "x".repeat(1001) }), "x".repeat(8193)]; return { rejected: bad.every(raw => { try { R.validateResponse(raw); return false; } catch { return true; } }), bounded: body.history.length === 12 && body.session.recentEvents.length === 8 && new TextEncoder().encode(JSON.stringify(body)).length <= R.LIMITS.requestBytes, selected: body.session.playerName, private: !JSON.stringify(body).includes("DO_NOT_SEND") && !Object.hasOwn(body.session, "x") }; })()`);
+    record("dsb chat: response schema/HTML/size validation and context allowlist", validation.rejected && validation.bounded && validation.private && validation.selected === "rules-without-rulers", JSON.stringify(validation));
+    for (let i = 0; i < 8; i++) await send("Free-form topic " + i);
+    record("dsb chat: history and DOM remain capped", await b.evaluate(`__zuzuFixture.conversation.history.length === 12 && document.getElementById("zuzu-history").children.length === 12`));
+    const count = await b.evaluate(`__zuzuFixture.conversation.history.map(r => r.text).join("|")`);
+    await send("x".repeat(1001));
+    record("dsb chat: overlong messages rejected before sending", await b.evaluate(`__zuzuFixture.conversation.history.map(r => r.text).join("|") === ${JSON.stringify(count)} && document.getElementById("zuzu-status").textContent.includes("1,000")`));
+    await b.key("Escape");
+    record("retained Zuzu components: Escape closes the modal, reports its callback and leaves controls idle", await b.evaluate(`!document.getElementById("zuzu-conversation").open && !__zuzuFixture.conversation.isOpen && __zuzuFixture.changes.at(-1) === false && __ooga.controls.read().y === 0`));
+    const move = await b.evaluate(`(() => { const B = __ooga, p = B.dsb.avatar.root.position, x = p.x, z = p.z; window.dispatchEvent(new KeyboardEvent("keydown", { key: "w" })); B.advance(0.2); window.dispatchEvent(new KeyboardEvent("keyup", { key: "w" })); return Math.hypot(p.x - x, p.z - z); })()`);
+    record("retained Zuzu components: movement remains available after the modal closes", move > 0.1, String(move));
+    await b.send("Emulation.setDeviceMetricsOverride", { width: 390, height: 740, deviceScaleFactor: 1, mobile: true });
+    await b.send("Emulation.setTouchEmulationEnabled", { enabled: true, maxTouchPoints: 5 });
     await approachTalk();
-  };
-  const click = async selector => { await b.focus(true); await b.send("Page.bringToFront"); await b.evaluate(`if (document.pointerLockElement) document.exitPointerLock();`); await untilPage(b, "!document.pointerLockElement", 3000); const p = await b.evaluate(`(() => { const e = document.querySelector(${JSON.stringify(selector)}), r = e.getBoundingClientRect(), x = r.x + r.width / 2, y = r.y + r.height / 2; if (!e.contains(document.elementFromPoint(x, y))) throw Error("Blocked pointer: " + ${JSON.stringify(selector)}); return { x, y }; })()`); await b.click(p.x, p.y); };
-  const send = async message => { await b.evaluate(`document.getElementById("zuzu-message").value = ${JSON.stringify(message)}; document.getElementById("zuzu-form").requestSubmit();`); if (!await untilPage(b, "!B.dsb.conversation.busy", 3000)) throw Error("Conversation did not settle"); };
-  await settle(); await b.key("2");
-  await b.send("Input.dispatchKeyEvent", { type: "keyDown", key: "w" });
-  await click("#dsb-context");
-  record("dsb chat: nearby Talk opens a focused, honestly labelled mock panel", await b.evaluate(`document.getElementById("zuzu-conversation").open && document.activeElement.id === "zuzu-message" && document.getElementById("zuzu-mode").textContent.includes("no AI connected") && __ooga.controls.read().y === 0`));
-  await b.send("Input.dispatchKeyEvent", { type: "keyUp", key: "w" });
-  const before = await b.evaluate(`({ x: __ooga.dsb.avatar.root.position.x, z: __ooga.dsb.avatar.root.position.z, shots: __ooga.dsb.avatar.weapon.shotsFired })`);
-  await b.key("w"); await b.key("v"); await b.key("t");
-  await b.send("Input.insertText", { text: " Why is the moon round? Καλημέρα 🐈" });
-  const typing = await b.evaluate(`(() => { const B = __ooga; B.advance(0.5); return { x: B.dsb.avatar.root.position.x, z: B.dsb.avatar.root.position.z, shots: B.dsb.avatar.weapon.shotsFired, text: document.getElementById("zuzu-message").value, trigger: B.dsb.avatar.weapon.triggerHeld }; })()`);
-  record("dsb chat: desktop free-form typing never moves or shoots", typing.x === before.x && typing.z === before.z && typing.shots === before.shots && !typing.trigger && typing.text.includes("wvt") && typing.text.includes("Καλημέρα"), JSON.stringify(typing));
-  await b.key("Enter");
-  record("dsb chat: Enter sends and receives validated mock text", await untilPage(b, 'B.dsb.conversation.history.length === 2 && !B.dsb.conversation.busy && B.dsb.conversation.history[1].source === "mock"', 3000));
-  await b.evaluate(`__ooga.advance(3.2);`);
-  record("dsb chat: response reaches her physical world dialogue", await b.evaluate(`__ooga.dsb.zuzu.dialogue.includes("local mock reply")`));
-  const validation = await b.evaluate(`(() => { const R = BL.dsbAgentRemote, context = __ooga.dsb.zuzu.conversationContext(), rows = Array.from({ length: 30 }, () => ({ role: "player", text: "hello" })); context.unapproved = "DO_NOT_SEND"; context.recentEvents = Array.from({ length: 40 }, (_, i) => ({ seq: i + 1, time: i, type: "food_seen", value: 1, extra: "DO_NOT_SEND" })); const body = R.makeRequest("Any ordinary topic", context, rows); const bad = ["not json", "null", JSON.stringify({ version: 2, text: "x" }), JSON.stringify({ version: 1, text: "x", actions: [] }), JSON.stringify({ version: 1, text: "<img src=x onerror=alert(1)>" }), JSON.stringify({ version: 1, text: "x".repeat(1001) }), "x".repeat(8193)]; return { rejected: bad.every(raw => { try { R.validateResponse(raw); return false; } catch { return true; } }), bounded: body.history.length === 12 && body.session.recentEvents.length === 8 && new TextEncoder().encode(JSON.stringify(body)).length <= R.LIMITS.requestBytes, selected: body.session.playerName, private: !JSON.stringify(body).includes("DO_NOT_SEND") && !Object.hasOwn(body.session, "x") }; })()`);
-  record("dsb chat: response schema/HTML/size validation and context allowlist", validation.rejected && validation.bounded && validation.private && validation.selected === "rules-without-rulers", JSON.stringify(validation));
-  for (let i = 0; i < 8; i++) await send("Free-form topic " + i);
-  record("dsb chat: history and DOM remain capped", await b.evaluate(`__ooga.dsb.conversation.history.length === 12 && document.getElementById("zuzu-history").children.length === 12`));
-  const count = await b.evaluate(`__ooga.dsb.conversation.history.map(r => r.text).join("|")`);
-  await send("x".repeat(1001));
-  record("dsb chat: overlong messages rejected before sending", await b.evaluate(`__ooga.dsb.conversation.history.map(r => r.text).join("|") === ${JSON.stringify(count)} && document.getElementById("zuzu-status").textContent.includes("1,000")`));
-  await b.key("Escape");
-  record("dsb chat: Escape closes and clears held input", await b.evaluate(`!document.getElementById("zuzu-conversation").open && !__ooga.dsb.conversation.isOpen && __ooga.controls.read().y === 0`));
-  const move = await b.evaluate(`(() => { const B = __ooga, p = B.dsb.avatar.root.position, x = p.x, z = p.z; window.dispatchEvent(new KeyboardEvent("keydown", { key: "w" })); B.advance(0.2); window.dispatchEvent(new KeyboardEvent("keyup", { key: "w" })); return Math.hypot(p.x - x, p.z - z); })()`);
-  record("dsb chat: closing restores movement", move > 0.1, String(move));
-  await b.send("Emulation.setDeviceMetricsOverride", { width: 390, height: 740, deviceScaleFactor: 1, mobile: true });
-  await b.send("Emulation.setTouchEmulationEnabled", { enabled: true, maxTouchPoints: 5 });
-  await approachTalk();
-  await b.evaluate(`document.getElementById("zuzu-message").value = "";`);
-  const tap = async selector => { const p = await b.evaluate(`(() => { const r = document.querySelector(${JSON.stringify(selector)}).getBoundingClientRect(); return { x: r.x + r.width / 2, y: r.y + r.height / 2 }; })()`); await b.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [p] }); await b.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] }); };
-  await tap("#dsb-context");
-  if (!await untilPage(b, "B.dsb.conversation.isOpen", 3000)) throw Error("Touch Talk did not open the conversation");
-  await tap("#zuzu-message");
-  await b.send("Input.insertText", { text: "こんにちは 🐈" });
-  await b.evaluate(`document.getElementById("zuzu-message").dispatchEvent(new CompositionEvent("compositionstart", { bubbles: true }));`);
-  await b.key("Enter");
-  record("dsb chat: composition Enter does not prematurely submit", await b.evaluate(`!__ooga.dsb.conversation.busy && document.getElementById("zuzu-message").value.includes("こんにちは")`));
-  await b.evaluate(`document.getElementById("zuzu-message").dispatchEvent(new CompositionEvent("compositionend", { bubbles: true }));`);
-  await tap("#zuzu-send");
-  record("dsb chat: touch Send handles Unicode text", await untilPage(b, 'B.dsb.conversation.history.at(-2).text.includes("こんにちは") && B.dsb.conversation.history.at(-1).source === "mock"', 3000));
-  await b.send("Emulation.setDeviceMetricsOverride", { width: 390, height: 400, deviceScaleFactor: 1, mobile: true });
-  record("dsb chat: compact panel fits a reduced mobile viewport", await b.evaluate(`(() => { const r = document.getElementById("zuzu-conversation").getBoundingClientRect(); return r.left >= 0 && r.right <= innerWidth + 1 && r.top >= 0 && r.bottom <= innerHeight + 1 && parseFloat(getComputedStyle(document.getElementById("zuzu-message")).fontSize) >= 16; })()`));
-  await tap("#zuzu-close");
-  record("dsb chat: touch Close releases conversation", await b.evaluate(`!__ooga.dsb.conversation.isOpen`));
-  await b.send("Emulation.clearDeviceMetricsOverride"); await b.send("Emulation.setTouchEmulationEnabled", { enabled: false });
-  // Install a local transport fixture through the same adapter seam as the future service.
-  await b.evaluate(`window.__zuzuTransport = { mode: "valid", body: null, finish: null }; window.__remoteFactory = BL.dsbAgentRemote.create; BL.dsbAgentRemote.create = () => __remoteFactory({ mode: "remote", timeoutMs: 500, transport: async body => { __zuzuTransport.body = JSON.parse(body); if (__zuzuTransport.mode === "unavailable") throw new Error("offline"); if (__zuzuTransport.mode === "timeout") return new Promise(resolve => { __zuzuTransport.finish = resolve; }); if (__zuzuTransport.mode === "malformed") return "broken json"; if (__zuzuTransport.mode === "html") return JSON.stringify({ version: 1, text: "<b>Not allowed</b>" }); return JSON.stringify({ version: 1, text: "A plain reply about the moon. " + "Quietly fascinating. ".repeat(20) }); } }); __ooga.go("hub");`);
-  if (!await untilPage(b, 'B.scene === "hub" && !B.transitioning', 20000)) throw Error("Hub transition failed");
-  await b.evaluate(`__ooga.go("dsb");`);
-  if (!await untilPage(b, 'B.scene === "dsb" && !B.transitioning', 10000)) throw Error("DSB transition failed");
-  await settle(); await click("#dsb-context");
-  record("dsb chat: scene exit resets conversation memory", await b.evaluate(`__ooga.dsb.conversation.history.length === 0`));
-  await send("Tell me about the moon");
-  record("dsb chat: protected-service interface accepts full text, with bounded world excerpt", await b.evaluate(`__ooga.advance(3.2); __ooga.dsb.conversation.history.at(-1).text.length > 160 && __ooga.dsb.zuzu.dialogue.length <= 160 && __zuzuTransport.body.version === 1 && __zuzuTransport.body.agent === "zuzu" && __zuzuTransport.body.history.length === 0`));
-  for (const mode of ["unavailable", "timeout", "malformed", "html"]) {
-    await b.evaluate(`__zuzuTransport.mode = ${JSON.stringify(mode)}`); await send("Another normal question");
-    record("dsb chat: deterministic fallback for " + mode, await b.evaluate(`__ooga.dsb.conversation.history.at(-1).source === "fallback" && !__ooga.dsb.conversation.busy && __ooga.dsb.zuzu.snapshot().active && document.getElementById("zuzu-status").textContent.includes("local replies") && !document.getElementById("zuzu-history").querySelector("b, img, script")`));
+    await b.evaluate(`document.getElementById("zuzu-message").value = "";`);
+    const tap = async selector => { const p = await b.evaluate(`(() => { const r = document.querySelector(${JSON.stringify(selector)}).getBoundingClientRect(); return { x: r.x + r.width / 2, y: r.y + r.height / 2 }; })()`); await b.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [p] }); await b.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] }); };
+    await tap("#zuzu-component-talk");
+    if (!await untilPage(b, "__zuzuFixture.conversation.isOpen", 3000)) throw Error("Touch Talk did not open the conversation");
+    await tap("#zuzu-message");
+    await b.send("Input.insertText", { text: "こんにちは 🐈" });
+    await b.evaluate(`document.getElementById("zuzu-message").dispatchEvent(new CompositionEvent("compositionstart", { bubbles: true }));`);
+    await b.key("Enter");
+    record("dsb chat: composition Enter does not prematurely submit", await b.evaluate(`!__zuzuFixture.conversation.busy && document.getElementById("zuzu-message").value.includes("こんにちは")`));
+    await b.evaluate(`document.getElementById("zuzu-message").dispatchEvent(new CompositionEvent("compositionend", { bubbles: true }));`);
+    await tap("#zuzu-send");
+    record("dsb chat: touch Send handles Unicode text", await untilPage(b, '__zuzuFixture.conversation.history.at(-2).text.includes("こんにちは") && __zuzuFixture.conversation.history.at(-1).source === "mock"', 3000));
+    await b.send("Emulation.setDeviceMetricsOverride", { width: 390, height: 400, deviceScaleFactor: 1, mobile: true });
+    record("dsb chat: compact panel fits a reduced mobile viewport", await b.evaluate(`(() => { const r = document.getElementById("zuzu-conversation").getBoundingClientRect(); return r.left >= 0 && r.right <= innerWidth + 1 && r.top >= 0 && r.bottom <= innerHeight + 1 && parseFloat(getComputedStyle(document.getElementById("zuzu-message")).fontSize) >= 16; })()`));
+    await tap("#zuzu-close");
+    record("dsb chat: touch Close releases conversation", await b.evaluate(`!__zuzuFixture.conversation.isOpen`));
+    await b.send("Emulation.clearDeviceMetricsOverride"); await b.send("Emulation.setTouchEmulationEnabled", { enabled: false });
+    // Install a local transport fixture through the same adapter seam as the future service.
+    await b.evaluate(`window.__zuzuTransport = { mode: "valid", body: null, finish: null }; window.__remoteFactory = BL.dsbAgentRemote.create; BL.dsbAgentRemote.create = () => __remoteFactory({ mode: "remote", timeoutMs: 500, transport: async body => { __zuzuTransport.body = JSON.parse(body); if (__zuzuTransport.mode === "unavailable") throw new Error("offline"); if (__zuzuTransport.mode === "timeout") return new Promise(resolve => { __zuzuTransport.finish = resolve; }); if (__zuzuTransport.mode === "malformed") return "broken json"; if (__zuzuTransport.mode === "html") return JSON.stringify({ version: 1, text: "<b>Not allowed</b>" }); return JSON.stringify({ version: 1, text: "A plain reply about the moon. " + "Quietly fascinating. ".repeat(20) }); } }); window.__zuzuPrevious = __zuzuFixture; __zuzuFixture.dispose(); __ooga.go("hub");`);
+    if (!await untilPage(b, 'B.scene === "hub" && !B.transitioning', 20000)) throw Error("Hub transition failed");
+    const selected=await b.evaluate(`(() => {
+      const B=__ooga, actor=B.cavemen.get("rules-without-rulers");
+      actor.override="working"; B.crew.refreshStates(true); B.pilot.possess(actor);
+      return {name:B.pilot.player?.traits.name,canonical:actor.headOpen===BL.models.caveman(BL.contributors.traitsFor("rules-without-rulers")).headOpen};
+    })()`);
+    record("retained Zuzu components: remount selects the same canonical Ooga before entry",selected.name==="rules-without-rulers"&&selected.canonical,JSON.stringify(selected));
+    await dsbEnter(b);
+    if (!await untilPage(b, 'B.scene === "dsb" && !B.transitioning', 10000)) throw Error("DSB transition failed");
+    record("retained Zuzu components: reentry preserves the selected Ooga",await b.evaluate('__ooga.dsb.avatar.traits.name === "rules-without-rulers"'));
+    await mountZuzuConversationFixture(b);
+    await settle(); await click("#zuzu-component-talk");
+    record("retained Zuzu components: disposal releases the old model, targets, native button and history before remount", await b.evaluate(`__zuzuFixture.conversation.history.length === 0 && __zuzuPrevious.disposed && __zuzuPrevious.agent.disposed && __zuzuPrevious.parent.children.length === 0 && __zuzuPrevious.targets.size === 0 && !__zuzuPrevious.button.isConnected && __zuzuPrevious.conversation.history.length === 0`));
+    await send("Tell me about the moon");
+    record("dsb chat: protected-service interface accepts full text, with bounded world excerpt", await b.evaluate(`__zuzuFixture.advance(3.2); __zuzuFixture.conversation.history.at(-1).text.length > 160 && __zuzuFixture.agent.dialogue.length <= 160 && __zuzuTransport.body.version === 1 && __zuzuTransport.body.agent === "zuzu" && __zuzuTransport.body.history.length === 0`));
+    for (const mode of ["unavailable", "timeout", "malformed", "html"]) {
+      await b.evaluate(`__zuzuTransport.mode = ${JSON.stringify(mode)}`); await send("Another normal question");
+      record("dsb chat: deterministic fallback for " + mode, await b.evaluate(`__zuzuFixture.conversation.history.at(-1).source === "fallback" && !__zuzuFixture.conversation.busy && __zuzuFixture.agent.snapshot().active && document.getElementById("zuzu-status").textContent.includes("local replies") && !document.getElementById("zuzu-history").querySelector("b, img, script")`));
+    }
+    await b.evaluate(`__zuzuTransport.mode = "timeout"; document.getElementById("zuzu-message").value = "Cancel me"; document.getElementById("zuzu-form").requestSubmit();`);
+    await click("#zuzu-close");
+    const late = await b.evaluate(`(async () => { const c = __zuzuFixture.conversation, n = c.history.length; __zuzuTransport.finish(JSON.stringify({ version: 1, text: "Late reply" })); await Promise.resolve(); await Promise.resolve(); return !c.isOpen && !c.busy && c.history.length === n && c.history.at(-1).text !== "Late reply"; })()`);
+    record("dsb chat: closing cancels pending work and rejects late replies", late);
+    await b.evaluate(`BL.dsbAgentRemote.create = __remoteFactory; __zuzuFixture.dispose();`);
+    record("retained Zuzu components: disposal leaves the replacement scene deferred", await b.evaluate('!__ooga.dsb.zuzu && !__ooga.dsb.conversation && __zuzuFixture.disposed && __zuzuFixture.targets.size === 0 && !document.getElementById("zuzu-conversation").open'));
+    await dsbExit(b);
+    const returned=await b.evaluate('({scene:__ooga.scene,name:__ooga.bifrost?.avatar.traits.name})');
+    record("retained Zuzu components: real Portara return preserves the selected Ooga",returned.scene==="bifrost"&&returned.name==="rules-without-rulers",JSON.stringify(returned));
+    await b.evaluate('delete window.__zuzuFixture; delete window.__zuzuPrevious; delete window.__zuzuTransport; delete window.__remoteFactory');
+  } finally {
+    // A failed native assertion must not leave mobile overrides or component state alive.
+    await b.send("Emulation.clearDeviceMetricsOverride").catch(() => {});
+    await b.send("Emulation.setTouchEmulationEnabled", { enabled: false }).catch(() => {});
+    await b.evaluate(`if (window.__remoteFactory) BL.dsbAgentRemote.create = __remoteFactory; window.__zuzuFixture?.dispose(); delete window.__zuzuFixture; delete window.__zuzuPrevious; delete window.__zuzuTransport; delete window.__remoteFactory;`).catch(() => {});
   }
-  await b.evaluate(`__zuzuTransport.mode = "timeout"; document.getElementById("zuzu-message").value = "Cancel me"; document.getElementById("zuzu-form").requestSubmit();`);
-  await click("#zuzu-close");
-  const late = await b.evaluate(`(async () => { const c = __ooga.dsb.conversation, n = c.history.length; __zuzuTransport.finish(JSON.stringify({ version: 1, text: "Late reply" })); await Promise.resolve(); await Promise.resolve(); return !c.isOpen && !c.busy && c.history.length === n && c.history.at(-1).text !== "Late reply"; })()`);
-  record("dsb chat: closing cancels pending work and rejects late replies", late);
-  await b.evaluate(`BL.dsbAgentRemote.create = __remoteFactory;`);
 } }] });
 scene("dsb", { label: "dsb zuzu agent", url: hubPage(dist, "scene=dsb"), steps: [{ name: "dsb zuzu agent", why: "contract: preserve DSB scene behavior independently of the hub entrance", run: async (b) => {
   await b.send("Emulation.setEmulatedMedia", { features: [{ name: "prefers-reduced-motion", value: "reduce" }] });
