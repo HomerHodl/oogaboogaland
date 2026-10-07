@@ -104,7 +104,9 @@
     }
     // Deterministic small shoreline accents; no new strip behind Olympus.
     const rand=BL.math.mulberry32(81037),coast=[...land.coast,land.coast[0]];
-    for(let i=0;i<2400;i++){
+    // The protected routes and existing planting leave few eligible shore
+    // pockets. Continue the same bounded sequence to fill those pockets.
+    for(let i=0;i<6000;i++){
       const x=-83+rand()*165,z=-26+rand()*97,edge=distance(coast,x,z);
       if(edge<3||edge>9||land.heightAt(x,z)>4)continue;
       ground(i%4===0?"driftwood":i%3===0?"grass":"rock",x,z,.75,rand()*Math.PI*2,i%4===0?.8:.45,"coast");
