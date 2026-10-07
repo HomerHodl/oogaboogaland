@@ -479,6 +479,9 @@
   const net = window.BL.net;
   const unsubscribeAccount = net.subscribe(window.BL.hud.showAccount);
   const unsubscribeVoice = window.BL.voice.subscribe(() => window.BL.hud.showAccount(net.state));
+  // The roster's host dot and voice marks follow the room and voice, on whichever scene's roster is up.
+  const unsubscribeRosterMarks = net.subscribeRoster(window.BL.hud.showVoices);
+  const unsubscribeVoiceMarks = window.BL.voice.subscribe(window.BL.hud.showVoices);
   const accountReady = !params.has("nosim") && params.get("net") !== "0" ? net.start() : Promise.resolve();
   // A tab opened in the background waits for its first look before it holds any socket.
   if (document.hidden) {
@@ -622,6 +625,8 @@
     window.BL.oogatronLive.dispose();
     unsubscribeAccount();
     unsubscribeVoice();
+    unsubscribeRosterMarks();
+    unsubscribeVoiceMarks();
     window.BL.voice.dispose();
     net.dispose();
     window.removeEventListener("keydown", onKeyDown);
