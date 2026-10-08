@@ -1579,7 +1579,7 @@ void main() {
     };
     // Compiles without blocking; ready flips once linked.
     let parallel = null;
-    let programs = null, rigPrograms = null, rigProgramsReady = false, rigProgramsRequested = false, rigMode = false;
+    let programs = null, rigPrograms = null, rigProgramsReady = false, rigProgramsRequested = false, rigMode = false, rigFailure = null;
     let maxSamples = 0; // Context capability; querying during a tier change can wait for outstanding GPU work.
     let ready = false, cutawayMaxY = 1e6, cutawayCount = 0, cutawayFade = 0, cutawayFrame = 0, cutawayCloudY = 0, cutawayCloudMix = 0;
     const cutawayRegions = new Float32Array(32), cutawayBounds = new Float32Array(32);
@@ -1647,7 +1647,7 @@ void main() {
         composite: compile(QUAD_VS, COMPOSITE_FS, ["uScene", "uBloom", "uBloomWide", "uBloomStrength", "uDepth", "uShaft", "uShaftColor"])
       };
       programs = res.programs;
-      rigPrograms = null; rigProgramsReady = false;
+      rigPrograms = null; rigProgramsReady = false; rigFailure = null;
       res.quadVao = gl.createVertexArray();
     };
     const prepareRigPrograms = () => {
@@ -1661,12 +1661,14 @@ void main() {
     };
     const pollRigPrograms = () => {
       if (rigProgramsReady) return true;
-      if (!rigPrograms || failure) return false;
+      if (!rigPrograms || failure || rigFailure) return false;
       const mesh = rigPrograms.mesh, shadow = rigPrograms.shadow;
       if (parallel && (!gl.getProgramParameter(mesh.prog, parallel.COMPLETION_STATUS_KHR)
         || !gl.getProgramParameter(shadow.prog, parallel.COMPLETION_STATUS_KHR))) return false;
+      // An optional rig link failure (GPU uniform pressure) costs only rig mode: the
+      // renderer-wide failure state stays clean and the CPU path draws the same geometry.
       try { finishProgram(mesh); finishProgram(shadow); rigProgramsReady = true; }
-      catch (err) { failure = err; }
+      catch (err) { rigFailure = err; }
       return rigProgramsReady;
     };
     const createRendererRig = (nodes) => {
@@ -3261,8 +3263,8 @@ void main() {
     // explicitly every frame, so snapshot callers never inherit a live rig.
     const render = (root, camera, opts = {}, meshRigs = opts.meshRigs === true) => {
       if (lost || !pollPrograms()) return false;
-      rigMode = !!meshRigs && !!rigPrograms;
-      if (rigMode && !pollRigPrograms()) return false;
+      rigMode = !!meshRigs && !!rigPrograms && !rigFailure;
+      if (rigMode && !pollRigPrograms()) { if (rigFailure) rigMode = false; else return false; }
       programs = rigMode ? rigPrograms : res.programs;
       collectForRender = rigMode ? collectRig : collect;
       cullForRender = rigMode ? writeRigCullSphere : writeCullSphere;
@@ -3760,6 +3762,9 @@ void main() {
       },
       get failure() {
         return failure;
+      },
+      get rigFailed() {
+        return !!rigFailure;
       },
       get size() {
         return size;

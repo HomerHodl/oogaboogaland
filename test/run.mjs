@@ -10807,12 +10807,57 @@ const rendererReadinessProof = () => {
   return { cases: outcomes.length, failures: outcomes.filter(ok => !ok).length };
 };
 
+// An optional rig program link failure (GPU uniform pressure) must cost only rig mode: the
+// renderer-wide failure state stays clean and the ordinary path draws the same geometry that frame.
+const rigFailureIsolationProof = async () => {
+  const source = await readFile(join(root, "src/js/gl-renderer.js"), "utf8");
+  const poll = source.slice(source.indexOf("    const pollRigPrograms = () => {"), source.indexOf("    const createRendererRig ="));
+  const gate = source.slice(source.indexOf("      rigMode = !!meshRigs"), source.indexOf("      cutawayMaxY ="));
+  const outcomes = [];
+  for (const linkFails of [true, false]) {
+    let linkAttempts = 0;
+    const context = {
+      failure: null, rigFailure: null, rigProgramsReady: false, rigMode: false, parallel: null,
+      finishProgram() { linkAttempts++; if (linkFails) throw new Error("Program link failed: uniform pressure"); },
+      gl: { getProgramParameter: () => true },
+      rigPrograms: { mesh: {}, shadow: {} }, res: { programs: "ordinary" }, programs: null,
+      collect: "cpu", collectRig: "rig", writeCullSphere: "cpu-cull", writeRigCullSphere: "rig-cull",
+      uploadInstances: "cpu-upload", uploadRigInstances: "rig-upload",
+      meshRigs: true, collectForRender: null, cullForRender: null, uploadForRender: null,
+    };
+    runInNewContext(`${poll}
+const renderGate = () => {${gate}};
+this.frame1 = renderGate(); this.frame2 = renderGate(); this.rigFailure = rigFailure; this.failure = failure;
+this.rigProgramsReady = rigProgramsReady; this.collectForRender = collectForRender; this.programs = programs; this.rigMode = rigMode;`, context);
+    outcomes.push({
+      linkFails,
+      failureClean: context.failure === null,
+      rigFailureSet: context.rigFailure instanceof Error,
+      framesContinued: context.frame1 === undefined && context.frame2 === undefined,
+      cpuPath: context.collectForRender === "cpu" && context.programs === "ordinary",
+      path: context.collectForRender,
+      linkAttempts,
+      rigProgramsReady: context.rigProgramsReady,
+      latched: !linkFails || context.rigProgramsReady === false,
+      rigMode: context.rigMode,
+    });
+  }
+  return {
+    cases: outcomes.length * 6, failures: outcomes.filter(o =>
+      o.linkFails ? !(o.failureClean && o.rigFailureSet && o.framesContinued && o.cpuPath && o.linkAttempts === 1 && o.latched && o.rigMode === false)
+        : !(o.failureClean && !o.rigFailureSet && o.rigProgramsReady && o.path === "rig" && o.rigMode === true)).length,
+  };
+};
+
 const unitChecks = async () => {
   const waterProgram = selectedWaterProgramProof();
   record("DSB water: environment and sampler bindings follow the selected ordinary or rig shader while state replacement releases owned textures", waterProgram.cases === 2 && waterProgram.failures === 0, JSON.stringify(waterProgram));
 
   const readiness = rendererReadinessProof();
   record("renderer readiness: selected race programs must link after restoration, while unused rigs do not block ordinary scenes", readiness.cases === 6 && readiness.failures === 0, JSON.stringify(readiness));
+
+  const rigIsolation = await rigFailureIsolationProof();
+  record("rig program link failure: an optional rig failure disables only rig mode, leaves the renderer-wide failure state clean and draws the frame through the ordinary path", rigIsolation.cases === 12 && rigIsolation.failures === 0, JSON.stringify(rigIsolation));
 
 const glyphLayout = terrainGlyphLayoutProof();
 record("terrain glyph layouts: warm visits preserve exact registries and rendered instances with fresh mutable buffers and bounded invalidation", glyphLayout.failures === 0 && glyphLayout.cases >= 100, JSON.stringify(glyphLayout));
