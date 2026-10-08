@@ -3421,6 +3421,14 @@
     // moving apart is allowed, so a crowd unpicks itself instead of locking.
     // Every body the scene walks that is not on the roster: the Agent and any it
     // has called in. One array, rebuilt only when that crowd changes.
+    const spotOccupied = (cave, x, y, z) => {
+      for (let i = 0; i < crewList.length; i++) {
+        const other = crewList[i], p = other.root.position, floor = p.y - other.baseY;
+        if (other !== cave && other.root.visible && y < floor + other.bodyHeight && y + cave.bodyHeight > floor
+          && Math.hypot(x - p.x, z - p.z) < Math.max(SHOULDER_GAP, cave.bodyRadius + other.bodyRadius)) return true;
+      }
+      return false;
+    };
     const outsideClear = (fromX, fromZ, x, z, y, height) => {
       const bodies = ctx.outsideActors && ctx.outsideActors();
       if (!bodies) return true;
@@ -3721,24 +3729,42 @@
         nav.costs[NAV_CENTER] = 0; nav.heights[NAV_CENTER] = p.y - cave.baseY;
       }
     };
+    const recoveryBodies = new Array(crewList.length), recoveryOutside = [];
+    let recoveryBodyCount = 0, recoveryOutsideCount = 0;
     const recoveryHeight = (cave, x, z, y, tx, tz, step) => {
       const dx = tx - x, dz = tz - z, distance = Math.hypot(dx, dz);
       if (distance < 1e-7) return y;
       step = Math.min(step, NAV_STEP);
       const steps = Math.max(1, Math.ceil(distance / step));
       const fromX = x, fromZ = z;
+      // Fetch and filter the crowd once per edge. Keep short swept checks
+      // only for nearby bodies: escape and height rules depend on each step.
+      recoveryBodyCount = recoveryOutsideCount = 0;
+      for (let n = 0; n < crewList.length; n++) {
+        const other = crewList[n];
+        if (other !== cave && other.root.visible && other.state !== "away" && !other.root.quaternion && !other.camp.seat
+          && Math.hypot(other.root.position.x - x, other.root.position.z - z) <= distance + SHOULDER_GAP) recoveryBodies[recoveryBodyCount++] = other;
+      }
+      const outside = ctx.outsideActors && ctx.outsideActors();
+      if (outside) for (let n = 0; n < outside.length; n++) {
+        const body = outside[n];
+        if (Math.hypot(body.x - x, body.z - z) <= distance + OUTSIDE_GAP) recoveryOutside[recoveryOutsideCount++] = body;
+      }
       // A coarse edge can cross a deep corner before reaching a higher tread.
       // Follow the same short, supported steps as the walker, not the line
       // between endpoint heights, or recovery will select that edge forever.
       for (let i = 1; i <= steps; i++) {
         const along = Math.min(distance, i * step) / distance;
         const nx = fromX + dx * along, nz = fromZ + dz * along;
-        if (!outsideClear(x, z, nx, nz, y, cave.bodyHeight)) return NaN;
-        for (let n = 0; n < crewList.length; n++) {
-          const other = crewList[n], p = other.root.position, floor = p.y - other.baseY;
-          if (other === cave || !other.root.visible || other.state === "away" || other.root.quaternion || other.camp.seat
-            || y >= floor + other.bodyHeight - 0.05 || y + cave.bodyHeight <= floor + 0.05 || Math.abs(y - floor) >= STEP) continue;
-          if (!gapClear(x, z, nx, nz, p)) return NaN;
+        for (let n = 0; n < recoveryOutsideCount; n++) {
+          const body = recoveryOutside[n];
+          if (y < body.y + ctx.outsideActorHeight && y + cave.bodyHeight > body.y
+            && !gapClear(x, z, nx, nz, body, OUTSIDE_GAP)) return NaN;
+        }
+        for (let n = 0; n < recoveryBodyCount; n++) {
+          const other = recoveryBodies[n], floor = other.root.position.y - other.baseY;
+          if (y < floor + other.bodyHeight - 0.05 && y + cave.bodyHeight > floor + 0.05 && Math.abs(y - floor) < STEP
+            && !gapClear(x, z, nx, nz, other.root.position)) return NaN;
         }
         if (!npcWalkable(x, z, nx, nz, y, cave.bodyHeight, cave)) return NaN;
         const height = groundAt(nx, nz, y, y, cave);
@@ -4245,13 +4271,7 @@
       if (work.phase === "station") {
         // A nonworker can occupy a reserved shooting place after it was
         // selected. Walking around that body cannot reach its exact center.
-        let occupied = false;
-        for (let i = 0; i < crewList.length; i++) {
-          const other = crewList[i], q = other.root.position, floor = q.y - other.baseY;
-          if (other !== cave && other.root.visible && work.position.y < floor + other.bodyHeight
-            && work.position.y + cave.bodyHeight > floor && Math.hypot(work.position.x - q.x, work.position.z - q.z)
-              < Math.max(SHOULDER_GAP, cave.bodyRadius + other.bodyRadius)) { occupied = true; break; }
-        }
+        const occupied = spotOccupied(cave, work.position.x, work.position.y, work.position.z);
         const near = Math.hypot(cave.root.position.x - work.position.x, cave.root.position.z - work.position.z) < 1.5;
         work.blockedTime = occupied && near ? work.blockedTime + dt : 0;
         // An occupied place re-invokes the site's position hook every 0.8 s by
@@ -6109,7 +6129,7 @@
     }
     const stats = () => ({ built: builtEquipment.length, tomatoesThrown, projectiles: bulletPool.reduce((n,b)=>n+(b.life>0?1:0),0) });
     return {
-      showShot, setTint,
+      showShot, setTint, spotOccupied,
       cavemen, list: crewList, fanSlots, stateOf, stateCounts, workingCavemen, eatingCavemen, workingCount, eatingCount, feedableCavemen, refreshStates, refreshRosterRow, updateFan, rush, headWorldOf, applyAllSwag, wornBy, renderLocker, pokeCave, idleSay, drawQuotes,
       throwTomato, clearProjectiles, control, release, relocatePlayer, sleepPlayer, wakePlayer, sitPlayer, standPlayer, clearHeadLook, recoverDragged, ignite, dropRoll, damage, fireView, steer: steerPlayer, look: lookPlayer, elevate: elevatePlayer, playerAction, jumpPlayer, poseWeapon, wearJetpack, removeJetpack, setJetpackOwnership, thrust, holdRocketJump, update, dispose, stats,
       actorClear, builtInJetpack, toggleTint, twirl, toggleWeapon, selectWeapon, configureWeapon, swingWeapon, bashWeapon, releaseSwing, fireWeapon, setWeaponTrigger, canFire, weaponOrigin, meleeReach, meleePower, nearReload, canReload, startReload, stopReload, stopBurst, canSwapMagazine, swapMagazine, collectMagazine, collectGroundMagazine, collectAmmo, removeMagazines, hasMagazine, magazineCount, magazineAmmo, totalAmmo, workSites,

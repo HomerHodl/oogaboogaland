@@ -9414,13 +9414,10 @@
             // jambs. Back each row away enough to see across the opening.
             const z = 4.8 + row * 1.35 + Math.abs(x) * 0.32;
             const px = mouth.x + cr * x + sr * z, pz = mouth.z - sr * x + cr * z;
-            let occupied = false;
-            for (let i = 0; i < crew.list.length; i++) {
+            let occupied = crew.spotOccupied(cave, px, mouth.floorY, pz);
+            for (let i = 0; !occupied && i < crew.list.length; i++) {
               const other = crew.list[i];
               if (other === cave) continue;
-              const p = other.root.position, floor = p.y - other.baseY;
-              if (other.root.visible && mouth.floorY < floor + other.bodyHeight && mouth.floorY + cave.bodyHeight > floor
-                && Math.hypot(p.x - px, p.z - pz) < Math.max(0.68, cave.bodyRadius + other.bodyRadius)) { occupied = true; break; }
               if (other === crew.player || other.state !== "working"
                 || other.work.phase !== "outbound" && other.work.phase !== "station" && other.work.phase !== "shoot"
                 || shared.workSites[other.work.site]?.repo !== slot.repo) continue;
