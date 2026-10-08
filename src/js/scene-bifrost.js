@@ -118,7 +118,7 @@
   const SHOTS = {
     dsb: {
       width: 360, up: 0.36, eye: { x: 0, y: 40, z: 84 }, look: { x: 0, y: -3, z: 0 }, colour: 0.83, mist: 0.08, haze: [70, 120, 235],
-      build: () => BL.dsbModels.build().root, opts: () => DSB_LIGHT
+      build: () => BL.dsbGeography.build().root, opts: () => DSB_LIGHT
     },
     poker: {
       width: 360, up: 0.42, eye: { x: 0, y: 8.2, z: 33 }, look: { x: 0, y: 1.2, z: 6 }, colour: 0.83, mist: 0.05, haze: [70, 120, 235],
@@ -127,7 +127,21 @@
   };
 
   let renderer, canvas, game, world, go, root, camera, hud, hooks, input, pilot, fx, agentPlay = null;
-  let people = null, avatar = null, playerWorld = null, scene = null, leaving = false, dust = null, pictureTries = 0, pictureWait = 0;
+  let people = null, avatar = null, playerWorld = null, scene = null, leaving = false, dust = null, pictureTries = 0, pictureWait = 0, unsubscribeAccount = null, remotes = null;
+  const NO_ACTORS = [];
+  // On the Worker's page the island's driving rules hold in here too, and the Ooga driven is reported to the
+  // room every frame, so signed-in players in the chamber hear each other (voice needs a driven Ooga).
+  const mayPossess = (cave) => BL.net.mayDrive(cave.traits.name, contributors.stateFor(cave.contributor) === "working");
+  const accountChanged = () => {
+    if (!avatar) return;
+    const released = BL.net.state.released;
+    const denied = mayPossess(avatar) || (released && released.name === avatar.traits.name ? "That Ooga is no longer yours to drive" : null);
+    BL.net.state.released = null;
+    if (denied && people.player === avatar) {
+      pilot.release(true);
+      hud.toast(denied);
+    }
+  };
   const targets = [];
 
   // One picture of each open world for the page, kept on `world.windowViews` by its looks' key (DSB Land's as `dsb`).
@@ -405,7 +419,6 @@
     camera = createCamera({ fov: 55, near: 0.3, far: 700 });
     root = createNode();
     hud = hudMod.create({ roster: contributors.activeRoster, catalog: models.SWAG, tierColors: models.TIER_COLORS, renderIcon: hudMod.renderIcon, lootEnabled: ctx.lootEnabled });
-    if (window.matchMedia("(max-width: 720px), (max-height: 500px)").matches) hud.el.sheet.dataset.open = "false";
     hooks = {};
     input = interactMod.create({ canvas, renderer, camera, hooks });
     const inTunnel = (p) => p.z > HALL.r - 1.5 && Math.abs(p.x) < ENTRY.halfW;
@@ -434,7 +447,7 @@
     };
     pilot = pilotMod.create({
       renderer, canvas, camera, hud, presets: PRESETS, landing: "entrance", pitch: PITCH, dist: DIST,
-      follow: FOLLOW, fly: FLY, clampTarget, clampCamera, ceilingAt: () => HALL.wall + 2, coarse: COARSE,
+      follow: FOLLOW, fly: FLY, clampTarget, clampCamera, ceilingAt: () => HALL.wall + 2, coarse: COARSE, mayPossess,
       close: { eyeHeight: 1.1, eyeRatio: 0.95, eyeForward: 0.16, pitch: [-1.35, 1.35], trailingDist: 4, orbitDist: 5, maxStep: 0.6, groundAt: groundFor }
     });
     const tipFor = (hit) => {
@@ -477,11 +490,12 @@
     // The visitor's Ooga: `character=` on a page that opens here, else the one handed over, else a free view.
     const asked = ctx.from === null ? new URLSearchParams(location.search).get("character")?.trim().toLowerCase() : null;
     const named = asked ? contributors.roster.find((c) => c.name.toLowerCase() === asked) : null;
-    const playerName = named ? named.name : world.pilot && contributors.roster.some((c) => c.name === world.pilot) ? world.pilot : null;
+    const picked = named || world.pilot && contributors.roster.find((c) => c.name === world.pilot) || null;
+    const playerName = picked && !BL.net.mayDrive(picked.name, contributors.stateFor(picked) === "working") ? picked.name : null;
     world.pilot = null;
     if (playerName) {
       playerWorld = { level: 0, weapons: new Map(), magazine: { owned: false, count: 0, ammo: 0, carrier: null } };
-      const shared = { root, input, hud, game, world: playerWorld, playerName, fx, viewYaw: 0, groundAt: groundFor, walkable: walkableFor };
+      const shared = { root, input, hud, game, world: playerWorld, playerName, fx, viewYaw: 0, outsideActors: () => remotes ? remotes.actors() : NO_ACTORS, outsideActorHeight: BL.remotePlayers.BODY_HEIGHT, groundAt: groundFor, walkable: walkableFor };
       people = shared.crew = BL.crew.create(shared);
       pilot.bind(shared);
       avatar = people.cavemen.get(playerName);
@@ -496,6 +510,9 @@
       if (from) standBefore(from, 2.8);
       else if (ctx.from === "hub") pilot.navigate(GATE);
     }
+    unsubscribeAccount = BL.net.subscribe(accountChanged);
+    // Other signed-in players in the chamber, as the Oogas they drive.
+    remotes = BL.remotePlayers.create({ root, crew: people });
     lightUp(scene);
     leaving = false;
 
@@ -654,6 +671,15 @@
     pilot.readInput(dt);
     if (people) people.update(dt, elapsed);
     pilot.update(dt);
+    // The Ooga driven here goes to the room with where it stands and its health; other players here are shown.
+    const drivenHere = people && people.player;
+    BL.net.setBody(drivenHere ? drivenHere.traits.name : null);
+    if (drivenHere) {
+      const p = drivenHere.root.position;
+      BL.net.sendPose(p.x, p.y - drivenHere.baseY, p.z, drivenHere.root.rotation.y);
+      BL.net.setHealth(drivenHere.health.value, drivenHere.health.stunned);
+    }
+    remotes.update(dt);
     mechanism(s, dt, elapsed);
     heavens(s, dt);
     // The way out's field hums and shows the outline of whoever walks through it.
@@ -723,19 +749,24 @@
       for (const w of s.windows) if (w.kind === "travel") hangPicture(w);
     }
   };
-  const drawExtra = () => {};
+  const drawExtra = (ctx2d, project) => remotes.drawNames(ctx2d, project);
   const overlay = (dt) => fx.drawOverlay(dt, drawExtra);
 
   const leave = () => {
     // Left by Back or Forward rather than by a way out of its own, the chamber hands the Ooga on, so the next scene
     // plays the same one; the way out to the island and a window have handed theirs over already.
     if (avatar && !leaving) world.pilot = avatar.traits.name;
+    unsubscribeAccount();
+    unsubscribeAccount = null;
+    BL.net.setBody(null);
     for (const w of scene.windows) {
       w.phase.dispose();
       if (w.face) { w.body.dispose(); w.face.mirrorRipples = null; }
       if (w.picture && w.picture.owned) renderer.releaseGeometry(w.picture.geometry);
     }
     scene.gate.phase.dispose();
+    remotes.dispose();
+    remotes = null;
     if (people) people.dispose();
     fx.dispose();
     pilot.dispose();
@@ -761,15 +792,18 @@
       }
     }
     if (avatar) set.add(avatar.headOpen).add(avatar.headClosed);
+    if (remotes) remotes.liveGeometry(set);
   };
   const stats = () => {
     let nodes = 0;
     traverseVisible(root, () => nodes++);
     const all = (n) => 1 + n.children.reduce((sum, c) => sum + all(c), 0);
-    return { visibleNodes: nodes, allNodes: all(root), tweens: tweenCount(), targets: input.targetCount, ...fx.stats() };
+    return { visibleNodes: nodes, allNodes: all(root), tweens: tweenCount(), targets: input.targetCount, ...fx.stats(), ...(remotes ? remotes.stats() : {}) };
   };
 
   const bifrostScene = {
+    // Voice zone: the Bifrost group, which the isle and its bridge share (`bifrost`).
+    voiceZone: "bifrost.chamber",
     id: "bifrost", enter, update, overlay, onDonation, onKey, onLootCleared, renderOpts: RENDER_OPTS, leave, stats, liveGeometry,
     root: null, camera: null, input: null, debug: null, agent: null, agentView: null, agentControls: null, agentHandoff: null,
     get inMotion() {

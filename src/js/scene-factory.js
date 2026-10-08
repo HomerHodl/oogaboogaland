@@ -120,8 +120,22 @@
   // The page's one factory node (`world.factoryNode`), and its feed and demo node.
   let shared = null, feed = null, mock = null, unsubscribe = null, leaving = false, dust = null;
   // The Ooga the visitor walked in as: one playable actor from the shared crew, and the world it carries.
-  let people = null, avatar = null, playerWorld = null;
+  let people = null, avatar = null, playerWorld = null, unsubscribeAccount = null, remotes = null;
+  const NO_ACTORS = [];
   let scene = null, greeter = null, greeterPrompt = false;
+  // On the Worker's page the island's driving rules hold in here too, and the Ooga driven is reported to the
+  // room every frame, so signed-in players in the hall hear each other (voice needs a driven Ooga).
+  const mayPossess = (cave) => BL.net.mayDrive(cave.traits.name, contributors.stateFor(cave.contributor) === "working");
+  const accountChanged = () => {
+    if (!avatar) return;
+    const released = BL.net.state.released;
+    const denied = mayPossess(avatar) || (released && released.name === avatar.traits.name ? "That Ooga is no longer yours to drive" : null);
+    BL.net.state.released = null;
+    if (denied && people.player === avatar) {
+      pilot.release(true);
+      hud.toast(denied);
+    }
+  };
   const targets = [];
   const SAT_POS = { x: 0, y: 0, z: 0 }, SAT_ROT = { x: 0, y: 0, z: 0 }, SAT_SCALE = { x: 1, y: 1, z: 1 };
   const SAT_M = mat4.create();
@@ -778,7 +792,7 @@
     };
     pilot = pilotMod.create({
       renderer, canvas: ctx.canvas, camera, hud, presets: PRESETS, landing: "entrance", pitch: PITCH, dist: DIST,
-      follow: FOLLOW, fly: FLY, clampTarget, clampCamera, ceilingAt: () => HALL.h - 2, coarse: COARSE,
+      follow: FOLLOW, fly: FLY, clampTarget, clampCamera, ceilingAt: () => HALL.h - 2, coarse: COARSE, mayPossess,
       close: { eyeHeight: 1.1, eyeRatio: 0.95, eyeForward: 0.16, pitch: [-1.35, 1.35], trailingDist: 4, orbitDist: 5, maxStep: 0.6, groundAt: (x, z) => FM.supportAt(x, z, feetOf()) }
     });
     const tipFor = (hit) => {
@@ -827,13 +841,14 @@
     // free.
     const asked = ctx.from === null ? new URLSearchParams(location.search).get("character")?.trim().toLowerCase() : null;
     const named = asked ? contributors.roster.find((c) => c.name.toLowerCase() === asked) : null;
-    const playerName = named ? named.name : world.pilot && contributors.roster.some((c) => c.name === world.pilot) ? world.pilot : null;
+    const picked = named || world.pilot && contributors.roster.find((c) => c.name === world.pilot) || null;
+    const playerName = picked && !BL.net.mayDrive(picked.name, contributors.stateFor(picked) === "working") ? picked.name : null;
     world.pilot = null;
     if (playerName) {
       // Keep the visitor's weapons and magazines across the doorway. The
       // factory has no banana pile, so its private pile level stays zero.
       playerWorld = { level: 0, weapons: world.weapons, magazine: world.magazine };
-      const shared = { root, input, hud, game, world: playerWorld, playerName, fx, viewYaw: 0, groundAt: groundFor, walkable: walkableFor, flyable: flyableFor, ceilingAt: ceilingFor, ladders: LAYOUT.ladders, onBodyMove: resolveLanding, clipProjectileTarget, absorbProjectile, reloadPolicy, useNear: (x, z, reach) => {
+      const shared = { root, input, hud, game, world: playerWorld, playerName, fx, viewYaw: 0, outsideActors: () => remotes ? remotes.actors() : NO_ACTORS, outsideActorHeight: BL.remotePlayers.BODY_HEIGHT, groundAt: groundFor, walkable: walkableFor, flyable: flyableFor, ceilingAt: ceilingFor, ladders: LAYOUT.ladders, onBodyMove: resolveLanding, clipProjectileTarget, absorbProjectile, reloadPolicy, useNear: (x, z, reach) => {
         // Space talks to the guide only within arm's reach; further away it stays a jump.
         const p = greeter && greeter.root.position;
         return !!p && Math.hypot(x - p.x, z - p.z) <= reach ? greeter.act() : false;
@@ -856,6 +871,9 @@
       scene.gate.phase.body.track(avatar.root, avatar.traits.height * 2, Math.max(avatar.headOpen.verts.length, avatar.headClosed.verts.length));
       for (const t of scene.tunnels) t.body.track(avatar.root, avatar.traits.height * 2, Math.max(avatar.headOpen.verts.length, avatar.headClosed.verts.length));
     }
+    unsubscribeAccount = BL.net.subscribe(accountChanged);
+    // Other signed-in players in the hall, as the Oogas they drive.
+    remotes = BL.remotePlayers.create({ root, crew: people });
     lightUp();
     LIGHT_BASE.set(RENDER_OPTS.lights);
 
@@ -1064,6 +1082,15 @@
     pilot.readInput(dt);
     if (people) people.update(dt, elapsed);
     pilot.update(dt);
+    // The Ooga driven here goes to the room with where it stands and its health; other players here are shown.
+    const drivenHere = people && people.player;
+    BL.net.setBody(drivenHere ? drivenHere.traits.name : null);
+    if (drivenHere) {
+      const p = drivenHere.root.position;
+      BL.net.sendPose(p.x, p.y - drivenHere.baseY, p.z, drivenHere.root.rotation.y);
+      BL.net.setHealth(drivenHere.health.value, drivenHere.health.stunned);
+    }
+    remotes.update(dt);
     // Cut the vault and inward-leaning walls away so the outer decks stay visible.
     // Restore them only after the birdseye blend fully returns, including reversals.
     s.ceiling.visible = s.walls.visible = !pilot.birdsEye && pilot.birdsEyeMix === 0;
@@ -1251,7 +1278,7 @@
     stepTweens(dt);
     fx.update(dt, elapsed);
   };
-  const drawExtra = () => {};
+  const drawExtra = (ctx2d, project) => remotes.drawNames(ctx2d, project);
   const overlay = (dt) => fx.drawOverlay(dt, drawExtra);
 
   const leave = () => {
@@ -1261,6 +1288,9 @@
     greeter = null;
     unsubscribe();
     unsubscribe = null;
+    unsubscribeAccount();
+    unsubscribeAccount = null;
+    BL.net.setBody(null);
     for (const node of [scene.switchLabel]) if (node.owned) {
       renderer.releaseGeometry(node.face.geometry);
       renderer.releaseGeometry(node.back.geometry);
@@ -1270,6 +1300,8 @@
     for (const t of scene.tunnels) { t.ripples.dispose(); t.body.dispose(); }
     // Save the carry/combat choice while the controlled actor still exists.
     pilot.dispose();
+    remotes.dispose();
+    remotes = null;
     if (people) people.dispose();
     fx.dispose();
     for (const node of targets) input.remove(node);
@@ -1295,15 +1327,18 @@
     }
     if (avatar) set.add(avatar.headOpen).add(avatar.headClosed);
     if (greeter) greeter.liveGeometry(set);
+    if (remotes) remotes.liveGeometry(set);
   };
   const stats = () => {
     let nodes = 0;
     traverseVisible(root, () => nodes++);
     const all = (n) => 1 + n.children.reduce((sum, c) => sum + all(c), 0);
-    return { visibleNodes: nodes, allNodes: all(root), tweens: tweenCount(), targets: input.targetCount, ...fx.stats(), feed: feed ? { ...feed.counts } : null };
+    return { visibleNodes: nodes, allNodes: all(root), tweens: tweenCount(), targets: input.targetCount, ...fx.stats(), ...(remotes ? remotes.stats() : {}), feed: feed ? { ...feed.counts } : null };
   };
 
   const factoryScene = {
+    // Voice zone: the Factory group, which its tunnel on the island shares (`factory`).
+    voiceZone: "factory.hall",
     id: "factory", enter, update, overlay, onDonation, onKey, onLootCleared, renderOpts: RENDER_OPTS, leave, stats, liveGeometry,
     root: null, camera: null, input: null, debug: null, agent: null, agentView: null, agentControls: null, agentHandoff: null,
     get inMotion() {

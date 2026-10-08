@@ -1,0 +1,765 @@
+{
+  "baseline": "canonical rock 822adde (audio branch portable build; no audio activated)",
+  "runs": [
+    {
+      "run": 1,
+      "issue": "127",
+      "heap": {
+        "usedSize": 220985748,
+        "totalSize": 229883904,
+        "embedderHeapUsedSize": 6432904,
+        "backingStorageSize": 180957030
+      },
+      "app": {
+        "timing": {
+          "boot": 221,
+          "renderer": 234,
+          "island": 1642,
+          "props": 2559,
+          "rockGuides": 3500,
+          "pile": 3553,
+          "cavemen": 3705,
+          "qr": 3744,
+          "guides": 4981,
+          "visibility-start": 4984,
+          "visibility": 5210,
+          "covered-view-start": 5211,
+          "covered-view": 5279,
+          "ready": 5279,
+          "frame1": 5281,
+          "drawn": 5551,
+          "frame2": 5572,
+          "frame3": 5605
+        },
+        "stats": {
+          "geometries": 621,
+          "registered": 2304,
+          "candidates": 135,
+          "occluders": 919,
+          "cameraOccluders": 163,
+          "limit": 857680,
+          "nodes": 2304,
+          "owners": 549,
+          "nearOwners": 30,
+          "triangles": 391953,
+          "samples": 1690177,
+          "perceptionQueries": 34,
+          "perceptionCacheHits": 0,
+          "perceptionWitnessHits": 0,
+          "cameraWitnessHits": 0,
+          "cameraCertificates": 86,
+          "boundaryTriangles": 125428,
+          "boundaryBuilds": 86,
+          "boundaryEntries": 96617,
+          "boundaryNodes": 84074,
+          "boundaryGridBuilds": 49,
+          "boundaryGridQueries": 38770,
+          "boundaryGridBytes": 494176,
+          "boundaryGridReferences": 116992
+        }
+      },
+      "logs": []
+    },
+    {
+      "run": 1,
+      "issue": "126",
+      "heap": {
+        "usedSize": 221701228,
+        "totalSize": 231981056,
+        "embedderHeapUsedSize": 6466784,
+        "backingStorageSize": 115447666
+      },
+      "app": {
+        "timing": {
+          "boot": 224,
+          "renderer": 237,
+          "island": 1640,
+          "props": 2563,
+          "rockGuides": 3521,
+          "pile": 3574,
+          "cavemen": 3733,
+          "qr": 3773,
+          "guides": 3890,
+          "visibility-start": 3893,
+          "visibility": 4131,
+          "covered-view-start": 4131,
+          "covered-view": 4411,
+          "ready": 4411,
+          "frame1": 4412,
+          "drawn": 4688,
+          "frame2": 4709,
+          "frame3": 4746
+        },
+        "stats": {
+          "geometries": 621,
+          "registered": 2304,
+          "candidates": 126,
+          "occluders": 919,
+          "cameraOccluders": 145,
+          "limit": 2394062,
+          "nodes": 2304,
+          "owners": 549,
+          "nearOwners": 29,
+          "triangles": 54285,
+          "samples": 171635,
+          "perceptionQueries": 32,
+          "perceptionCacheHits": 0,
+          "perceptionWitnessHits": 0,
+          "cameraWitnessHits": 0,
+          "cameraCertificates": 86,
+          "boundaryTriangles": 125428,
+          "boundaryBuilds": 86,
+          "boundaryEntries": 96617,
+          "boundaryNodes": 84074,
+          "boundaryGridBuilds": 49,
+          "boundaryGridQueries": 38770,
+          "boundaryGridBytes": 494176,
+          "boundaryGridReferences": 116992
+        }
+      },
+      "logs": []
+    },
+    {
+      "run": 2,
+      "issue": "127",
+      "heap": {
+        "usedSize": 220804956,
+        "totalSize": 228835328,
+        "embedderHeapUsedSize": 6416112,
+        "backingStorageSize": 180957030
+      },
+      "app": {
+        "timing": {
+          "boot": 223,
+          "renderer": 237,
+          "island": 1607,
+          "props": 2512,
+          "rockGuides": 3468,
+          "pile": 3521,
+          "cavemen": 3680,
+          "qr": 3719,
+          "guides": 5057,
+          "visibility-start": 5060,
+          "visibility": 5288,
+          "covered-view-start": 5288,
+          "covered-view": 5355,
+          "ready": 5356,
+          "frame1": 5357,
+          "drawn": 5633,
+          "frame2": 5650,
+          "frame3": 5683
+        },
+        "stats": {
+          "geometries": 621,
+          "registered": 2304,
+          "candidates": 117,
+          "occluders": 919,
+          "cameraOccluders": 145,
+          "limit": 857680,
+          "nodes": 2304,
+          "owners": 549,
+          "nearOwners": 28,
+          "triangles": 391953,
+          "samples": 1690177,
+          "perceptionQueries": 32,
+          "perceptionCacheHits": 0,
+          "perceptionWitnessHits": 0,
+          "cameraWitnessHits": 0,
+          "cameraCertificates": 86,
+          "boundaryTriangles": 125428,
+          "boundaryBuilds": 86,
+          "boundaryEntries": 96617,
+          "boundaryNodes": 84074,
+          "boundaryGridBuilds": 49,
+          "boundaryGridQueries": 38770,
+          "boundaryGridBytes": 494176,
+          "boundaryGridReferences": 116992
+        }
+      },
+      "logs": []
+    },
+    {
+      "run": 2,
+      "issue": "126",
+      "heap": {
+        "usedSize": 220091508,
+        "totalSize": 227786752,
+        "embedderHeapUsedSize": 6405968,
+        "backingStorageSize": 115755278
+      },
+      "app": {
+        "timing": {
+          "boot": 219,
+          "renderer": 233,
+          "island": 1601,
+          "props": 2521,
+          "rockGuides": 3470,
+          "pile": 3524,
+          "cavemen": 3681,
+          "qr": 3720,
+          "guides": 3837,
+          "visibility-start": 3839,
+          "visibility": 4078,
+          "covered-view-start": 4078,
+          "covered-view": 4361,
+          "ready": 4361,
+          "frame1": 4362,
+          "drawn": 4640,
+          "frame2": 4663,
+          "frame3": 4696
+        },
+        "stats": {
+          "geometries": 621,
+          "registered": 2304,
+          "candidates": 135,
+          "occluders": 919,
+          "cameraOccluders": 163,
+          "limit": 2394062,
+          "nodes": 2304,
+          "owners": 549,
+          "nearOwners": 30,
+          "triangles": 56243,
+          "samples": 174977,
+          "perceptionQueries": 33,
+          "perceptionCacheHits": 0,
+          "perceptionWitnessHits": 0,
+          "cameraWitnessHits": 0,
+          "cameraCertificates": 86,
+          "boundaryTriangles": 125428,
+          "boundaryBuilds": 86,
+          "boundaryEntries": 96617,
+          "boundaryNodes": 84074,
+          "boundaryGridBuilds": 49,
+          "boundaryGridQueries": 38770,
+          "boundaryGridBytes": 494176,
+          "boundaryGridReferences": 116992
+        }
+      },
+      "logs": []
+    },
+    {
+      "run": 3,
+      "issue": "127",
+      "heap": {
+        "usedSize": 222231216,
+        "totalSize": 229359616,
+        "embedderHeapUsedSize": 6435888,
+        "backingStorageSize": 180957030
+      },
+      "app": {
+        "timing": {
+          "boot": 215,
+          "renderer": 230,
+          "island": 1604,
+          "props": 2529,
+          "rockGuides": 3493,
+          "pile": 3546,
+          "cavemen": 3704,
+          "qr": 3743,
+          "guides": 4963,
+          "visibility-start": 4965,
+          "visibility": 5196,
+          "covered-view-start": 5196,
+          "covered-view": 5263,
+          "ready": 5264,
+          "frame1": 5265,
+          "drawn": 5536,
+          "frame2": 5562,
+          "frame3": 5595
+        },
+        "stats": {
+          "geometries": 621,
+          "registered": 2304,
+          "candidates": 126,
+          "occluders": 919,
+          "cameraOccluders": 154,
+          "limit": 857680,
+          "nodes": 2304,
+          "owners": 549,
+          "nearOwners": 29,
+          "triangles": 391953,
+          "samples": 1690177,
+          "perceptionQueries": 33,
+          "perceptionCacheHits": 0,
+          "perceptionWitnessHits": 0,
+          "cameraWitnessHits": 0,
+          "cameraCertificates": 86,
+          "boundaryTriangles": 125428,
+          "boundaryBuilds": 86,
+          "boundaryEntries": 96617,
+          "boundaryNodes": 84074,
+          "boundaryGridBuilds": 49,
+          "boundaryGridQueries": 38770,
+          "boundaryGridBytes": 494176,
+          "boundaryGridReferences": 116992
+        }
+      },
+      "logs": []
+    },
+    {
+      "run": 3,
+      "issue": "126",
+      "heap": {
+        "usedSize": 219611160,
+        "totalSize": 229359616,
+        "embedderHeapUsedSize": 6470424,
+        "backingStorageSize": 115462854
+      },
+      "app": {
+        "timing": {
+          "boot": 225,
+          "renderer": 238,
+          "island": 1682,
+          "props": 2637,
+          "rockGuides": 3613,
+          "pile": 3669,
+          "cavemen": 3833,
+          "qr": 3873,
+          "guides": 3991,
+          "visibility-start": 3994,
+          "visibility": 4245,
+          "covered-view-start": 4245,
+          "covered-view": 4543,
+          "ready": 4543,
+          "frame1": 4545,
+          "drawn": 4849,
+          "frame2": 4874,
+          "frame3": 4915
+        },
+        "stats": {
+          "geometries": 621,
+          "registered": 2304,
+          "candidates": 126,
+          "occluders": 919,
+          "cameraOccluders": 145,
+          "limit": 2394062,
+          "nodes": 2304,
+          "owners": 549,
+          "nearOwners": 29,
+          "triangles": 54403,
+          "samples": 171743,
+          "perceptionQueries": 32,
+          "perceptionCacheHits": 0,
+          "perceptionWitnessHits": 0,
+          "cameraWitnessHits": 0,
+          "cameraCertificates": 86,
+          "boundaryTriangles": 125428,
+          "boundaryBuilds": 86,
+          "boundaryEntries": 96617,
+          "boundaryNodes": 84074,
+          "boundaryGridBuilds": 49,
+          "boundaryGridQueries": 38770,
+          "boundaryGridBytes": 494176,
+          "boundaryGridReferences": 116992
+        }
+      },
+      "logs": []
+    }
+  ],
+  "geometryProof": {
+    "rays": 6000,
+    "triangleValues": 3240,
+    "metadataValues": 32112,
+    "bytes": [
+      25920,
+      4320,
+      25920
+    ],
+    "exact": true
+  },
+  "boundaryProof": {
+    "queries": 11520,
+    "contours": 103,
+    "exact": true,
+    "stats": [
+      {
+        "issue": "127",
+        "geometries": 12,
+        "registered": 12,
+        "candidates": 12,
+        "occluders": 12,
+        "cameraOccluders": 12,
+        "limit": 8640,
+        "nodes": 12,
+        "owners": 1,
+        "nearOwners": 1,
+        "triangles": 8640,
+        "samples": 312964,
+        "perceptionQueries": 0,
+        "perceptionCacheHits": 0,
+        "perceptionWitnessHits": 0,
+        "cameraWitnessHits": 0,
+        "cameraCertificates": 0,
+        "boundaryTriangles": 248076,
+        "boundaryBuilds": 96,
+        "boundaryEntries": 24434,
+        "boundaryNodes": 465320,
+        "boundaryGridBuilds": 7,
+        "boundaryGridQueries": 108,
+        "boundaryGridBytes": 3360,
+        "boundaryGridReferences": 768
+      },
+      {
+        "issue": "125",
+        "geometries": 12,
+        "registered": 12,
+        "candidates": 12,
+        "occluders": 12,
+        "cameraOccluders": 12,
+        "limit": 8640,
+        "nodes": 12,
+        "owners": 1,
+        "nearOwners": 1,
+        "triangles": 8640,
+        "triangleBytes": 103680,
+        "samples": 312964,
+        "perceptionQueries": 0,
+        "perceptionCacheHits": 0,
+        "perceptionWitnessHits": 0,
+        "cameraWitnessHits": 0,
+        "cameraCertificates": 0,
+        "boundaryTriangles": 248076,
+        "boundaryBuilds": 96,
+        "boundaryEntries": 24434,
+        "boundaryNodes": 465320,
+        "boundaryGridBuilds": 7,
+        "boundaryGridQueries": 108,
+        "boundaryGridBytes": 3360,
+        "boundaryGridReferences": 768
+      },
+      {
+        "issue": "126",
+        "geometries": 12,
+        "registered": 12,
+        "candidates": 12,
+        "occluders": 12,
+        "cameraOccluders": 12,
+        "limit": 17280,
+        "nodes": 12,
+        "owners": 1,
+        "nearOwners": 1,
+        "triangles": 8640,
+        "samples": 312964,
+        "perceptionQueries": 0,
+        "perceptionCacheHits": 0,
+        "perceptionWitnessHits": 0,
+        "cameraWitnessHits": 0,
+        "cameraCertificates": 0,
+        "boundaryTriangles": 248076,
+        "boundaryBuilds": 96,
+        "boundaryEntries": 24434,
+        "boundaryNodes": 465320,
+        "boundaryGridBuilds": 7,
+        "boundaryGridQueries": 108,
+        "boundaryGridBytes": 3360,
+        "boundaryGridReferences": 768
+      },
+      {
+        "issue": "128",
+        "geometries": 12,
+        "registered": 12,
+        "candidates": 12,
+        "occluders": 12,
+        "cameraOccluders": 12,
+        "limit": 8640,
+        "nodes": 12,
+        "owners": 1,
+        "nearOwners": 1,
+        "triangles": 8640,
+        "samples": 312964,
+        "perceptionQueries": 0,
+        "perceptionCacheHits": 0,
+        "perceptionWitnessHits": 0,
+        "cameraWitnessHits": 0,
+        "cameraCertificates": 0,
+        "boundaryTriangles": 250229,
+        "boundaryBuilds": 96,
+        "boundaryEntries": 23877,
+        "boundaryNodes": 463023,
+        "boundaryGridBuilds": 7,
+        "boundaryGridQueries": 108,
+        "boundaryGridBytes": 53280,
+        "boundaryGridReferences": 12288
+      }
+    ]
+  },
+  "movement": {
+    "rows": [
+      {
+        "name": "wall movement performance: ordinary movement stays responsive at a high-density desktop size",
+        "pass": false,
+        "details": {
+          "fps": 56.61430507933977,
+          "p95": 33.19999999999982,
+          "max": 33.400000000000546,
+          "worst": {
+            "gap": 34.5,
+            "at": 183.30000000000018,
+            "updateMs": 7.299999997019768,
+            "renderMs": 3.5,
+            "overlayMs": 5.800000011920929,
+            "donated": false
+          },
+          "outlined": 0,
+          "samples": 284,
+          "travel": 3.3573000000000093,
+          "donated": false,
+          "particles": 0,
+          "quality": "high"
+        }
+      },
+      {
+        "name": "wall movement performance: moving behind cave walls during a donation stays responsive at a high-density desktop size",
+        "pass": false,
+        "details": {
+          "fps": 28.506498684315446,
+          "p95": 50,
+          "max": 50.100000000000364,
+          "worst": {
+            "gap": 50.29999999701977,
+            "at": 150,
+            "updateMs": 11.800000011920929,
+            "renderMs": 3.7999999970197678,
+            "overlayMs": 34.5,
+            "donated": false
+          },
+          "outlined": 143,
+          "samples": 143,
+          "travel": 3.487499999999992,
+          "donated": true,
+          "particles": 26,
+          "quality": "low"
+        }
+      }
+    ],
+    "hot": [
+      {
+        "function": "(idle)",
+        "line": 0,
+        "samples": 1300
+      },
+      {
+        "function": "boundaryTriangle",
+        "line": 29349,
+        "samples": 573
+      },
+      {
+        "function": "sightClearAt",
+        "line": 20957,
+        "samples": 232
+      },
+      {
+        "function": "entryBoundaryHit",
+        "line": 29369,
+        "samples": 230
+      },
+      {
+        "function": "sightClearAt",
+        "line": 20957,
+        "samples": 195
+      },
+      {
+        "function": "render",
+        "line": 14668,
+        "samples": 123
+      },
+      {
+        "function": "ownerBoundaryAt",
+        "line": 29424,
+        "samples": 117
+      },
+      {
+        "function": "updateSurface",
+        "line": 27663,
+        "samples": 112
+      },
+      {
+        "function": "indexTriangles",
+        "line": 29287,
+        "samples": 109
+      },
+      {
+        "function": "(program)",
+        "line": 0,
+        "samples": 106
+      },
+      {
+        "function": "collect",
+        "line": 28388,
+        "samples": 99
+      },
+      {
+        "function": "drawStructure",
+        "line": 41250,
+        "samples": 93
+      },
+      {
+        "function": "boundaryBounds",
+        "line": 29219,
+        "samples": 78
+      },
+      {
+        "function": "visit",
+        "line": 11315,
+        "samples": 76
+      },
+      {
+        "function": "slice",
+        "line": 11605,
+        "samples": 75
+      },
+      {
+        "function": "meshOf",
+        "line": 11161,
+        "samples": 75
+      },
+      {
+        "function": "render",
+        "line": 14668,
+        "samples": 71
+      },
+      {
+        "function": "collectViewObjects",
+        "line": 75788,
+        "samples": 65
+      },
+      {
+        "function": "updateCaveGlyphs",
+        "line": 68455,
+        "samples": 64
+      },
+      {
+        "function": "visit",
+        "line": 11315,
+        "samples": 60
+      },
+      {
+        "function": "ownerHit",
+        "line": 29401,
+        "samples": 60
+      },
+      {
+        "function": "collect",
+        "line": 28388,
+        "samples": 57
+      },
+      {
+        "function": "filter",
+        "line": 29689,
+        "samples": 55
+      },
+      {
+        "function": "updateStone",
+        "line": 41073,
+        "samples": 55
+      },
+      {
+        "function": "visit",
+        "line": 11315,
+        "samples": 53
+      },
+      {
+        "function": "labPoseClear",
+        "line": 58909,
+        "samples": 51
+      },
+      {
+        "function": "add",
+        "line": 11237,
+        "samples": 48
+      },
+      {
+        "function": "collect",
+        "line": 28388,
+        "samples": 47
+      },
+      {
+        "function": "(garbage collector)",
+        "line": 0,
+        "samples": 44
+      },
+      {
+        "function": "renderMirrorCapture",
+        "line": 14344,
+        "samples": 43
+      },
+      {
+        "function": "drawParts",
+        "line": 14187,
+        "samples": 43
+      },
+      {
+        "function": "collectViewObjects",
+        "line": 75788,
+        "samples": 39
+      },
+      {
+        "function": "collect",
+        "line": 28388,
+        "samples": 37
+      },
+      {
+        "function": "climbPoseClear",
+        "line": 58714,
+        "samples": 36
+      },
+      {
+        "function": "grain",
+        "line": 40942,
+        "samples": 35
+      },
+      {
+        "function": "collectViewObjects",
+        "line": 75788,
+        "samples": 33
+      },
+      {
+        "function": "updateWorld",
+        "line": 9963,
+        "samples": 29
+      },
+      {
+        "function": "appendLine",
+        "line": 28337,
+        "samples": 28
+      },
+      {
+        "function": "voxelSegmentClearAt",
+        "line": 20279,
+        "samples": 28
+      },
+      {
+        "function": "lineTo",
+        "line": 0,
+        "samples": 28
+      }
+    ],
+    "appStats": {
+      "geometries": 621,
+      "registered": 2304,
+      "candidates": 81,
+      "occluders": 1070,
+      "cameraOccluders": 370,
+      "limit": 2394062,
+      "nodes": 2304,
+      "owners": 549,
+      "nearOwners": 21,
+      "triangles": 74457,
+      "samples": 242421,
+      "perceptionQueries": 1995,
+      "perceptionCacheHits": 32,
+      "perceptionWitnessHits": 1277,
+      "cameraWitnessHits": 0,
+      "cameraCertificates": 86,
+      "boundaryTriangles": 20362423,
+      "boundaryBuilds": 6375,
+      "boundaryEntries": 14397462,
+      "boundaryNodes": 14687739,
+      "boundaryGridBuilds": 4208,
+      "boundaryGridQueries": 4473657,
+      "boundaryGridBytes": 494176,
+      "boundaryGridReferences": 116992
+    },
+    "logs": []
+  }
+}

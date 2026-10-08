@@ -61,7 +61,8 @@
 
   // One visit's state: made in enter(), dropped in leave().
   let renderer, game, world, go, lootEnabled, testBananas, root, camera, lab, hud, hooks, input, pilot, fx, pile, crew, crates, pulseNodes, agent, agentPlay;
-  let stateTimer = 0, hintTimer = 0, meterTimer = 0, unsubscribeActivity = null, dust = null;
+  let stateTimer = 0, hintTimer = 0, meterTimer = 0, unsubscribeActivity = null, dust = null, remotes = null;
+  const NO_ACTORS = [];
   const propTargets = [];
   const addProp = (node, owner, opts) => {
     input.add(node, owner, opts);
@@ -296,6 +297,16 @@
     fx.update(dt);
     stepTweens(dt);
     pilot.update(dt);
+    // The Ooga driven goes to the room with where it stands and its health, so signed-in players here hear and
+    // see each other (voice needs one); other players here are shown.
+    const drivenHere = crew.player;
+    BL.net.setBody(drivenHere ? drivenHere.traits.name : null);
+    if (drivenHere) {
+      const p = drivenHere.root.position;
+      BL.net.sendPose(p.x, p.y - drivenHere.baseY, p.z, drivenHere.root.rotation.y);
+      BL.net.setHealth(drivenHere.health.value, drivenHere.health.stunned);
+    }
+    remotes.update(dt);
     dust.update(elapsed, pilot.orbit.target.x, pilot.orbit.target.z);
     meterTimer -= dt;
     if (meterTimer <= 0) {
@@ -303,7 +314,11 @@
       updateMeter();
     }
   };
-  const overlay = (dt) => fx.drawOverlay(dt, crew.drawQuotes);
+  const drawExtra = (ctx2d, project, drawBubble) => {
+    crew.drawQuotes(ctx2d, project, drawBubble);
+    remotes.drawNames(ctx2d, project);
+  };
+  const overlay = (dt) => fx.drawOverlay(dt, drawExtra);
 
   const onLootCleared = () => {
     if (!lootEnabled) return;
@@ -395,7 +410,11 @@
     mark("pile");
     // As in the hub: where accounts exist, driving shows online only for a signed-in visitor.
     shared.localOnline = () => !BL.net.state.backend || !!BL.net.state.me;
+    shared.outsideActors = () => remotes ? remotes.actors() : NO_ACTORS;
+    shared.outsideActorHeight = BL.remotePlayers.BODY_HEIGHT;
     crew = shared.crew = crewMod.create(shared);
+    // Other signed-in players in the lab, as the Oogas they drive (the crew's own copy steps away meanwhile).
+    remotes = BL.remotePlayers.create({ root, crew });
     mark("cavemen");
     crates = shared.crates = cratesMod.create(shared);
     pilot.bind(shared);
@@ -513,12 +532,15 @@
     mark("visibility");
   };
   const leave = () => {
+    BL.net.setBody(null);
     window.clearInterval(stateTimer);
     unsubscribeActivity();
     unsubscribeActivity = null;
     window.clearTimeout(hintTimer);
     crates.dispose();
     pile.dispose();
+    remotes.dispose();
+    remotes = null;
     crew.dispose();
     if (agent) agent.dispose();
     fx.dispose();
@@ -537,14 +559,17 @@
     pile.liveGeometry(set);
     if (agent) agent.liveGeometry(set);
     for (const cave of crew.cavemen.values()) set.add(cave.headOpen).add(cave.headClosed);
+    if (remotes) remotes.liveGeometry(set);
   };
   const stats = () => {
     let nodes = 0;
     traverseVisible(root, () => nodes++);
     const all = (n) => 1 + n.children.reduce((sum, c) => sum + all(c), 0);
-    return { visibleNodes: nodes, allNodes: all(root), tweens: tweenCount(), targets: input.targetCount, ...fx.stats(), ...crates.stats(), ...crew.stats(), ...pile.stats() };
+    return { visibleNodes: nodes, allNodes: all(root), tweens: tweenCount(), targets: input.targetCount, ...fx.stats(), ...crates.stats(), ...crew.stats(), ...pile.stats(), ...(remotes ? remotes.stats() : {}) };
   };
   const labScene = {
+    // Voice zone: the EntropyLab group, which its cave on the island shares (`lab`).
+    voiceZone: "lab.hall",
     id: "lab", enter, update, overlay, onDonation, onKey, onLootCleared, renderOpts: RENDER_OPTS, leave, stats, liveGeometry,
     root: null, camera: null, input: null, debug: null, agent: null, agentView: null, agentControls: null, agentHandoff: null, summonAgent: null,
     get inMotion() {

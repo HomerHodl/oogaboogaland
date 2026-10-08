@@ -111,6 +111,36 @@ test("voice: players driving an Ooga hear each other while in the same place; no
   assert.deepEqual(peers.get(6), [], "no receiving session, nothing to hear");
   assert.deepEqual(parseClientMessage('{"t":"zone","name":"cave-lab"}'), { t: "zone", name: "cave-lab" });
   assert.equal(parseClientMessage('{"t":"zone","name":"Cave Lab!"}'), null);
+  assert.deepEqual(parseClientMessage('{"t":"mute","on":true}'), { t: "mute", on: true }, "a muted microphone reaches every roster");
+  assert.equal(parseClientMessage('{"t":"mute","on":"yes"}'), null);
+  assert.equal(parseClientMessage('{"t":"mute"}'), null);
+});
+
+test("voice zones: a group shares voice across its places; nobody is heard from none", async () => {
+  const { voicePeers, parseClientMessage, zoneGroup } = await import("../src/protocol.js");
+  const on = { pub: "p", sub: "s", track: "mic" };
+  const p = (id, zone) => ({ id, body: `ooga-${id}`, zone, voice: on });
+  const peers = voicePeers([p(1, "factory"), p(2, "factory.hall"), p(3, "outside"), p(4, "sphere"), p(5, "none"), p(6, "none"), p(7, "bifrost"), p(8, "bifrost.chamber")]);
+  assert.deepEqual(peers.get(1), [2], "the Factory's tunnel hears its hall");
+  assert.deepEqual(peers.get(2), [1]);
+  assert.deepEqual(peers.get(3), [], "the island does not hear a bridged land");
+  assert.deepEqual(peers.get(4), []);
+  assert.deepEqual(peers.get(5), [], "off the island's edge hears nobody, not even another off it");
+  assert.deepEqual(peers.get(7), [8], "the Bifrost isle hears its chamber");
+  assert.equal(zoneGroup("arcade.hall"), "arcade");
+  assert.equal(zoneGroup("dsb-studio"), "dsb-studio");
+  assert.deepEqual(parseClientMessage('{"t":"zone","name":"factory.hall"}'), { t: "zone", name: "factory.hall" });
+  assert.equal(parseClientMessage('{"t":"zone","name":"a.b.c"}'), null);
+  assert.equal(parseClientMessage('{"t":"zone","name":".hall"}'), null);
+});
+
+test("health: a driven Ooga's health is clamped to 0-100 and needs its knocked-out flag", async () => {
+  const { parseClientMessage } = await import("../src/protocol.js");
+  assert.deepEqual(parseClientMessage('{"t":"hp","v":63.6,"ko":false}'), { t: "hp", v: 64, ko: false });
+  assert.deepEqual(parseClientMessage('{"t":"hp","v":-5,"ko":true}'), { t: "hp", v: 0, ko: true });
+  assert.deepEqual(parseClientMessage('{"t":"hp","v":250,"ko":false}'), { t: "hp", v: 100, ko: false });
+  assert.equal(parseClientMessage('{"t":"hp","v":"50","ko":false}'), null);
+  assert.equal(parseClientMessage('{"t":"hp","v":50}'), null);
 });
 
 test("NPC host: the page longest in the room among those showing the island; nobody when none does", async () => {

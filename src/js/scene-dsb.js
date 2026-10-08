@@ -1,508 +1,474 @@
-// DSB Land: one scene with a walk-in passage, explorable plain, and two passenger rides.
+// Approved DSB exterior with reusable, separately lit building interiors.
 (() => {
   "use strict";
-  const BL = window.BL = window.BL || {};
-  const { createNode, addChild, removeChild, createCamera, traverseVisible, tweenCount } = BL.scene;
-  const { clamp } = BL.math;
-  const M = BL.dsbModels, N = 192, TAU = Math.PI * 2;
-  let RAIL_GEOMETRY, SUPPORT_GEOMETRY;
-  const VIEW = { yaw: 0, pitch: 0.28, dist: 6, target: { x: 0, y: 1.7, z: 26 }, position: { x: 0, y: 0, z: 26 } };
-  const DOCK = { yaw: 0, pitch: 0, dist: 12, target: { x: 0, y: 1.7, z: 33 }, position: { x: 0, y: 0, z: 33 } };
-  const STATION = { yaw: 0, pitch: 0, dist: 12, target: { x: 7, y: 1.7, z: 24 }, position: { x: 7, y: 0, z: 24 } };
-  const START = Math.asin(7 / 31), WAIT = 8;
-  const boatTrip = { angle: 0, wait: WAIT, start: 0, speed: 0.13 }, trainTrip = { angle: START, wait: WAIT, start: START, speed: 0.2 };
-  let rideYaw = 0, ridePitch = 0, proximity, lastContext = "", bananas = 0;
-  const RENDER = { clear: [0.025, 0.014, 0.06], horizon: [0.11, 0.04, 0.19], zenith: [0.008, 0.006, 0.025], sky: [0.52, 0.43, 0.7], ground: [0.26, 0.17, 0.32], sun: [0.8, 0.7, 0.9], light: { x: -0.4, y: 0.8, z: 0.4 }, stars: 1, shadowCenter: { x: 0, y: 0, z: 0 }, shadowExtent: 48, bloomStrength: 0.5, lights: new Float32Array(80), lightCount: 2 };
-  const DARK = { clear: [0, 0, 0], sky: [0.12, 0.1, 0.16], ground: [0.04, 0.03, 0.06], sun: [0.18, 0.16, 0.22], bloomStrength: 0.15 };
-  let root, camera, input, pilot, hud, renderer, world, game, go, land, transitGate, audio, data, tv, panel, readout, bag, prompt, overlayCanvas, overlayCtx, avatar, crew, fx, playerWorld, zuzu, conversation;
-  let exiting = false;
-  // DSB Land returns through its gate to ₿IFRÖST's chamber.
-  const home = "bifrost", HOME_NAME = "₿IFRÖST";
-  let phase = "entrance", progress = 0, elapsed = 0, flash = 0, boatAngle = 0, rideAngle = 0, priceTimer = 0, tokens = 20, bread = 0, tomatoes = 0, throwAt = -1, fedUntil = 0, disposed = false, oldSheetHidden = false, oldSheetOpen = "true";
-  let arrivalTime = 0, glanceTime = 3, lastCue = -1, glance = 0, gait = 0, avatarView = true;
-  let lastPrice = "", lastBag = "", lastPrompt = "", savedRevision = -1, lastHeight = 0, skyPulse = 0;
-  const targets = [], visitors = [], shots = [], rails = [], ties = [], candles = [], railY = new Float64Array(N), railColor = new Uint8Array(N);
-  const railPoint = { x: 0, y: 0, z: 0 }, railAhead = { x: 0, y: 0, z: 0 }, previous = { x: 0, z: 26 };
-  const transitPrevious = { x: 0, y: 0, z: 25 }, transitCurrent = { x: 0, y: 0, z: 25 };
-  const radioSource = { x: 0, y: 0, z: 0 };
-  const agentPerception = { name: "", x: 0, y: 0, z: 0, food: 0, active: false };
-  const feedback = ["Ooga! Tough crowd!", "That one was ripe!", "Save some for the sandwich!", "Encore! But fewer tomatoes!"];
-  const jokes = ["I bought the dip. Nobody brought chips.", "My wallet is cold. My banana bread is warm.", "A turtle walks into a bar. Eventually.", "Proof of work? I carried this microphone."];
-  const dsbScene = { id: "dsb", root: null, camera: null, input: null, debug: null, renderOpts: DARK, get inMotion() { return true; } };
-  const point = (a, out) => {
-    const f = ((a % TAU + TAU) % TAU) / TAU * N, i = Math.floor(f), t = f - i;
-    out.x = Math.sin(a) * 31; out.z = Math.cos(a) * 31;
-    out.y = railY[i] * (1 - t) + railY[(i + 1) % N] * t;
+  const BL=window.BL, S=BL.scene, daylight=BL.daylight;
+  const params=new URLSearchParams(location.search), DEBUG=params.has("debug"), LATITUDE=37;
+  const OVERVIEW={yaw:-0.08,pitch:1.22,dist:207,target:{x:-2,y:10,z:-1}};
+  const JETPACK_HUD_STATE={owned:false,equipped:false,fuel:1,blocked:false};
+  // Same mutable sampling surface as the hub; geography and camera stay fixed.
+  const renderOpts={
+    clear:new Float32Array(3),horizon:new Float32Array(3),zenith:new Float32Array(3),sky:new Float32Array(3),ground:new Float32Array(3),sun:new Float32Array(3),direct:new Float32Array(3),
+    light:{x:0,y:1,z:0},sunDirection:{x:0,y:1,z:0},moon:{x:0,y:1,z:0},celestialPole:{x:0,y:1,z:0},starMatrix:new Float32Array(9),
+    shadowCenter:{x:0,y:10,z:0},shadowExtent:110,fogNear:250,fogFar:600,lights:new Float32Array(BL.glRenderer.POINT_LIGHT_CAPACITY*8),lightCount:0,time:0
   };
-  const buildRide = () => {
-    const state = data.state, source = state.candles, count = state.count - 1, base = source[4];
-    // Completed candles only. A lap owns this snapshot, so the rails under a rider never move.
-    for (let i = 0; i < N; i++) {
-      const f = i / N * count, k = Math.floor(f), t = f - k;
-      const p = source[k * 5 + 4], q = source[((k + 1) % count) * 5 + 4];
-      const angle = i / N * TAU, distance = Math.abs(Math.atan2(Math.sin(angle - START), Math.cos(angle - START)));
-      railY[i] = 10 + clamp(Math.log((p * (1 - t) + q * t) / base) * 140, -2.5, 5) * clamp((distance - 0.16) / 0.3, 0, 1);
-      railColor[i] = source[k * 5 + 4] >= source[k * 5 + 3] ? 1 : 0;
+  renderOpts.fog=renderOpts.horizon;
+  // Four structural validation lamps, not street dressing. Keep within even the lowest light tier.
+  const LAMP_SPOTS=[[-49,-45],[-57,37],[20,63],[64,49]], lamps=[];
+  let clock,water,waterInteraction,weather,nature,detail,enrichment,interiors,exterior,noderunner,tv,spaces,studioTools,maxisReview=false,studioReview=false,shopMenu,shopTools,shopPick=null,shopReview=false,shopMenuReview=0;
+  let inkMenu,inkTools,inkPick=null,inkReview=false,inkMenuReview=0,inkLayoutObserver,inkLayoutPending=false;
+  let svrnMenu,svrnPick=null,svrnReview=false;
+  let memeMenu,memeReview=false,contextReview=false,stackchainMenu,stackchainReview=false;
+  let bigMenu,bigPick=null,bigReview=false,bigMenuReview=0;
+  const requestInkLayout=()=>{inkLayoutPending=true;};
+  // Measure only on layout changes; both Proof of Ink browse affordances share Jump's anchor.
+  const layoutInkBrowse=()=>{
+    if(!matchMedia("(pointer: coarse), (max-width: 720px)").matches)return;
+    const jump=document.getElementById("act").getBoundingClientRect();
+    if(!jump.width)return;
+    const x=jump.left+jump.width/2;
+    let half=Math.min(90,x-12,document.documentElement.clientWidth-x-12);
+    for(const id of ["joy-move","joy-look"]){
+      const r=document.getElementById(id).getBoundingClientRect();
+      if(r.width)half=Math.min(half,x>r.right?x-r.right-8:r.left>x?r.left-x-8:half);
     }
-    for (let i = 0; i < N; i++) {
-      const a = i / N * TAU, b = (i + 1) / N * TAU;
-      point(a, railPoint); point(b, railAhead);
-      const dx = railAhead.x - railPoint.x, dy = railAhead.y - railPoint.y, dz = railAhead.z - railPoint.z;
-      const length = Math.hypot(dx, dz);
-      for (let side = 0; side < 2; side++) {
-        const rail = rails[i * 2 + side], offset = side ? 0.65 : -0.65;
-        rail.position.x = (railPoint.x + railAhead.x) / 2 + Math.sin(a) * offset; rail.position.z = (railPoint.z + railAhead.z) / 2 + Math.cos(a) * offset; rail.position.y = (railPoint.y + railAhead.y) / 2;
-        rail.rotation.y = Math.atan2(dx, dz); rail.rotation.x = -Math.atan2(dy, length); rail.scale.z = Math.hypot(length, dy) + 0.03;
-        rail.geometry = RAIL_GEOMETRY[railColor[i]];
+    for(const el of [inkTools,context]){
+      el.style.setProperty("--ink-action-x",`${x}px`);
+      el.style.setProperty("--ink-action-y",`${jump.top-8}px`);
+      el.style.setProperty("--ink-action-width",`${Math.max(44,half*2)}px`);
+    }
+  };
+  const sampleDaylight=()=>{
+    daylight.sample(clock.read(),renderOpts,clock.dayOfYear,LATITUDE,clock.continuousDay);
+    BL.dsbAtmosphere.light(renderOpts);
+    const k=renderOpts.lampFactor, lights=renderOpts.lights;
+    let count=0;
+    for(const lamp of lamps){
+      lamp.glow=k;
+      if(k<=.001||count>=BL.glRenderer.POINT_LIGHT_CAPACITY)continue;
+      const p=lamp.position,o=count++*8;
+      lights[o]=p.x;lights[o+1]=p.y;lights[o+2]=p.z;lights[o+3]=10;
+      lights[o+4]=k;lights[o+5]=.65*k;lights[o+6]=.3*k;lights[o+7]=0;
+    }
+    renderOpts.lightCount=count;
+    atmosphere?.lights(renderOpts);
+  };
+  const scene={id:"dsb",renderOpts};
+  let atmosphere=null,town=null,entrance=null,olympus=null,vacancies=null,collision=null;
+  let root,camera,land,pilot,crew,avatar,hud,input,fx,gate,world,go,overlayCanvas,panel,context,leaving=false,overview=false;
+  let jetpackBeforeInterior=false;
+  const VOICE_ZONES={"dsb-studio":"dsb-studio","maxis-club":"dsb-maxis","without-rulers":"dsb-without-rulers","proof-of-ink":"dsb-proof-of-ink","big-bitcoin":"dsb-big-bitcoin","meme-factory":"dsb-meme-factory","stackchain-magazine":"dsb-stackchain","svrn-society":"dsb-svrn"};
+  let remotes=null,unsubscribeAccount=null;
+  const voiceZone=()=>VOICE_ZONES[interiors?.active?.room.id]||"dsb-outside";
+  const mayPossess=cave=>BL.net.mayDrive(cave.traits.name,BL.contributors.stateFor(cave.contributor)==="working");
+  const jetpackAllowed=()=>!interiors?.active;
+  const jetpackStatus=cave=>{
+    JETPACK_HUD_STATE.owned=!!cave?.jetpackOwned;
+    JETPACK_HUD_STATE.equipped=!!cave?.jet;
+    JETPACK_HUD_STATE.fuel=cave?.jetFuel??1;
+    JETPACK_HUD_STATE.blocked=JETPACK_HUD_STATE.owned&&!jetpackAllowed();
+    return JETPACK_HUD_STATE;
+  };
+  const toggleJetpack=()=>{
+    const cave=crew.player;
+    if(!cave||!cave.jetpackOwned)return false;
+    if(cave.jet){crew.removeJetpack(cave);hud.toast("Jetpack off");}
+    else if(!jetpackAllowed()){hud.toast("No jetpacks indoors");return false;}
+    else if(crew.wearJetpack(cave,BL.hubModels.jetpack(),BL.hubModels.jetFlame()))hud.toast("Jetpack!");
+    else return false;
+    pilot.showAct();return true;
+  };
+  const sharePresence=()=>{
+    const travelling=entrance&&entrance.phase!=="done";
+    const driven=!travelling&&crew.player;
+    BL.net.setZone(travelling?"dsb-transit":voiceZone());
+    BL.net.setBody(driven?driven.traits.name:null);
+    if(driven){const p=driven.root.position;BL.net.sendPose(p.x,p.y-driven.baseY,p.z,driven.root.rotation.y);BL.net.setHealth(driven.health.value,driven.health.stunned);}
+  };
+  const accountChanged=()=>{
+    if(!avatar)return;
+    const released=BL.net.state.released;
+    const denied=mayPossess(avatar)||(released?.name===avatar.traits.name?"That Ooga is no longer yours to drive":null);
+    BL.net.state.released=null;
+    if(denied){if(crew.player){pilot.release(true);hud.toast(denied);}avatar.root.visible=false;}
+    crew.refreshRosterRow(avatar);sharePresence();
+  };
+  const sheetFocus=()=>{pilot.controls.reset();input.reset();crew.setWeaponTrigger(false);};
+  const drawExtra=(ctx2d,project)=>{
+    remotes?.drawNames(ctx2d,project);
+    const overlay=overlayCanvas.getContext("2d");entrance?.overlay(overlay,overlayCanvas.clientWidth,overlayCanvas.clientHeight);
+    if(interiors?.fade){overlay.save();overlay.fillStyle=`rgba(0,0,0,${interiors.fade})`;overlay.fillRect(0,0,overlayCanvas.clientWidth,overlayCanvas.clientHeight);overlay.restore();}
+    if(!DEBUG||!weather)return;
+    const c=overlayCanvas.getContext("2d"),s=weather.state;
+    c.save();c.font="12px monospace";c.fillStyle="rgba(5,20,30,.8)";c.fillRect(12,160,350,78);c.fillStyle="#e7f3fa";
+    c.fillText(`Weather: ${s.mode} · ${s.quality}`,20,176);
+    c.fillText(`Rain ${s.precipitation.toFixed(2)} · cloud ${s.cloud.toFixed(2)}`,20,193);
+    c.fillText(`Wind ${s.wind.strength.toFixed(2)} · ${s.exterior?"exterior":"interior / hidden"}`,20,210);
+    if(nature)c.fillText(`Nature: ${nature.stats.visible}/${nature.stats.total} · seed ${nature.stats.seed}`,20,227);c.restore();
+  };
+  const before={x:0,y:0,z:0},after={x:0,y:0,z:0};
+  const nearGate=()=>avatar&&Math.hypot(avatar.root.position.x+45,avatar.root.position.z+44)<10;
+  const walk=()=>{overview=false;pilot.possess(avatar);pilot.navigate({position:{x:avatar.root.position.x,y:avatar.root.position.y-avatar.baseY,z:avatar.root.position.z},yaw:Math.PI,pitch:.22,dist:7});pilot.setActive(true);};
+  const overviewView=()=>{if(interiors?.active||interiors?.transitioning)return;overview=true;pilot.goPreset("overview");};
+  const nearTv=()=>!overview&&!interiors?.active&&!interiors?.transitioning&&noderunner?.near(avatar.root.position);
+  const studioRoom=()=>interiors?.active?.room.id==="dsb-studio"?interiors.active.room:null;
+  const maxisRoom=()=>interiors?.active?.room.id==="maxis-club"?interiors.active.room:null;
+  const shopRoom=()=>interiors?.active?.room.id==="without-rulers"?interiors.active.room:null;
+  const inkRoom=()=>interiors?.active?.room.id==="proof-of-ink"?interiors.active.room:null;
+  const bigRoom=()=>interiors?.active?.room.id==="big-bitcoin"?interiors.active.room:null;
+  const nearBig=()=>{const q=bigRoom()?.mediaAt,p=avatar.root.position;return !!q&&Math.hypot(p.x-q.x,p.z-q.z)<2;};
+  const nearInk=()=>{const q=inkRoom()?.mediaAt,p=avatar.root.position;return !!q&&Math.hypot(p.x-q.x,p.z-q.z)<2;};
+  const memeRoom=()=>interiors?.active?.room.id==="meme-factory"?interiors.active.room:null;
+  const stackchainRoom=()=>interiors?.active?.room.id==="stackchain-magazine"?interiors.active.room:null;
+  const svrnRoom=()=>interiors?.active?.room.id==="svrn-society"?interiors.active.room:null;
+  const seatRoom=()=>studioRoom()||maxisRoom()||shopRoom()||inkRoom()||bigRoom()||memeRoom()||stackchainRoom()||svrnRoom();
+  const venueMenu=()=>svrnRoom()?svrnMenu:stackchainRoom()?stackchainMenu:memeRoom()?memeMenu:shopRoom()?shopMenu:inkRoom()?inkMenu:bigRoom()?bigMenu:null;
+  const menuZone=()=>{const room=interiors?.active?.room;return room&&venueMenu()?BL.dsbMenuZones.resolve(room,avatar.root.position):null;};
+  const openVenue=()=>{const menu=venueMenu();return menu?menu.open(menuZone().route):false;};
+  const menuOpen=()=>tv?.isOpen||spaces?.isOpen||shopMenu?.isOpen||inkMenu?.isOpen||bigMenu?.isOpen||memeMenu?.isOpen||stackchainMenu?.isOpen||svrnMenu?.isOpen;
+  const nearShop=()=>{const q=shopRoom()?.mediaAt,p=avatar.root.position;return !!q&&Math.hypot(p.x-q.x,p.z-q.z)<2;};
+  const nearMaxis=()=>{const q=maxisRoom()?.mediaAt,p=avatar.root.position;return !!q&&Math.hypot(p.x-q.x,p.z-q.z)<2;};
+  const seatNear=()=>{
+    const room=seatRoom();if(!room||avatar.camp.seat)return null;
+    const p=avatar.root.position;
+    for(const seat of room.seats)if(!seat.sitter&&Math.hypot(p.x-seat.walkAt.x,p.z-seat.walkAt.z)<1.25&&Math.abs(p.y-avatar.baseY-seat.floor)<.45)return seat;
+    return null;
+  };
+  const nearSpaces=()=>{const p=avatar.root.position,q=studioRoom()?.jukeboxAt;return !!q&&Math.hypot(p.x-q.x,p.z-q.z)<2&&Math.abs(p.y-avatar.baseY-q.y)<1;};
+  const sit=seat=>{
+    if(!seat)return false;
+    if(pilot.player!==avatar)pilot.possess(avatar);
+    input.reset();
+    pilot.navigate({position:{x:seat.walkAt.x,y:seat.floor,z:seat.walkAt.z},yaw:seat.viewYaw??Math.atan2(seat.x,seat.z+13),pitch:.12,dist:3});
+    const seated=crew.sitPlayer(seat);if(seated){pilot.enterClose();pilot.showAct();}return seated;
+  };
+  const studioAct=()=>{
+    if(!seatRoom())return false;
+    if(avatar.camp.seat){input.reset();const stood=crew.standPlayer();if(stood){pilot.exitClose();pilot.showAct();}return stood;}
+    if(nearSpaces()){spaces.open();return true;}
+    const seat=seatNear();if(seat)return sit(seat);
+    if(interiors.target(avatar.root.position))return false;
+    if(venueMenu()){openVenue();return true;}return false;
+  };
+  const act=()=>{if(menuOpen())return true;if(!interiors?.transitioning&&studioAct())return true;if(nearTv()){tv.open();return true;}if(!overview&&interiors?.request(avatar.root.position))return true;if(interiors?.active)return false;if(nearGate()&&!overview){gate.open();return true;}return false;};
+  const mute=()=>{const on=weather.toggleMuted(),button=document.getElementById("dsb-mute");interiors?.audio.update(on);button.textContent=on?"Unmute":"Mute";button.setAttribute("aria-pressed",String(on));};
+  const action=name=>{if(entrance?.action(name))return;if(menuOpen())return;if(pilot.modeAction(name)||seatRoom()&&pilot.weaponAction(name))return;if(name==="dsb-mute")mute();else if(name==="jetpack-toggle")toggleJetpack();else if(interiors?.transitioning)return;else if(name==="dsb-lookout")overviewView();else if(name==="reset-view")walk();else if(name==="dsb-context")act();else if(name==="act")pilot.action();else if(name==="leave")hud.toast("Return through the Portara at the summit.");};
+  const shore={x:0,z:0,nx:0,nz:0};
+  const deepWaterReturn=()=>{
+    if(overview||crew.player!==avatar)return false;
+    const p=avatar.root.position,C=BL.dsbCoast;
+    if(p.y-avatar.baseY>C.LEVEL+.05||C.LEVEL-land.heightAt(p.x,p.z)<=C.maxDepth(avatar))return false;
+    C.nearest(land.coast,p.x,p.z,shore);
+    const bearing=Math.atan2(shore.x-p.x,shore.z-p.z),r=avatar.bodyRadius;
+    let safe=null;
+    for(let radius=.75;radius<=80&&!safe;radius+=.75)for(let i=0;i<24&&!safe;i++){
+      const a=bearing+i*Math.PI/12,x=p.x+Math.sin(a)*radius,z=p.z+Math.cos(a)*radius,y=land.heightAt(x,z);
+      if(y<C.LEVEL+.4||land.heightAt(x+r+1,z)<C.LEVEL+.2||land.heightAt(x-r-1,z)<C.LEVEL+.2||land.heightAt(x,z+r+1)<C.LEVEL+.2||land.heightAt(x,z-r-1)<C.LEVEL+.2)continue;
+      if(collision.solids.clearAt(x,y+.03,z,r,avatar.bodyHeight-.03))safe={x,y,z};
+    }
+    if(!safe){const q=land.marks.clearing;safe={x:q.x,y:q.y,z:q.z};}
+    waterInteraction.clear();pilot.navigate({position:safe,yaw:bearing,pitch:.22,dist:7});hud.toast("Back on shore");return true;
+  };
+  const enter=ctx=>{
+    ({world,go}=ctx);leaving=false;overview=false;jetpackBeforeInterior=false;
+    root=S.createNode();exterior=S.createNode();S.addChild(root,exterior);land=BL.dsbGeography.build();S.addChild(exterior,land.root);
+    const structures=[];
+    water=BL.dsbWater.create(land);S.removeChild(land.root,land.sea);S.addChild(exterior,water.node);renderOpts.dsbWater=water;
+    Object.assign(renderOpts,BL.dsbAtmosphere.OPTS);atmosphere=BL.dsbAtmosphere.create({root:exterior,land,renderer:ctx.renderer});
+    clock=daylight.createClock({hour:DEBUG?parseFloat(params.get("hour")):NaN,daylen:DEBUG?parseFloat(params.get("daylen")):NaN,day:DEBUG?parseFloat(params.get("day")):NaN,time:DEBUG?params.get("time"):null,now:new Date()});
+    const lampGeometry=BL.models.box({w:.24,h:.32,d:.24,color:"#ffcc80"});
+    for(const [x,z] of LAMP_SPOTS){
+      const y=land.heightAt(x,z);
+      const post=S.createNode({geometry:BL.models.box({w:.18,h:2,d:.18,color:"#8b8170"}),position:{x,y:y+1,z}});
+      S.addChild(exterior,post);structures.push(post);
+      const lamp=S.createNode({geometry:lampGeometry,position:{x,y:y+2.16,z}});
+      lamps.push(lamp);S.addChild(exterior,lamp);structures.push(lamp);
+    }
+    sampleDaylight();
+    camera=S.createCamera({fov:55,near:.1,far:750});overlayCanvas=ctx.overlay;
+    const asked=new URLSearchParams(location.search).get("character");
+    const own=BL.net.ownCharacter(),carried=world.pilot||asked;
+    const allowed=c=>!BL.net.mayDrive(c.name,BL.contributors.stateFor(c)==="working");
+    const name=own?.handle||BL.contributors.roster.find(c=>c.name===carried&&allowed(c))?.name||(!BL.net.state.backend?"YellowBrokeIt":BL.contributors.roster.find(allowed)?.name||"YellowBrokeIt");world.pilot=null;
+    hud=BL.hud.create({roster:BL.contributors.roster,catalog:BL.models.SWAG,tierColors:BL.models.TIER_COLORS,renderIcon:BL.hud.renderIcon,lootEnabled:false});
+    hud.setAreaLabel("DSB LAND · MASTER LAYOUT");
+    const hooks={};input=BL.interact.create({canvas:ctx.canvas,renderer:ctx.renderer,camera,hooks});
+    const STEP=BL.pilot.WALK.step;
+    const groundAt=(x,z,feet,_top,actor)=>{
+      if(interiors?.active)return interiors.groundAt(x,z);
+      const ground=land.heightAt(x,z),at=Number.isFinite(feet)?feet:ground;
+      // A falling body's edge can meet a roof or stair while its centre is still outside the top face.
+      return collision?Math.max(ground,collision.solids.supportAt(x,z,at,STEP,actor?.bodyRadius||0)):ground;
+    };
+    pilot=BL.pilot.create({renderer:ctx.renderer,canvas:ctx.canvas,camera,hud,mayPossess,jetpackStatus,presets:{...BL.dsbEnrichment.REVIEWS,...BL.dsbVacancies.REVIEWS,portara:{yaw:0,pitch:.08,dist:17,target:{x:-45,y:land.heightAt(-45,-48)+BL.dsbAtmosphere.portaraAperture.height/2,z:-48}},"water-falls":{yaw:-.65,pitch:.48,dist:37,target:{x:-37,y:25,z:-16}},"water-pool":{yaw:-.9,pitch:.75,dist:22,target:{x:-45,y:14,z:0}},overview:OVERVIEW,chora:{yaw:.62,pitch:.12,dist:18,target:{x:31,y:7,z:33}}},landing:"overview",pitch:[.1,1.45],dist:[3,270],follow:{y:1,min:3,max:9,pitch:[.1,.8]},fly:{speed:8,perDist:.1,climb:5,yMax:180},clampCamera:p=>{if(interiors)interiors.clampCamera(p,avatar?.root.position);else p.y=Math.max(p.y,land.heightAt(p.x,p.z)+1);if(!interiors?.active&&land.heightAt(p.x,p.z)<BL.dsbCoast.LEVEL)p.y=Math.max(p.y,BL.dsbCoast.LEVEL+.12);},coarse:matchMedia("(pointer: coarse)").matches,onFreeAction:act,onPlayerAction:act,close:{eyeHeight:1.7,eyeRatio:.8,eyeForward:0,maxStep:.6,pitch:[-1.2,1.2],orbitDist:12,trailingDist:6,groundAt:(x,z)=>groundAt(x,z,avatar?avatar.root.position.y-avatar.baseY:undefined)}});
+    fx=BL.fx.create({root,renderer:ctx.renderer,camera,overlay:ctx.overlay,hud,tickerAt:{x:-45,y:42,z:-44}});
+    const splatGeometry=BL.models.particleGeometry("#e34d32",.12,0);
+    const walkable=(ax,az,bx,bz,y,h=1.5,a)=>{
+      if(interiors?.active)return interiors.walkable(ax,az,bx,bz,y,h,a);
+      if(Math.hypot(bx,bz)>125)return false;
+      const floor=groundAt(bx,bz,y),feet=Math.max(y,floor),r=a?.bodyRadius||.4;
+      if(floor-y>STEP+1e-7)return false;
+      const solids=collision?.solids;
+      return !solids||solids.segmentClear(ax,feet+STEP,az,bx,feet+STEP,bz,r,Math.max(0,h-STEP))
+        || solids.escapeSegmentClear(ax,feet+STEP,az,bx,feet+STEP,bz,r,Math.max(0,h-STEP));
+    };
+    const flyable=(ax,az,bx,bz,y,h=1.5,a)=>{
+      if(interiors?.active)return walkable(ax,az,bx,bz,y,h,a);
+      if(Math.hypot(bx,bz)>125||land.heightAt(bx,bz)>y+1e-7)return false;
+      const r=a?.bodyRadius||.4;
+      const solids=collision?.solids;
+      return !solids||solids.segmentClear(ax,y+1e-5,az,bx,y+1e-5,bz,r,h-1e-5)||solids.escapeSegmentClear(ax,y+1e-5,az,bx,y+1e-5,bz,r,h-1e-5);
+    };
+    const shared={
+      tomatoContact:(x,y,z,p)=>seatRoom()?.tomatoContact(x,y,z,p,avatar.camp.seat),
+      onTomatoImpact:p=>{if(!seatRoom())return;for(let i=0;i<7;i++){const a=i*Math.PI*2/7;fx.spawnParticle(splatGeometry,p.x,p.y,p.z,Math.cos(a)*1.8,.8+(i%3)*.3,Math.sin(a)*1.8,.4,3,5,interiors.groundAt(p.x,p.z)+.06);}},
+      localOnline:()=>!BL.net.state.backend||!!BL.net.state.me, outsideActors:()=>remotes?remotes.actors():[],outsideActorHeight:BL.remotePlayers.BODY_HEIGHT,
+      root,input,hud,game:ctx.game,world:{level:0,weapons:new Map(),magazine:{owned:false,count:0,ammo:0,carrier:null}},playerName:name,reloadPolicy:{near:()=>false,available:()=>false},fx,viewYaw:Math.PI,groundAt,walkable,flyable,jetpackAllowed,
+      ceilingAt:(x,z,y,a)=>interiors?.active?Infinity:collision?.solids.ceilingAt(x,z,y,a?.bodyRadius||.4)??Infinity};
+    crew=shared.crew=BL.crew.create(shared);pilot.bind(shared);avatar=crew.cavemen.get(name);
+    crew.setJetpackOwnership(avatar,true,BL.hubModels.jetpack(),BL.hubModels.jetFlame());
+    crew.wearJetpack(avatar,BL.hubModels.jetpack(),BL.hubModels.jetFlame());
+    remotes=BL.remotePlayers.create({root,crew,visible:rec=>rec.zone===voiceZone()&&(!entrance||entrance.phase==="done")});
+    hud.el.sheet.addEventListener("focusin",sheetFocus);
+    Object.assign(avatar.root.position,{x:-45,y:land.heightAt(-45,-43)+avatar.baseY,z:-43});avatar.root.rotation.y=0;
+    Object.assign(hooks,pilot.hooks);hud.onAction(action);hud.onPreset(()=>overviewView());
+    // Shared timing/input/transport; DSB alone uses the marble's rectangular clear aperture.
+    const floor=land.heightAt(-45,-48),aperture=BL.dsbAtmosphere.portaraAperture;
+    gate=BL.oogaPortal.create({radius:2.5,outerRadius:2.8,aperture,position:{x:-45,y:floor+aperture.height/2,z:-48},rotation:{x:Math.PI/2,y:0,z:0},destinations:[{id:"bifrost",label:"OogaBoogaLand Bifrost",enabled:true}],menuHint:"Activate, then walk through the Portara to Bifrost.",onMenu:open=>{pilot.setActive(!open);pilot.controls.reset();input.reset();},onTraverse:()=>{if(leaving)return;world.pilot=avatar.traits.name;leaving=go("bifrost");}});
+    gate.ring.visible=false;S.addChild(exterior,gate.root);
+    const portara=S.createNode({geometry:BL.dsbAtmosphere.portara(),position:{x:-45,y:floor,z:-48}});
+    S.addChild(exterior,portara);structures.push(portara);
+    Object.assign(gate.dialer.position,{x:-40,y:land.heightAt(-40,-43),z:-43});S.addChild(exterior,gate.dialer);structures.push(gate.dialer);
+    panel=document.getElementById("dsb-panel");panel.hidden=true;
+    context=document.getElementById("dsb-context");context.textContent="Dial Portara → Bifrost";
+    document.body.classList.add("dsb-active");
+    noderunner=BL.dsbNoderunner.create({root:exterior,land});
+    weather=BL.dsbWeather.create({root:exterior,renderer:ctx.renderer,camera,land,water,params,audioFactory:noderunner.createAudio});
+    input.add(noderunner.screenFace,{kind:"dsb-tv"});
+    const tap=hooks.onTap;hooks.onTap=(hit,p)=>{if(hit?.owner?.kind==="svrn-kiosk"&&svrnRoom()){openVenue();return;}if(hit?.owner?.kind==="big-terminal"&&bigRoom()){openVenue();return;}if(hit?.owner?.kind==="ink-kiosk"&&inkRoom()){openVenue();return;}if(hit?.owner?.kind==="rulers-kiosk"&&shopRoom()){openVenue();return;}if(hit?.owner?.kind==="dsb-tv"){if(nearTv())act();return;}tap?.(hit,p);};
+    tv=BL.dsbTv.create(noderunner.screen,ctx.renderer,{play:()=>noderunner.audio?.play(),radioStatus:()=>noderunner.audio?.status||"Press Play radio to enable sound",onOpen:open=>{pilot.setActive(!open);pilot.controls.reset();input.reset();}});
+    nature=BL.dsbNature.create({root:exterior,land,renderer:ctx.renderer,camera,weather});
+    detail=BL.dsbExterior.create({root:exterior,land,nature});
+    enrichment=BL.dsbEnrichment.create({root:exterior,land,nature,detail,renderer:ctx.renderer,camera});
+    town=BL.dsbTown.create({root:exterior,land,nature,detail,enrichment});
+    olympus=BL.dsbOlympus.create({root:exterior,land,nature,detail,enrichment,renderer:ctx.renderer});
+    vacancies=BL.dsbVacancies.create({root:exterior,land,olympus});
+    waterInteraction=BL.dsbWaterInteraction.create({root:exterior,land,water,olympus,enrichment,renderer:ctx.renderer,camera,fx});
+    collision=BL.dsbCollision.create({land,nature,detail,enrichment,town,olympus,noderunner,vacancies,structures});
+    shared.shoulderObstacleActive=collision.solids.isActive;
+    shared.shoulderObstacle=(cave,fx,fz,reach,out)=>{
+      if(interiors?.active)return false;
+      const p=cave.root.position,feet=p.y-cave.baseY;
+      if(!collision.solids.shoulderAt(p.x,feet+STEP,p.z,fx,fz,cave.bodyRadius,Math.max(0,cave.bodyHeight-STEP),reach,out,feet+1e-7))return false;
+      // Stair treads and low roofs are approached head-on when each short step has support.
+      const steps=Math.max(1,Math.ceil(reach/.125));let x=p.x,z=p.z,y=feet;
+      for(let i=1;i<=steps;i++){
+        const nx=p.x+fx*reach*i/steps,nz=p.z+fz*reach*i/steps;
+        if(!walkable(x,z,nx,nz,y,cave.bodyHeight,cave))return true;
+        x=nx;z=nz;y=groundAt(x,z,y);
       }
-      const tie = ties[i]; tie.position.x = railPoint.x; tie.position.y = railPoint.y - 0.15; tie.position.z = railPoint.z; tie.rotation.y = a;
-      if (i % 4 === 0) {
-        const candle = candles[i / 4]; candle.position.x = railPoint.x; candle.position.z = railPoint.z; candle.position.y = railPoint.y / 2; candle.scale.y = railPoint.y;
-        candle.geometry = SUPPORT_GEOMETRY[railColor[i]];
-        candle.visible = !(railPoint.z > 27 && railPoint.x > -11 && railPoint.x < 11);
+      return false;
+    };
+    shared.shoulderPropClear=(cave,x,z)=>{
+      if(interiors?.active)return true;
+      const p=cave.root.position,y=p.y-cave.baseY+1e-5;
+      return collision.solids.escapeSegmentClear(p.x,y,p.z,x,y,z,cave.bodyRadius,cave.bodyHeight-1e-5);
+    };
+    pilot.bind({...shared,crew:waterInteraction.steering(crew,()=>!interiors?.active&&!interiors?.transitioning)});
+    interiors=BL.dsbInteriors.create({root,exterior,land,weather,
+      relocate:(position,yaw,dist)=>{overview=false;pilot.setActive(true);if(pilot.player!==avatar)pilot.possess(avatar);pilot.navigate({position,yaw,pitch:.22,dist});pilot.setActive(!interiors?.transitioning);},
+      lock:on=>{pilot.setActive(!on);pilot.controls.reset();input.reset();},
+      onChange:(lighting,label)=>{
+        document.body.classList.toggle("dsb-studio-active",!!studioRoom());document.body.classList.toggle("maxis-club-active",!!maxisRoom());
+        if(interiors.active&&avatar.jet){jetpackBeforeInterior=true;crew.removeJetpack(avatar);}
+        else if(!interiors.active&&jetpackBeforeInterior){jetpackBeforeInterior=false;crew.wearJetpack(avatar,BL.hubModels.jetpack(),BL.hubModels.jetFlame());}
+        crew.clearProjectiles();crew.setWeaponTrigger(false);if(studioRoom())spaces?.enter();else spaces?.leave();
+        if(shopPick){input.remove(shopPick.screen);shopPick=null;}
+        if(shopRoom()){shopMenu?.enter();shopPick=shopRoom();input.add(shopPick.screen,{kind:"rulers-kiosk"});}else shopMenu?.leave();
+        if(inkPick){input.remove(inkPick.screen);inkPick=null;}
+        requestInkLayout();
+        if(inkRoom()){inkMenu?.enter();inkPick=inkRoom();input.add(inkPick.screen,{kind:"ink-kiosk"});}else inkMenu?.leave();
+        if(bigPick){input.remove(bigPick.screen);bigPick=null;}
+        if(bigRoom()){bigMenu?.enter();bigPick=bigRoom();input.add(bigPick.screen,{kind:"big-terminal"});}else bigMenu?.leave();
+        if(memeRoom())memeMenu?.enter();else memeMenu?.leave();
+        if(stackchainRoom())stackchainMenu?.enter();else stackchainMenu?.leave();
+        if(svrnPick){input.remove(svrnPick.screen);svrnPick=null;}
+        if(svrnRoom()){svrnMenu?.enter();svrnPick=svrnRoom();input.add(svrnPick.screen,{kind:"svrn-kiosk"});}else svrnMenu?.leave();
+        if(interiors.active)tv?.close();
+        scene.renderOpts=lighting||renderOpts;hud.setAreaLabel(label);BL.net.setZone(voiceZone());
+      }
+    });
+    memeMenu=BL.memeFactoryMenu.create({onOpen:on=>{pilot.setActive(!on&&!interiors.transitioning);pilot.controls.reset();input.reset();crew.setWeaponTrigger(false);}});
+    svrnMenu=BL.svrnMenu.create({onOpen:on=>{pilot.setActive(!on&&!interiors.transitioning);pilot.controls.reset();input.reset();crew.setWeaponTrigger(false);}});
+    stackchainMenu=BL.stackchainMenu.create({onOpen:on=>{pilot.setActive(!on&&!interiors.transitioning);pilot.controls.reset();input.reset();crew.setWeaponTrigger(false);}});
+    spaces=BL.dsbSpaces.create({onOpen:on=>{pilot.setActive(!on&&!interiors.transitioning);pilot.controls.reset();input.reset();crew.setWeaponTrigger(false);},onPlaying:()=>{}});
+    shopMenu=BL.withoutRulersMenu.create({onOpen:on=>{pilot.setActive(!on&&!interiors.transitioning);pilot.controls.reset();input.reset();crew.setWeaponTrigger(false);}});
+    shopTools=document.createElement("div");shopTools.className="rulers-tools";shopTools.hidden=true;
+    const shopButton=document.createElement("button");shopButton.type="button";shopButton.textContent="Browse Without Rulers";shopButton.onclick=openVenue;shopTools.appendChild(shopButton);document.body.appendChild(shopTools);
+    inkMenu=BL.proofOfInkMenu.create({onOpen:on=>{pilot.setActive(!on&&!interiors.transitioning);pilot.controls.reset();input.reset();crew.setWeaponTrigger(false);}});
+    bigMenu=BL.bigBitcoinMenu.create({action:context,onOpen:on=>{pilot.setActive(!on&&!interiors.transitioning);pilot.controls.reset();input.reset();crew.setWeaponTrigger(false);}});
+    inkTools=document.createElement("div");inkTools.className="ink-tools";inkTools.hidden=true;
+    const inkButton=document.createElement("button");inkButton.type="button";inkButton.textContent="Browse Proof of Ink";inkButton.onclick=openVenue;inkTools.appendChild(inkButton);document.body.appendChild(inkTools);
+    inkLayoutObserver=new ResizeObserver(requestInkLayout);
+    for(const el of [document.getElementById("act"),document.querySelector(".bottom-hud"),document.documentElement])inkLayoutObserver.observe(el);
+    window.addEventListener("resize",requestInkLayout);requestInkLayout();
+    studioTools=document.createElement("div");studioTools.className="dsb-studio-tools";studioTools.hidden=true;
+    const tomato=document.createElement("button");tomato.type="button";tomato.textContent="Throw tomato · T";tomato.onclick=()=>{if(seatRoom()&&!spaces.isOpen)crew.throwTomato();};studioTools.appendChild(tomato);
+    document.body.appendChild(studioTools);
+    studioReview=false;maxisReview=false;shopReview=false;shopMenuReview=0;inkReview=false;inkMenuReview=0;
+    bigReview=false;bigMenuReview=0;memeReview=false;contextReview=false;stackchainReview=false;svrnReview=false;
+    scene.renderOpts=renderOpts;
+    Object.assign(scene,{root,camera,input,setInterior:weather.setInterior,debug:{get audio(){return entrance?.audio;},weather:weather.shared,renderOpts,daylight:clock,camera,pilot,crew,controls:pilot.controls,hud,dsb:{get presence(){return {zone:BL.net.state.zone,body:crew.player?.traits.name||null,...remotes.stats()};},land,vacancies,water,waterInteraction,weather,nature,detail,enrichment,get town(){return town;},get atmosphere(){return atmosphere;},get entrance(){return entrance;},get olympus(){return olympus;},noderunner,tv,spaces,shopMenu,inkMenu,bigMenu,memeMenu,stackchainMenu,svrnMenu,menuZone,openVenue,interiors,exterior,setInterior:weather.setInterior,gate,avatar,get phase(){return interiors?.active?"interior":"land";},overview:OVERVIEW}}});
+    walk();
+    unsubscribeAccount=BL.net.subscribe(accountChanged);accountChanged();
+    if(ctx.from==="bifrost"||DEBUG&&params.has("entrance"))entrance=BL.dsbEntrance.create({root,camera,avatar,pilot,fx,exterior,scene,renderOpts,land,gate,hold:on=>{overview=on;},muted:()=>weather.shared.state.muted,onArrive:walk,onLeave:()=>{if(leaving)return;world.pilot=avatar.traits.name;leaving=go("bifrost");}});
+    if(DEBUG&&params.get("view")==="clearing") {
+      const p=land.marks.clearing;
+      pilot.navigate({position:{x:p.x,y:p.y,z:p.z},yaw:-2.4,pitch:.22,dist:7});
+    }
+    if(DEBUG&&params.get("view")==="noderunner")pilot.navigate({position:noderunner.review,yaw:noderunner.building.yaw,pitch:-.18,dist:9});
+    if(DEBUG&&params.get("view")==="chora"){overview=true;pilot.goPreset("chora");}
+    if(DEBUG&&params.get("view")==="portara"){
+      overview=true;pilot.goPreset("portara");
+      if(params.get("portal")==="active")gate.activate();
+    }
+    if(DEBUG&&(BL.dsbEnrichment.REVIEWS[params.get("view")]||BL.dsbVacancies.REVIEWS[params.get("view")])){overview=true;pilot.goPreset(params.get("view"));}
+    if(DEBUG&&params.get("view")?.startsWith("water-")){
+      const view=params.get("view"),depths={"water-dry":-.65,"water-ankle":avatar.bodyHeight*.12,"water-knee":avatar.bodyHeight*.3,"water-waist":avatar.bodyHeight*.5,"water-chest":avatar.bodyHeight*.7,"water-head":BL.dsbCoast.maxDepth(avatar)-.15,"water-swash":0};
+      if(Object.hasOwn(depths,view)){
+        let lo=69,hi=97;for(let i=0;i<28;i++){const z=(lo+hi)/2;if(BL.dsbCoast.LEVEL-land.heightAt(20,z)<depths[view])lo=z;else hi=z;}
+        const z=(lo+hi)/2;pilot.navigate({position:{x:20,y:land.heightAt(20,z),z},yaw:Math.PI,pitch:.16,dist:view==="water-swash"?10:5});
+      }else if(view==="water-rocks")pilot.navigate({position:{x:72,y:land.heightAt(72,45),z:45},yaw:Math.PI/2,pitch:.25,dist:13});
+      else if(view==="water-pier-west"||view==="water-pier-east"){
+        const d=land.harborDecks.find(p=>p.id===view.slice(11));
+        pilot.navigate({position:{x:d.x,y:land.groundAt(d.x,42),z:42},yaw:Math.PI,pitch:.16,dist:5});
+      }
+      else if(view==="water-harbor"){overview=true;pilot.goPreset("coastal-harbor");}
+      else if(view==="water-falls"||view==="water-pool"){
+        overview=true;pilot.goPreset(view);
       }
     }
-    savedRevision = state.revision;
+    if(params.get("overview")==="1")overviewView();
+    if(DEBUG&&(params.get("view")==="svrn-door"||params.get("interior")==="svrn-society"))interiors.review("svrn-society",params.get("interior")==="svrn-society");
+    if(DEBUG&&(params.get("view")==="stackchain-door"||params.get("interior")==="stackchain-magazine"))interiors.review("stackchain-magazine",params.get("interior")==="stackchain-magazine");
+    if(DEBUG&&(params.get("view")==="meme-factory"||params.get("interior")==="meme-factory"))interiors.review("meme-factory",params.get("interior")==="meme-factory");
+    if(DEBUG&&(params.get("view")==="maxis-door"||params.get("interior")==="maxis-club"))interiors.review("maxis-club",params.get("interior")==="maxis-club");
+    if(DEBUG&&(params.get("view")==="rulers-door"||params.get("interior")==="without-rulers"))interiors.review("without-rulers",params.get("interior")==="without-rulers");
+    if(DEBUG&&(params.get("view")==="ink-door"||params.get("interior")==="proof-of-ink"))interiors.review("proof-of-ink",params.get("interior")==="proof-of-ink");
+    if(DEBUG&&(params.get("view")==="big-door"||params.get("interior")==="big-bitcoin"))interiors.review("big-bitcoin",params.get("interior")==="big-bitcoin");
+    if(DEBUG&&(params.get("view")==="studio-door"||params.get("interior")==="dsb-studio"))interiors.review("dsb-studio",params.get("interior")==="dsb-studio");
   };
-  const location = () => phase === "land" && avatarView ? avatar.root.position : pilot.orbit.target;
-  const cameraEnabled = () => phase === "land" && !exiting && !transitGate.isOpen && !tv.isOpen && !conversation?.isOpen && document.getElementById("dsb-shop").hidden;
-  const playerEnabled = () => avatarView && cameraEnabled();
-  const syncPlayer = () => pilot.setActive(cameraEnabled());
-  const clearAt = (x, z, radius = 0.35) => Math.hypot(x, z) < 35 - radius
-    && !(land && Math.hypot(x - transitGate.dialer.position.x, z - transitGate.dialer.position.z) < 0.55 + radius)
-    && (!land || land.landmarks.shop.clearAt(x, z, radius) && land.landmarks.tv.clearAt(x, z, radius))
-    && !(Math.abs(x) < 8.6 + radius && Math.abs(z) < 2.6 + radius
-      || Math.abs(x + 18) < 7.5 + radius && z > -20.5 - radius && z < -11.5 + radius);
-  const walkable = (ax, az, bx, bz, y, height, actor) => {
-    const steps = Math.max(1, Math.ceil(Math.hypot(bx - ax, bz - az) / 0.2));
-    for (let i = 1; i <= steps; i++) if (!clearAt(ax + (bx - ax) * i / steps, az + (bz - az) * i / steps, actor.bodyRadius)) return false;
-    return true;
-  };
-  const weaponImpact = (source, hit) => {
-    if (hit.owner && hit.owner.kind === "dsb-agent") zuzu.event("weapon_hit");
-    if (hit.owner && hit.owner.kind === "visitor") { hit.owner.cave.hit = 1; toast("Ooga! Watch the banana shots!"); }
-  };
-  const projectileMove = (ax, ay, az, bx, by, bz) => zuzu.projectile(ax, ay, az, bx, by, bz);
-  const nearZuzu = () => playerEnabled() && Math.hypot(avatar.root.position.x - zuzu.root.position.x, avatar.root.position.z - zuzu.root.position.z) < 3.5;
-  const reloadPolicy = { near: () => playerEnabled(), available: () => true, consume: () => {} };
-  const near = (x, z, radius = 5) => { const p = location(); return Math.hypot(p.x - x, p.z - z) < radius; };
-  const nearLandmark = name => !!land && land.landmarks[name].near(location());
-  const clampTarget = (p) => {
-    const radius = Math.hypot(p.x, p.z);
-    if (avatarView && !pilot?.player) p.y = 1.7;
-    if (radius > 35) { p.x *= 35 / radius; p.z *= 35 / radius; }
-    // Solid landmark footprints; each attempted step keeps its last clear position.
-    if (Math.abs(p.x) < 8.6 && Math.abs(p.z) < 2.6 || land && (!land.landmarks.shop.clearAt(p.x, p.z) || !land.landmarks.tv.clearAt(p.x, p.z)) || Math.abs(p.x + 18) < 7.5 && p.z > -20.5 && p.z < -11.5) { p.x = previous.x; p.z = previous.z; }
-    previous.x = p.x; previous.z = p.z;
-  };
-  const clampCamera = (p) => { p.y = clamp(p.y, 0.5, 75); };
-  const register = (node, kind, label) => { input.add(node, { kind, label }, { radius: 1.5 }); targets.push(node); };
-  const toast = (text) => hud.toast(text);
-  const soundUi = () => {
-    for (const button of document.querySelectorAll('[data-action="dsb-mute"]')) { button.setAttribute("aria-pressed", String(audio.muted)); button.textContent = audio.muted ? "Unmute" : "Mute"; }
-    const music = document.getElementById("dsb-music"), ambient = document.getElementById("dsb-ambient");
-    music.setAttribute("aria-pressed", String(audio.musicEnabled)); music.textContent = audio.musicEnabled ? "Music: on" : "Music: off";
-    ambient.setAttribute("aria-pressed", String(audio.ambientEnabled)); ambient.textContent = audio.ambientEnabled ? "Ambient: on" : "Ambient: off";
-  };
-  const bagText = () => {
-    const value = `${bananas} bananas | ${tokens} demo tokens · ${bread} bread · ${tomatoes} tomatoes`;
-    if (lastBag !== value) { bag.textContent = value; lastBag = value; }
-  };
-  const smooth = (t) => { t = clamp(t, 0, 1); return t * t * (3 - 2 * t); };
-  const poseAvatar = (moving, dt) => {
-    if (moving) gait += dt * 7;
-    const swing = moving ? Math.sin(gait) * 0.48 : 0;
-    avatar.parts.legR.rotation.x = swing; avatar.parts.legL.rotation.x = -swing;
-    avatar.parts.armR.rotation.x = -swing * 0.6; avatar.parts.armL.rotation.x = swing * 0.6;
-  };
-  const finishArrival = () => {
-    if (phase !== "arrival") return;
-    transitGate.finishReceiving();
-    phase = "land"; panel.dataset.phase = phase; document.body.classList.remove("dsb-arrival");
-    previous.x = 0; previous.z = 26; pilot.possess(avatar); pilot.navigate(VIEW); syncPlayer(); pilot.update(0);
-    avatarView = true; hud.setAct("USE"); hud.el.act.hidden = false;
-  };
-  const arrivalCamera = () => {
-    const t = arrivalTime;
-    let x = 0, y, z, ty, tz;
-    if (t < 2.5) {
-      const f = smooth(t / 2.5); y = 3.36 + (46 - 3.36) * f; z = 31.77 + (85 - 31.77) * f; ty = 1.7 - 5.7 * f; tz = 26 * (1 - f);
-    } else if (t < 10.5) {
-      const a = smooth((t - 2.5) / 8) * TAU;
-      x = Math.sin(a) * 85; z = Math.cos(a) * 85; y = 8 + Math.cos(a) * 38; ty = -4; tz = 0;
-    } else {
-      const f = smooth((t - 10.5) / 2.5); y = 46 + (3.36 - 46) * f; z = 85 + (31.77 - 85) * f; ty = -4 + 5.7 * f; tz = 26 * f;
+  const update=(dt,time)=>{
+    if(leaving)return;
+    if(entrance?.update(dt,time)){sharePresence();remotes.update(dt);return;}sampleDaylight();renderOpts.time=time;if(!interiors.active){water.update(time);gate.update();}interiors.update(dt);collision.sync();
+    if(DEBUG&&!studioReview&&studioRoom()&&!interiors.transitioning){
+      studioReview=true;const room=studioRoom(),view=params.get("view");
+      if(view==="studio-seat")sit(room.seats[19]);
+      if(view==="studio-host")sit(room.hostSeat);
+      if(view==="studio-booth")pilot.navigate({position:{x:4,y:3,z:14.8},yaw:Math.PI/2,pitch:.12,dist:3});
+      if(view==="studio-mic")pilot.navigate({position:{x:8,y:.6,z:-10.9},yaw:0,pitch:.12,dist:3});
+      if(view==="studio-jukebox")pilot.navigate({position:room.jukeboxAt,yaw:Math.PI/2,pitch:.12,dist:3});
+      if(view==="studio-reveal")pilot.navigate({position:{x:0,y:3,z:8.5},yaw:0,pitch:.24,dist:4});
+      if(view==="studio-balcony")pilot.navigate({position:{x:13.5,y:3,z:7.5},yaw:.45,pitch:.12,dist:3});
+      if(view==="studio-stage")pilot.navigate({position:{x:-1,y:0,z:-5.8},yaw:0,pitch:-.1,dist:5});
     }
-    camera.position.x = x; camera.position.y = y; camera.position.z = z;
-    camera.target.x = 0; camera.target.y = ty; camera.target.z = tz;
-  };
-  const reveal = () => {
-    if (phase !== "entrance") return;
-    // Only the consumed backside crossing may construct the land.
-    progress = 1; buildLand();
-    phase = "arrival"; arrivalTime = 0; flash = 1; dsbScene.renderOpts = RENDER;
-    transitGate.root.position.z = 28;
-    avatar.root.position.x = 0; avatar.root.position.y = avatar.baseY; avatar.root.position.z = 28; poseAvatar(false, 0);
-    document.body.classList.remove("dsb-entry"); document.body.classList.add("dsb-arrival"); panel.dataset.phase = phase;
-    audio.arrive(); arrivalCamera();
-    if (matchMedia("(prefers-reduced-motion: reduce)").matches) finishArrival();
-  };
-  const stopRide = () => {
-    const arrival = phase === "boat" ? DOCK : STATION;
-    phase = "land"; rideYaw = ridePitch = 0; panel.dataset.phase = phase; previous.x = arrival.position.x; previous.z = arrival.position.z; pilot.navigate(arrival); syncPlayer();
-  };
-  const advanceTrip = (trip, dt) => {
-    if (trip.wait > 0) { const used = Math.min(dt, trip.wait); trip.wait -= used; dt -= used; }
-    if (!dt) return false;
-    trip.angle += dt * trip.speed;
-    if (trip.angle >= trip.start + TAU) { trip.angle = trip.start; trip.wait = WAIT; return true; }
-    return false;
-  };
-  const atDock = () => near(0, 34, 4.5);
-  const atStation = () => near(7, 24, 4.5);
-  const board = (kind) => {
-    if (phase !== "land") return;
-    const trip = kind === "boat" ? boatTrip : trainTrip;
-    if (!(kind === "boat" ? atDock() : atStation())) { toast("Walk to the marked " + (kind === "boat" ? "boat" : "coaster") + " station."); return; }
-    if (trip.wait <= 0) { toast("The next ride is on its way. Wait at the station."); return; }
-    trip.wait = Math.max(2, trip.wait); phase = kind; rideYaw = ridePitch = 0; panel.dataset.phase = phase;
-    document.getElementById("dsb-shop").hidden = true; syncPlayer();
-    toast("Drag to look around. Leave ride returns you to the station.");
-  };
-  const nearDialer = () => phase === "land" && avatarView && Math.hypot(avatar.root.position.x - transitGate.dialer.position.x, avatar.root.position.z - transitGate.dialer.position.z) < 2;
-  const departGate = () => {
-    if (phase !== "land" || exiting) return;
-    world.pilot = avatar.traits.name;
-    exiting = true; syncPlayer(); pilot.controls.reset(); input.reset(); go(home);
-  };
-  const returnHub = () => { if (phase === "entrance") { exiting = true; syncPlayer(); go(home); } else toast(`Use the Ooga Portal Dialer, then cross the active gate to return to ${HOME_NAME}.`); };
-  const contextAction = () => {
-    if (phase === "boat" || phase === "coaster") return "ride";
-    if (phase !== "land" || exiting || transitGate.isOpen || tv.isOpen || conversation.isOpen || !document.getElementById("dsb-shop").hidden) return "";
-    if (nearDialer()) return "dialer";
-    if (atDock()) return boatTrip.wait > 0 ? "boat" : "boat-wait";
-    if (atStation()) return trainTrip.wait > 0 ? "coaster" : "coaster-wait";
-    if (nearLandmark("tv")) return "tv";
-    if (nearLandmark("shop")) return "shop";
-    if (nearZuzu()) return "zuzu";
-    return "";
-  };
-  const CONTEXT_LABELS = { dialer: "DIAL", zuzu: "Talk to Zuzu", ride: "Leave ride", boat: "Take a ride - boat", coaster: "Take a ride - coaster", "boat-wait": "Boat arriving soon", "coaster-wait": "Coaster arriving soon", tv: "Use TV", shop: "Visit meme shop" };
-  const syncContext = () => {
-    const kind = contextAction();
-    if (kind === lastContext) return;
-    lastContext = kind; proximity.hidden = !kind; proximity.textContent = CONTEXT_LABELS[kind] || ""; proximity.disabled = kind.endsWith("-wait");
-    // Context changes can resize this paragraph. Settle the panel now, before
-    // the next press, rather than moving its buttons on a later price refresh.
-    const hint = kind ? CONTEXT_LABELS[kind] : "WASD: move | 1/2: weapon | right-click: aim | V: fire | R: reload | T: tomato | B: snack";
-    if (lastPrompt !== hint) { prompt.textContent = hint; lastPrompt = hint; }
-    hud.setAct(kind ? CONTEXT_LABELS[kind] : tomatoes ? "Throw tomato" : "USE");
-  };
-  const rideCamera = (position, heading, slope) => {
-    const yaw = heading + rideYaw, pitch = slope + ridePitch, cp = Math.cos(pitch);
-    camera.position.x = position.x + Math.sin(heading) * 0.85; camera.position.y = position.y + 1.45; camera.position.z = position.z + Math.cos(heading) * 0.85;
-    camera.target.x = camera.position.x + Math.sin(yaw) * cp * 10; camera.target.y = camera.position.y + Math.sin(pitch) * 10; camera.target.z = camera.position.z + Math.cos(yaw) * cp * 10;
-  };
-  const openTv = () => {
-    if (phase !== "land" || !nearLandmark("tv") || location().y > 6) { toast("Walk up to the screen facing the Ooga Portal plaza to open it."); return; }
-    tv.open(); syncPlayer();
-  };
-  const openShop = () => {
-    if (phase !== "land" || !nearLandmark("shop")) { toast("Visit the meme stand facing the Ooga Portal plaza."); return; }
-    panel.dataset.folded = "false"; document.getElementById("dsb-toggle").textContent = "Hide DSB menu"; document.getElementById("dsb-toggle").setAttribute("aria-expanded", "true"); document.getElementById("dsb-shop").hidden = false; syncPlayer(); syncContext();
-  };
-  const buy = (kind) => {
-    if (phase !== "land" || !nearLandmark("shop")) { toast("Purchases happen at the meme stand."); return; }
-    const price = kind === "bread" ? 3 : 1;
-    if (tokens < price) { toast("No demo tokens left this visit."); return; }
-    if ((kind === "bread" ? bread : kind === "banana" ? bananas : tomatoes) >= 9) { toast("Your bag holds nine of each item."); return; }
-    tokens -= price; if (kind === "bread") bread++; else if (kind === "banana") bananas++; else tomatoes++; bagText(); toast(kind === "tomato" ? "Tomato added. Press T or Throw tomato to throw." : "Snack added to your bag.");
-  };
-  const eat = () => {
-    if (phase === "entrance" || phase === "arrival" || !bread && !bananas) { toast("Pick up bananas or banana bread at the meme stand first."); return; }
-    if (bread) bread--; else bananas--; fedUntil = elapsed + 1.5; bagText(); toast("Warm banana bread. Ooga approved."); zuzu.event("food_activity");
-  };
-  const throwTomato = (target = null) => {
-    if (!playerEnabled() || elapsed - throwAt < 0.3) return;
-    if (!tomatoes) { toast("Pick up tomatoes at the meme shop first."); return; }
-    const shot = shots.find((s) => s.life <= 0); if (!shot) return;
-    const p = location(), yaw = pilot.orbit.yaw;
-    shot.node.position.x = p.x; shot.node.position.y = avatar.root.position.y - avatar.baseY + 1.45; shot.node.position.z = p.z;
-    let dx = -Math.sin(yaw), dz = -Math.cos(yaw);
-    if (target) { dx = target.root.position.x - p.x; dz = target.root.position.z - p.z; const d = Math.hypot(dx, dz); dx /= Math.max(d, 0.001); dz /= Math.max(d, 0.001); }
-    shot.vx = dx * 14; shot.vz = dz * 14; shot.vy = 2; shot.life = 2; shot.node.visible = true; shot.splat = false;
-    shot.node.scale.x = shot.node.scale.y = shot.node.scale.z = 0.28;
-    tomatoes--; throwAt = elapsed; bagText();
-  };
-  const perform = () => { if (phase === "land") toast(jokes[Math.floor(elapsed / 4) % jokes.length]); };
-  const act = () => {
-    if (phase === "boat" || phase === "coaster") { stopRide(); return true; }
-    if (phase !== "land") return true;
-    if (nearDialer()) transitGate.open();
-    else if (atDock()) board("boat");
-    else if (atStation()) board("coaster");
-    else if (nearLandmark("tv")) openTv();
-    else if (nearLandmark("shop")) openShop();
-    else if (nearZuzu()) conversation.open();
-    else if (near(-18, -10, 7)) perform();
-    else throwTomato();
-    return true;
-  };
-  const onTap = (hit) => {
-    if (!playerEnabled() || pilot.aiming || !hit) return;
-    const owner = hit.owner;
-    if (owner.kind === "ooga-portal-dialer") { if (nearDialer()) transitGate.open(); else toast("Move closer to the Ooga Portal dialer."); }
-    else if (owner.kind === "dsb-agent") { if (nearZuzu()) conversation.open(); else toast("Walk closer to talk to Zuzu."); }
-    else if (owner.kind === "visitor") { if (tomatoes) throwTomato(owner.cave); else toast("Grab tomatoes at the meme stand, then tap an Ooga."); }
-    else if (owner.kind === "tv") openTv();
-    else if (owner.kind === "shop") openShop();
-    else if (owner.kind === "boat" || owner.kind === "coaster") board(owner.kind);
-    else if (owner.kind === "stage") perform();
-  };
-  const action = (name) => {
-    if (exiting || transitGate.isOpen) return;
-    if (name === "leave") returnHub();
-    else if (name === "dsb-context") act();
-    else if (name === "dsb-banana") buy("banana");
-    else if (name === "dsb-skip") finishArrival();
-    else if (name === "dsb-start-audio") audio.gesture();
-    else if (name === "dsb-panel") { panel.dataset.folded = String(panel.dataset.folded !== "true"); document.getElementById("dsb-toggle").setAttribute("aria-expanded", String(panel.dataset.folded !== "true")); document.getElementById("dsb-toggle").textContent = panel.dataset.folded === "true" ? "Show DSB menu" : "Hide DSB menu"; }
-    else if (name === "dsb-mute") { audio.toggle(); soundUi(); }
-    else if (name === "dsb-music") { audio.toggleMusic(); soundUi(); }
-    else if (name === "dsb-ambient") { audio.toggleAmbient(); soundUi(); }
-    else if (name === "dsb-radio-play") { audio.playRadio(); soundUi(); }
-    else if (name === "dsb-live" && data) { if (data.state.live) data.stop(); else data.start(); document.getElementById("dsb-live").setAttribute("aria-pressed", String(data.state.live)); }
-    else if (name === "dsb-bread") buy("bread");
-    else if (name === "dsb-tomato") buy("tomato");
-    else if (name === "dsb-eat") eat();
-    else if (name === "dsb-throw") throwTomato();
-    else if (name === "dsb-close-shop") { document.getElementById("dsb-shop").hidden = true; syncPlayer(); syncContext(); }
-    else if (name === "dsb-stop" && (phase === "boat" || phase === "coaster")) stopRide();
-    else if (name === "act") pilot.action();
-    else if (name === "mode-retake" && cameraEnabled()) {
-      pilot.modeAction(name);
-      if (pilot.player === avatar) { avatarView = true; syncPlayer(); }
+    if(DEBUG&&!maxisReview&&maxisRoom()&&!interiors.transitioning){
+      maxisReview=true;const room=maxisRoom(),view=params.get("view");
+      if(view==="maxis-seat")sit(room.seats[34]);
+      else if(room.reviews[view])pilot.navigate(room.reviews[view]);
     }
-    else if (playerEnabled() && (name.startsWith("weapon-") || name === "magazine-swap")) pilot.weaponAction(name);
-    else if (name === "reset-view" && phase === "land") { avatarView = true; previous.x = 0; previous.z = 26; if (!pilot.player) pilot.possess(avatar); syncPlayer(); pilot.enterClose(); pilot.navigate(VIEW); }
-    else if (name === "dsb-lookout" && phase === "land") { avatarView = false; syncPlayer(); pilot.goPreset("lookout"); }
-  };
-  const playerAction = () => {
-    if (!playerEnabled()) { if (phase === "boat" || phase === "coaster") act(); return true; }
-    if (contextAction() || near(-18, -10, 7)) { act(); return true; }
-    return false;
-  };
-  const onKey = (event) => {
-    if (exiting || transitGate.isOpen || conversation?.isOpen) return;
-    if (playerEnabled()) {
-      if (event.key === "1" || event.key === "2") { pilot.weaponMode(Number(event.key)); return; }
-      if (event.key.toLowerCase() === "g") { pilot.weaponAction("weapon-toggle"); return; }
-      if (event.key.toLowerCase() === "v") { pilot.weaponAction("weapon-fire"); return; }
-      if (event.key.toLowerCase() === "r") { event.preventDefault(); event.stopPropagation(); pilot.weaponAction("weapon-reload"); return; }
+    if(DEBUG&&!shopReview&&shopRoom()&&!interiors.transitioning){
+      shopReview=true;const room=shopRoom(),view=params.get("view");
+      if(view==="rulers-seat")sit(room.seats[0]);else if(room.reviews[view])pilot.navigate(room.reviews[view]);
+      if(view==="rulers-menu"){pilot.navigate(room.reviews["rulers-kiosk"]);shopMenuReview=1;}
     }
-    if (phase === "arrival" && (event.key === "Escape" || event.key === " " || event.key === "Enter")) { finishArrival(); return; }
-    if (event.key === "Escape") {
-      if (!document.getElementById("dsb-shop").hidden) document.getElementById("dsb-shop").hidden = true;
-      else if (phase === "boat" || phase === "coaster") stopRide(); else returnHub();
-    } else if (event.key === "0") action("reset-view");
-    else if (event.key.toLowerCase() === "t") throwTomato();
-    else if (event.key.toLowerCase() === "b") eat();
-    else if (event.key.toLowerCase() === "m") action("dsb-mute");
-  };
-  const onVisibility = () => audio.visibility(document.hidden);
-  const update = (dt, time) => {
-    // A queued RAF can predate a debug advance; never rewind a camera sequence.
-    if (exiting) return;
-    dt = Math.max(0, dt);
-    elapsed = time;
-    syncPlayer();
-    transitGate.update();
-    if (phase === "entrance") {
-      const axes = pilot.controls.read(), previousProgress = progress;
-      document.getElementById("dsb-start-audio").hidden = audio.ready || !window.AudioContext;
-      // Audio supplies the pacing, never permission to walk or finish the passage.
-      progress = clamp(progress + axes.y * dt / audio.duration, 0, 1);
-      audio.update(progress, elapsed, progress !== previousProgress);
-      if (audio.cue !== lastCue) { lastCue = audio.cue; glanceTime = 0; }
-      glanceTime += dt; glance = (lastCue % 2 ? 1 : -1) * Math.sin(Math.PI * clamp(glanceTime / 2.2, 0, 1)) * 0.16;
-      Object.assign(transitPrevious, avatar.root.position);
-      transitPrevious.y += avatar.bodyHeight / 2 - avatar.baseY;
-      avatar.root.position.z = 25 - 25.1 * progress; poseAvatar(progress !== previousProgress, dt);
-      camera.position.x = Math.sin(glance) * 4; camera.position.y = 2.8; camera.position.z = avatar.root.position.z + Math.cos(glance) * 4;
-      camera.target.x = -Math.sin(glance) * 2; camera.target.y = 1.4; camera.target.z = avatar.root.position.z - 4;
-      Object.assign(transitCurrent, avatar.root.position);
-      transitCurrent.y += avatar.bodyHeight / 2 - avatar.baseY;
-      transitGate.traverse(transitPrevious, transitCurrent, avatar.bodyRadius, -1);
-      return;
+    if(DEBUG&&!inkReview&&inkRoom()&&!interiors.transitioning){
+      inkReview=true;const room=inkRoom(),view=params.get("view");
+      if(view==="ink-seat")sit(room.seats[1]);else if(room.reviews[view])pilot.navigate(room.reviews[view]);
+      if(view==="ink-catalog"){pilot.navigate(room.reviews["ink-kiosk"]);inkMenuReview=1;}
     }
-    audio.update(1, elapsed); flash = Math.max(0, flash - dt * 1.5);
-    if (phase === "arrival") { arrivalTime += dt; avatar.root.position.z = 28 - 2 * smooth(arrivalTime / 0.6); poseAvatar(arrivalTime < 0.6, dt); arrivalCamera(); if (arrivalTime >= 13) finishArrival(); }
-    if (phase === "land") {
-      avatar.root.visible = true;
-      if (cameraEnabled()) {
-        pilot.readInput(dt);
-        if (avatarView) {
-          Object.assign(transitPrevious, avatar.root.position); transitPrevious.y += avatar.bodyHeight / 2 - avatar.baseY;
-          crew.update(dt, time);
-          Object.assign(transitCurrent, avatar.root.position); transitCurrent.y += avatar.bodyHeight / 2 - avatar.baseY;
-          if (transitGate.traverse(transitPrevious, transitCurrent, avatar.bodyRadius, 1)) return;
+    if(DEBUG&&!bigReview&&bigRoom()&&!interiors.transitioning){
+      bigReview=true;const room=bigRoom(),view=params.get("view");
+      if(view==="big-seat")sit(room.seats[0]);else if(room.reviews[view])pilot.navigate(room.reviews[view]);
+      if(view==="big-info"){pilot.navigate(room.reviews["big-terminal"]);bigMenuReview=1;}
+    }
+    if(DEBUG&&!memeReview&&memeRoom()&&!interiors.transitioning){
+      memeReview=true;const room=memeRoom(),view=params.get("view");
+      if(view==="meme-seat")sit(room.seats[0]);else if(room.reviews[view])pilot.navigate(room.reviews[view]);
+    }
+    if(DEBUG&&!svrnReview&&svrnRoom()&&!interiors.transitioning){
+      svrnReview=true;const room=svrnRoom(),view=params.get("view");
+      if(view==="svrn-seat")sit(room.seats[0]);else if(room.reviews[view])pilot.navigate(room.reviews[view]);
+    }
+    if(DEBUG&&!stackchainReview&&stackchainRoom()&&!interiors.transitioning){
+      stackchainReview=true;const room=stackchainRoom(),view=params.get("view");
+      if(view==="stackchain-seat")sit(room.seats[0]);else if(room.reviews[view])pilot.navigate(room.reviews[view]);
+    }
+    if(DEBUG&&!contextReview&&!interiors.transitioning&&params.has("menu")){
+      const room=interiors.active?.room,review=params.get("menu"),zone=room?.menuZones.find(z=>z.route===review);
+      if(room&&venueMenu()){
+        contextReview=true;
+        if(zone){
+          // Review links stand on a walkable part of the semantic zone, never inside its display.
+          let position=null;
+          for(let radius=0;radius<6&&!position;radius+=.5)for(let a=0;a<16&&!position;a++){
+            const x=zone.x+Math.cos(a*Math.PI/8)*radius,z=zone.z+Math.sin(a*Math.PI/8)*radius,y=room.groundAt(x,z);
+            if(interiors.walkable(x,z,x,z,y,avatar.bodyHeight,avatar)&&BL.dsbMenuZones.resolve(room,{x,z}).route===review)position={x,y,z};
+          }
+          if(position)pilot.navigate({position,yaw:0,pitch:.12,dist:3});
         }
-        pilot.update(dt);
-      }
-    } else avatar.root.visible = phase === "arrival";
-    agentPerception.name = avatar.traits.name; agentPerception.x = avatar.root.position.x; agentPerception.y = avatar.root.position.y - avatar.baseY; agentPerception.z = avatar.root.position.z; agentPerception.food = bananas + bread; agentPerception.active = playerEnabled() || conversation.isOpen && phase === "land" && !exiting;
-    zuzu.update(dt, time, agentPerception);
-    advanceTrip(boatTrip, dt); boatAngle = boatTrip.angle;
-    for (let i = 0; i < land.boats.length; i++) {
-      const a = boatAngle - i * 0.13, b = land.boats[i];
-      b.position.x = Math.sin(a) * 40; b.position.z = Math.cos(a) * 40; b.position.y = -0.1 + Math.sin(time * 1.8 + i) * 0.09; b.rotation.y = a + Math.PI / 2;
+        openVenue();
+      }else if(studioRoom()&&review==="spaces"){contextReview=true;pilot.navigate({position:studioRoom().jukeboxAt,yaw:Math.PI/2,pitch:.12,dist:3});spaces.open();}
+      else if(!room&&nearTv()){contextReview=true;tv.open(["radio","jukebox"].includes(review)?review:"main");}
     }
-    if (phase === "boat") rideCamera(land.boats[0].position, boatAngle + Math.PI / 2, 0);
-    const arrived = advanceTrip(trainTrip, dt); rideAngle = trainTrip.angle;
-    if (arrived || trainTrip.wait > 0 && data.state.revision !== savedRevision) buildRide();
-    point(rideAngle, railPoint); point(rideAngle + 0.04, railAhead);
-    land.cart.position.x = railPoint.x; land.cart.position.y = railPoint.y + 0.4; land.cart.position.z = railPoint.z;
-    land.cart.rotation.y = rideAngle + Math.PI / 2;
-    land.cart.rotation.x = -Math.atan2(railAhead.y - railPoint.y, Math.hypot(railAhead.x - railPoint.x, railAhead.z - railPoint.z));
-    if (phase === "coaster") rideCamera(land.cart.position, rideAngle + Math.PI / 2, Math.atan2(railAhead.y - railPoint.y, Math.hypot(railAhead.x - railPoint.x, railAhead.z - railPoint.z)));
-    for (let i = 1; i < land.carts.length; i++) {
-      const a = rideAngle - i * 0.135, car = land.carts[i]; point(a, railPoint); point(a + 0.04, railAhead);
-      car.position.x = railPoint.x; car.position.y = railPoint.y + 0.4; car.position.z = railPoint.z;
-      car.rotation.y = a + Math.PI / 2; car.rotation.x = -Math.atan2(railAhead.y - railPoint.y, Math.hypot(railAhead.x - railPoint.x, railAhead.z - railPoint.z));
+    bigMenu.layout();
+    inkTools.hidden=true;
+    shopTools.hidden=true;
+    studioTools.hidden=!(studioRoom()||maxisRoom())||interiors.transitioning||spaces.isOpen;
+    spaces.setMuted(weather.shared.state.muted);
+    Object.assign(before,avatar.root.position);before.y+=avatar.bodyHeight/2-avatar.baseY;
+    if(!gate.isOpen&&!menuOpen()&&!interiors.transitioning){pilot.readInput(dt);if(!overview&&!interiors.transitioning)crew.update(dt,time);if(!interiors.active&&deepWaterReturn()){Object.assign(before,avatar.root.position);before.y+=avatar.bodyHeight/2-avatar.baseY;}pilot.update(dt);}
+    if(bigMenuReview>0){bigMenuReview=Math.max(0,bigMenuReview-dt);if(bigMenuReview===0&&bigRoom())bigMenu.open();}
+    if(inkMenuReview>0){inkMenuReview=Math.max(0,inkMenuReview-dt);if(inkMenuReview===0&&inkRoom())inkMenu.open();}
+    if(shopMenuReview>0){shopMenuReview=Math.max(0,shopMenuReview-dt);if(shopMenuReview===0&&shopRoom())shopMenu.open();}
+    if(studioRoom()&&!interiors.transitioning){
+      const p=avatar.root.position,q=studioRoom().jukeboxSource,d=Math.hypot(p.x-q.x,p.z-q.z);
+      // Full volume beside the cabinet, steep falloff, hard silent boundary before the theater.
+      const distance=Math.max(0,1-Math.max(0,d-1.3)/4),door=Math.max(0,Math.min(1,(p.z-9.2)/2));
+      spaces.setGain(distance*distance*door);interiors.audio.setDucked(spaces.playing&&distance*door>.1);
     }
-    syncContext();
-    fx.update(dt);
-    land.landmarks.tv.point(-0.55, 3.3, 1.63, radioSource);
-    audio.environment(camera, land.boats[0].position, dt, radioSource);
-    for (let i = 0; i < land.falls.length; i++) { const f = land.falls[i]; f.glow = 0.55 + 0.2 * Math.sin(time * 3 + i * 0.4); f.scale.y = 7.5 + 0.5 * Math.sin(time * 1.7 + i); land.spray[i].position.y = -0.5 - (time * 4 + i * 0.71) % 11; }
-    if (data.state.height !== lastHeight) { if (lastHeight) skyPulse = 1; lastHeight = data.state.height; }
-    skyPulse = Math.max(0, skyPulse - dt * 0.25);
-    for (let i = 0; i < land.stars.length; i++) { const star = land.stars[i]; star.glow = 0.25 + data.state.backlog * 0.8 + skyPulse + Math.sin(time + i) * 0.12; star.rotation.y = time * 0.12; }
-    for (let i = 0; i < visitors.length; i++) {
-      const visitor = visitors[i]; visitor.root.position.y = visitor.baseY + visitor.floorY + Math.max(0, visitor.hit) * 0.2;
-      visitor.root.rotation.y = visitor.heading + Math.sin(time * 0.45 + i) * 0.15;
-      visitor.hit = Math.max(0, visitor.hit - dt * 2); visitor.root.highlight = visitor.hit * 0.4;
-    }
-    for (const shot of shots) {
-      if (shot.life <= 0) continue;
-      shot.life -= dt;
-      if (shot.life <= 0) { shot.node.visible = false; continue; }
-      if (shot.splat) continue;
-      const p = shot.node.position, ax = p.x, ay = p.y, az = p.z; p.x += shot.vx * dt; p.z += shot.vz * dt; shot.vy -= dt * 9.8; p.y += shot.vy * dt;
-      if (zuzu.tomato(ax, ay, az, p.x, p.y, p.z)) { shot.life = 0; shot.node.visible = false; continue; }
-      for (let i = 0; i < visitors.length; i++) {
-        const visitor = visitors[i], v = visitor.root.position;
-        if (Math.hypot(p.x - v.x, p.z - v.z) < 0.85 && p.y < visitor.floorY + 2.6 && p.y > visitor.floorY) { visitor.hit = 1; shot.life = 0; shot.node.visible = false; toast(feedback[i % feedback.length]); break; }
-      }
-      if (p.y < 0.12) { p.y = 0.04; shot.splat = true; shot.life = 1.4; shot.node.scale.x = shot.node.scale.z = 0.65; shot.node.scale.y = 0.06; }
-    }
-    priceTimer -= dt;
-    if (priceTimer <= 0) {
-      priceTimer = 0.4; data.refresh(); const s = data.state;
-      const radioLabel = document.getElementById("dsb-radio-status"); if (radioLabel.textContent !== audio.radioStatus) radioLabel.textContent = audio.radioStatus;
-      const text = `${s.priceStatus}: $${s.price.toFixed(2)}\n${s.skyStatus}${s.height ? ` · block ${s.height} · ${s.fee} sat/vB` : ""}\n${s.historyStatus}`;
-      if (lastPrice !== text) { readout.textContent = text; lastPrice = text; }
-    }
+    Object.assign(after,avatar.root.position);after.y+=avatar.bodyHeight/2-avatar.baseY;
+    if(!interiors.active&&!interiors.transitioning&&!overview&&gate.traverse(before,after,avatar.bodyRadius,1,avatar.bodyHeight))return;
+    detail.update(renderOpts.lampFactor);olympus.update(dt,renderOpts.lampFactor);weather.update(dt,renderOpts);waterInteraction.update(dt,time,overview?null:avatar,!interiors.active&&!interiors.transitioning);atmosphere.update(time,renderOpts,!interiors.active);noderunner.update(dt,avatar.root.position,weather.state,renderOpts.lampFactor);tv.update();if(!interiors.active){nature.update(dt,time);enrichment.update(time,renderOpts.lampFactor);}
+    const door=interiors.target(avatar.root.position);
+    const nearbySeat=seatRoom()?seatNear():null,zone=menuZone();
+    const studioLabel=avatar.camp.seat?"Stand up":nearSpaces()?"Open DSB Spaces":nearbySeat?"Sit":!door&&zone?zone.label:null;
+    const label=studioLabel||(nearTv()?"Open DSB TV":door?`${interiors.active?"Exit":"Enter"} ${door.label||door.building.name}`:"Dial Portara → Bifrost");
+    if(context.textContent!==label)context.textContent=label;
+    context.classList.toggle("ink-context-browse",!!inkRoom()&&!!zone&&!nearbySeat&&!door);
+    if(inkLayoutPending&&inkRoom()){inkLayoutPending=false;layoutInkBrowse();}
+    sharePresence();remotes.update(dt);
+    context.hidden=!!avatar.camp.seat||overview||interiors.transitioning||gate.isOpen||menuOpen()||(!studioLabel&&!nearTv()&&!door&&(interiors.active||!nearGate()));fx.update(dt);
   };
-  const drawExtra = (ctx, project, drawSpeech) => zuzu?.draw(ctx, project, drawSpeech);
-  const overlay = (dt) => {
-    const dpr = Math.min(window.devicePixelRatio || 1, 2), width = overlayCanvas.clientWidth, height = overlayCanvas.clientHeight;
-    const w = Math.max(1, Math.round(width * dpr)), h = Math.max(1, Math.round(height * dpr));
-    if (overlayCanvas.width !== w || overlayCanvas.height !== h) { overlayCanvas.width = w; overlayCanvas.height = h; }
-    overlayCtx.setTransform(dpr, 0, 0, dpr, 0, 0); fx.drawOverlay(dt, drawExtra);
-    if (flash > 0) { overlayCtx.globalAlpha = flash; overlayCtx.fillStyle = "#fff"; overlayCtx.fillRect(0, 0, overlayCanvas.clientWidth, overlayCanvas.clientHeight); overlayCtx.globalAlpha = 1; }
-    if (fedUntil > elapsed) {
-      const w = overlayCanvas.clientWidth, h = overlayCanvas.clientHeight, t = (fedUntil - elapsed) / 1.5;
-      overlayCtx.fillStyle = "#b57a3e"; overlayCtx.fillRect(w * 0.5 - 35 + (1 - t) * 20, h - 100 + Math.sin(t * Math.PI) * 20, 70 * t, 40);
-      overlayCtx.fillStyle = "#ffde77"; overlayCtx.fillRect(w * 0.5 - 30 + (1 - t) * 20, h - 96 + Math.sin(t * Math.PI) * 20, 60 * t, 10);
-    }
+  const leave=()=>{
+    if(crew.player)world.pilot=avatar.traits.name;
+    unsubscribeAccount();unsubscribeAccount=null;BL.net.setBody(null);BL.net.setZone("scene-transition");
+    hud.el.sheet.removeEventListener("focusin",sheetFocus);remotes.dispose();remotes=null;
+    inkLayoutObserver.disconnect();inkLayoutObserver=null;window.removeEventListener("resize",requestInkLayout);
+    context.classList.remove("ink-context-browse");
+    memeMenu.dispose();memeMenu=null;
+    svrnMenu.dispose();svrnMenu=null;if(svrnPick){input.remove(svrnPick.screen);svrnPick=null;}
+    stackchainMenu.dispose();stackchainMenu=null;
+    bigMenu.dispose();bigMenu=null;if(bigPick){input.remove(bigPick.screen);bigPick=null;}
+    inkMenu.dispose();inkMenu=null;inkTools.remove();inkTools=null;if(inkPick){input.remove(inkPick.screen);inkPick=null;}
+    shopMenu.dispose();shopMenu=null;shopTools.remove();shopTools=null;if(shopPick){input.remove(shopPick.screen);shopPick=null;}
+    spaces.dispose();spaces=null;studioTools.remove();studioTools=null;
+    input.remove(noderunner.screenFace);tv.dispose();tv=null;interiors.dispose();interiors=null;collision.dispose();collision=null;exterior=null;scene.renderOpts=renderOpts;
+    noderunner.dispose();noderunner=null;
+    entrance?.dispose();entrance=null;waterInteraction.dispose();waterInteraction=null;vacancies.dispose();vacancies=null;olympus.dispose();olympus=null;town.dispose();town=null;atmosphere.dispose();atmosphere=null;enrichment.dispose();enrichment=null;detail.dispose();detail=null;nature.dispose();nature=null;weather.dispose();weather=null;gate.dispose();pilot.dispose();crew.dispose();fx.dispose();const targets=input.targetCount;input.dispose();hud.dispose();context.hidden=true;
+    document.body.classList.remove("dsb-active","dsb-studio-active","maxis-club-active");while(root.children.length)S.removeChild(root,root.children[root.children.length-1]);
+    lamps.length=0;renderOpts.lightCount=0;clock=null;water=renderOpts.dsbWater=null;
+    scene.setInterior=scene.debug=scene.input=null;land=avatar=crew=pilot=gate=fx=hud=input=null;return {targets};
   };
-  const buildLand = () => {
-    if (land) return;
-    land = M.build(); addChild(root, land.root);
-    // Reuse the arrival gate and its existing pedestal, outside the central crossing lane.
-    Object.assign(transitGate.dialer.position, { x: transitGate.root.position.x + transitGate.outerRadius + 1.2, y: 0, z: VIEW.position.z + 1 });
-    transitGate.dialer.rotation.y = Math.PI;
-    addChild(land.root, transitGate.dialer); register(transitGate.dialer, "ooga-portal-dialer", "Ooga Portal dialer · " + HOME_NAME);
-    transitGate.enableDialer([{ id: home, label: HOME_NAME, enabled: true }, ...Array.from({ length: 4 }, (_, i) => ({ id: "quarantine-" + i, label: "Quarantined - Replicator Infestation - Clean Up In Progress", enabled: false }))]);
-    zuzu = BL.dsbAgent.create({ parent: land.root, input, clearAt, landmarks: land.landmarks });
-    if (!RAIL_GEOMETRY) {
-      RAIL_GEOMETRY = [M.cube("#f05278", 0.5), M.cube("#55e49b", 0.5)];
-      SUPPORT_GEOMETRY = [M.cube("#80314d"), M.cube("#287958")];
-    }
-    data = BL.dsbData.create(); data.start();
-    tv = BL.dsbTv.create(land.tvScreen, renderer);
-    conversation = BL.dsbConversation.create({ agent: zuzu, onChange: () => { syncPlayer(); syncContext(); } });
-    for (let i = 0; i < N; i++) {
-      for (let side = 0; side < 2; side++) rails.push(M.block(land.root, "#55e49b", 0, 0, 0, 0.13, 0.14, 1, 0.5));
-      ties.push(M.block(land.root, M.C.stone, 0, 0, 0, 1.65, 0.12, 0.2));
-      if (i % 4 === 0) candles.push(M.block(land.root, "#287958", 0, 0, 0, 0.3, 1, 0.3));
-    }
-    buildRide();
-    for (let i = 0; i < 6; i++) {
-      const contributor = BL.contributors.roster[i % BL.contributors.roster.length], cave = BL.models.caveman(BL.contributors.traitsFor(contributor.name));
-      cave.baseY = cave.root.position.y; cave.floorY = i === 5 ? 1.1 : 0; cave.root.position.x = i === 5 ? -18 : -24 + i * 2.2; cave.root.position.z = i === 5 ? -15.6 : -6; cave.heading = i === 5 ? 0 : Math.PI; cave.root.rotation.y = cave.heading; cave.hit = 0;
-      addChild(land.root, cave.root); visitors.push(cave); input.add(cave.root, { kind: "visitor", cave, label: `${contributor.name} · tomato target` }, { radius: 1 }); targets.push(cave.root);
-      for (const key of ["head", "torso", "armR", "armL", "legR", "legL"]) { const node = cave.parts[key]; input.add(node, { kind: "visitor", cave, label: `${contributor.name} · tomato target` }); targets.push(node); }
-    }
-    for (let i = 0; i < 12; i++) { const node = M.block(land.root, "#ef4256", 0, 0, 0, 0.28, 0.28, 0.28); node.visible = false; shots.push({ node, life: 0, vx: 0, vy: 0, vz: 0, splat: false }); }
-    register(land.tv, "tv", "DSB TV - walk closer to open");
-    register(land.shop, "shop", "DSB meme stand · bread and tomatoes"); register(land.dock, "boat", "River train · board at the dock"); register(land.station, "coaster", "Bitcoin ride · board by its sign"); register(land.mic, "stage", "Open mic · Ooga comedy");
-    RENDER.lights.set([-24, 5, -15, 14, 0.8, 0.25, 1, 0, -12, 5, -15, 14, 1, 0.8, 0.2, 0]);
-  };
-  const enter = (ctx) => {
-    ({ renderer, game, world, go } = ctx); disposed = false; exiting = false; arrivalTime = gait = glance = 0; glanceTime = 3; lastCue = -1; avatarView = true; phase = "entrance"; progress = elapsed = flash = boatAngle = rideAngle = 0;
-    tokens = 20; bread = tomatoes = bananas = 0; boatTrip.angle = 0; trainTrip.angle = START; boatTrip.wait = trainTrip.wait = WAIT; rideYaw = ridePitch = 0; lastContext = "init"; throwAt = -1; fedUntil = 0; priceTimer = 0; savedRevision = -1; lastHeight = skyPulse = 0; lastPrice = lastBag = lastPrompt = "";
-    root = createNode(); camera = createCamera({ fov: 55, near: 0.1, far: 220 });
-    land = data = tv = zuzu = conversation = null;
-    // Local +Y faces inward (-Z); the passage approaches the back from +Z.
-    // Seat the lower ring in the floor so standing body centres clear the aperture.
-    transitGate = BL.oogaPortal.create({ radius: 2.2, outerRadius: 2.5, position: { x: 0, y: 2.0, z: 0 }, rotation: { x: -Math.PI / 2, y: 0, z: 0 }, receiving: true,
-      menuHint: `Cross the active Ooga Portal from DSB Land to return to ${HOME_NAME}.`,
-      onMenu: () => { syncPlayer(); pilot.controls.reset(); input.reset(); hud.tooltip.hide(); },
-      onTraverse: id => { if (phase === "entrance") reveal(); else if (id === home) departGate(); } });
-    addChild(root, transitGate.root);
-    const playerName = world.pilot || "YellowBrokeIt";
-    world.pilot = playerName;
-    playerWorld = { level: 0, weapons: new Map(), magazine: { owned: false, count: 0, ammo: 0, carrier: null } };
-    overlayCanvas = ctx.overlay; overlayCtx = overlayCanvas.getContext("2d");
-    hud = BL.hud.create({ roster: BL.contributors.roster, catalog: BL.models.SWAG, tierColors: BL.models.TIER_COLORS, renderIcon: BL.hud.renderIcon, lootEnabled: false });
-    hud.setAreaLabel("DSB LAND");
-    oldSheetHidden = hud.el.sheet.hidden; oldSheetOpen = hud.el.sheet.dataset.open; hud.el.sheet.hidden = true; hud.el.sheet.dataset.open = "false"; hud.setJetpack(false, false, 1); hud.el.act.hidden = true;
-    const hooks = {}; input = BL.interact.create({ canvas: ctx.canvas, renderer, camera, hooks });
-    pilot = BL.pilot.create({ renderer, canvas: ctx.canvas, camera, hud, presets: { home: VIEW, lookout: { yaw: 0.38, pitch: 0.18, dist: 95, target: { x: 0, y: -4, z: 0 } } }, landing: "home", pitch: [-0.5, 1.2], dist: [3, 95], follow: { y: 1, min: 3, max: 8, pitch: [0.1, 0.8] }, fly: { speed: 5, perDist: 0.1, climb: 4, yMax: 50 }, clampTarget, clampCamera, coarse: matchMedia("(pointer: coarse)").matches, onFreeAction: act, onPlayerAction: playerAction, reloadAnywhere: true, close: { eyeHeight: 1.7, eyeRatio: 0.8, eyeForward: 0, maxStep: 0.6, pitch: [-1.2, 1.2], orbitDist: 12, trailingDist: 5, groundAt: () => 0 } });
-    fx = BL.fx.create({ root, renderer, camera, overlay: ctx.overlay, hud, tickerAt: { x: 0, y: 2, z: 26 } });
-    const shared = { root, input, hud, game, world: playerWorld, playerName, fx, viewYaw: 0, groundAt: () => 0, walkable, reloadPolicy, onWeaponImpact: weaponImpact, onProjectileMove: projectileMove };
-    crew = BL.crew.create(shared); shared.crew = crew; pilot.bind(shared);
-    avatar = crew.cavemen.get(playerName); crew.collectMagazine(avatar); avatar.root.rotation.y = Math.PI;
-    for (const key of Object.keys(pilot.hooks)) { const hook = pilot.hooks[key]; hooks[key] = (...args) => { if (cameraEnabled() && key !== "onDoubleTap") return hook(...args);
-      if ((phase === "boat" || phase === "coaster") && key === "onOrbit") { rideYaw = clamp(rideYaw - args[0] * 0.004, -0.65, 0.65); ridePitch = clamp(ridePitch - args[1] * 0.0035, -0.3, 0.3); } }; }
-    Object.assign(hooks, { onTap, onHover: (hit, p) => { if (phase === "land" && hit) hud.tooltip.show(hit.owner.label, p.x, p.y); else hud.tooltip.hide(); } });
-    hud.onAction(action); hud.onPreset((name) => { if (phase === "land") pilot.goPreset(name); });
-    audio = BL.dsbAudio.create();
-    proximity = document.getElementById("dsb-context");
-    panel = document.getElementById("dsb-panel"); panel.dataset.phase = phase; panel.dataset.folded = String(matchMedia("(max-width: 720px)").matches); document.getElementById("dsb-toggle").setAttribute("aria-expanded", String(panel.dataset.folded !== "true")); document.getElementById("dsb-toggle").textContent = panel.dataset.folded === "true" ? "Show DSB menu" : "Hide DSB menu"; readout = document.getElementById("dsb-feed"); bag = document.getElementById("dsb-bag"); prompt = document.getElementById("dsb-prompt");
-    document.getElementById("dsb-shop").hidden = true; document.getElementById("dsb-live").setAttribute("aria-pressed", "true"); soundUi();
-    panel.querySelector('.dsb-intro [data-action="leave"]').textContent = "Back to ₿IFRÖST";
-    document.body.classList.add("dsb-active", "dsb-entry"); document.addEventListener("visibilitychange", onVisibility); bagText();
-    dsbScene.renderOpts = DARK;
-    Object.assign(dsbScene, { root, camera, input, debug: { camera, pilot, crew, controls: pilot.controls, hud, audio, dsb: { clearAt, get zuzu() { return zuzu; }, get conversation() { return conversation; }, get gate() { return transitGate; }, get resources() { return { land: !!land, rides: rails.length, tomatoes: shots.length, shop: !!land, tv: !!tv, zuzu: !!zuzu, conversation: !!conversation, data: !!data, visitors: visitors.length, ambience: !!audio.ambience }; }, get phase() { return phase; }, get arrivalTime() { return arrivalTime; }, get glance() { return glance; }, avatar, get progress() { return progress; }, get inventory() { return { tokens, bread, bananas, tomatoes }; }, get shots() { return shots.filter((s) => s.life > 0).length; }, get land() { return land; }, visitors, get data() { return data; }, get tv() { return tv; }, openTv, boatTrip, trainTrip, get rideLook() { return { yaw: rideYaw, pitch: ridePitch }; }, railY, board, buy, eat, throwTomato, stopRide, get fired() { return Array.from(audio.fired); } } } });
-    syncContext(); update(0, 0);
-  };
-  const leave = () => {
-    disposed = true; document.removeEventListener("visibilitychange", onVisibility);
-    exiting = true; conversation?.dispose();
-    proximity.hidden = true; tv?.dispose(); audio.dispose(); data?.dispose(); pilot.dispose(); crew.dispose(); zuzu?.dispose(); fx.dispose(); transitGate.dispose();
-    for (const node of targets) input.remove(node); targets.length = 0;
-    const count = input.targetCount; input.dispose(); hud.el.sheet.hidden = oldSheetHidden; hud.el.sheet.dataset.open = oldSheetOpen; hud.dispose();
-    while (root.children.length) removeChild(root, root.children[root.children.length - 1]);
-    visitors.length = shots.length = rails.length = ties.length = candles.length = 0;
-    document.body.classList.remove("dsb-active", "dsb-entry", "dsb-arrival");
-    crew = fx = playerWorld = zuzu = conversation = null;
-    avatar = land = transitGate = camera = input = pilot = hud = renderer = world = game = go = audio = data = tv = panel = readout = bag = prompt = overlayCanvas = overlayCtx = proximity = null;
-    dsbScene.input = dsbScene.debug = null; return { targets: count };
-  };
-  const stats = () => { let visibleNodes = 0, allNodes = 0; traverseVisible(root, () => visibleNodes++); const visit = (node) => { allNodes++; for (const child of node.children) visit(child); }; visit(root); return { visibleNodes, allNodes, targets: input.targetCount, tweens: tweenCount(), dsbShots: shots.length, phase }; };
-  Object.assign(dsbScene, { enter, leave, update, overlay, onKey, stats, onLootCleared: () => {}, onDonation: (donation) => { game.recordDonation(donation); world.level = Math.min(BL.pile.MAX_BANANAS, world.level + BL.game.bananasFor(donation.sats)); }, liveGeometry: (set) => { set.add(avatar.headOpen).add(avatar.headClosed); for (const visitor of visitors) set.add(visitor.headOpen).add(visitor.headClosed); } });
-  BL.scenes.dsb = dsbScene;
+  Object.assign(scene,{enter,update,leave,onKey:e=>{if(entrance?.onKey(e))return true;if(svrnMenu?.isOpen){if(e.key==="Escape")svrnMenu.close();return true;}if(stackchainMenu?.isOpen){if(e.key==="Escape")stackchainMenu.close();return true;}if(memeMenu?.isOpen){if(e.key==="Escape")memeMenu.close();return true;}if(tv?.isOpen){if(e.key==="Escape")tv.close();return true;}if(bigMenu?.isOpen){if(e.key==="Escape")bigMenu.close();return true;}if(inkMenu?.isOpen){if(e.key==="Escape")inkMenu.close();return true;}if(shopMenu?.isOpen){if(e.key==="Escape")shopMenu.close();return true;}if(spaces?.isOpen){if(e.key==="Escape")spaces.close();return true;}if(seatRoom()&&(e.key==="1"||e.key==="2"))return pilot.weaponMode(Number(e.key));if(seatRoom()&&e.key.toLowerCase()==="v")return pilot.weaponAction("weapon-fire");if(e.key.toLowerCase()==="t"&&seatRoom()){crew.throwTomato();return true;}if(tv?.isOpen){if(e.key==="Escape")tv.close();return true;}if(e.key.toLowerCase()==="m"){mute();return true;}if((e.key==="j"||e.key==="J")&&!e.repeat)return toggleJetpack();if(e.key==="Escape"&&!gate.isOpen){overviewView();return true;}return false;},overlay:dt=>{const dpr=Math.min(devicePixelRatio||1,2),w=Math.round(overlayCanvas.clientWidth*dpr),h=Math.round(overlayCanvas.clientHeight*dpr);if(overlayCanvas.width!==w||overlayCanvas.height!==h){overlayCanvas.width=w;overlayCanvas.height=h;}overlayCanvas.getContext("2d").setTransform(dpr,0,0,dpr,0,0);fx.drawOverlay(dt,drawExtra);},stats:()=>({targets:input.targetCount,tweens:0,...remotes.stats()}),liveGeometry:set=>{remotes.liveGeometry(set);if(avatar)set.add(avatar.headOpen).add(avatar.headClosed);},onDonation:()=>{},onLootCleared:()=>{}});
+  BL.scenes.dsb=scene;
 })();

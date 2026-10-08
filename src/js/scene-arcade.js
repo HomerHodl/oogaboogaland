@@ -82,7 +82,26 @@
   let ambientT = 0, wheelTick = 0, cheerT = 0, powerT = 99;
   // Who walked in, kept across a game so they come back out as themselves, and the ticket balance at the last visit,
   // so the wheel knows when to celebrate.
-  let lastPlayer = null, lastTickets = null;
+  let lastPlayer = null, lastTickets = null, unsubscribeAccount = null, remotes = null;
+  const NO_ACTORS = [];
+  // An Ooga a signed-in player drives here is not also in the crowd or out strolling.
+  const hideCrowd = (name, on) => {
+    for (const list of [crowd, walkers]) if (list) for (const m of list) if (m.cave.traits.name === name) m.cave.root.visible = !on;
+  };
+  // On the Worker's page the island's driving rules hold in here too, and the Ooga driven is reported to the
+  // room every frame, so signed-in players in the hall hear each other (voice needs a driven Ooga).
+  const mayPossess = (cave) => BL.net.mayDrive(cave.traits.name, contributors.stateFor(cave.contributor) === "working");
+  const mayPick = (c) => !BL.net.mayDrive(c.name, contributors.stateFor(c) === "working");
+  const accountChanged = () => {
+    if (!avatar) return;
+    const released = BL.net.state.released;
+    const denied = mayPossess(avatar) || (released && released.name === avatar.traits.name ? "That Ooga is no longer yours to drive" : null);
+    BL.net.state.released = null;
+    if (denied && people.player === avatar) {
+      pilot.release(true);
+      hud.toast(denied);
+    }
+  };
   const targets = [];
 
   // A point in a frame stood at (x, z) turned by `turn`, into the hall: the transform every placed frame uses.
@@ -1637,7 +1656,7 @@
     };
     pilot = pilotMod.create({
       renderer, canvas: ctx.canvas, camera, hud, presets: views, landing: "entrance", pitch: PITCH, dist: DIST,
-      follow: FOLLOW, fly: FLY, clampTarget, clampCamera, ceilingAt: () => HALL.h - 1, coarse: COARSE,
+      follow: FOLLOW, fly: FLY, clampTarget, clampCamera, ceilingAt: () => HALL.h - 1, coarse: COARSE, mayPossess,
       close: { eyeHeight: 1.1, eyeRatio: 0.95, eyeForward: 0.16, pitch: [-1.35, 1.35], trailingDist: 4, orbitDist: 5, maxStep: 0.6, groundAt: (x, z) => supportAt(x, z, feetOf()) }
     });
     const tipFor = (hit) => {
@@ -1694,11 +1713,12 @@
     const asked = ctx.from === null ? new URLSearchParams(location.search).get("character")?.trim().toLowerCase() : null;
     const named = asked ? contributors.roster.find((c) => c.name.toLowerCase() === asked) : null;
     const wanted = named ? named.name : from >= 0 || machineFrom || retroFrom ? lastPlayer || world.pilot : world.pilot;
-    const playerName = wanted && contributors.roster.some((c) => c.name === wanted) ? wanted : contributors.activeRoster[0]?.name || null;
+    const wantedEntry = wanted && contributors.roster.find((c) => c.name === wanted);
+    const playerName = wantedEntry && mayPick(wantedEntry) ? wanted : contributors.activeRoster.find(mayPick)?.name || null;
     world.pilot = null;
     if (playerName) {
       playerWorld = { level: 0, weapons: new Map(), magazine: { owned: false, count: 0, ammo: 0, carrier: null } };
-      const shared = { root, input, hud, game, world: playerWorld, playerName, fx, viewYaw: 0, groundAt: groundFor, walkable: walkableFor, useNear };
+      const shared = { root, input, hud, game, world: playerWorld, playerName, fx, viewYaw: 0, outsideActors: () => remotes ? remotes.actors() : NO_ACTORS, outsideActorHeight: BL.remotePlayers.BODY_HEIGHT, groundAt: groundFor, walkable: walkableFor, useNear };
       people = shared.crew = BL.crew.create(shared);
       pilot.bind(shared);
       avatar = people.cavemen.get(playerName);
@@ -1715,7 +1735,10 @@
       hud.hint(COARSE ? "Stick walks · PLAY at a game" : "W A S D walk · mouse or Q E turn · Space plays what is next to you", 6000);
     } else if (from >= 0) pilot.goPreset(GAMES[from].id);
     lastPlayer = playerName;
+    unsubscribeAccount = BL.net.subscribe(accountChanged);
     seatCrowd(playerName);
+    // Other signed-in players in the hall, as the Oogas they drive (after the crowd, which they may stand in for).
+    remotes = BL.remotePlayers.create({ root, crew: people, hide: hideCrowd });
     hireCrew();
     hangFame(playerName);
     showShelf();
@@ -1816,6 +1839,15 @@
     pilot.readInput(dt);
     if (people) people.update(dt, elapsed);
     pilot.update(dt);
+    // The Ooga driven here goes to the room with where it stands and its health; other players here are shown.
+    const drivenHere = people && people.player;
+    BL.net.setBody(drivenHere ? drivenHere.traits.name : null);
+    if (drivenHere) {
+      const p = drivenHere.root.position;
+      BL.net.sendPose(p.x, p.y - drivenHere.baseY, p.z, drivenHere.root.rotation.y);
+      BL.net.setHealth(drivenHere.health.value, drivenHere.health.stunned);
+    }
+    remotes.update(dt);
     // The loop, then PRESS START blinking, then the loop again; the best line shows with the loop.
     const frame = Math.floor(elapsed * FPS) % (FRAMES + AM.START_FRAMES);
     if (frame !== shownFrame) {
@@ -1874,12 +1906,15 @@
     fx.update(dt, elapsed);
   };
   const TAP_SOUNDS = { door: "knock", changer: "coin", muncher: "spit", wheel: "click", disco: "ding", fame: "ding", off: "ding", sign: "grunt" };
-  const drawExtra = () => {};
+  const drawExtra = (ctx2d, project) => remotes.drawNames(ctx2d, project);
   const overlay = (dt) => fx.drawOverlay(dt, drawExtra);
 
   const leave = () => {
     // Whoever walked in goes on as themselves: into a game, or back out to the island at this mouth.
     if (avatar) world.pilot = avatar.traits.name;
+    unsubscribeAccount();
+    unsubscribeAccount = null;
+    BL.net.setBody(null);
     prizeUi.panel.removeEventListener("click", onPrizeClick);
     prizeUi.panel.hidden = true;
     window.removeEventListener("keydown", armsKeys, true);
@@ -1891,6 +1926,8 @@
     // A spin still turning has its win saved but not shown: left out here, it shows on the way back in (`enter`).
     lastTickets = shownTickets();
     audio.dispose();
+    remotes.dispose();
+    remotes = null;
     if (people) people.dispose();
     fx.dispose();
     pilot.dispose();
@@ -1920,15 +1957,18 @@
     set.add(AM.coconut(0)).add(AM.coconut(1)).add(AM.pinLight(0)).add(AM.pinLight(1));
     if (staff) for (const g of staff) g.agent.liveGeometry(set);
     if (avatar) set.add(avatar.headOpen).add(avatar.headClosed);
+    if (remotes) remotes.liveGeometry(set);
   };
   const stats = () => {
     let nodes = 0;
     traverseVisible(root, () => nodes++);
     const all = (n) => 1 + n.children.reduce((sum, c) => sum + all(c), 0);
-    return { visibleNodes: nodes, allNodes: all(root), tweens: tweenCount(), targets: input.targetCount, ...fx.stats() };
+    return { visibleNodes: nodes, allNodes: all(root), tweens: tweenCount(), targets: input.targetCount, ...fx.stats(), ...(remotes ? remotes.stats() : {}) };
   };
 
   const arcadeScene = {
+    // Voice zone: the Arcade group, which its mouth on the island shares (`arcade`).
+    voiceZone: "arcade.hall",
     id: "arcade", enter, update, overlay, onDonation, onKey, onLootCleared, renderOpts: RENDER_OPTS, leave, stats, liveGeometry,
     root: null, camera: null, input: null, debug: null, agent: null, agentView: null, agentControls: null, agentHandoff: null,
     get inMotion() {

@@ -6,6 +6,9 @@
   const { createNode, addChild, createCamera, boundsOf } = BL.scene;
   const STATE_LABELS = { working: "clank", chilling: "chill", sleeping: "sleep", away: "away", online: "online" };
   const ROSTER_ORDER = { working: 0, chilling: 1, sleeping: 2, away: 3 };
+  // Signed-in players online lead the roster, ahead of every activity.
+  const ONLINE_RANK = -1;
+  const stampOf = (contributor) => contributor.lastContributionAt || contributor.lastCommitAt;
   // Tooltip dots retain their human-presence color without changing NPC activity.
   const statusFor = (cave) => {
     const actor = cave.tooltipOwner || cave;
@@ -101,6 +104,24 @@
     el.replaceChildren(signLettering(text));
   };
   for (const el of document.querySelectorAll("[data-sign]")) letterSign(el);
+  // The roster's voice mark, a 9x9 pixel speaker; the stylesheet shows the parts each state needs.
+  const VOICE_PARTS = [
+    ["voice-speaker", "M0 3h2v3H0zM2 2h1v5H2zM3 1h1v7H3z"],
+    ["voice-near", "M5 3h1v3H5z"],
+    ["voice-far", "M7 2h1v5H7z"],
+    ["voice-cross", "M5 3h1v1H5zM7 3h1v1H7zM6 4h1v1H6zM5 5h1v1H5zM7 5h1v1H7z"],
+    ["voice-slash", "M0 0h1v1H0zM1 1h1v1H1zM2 2h1v1H2zM3 3h1v1H3zM4 4h1v1H4zM5 5h1v1H5zM6 6h1v1H6zM7 7h1v1H7zM8 8h1v1H8z"],
+  ];
+  const voiceIcon = document.createElementNS(SIGN_NS, "svg");
+  voiceIcon.setAttribute("viewBox", "0 0 9 9");
+  voiceIcon.setAttribute("aria-hidden", "true");
+  for (const [part, d] of VOICE_PARTS) {
+    const path = document.createElementNS(SIGN_NS, "path");
+    path.setAttribute("class", part);
+    path.setAttribute("d", d);
+    path.setAttribute("fill", "currentColor");
+    voiceIcon.append(path);
+  }
   // Icons are rasterized once into an offscreen canvas.
   const ICON_PX = 48;
   const renderIcon = (item) => {
@@ -319,6 +340,20 @@
       const name = document.createElement("span");
       name.className = "roster-name";
       name.textContent = contributor.display;
+      // The signed-in player on this Ooga, when there is one: the room's host and their voice.
+      const marks = document.createElement("span"), host = document.createElement("span"), voice = document.createElement("button");
+      marks.className = "roster-marks";
+      host.className = "roster-host";
+      host.hidden = true;
+      host.setAttribute("role", "img");
+      host.setAttribute("aria-label", "Host: runs the Oogas for everyone");
+      host.title = "Host: runs the Oogas for everyone";
+      voice.className = "roster-voice";
+      voice.type = "button";
+      voice.hidden = true;
+      voice.append(voiceIcon.cloneNode(true));
+      marks.append(host, voice);
+      name.append(marks);
       const age = document.createElement("span");
       age.className = "roster-age";
       age.append(BL.contributors.contributionAgeLabel(contributor));
@@ -333,29 +368,55 @@
       }
       li.append(presence, name, age, state);
       el.roster.append(li);
-      rosterRows.set(contributor.name, { li, presence, state, age, contributor, rosterIndex, online: false });
+      rosterRows.set(contributor.name, { li, presence, state, age, contributor, rosterIndex, online: false, sceneOnline: false, netOnline: false, nextOnline: false, placedStamp: stampOf(contributor), host, voice, look: "", login: "", hostOn: false, blocked: false, nextLook: "", nextLogin: "", nextHost: false });
     }
     if (!awayRow.parentElement) el.roster.append(awayRow);
     updateAwayButton();
+    on(el.roster, "click", (e) => {
+      const button = e.target.closest(".roster-voice");
+      if (!button || button.disabled) return;
+      button.blur();
+      BL.voice.muteLocal(button.dataset.login, button.getAttribute("aria-pressed") !== "true");
+    });
     on(awayButton, "click", () => {
       showAway = !showAway;
       awayButton.setAttribute("aria-expanded", String(showAway));
-      for (const row of rosterRows.values()) if (row.state.dataset.state === "away") row.li.hidden = !showAway;
+      for (const row of rosterRows.values()) if (row.state.dataset.state === "away") row.li.hidden = !showAway && !row.online;
       updateAwayButton();
     });
+    // Online players lead the roster, by their activity's stamp; an away player who is online is never folded away.
+    const rankOf = (row) => row.online ? ONLINE_RANK : ROSTER_ORDER[row.state.dataset.state];
+    const countAway = () => {
+      awayCount = 0;
+      for (const row of rosterRows.values()) if (row.state.dataset.state === "away" && !row.online) awayCount++;
+      updateAwayButton();
+    };
     const placeRosterRow = (row) => {
-      const rank = ROSTER_ORDER[row.state.dataset.state], stamp = row.contributor.lastContributionAt || row.contributor.lastCommitAt;
+      const rank = rankOf(row), stamp = stampOf(row.contributor);
       let before = rank === ROSTER_ORDER.away ? null : awayRow;
       for (const sibling of el.roster.children) {
         if (sibling === row.li || sibling === awayRow) continue;
         const other = rosterRows.get(sibling.dataset.name);
-        const otherRank = ROSTER_ORDER[other.state.dataset.state], otherStamp = other.contributor.lastContributionAt || other.contributor.lastCommitAt;
+        const otherRank = rankOf(other), otherStamp = stampOf(other.contributor);
         if (otherRank > rank) { before = otherRank === ROSTER_ORDER.away ? awayRow : sibling; break; }
         if (otherRank === rank && (otherStamp < stamp || otherStamp === stamp && other.rosterIndex > row.rosterIndex)) { before = sibling; break; }
       }
       if (before) {
         if (row.li.nextElementSibling !== before) el.roster.insertBefore(row.li, before);
       } else if (el.roster.lastElementChild !== row.li) el.roster.append(row.li);
+    };
+    // Online is the scene's word (its driven and remote Oogas) or the room's (any signed-in player's own Ooga or
+    // the one they drive); a change repaints the dot and moves the row.
+    const showOnline = (row) => {
+      const online = row.sceneOnline || row.netOnline;
+      if (row.online === online) return false;
+      row.online = online;
+      row.presence.dataset.online = online ? "true" : "false";
+      row.presence.title = online ? "Online" : "Offline";
+      row.presence.setAttribute("aria-label", row.presence.title);
+      row.li.hidden = row.state.dataset.state === "away" && !showAway && !online;
+      countAway();
+      return true;
     };
     const setRosterRow = (name, _stateKey, _ageText, online = false) => {
       const row = rosterRows.get(name);
@@ -364,23 +425,30 @@
       // contributor's latest recorded activity instead.
       const activity = BL.contributors.contributionStateFor(row.contributor);
       const ageText = BL.contributors.contributionAgeLabel(row.contributor);
+      let moved = false;
       if (row.state.dataset.state !== activity) {
-        if (row.state.dataset.state === "away") awayCount--;
-        if (activity === "away") awayCount++;
         row.state.dataset.state = activity;
         row.state.firstChild.data = STATE_LABELS[activity] || activity;
-        row.li.hidden = activity === "away" && !showAway;
-        updateAwayButton();
+        row.li.hidden = activity === "away" && !showAway && !row.online;
+        countAway();
+        moved = true;
       }
       if (row.age.firstChild.data !== ageText) row.age.firstChild.data = ageText;
-      if (row.online !== online) {
-        row.online = online;
-        row.presence.dataset.online = online ? "true" : "false";
-        row.presence.title = online ? "Online" : "Offline";
-        row.presence.setAttribute("aria-label", row.presence.title);
+      row.sceneOnline = online;
+      if (showOnline(row)) moved = true;
+      const stamp = stampOf(row.contributor);
+      if (row.placedStamp !== stamp) {
+        row.placedStamp = stamp;
+        moved = true;
       }
-      placeRosterRow(row);
+      if (moved) placeRosterRow(row);
     };
+    // The page-level pass marks rows online from the room and moves only those that changed.
+    liveRows = rosterRows;
+    liveOnline = (row) => {
+      if (showOnline(row)) placeRosterRow(row);
+    };
+    showVoices();
     // Seed empty text nodes so later updates only mutate text, never the DOM.
     for (const node of [el.meterCount, el.meterForecast]) if (!node.firstChild) node.append("");
     let shownBananas = -1, shownWidth = "", shownBand = "", shownForecast = null;
@@ -567,8 +635,8 @@
         primarySelected = selected; primaryAiming = aiming;
         el.primary.dataset.equipped = String(selected);
         el.primary.setAttribute("aria-pressed", String(selected));
-        el.primary.title = !selected ? "Equip primary melee weapon (1)" : "Melee weapon · 0.2s between hits for full power (1)";
-        el.primary.setAttribute("aria-label", !selected ? "Equip primary melee weapon" : "Melee weapon · allow 0.2 seconds between hits for full power");
+        el.primary.title = !selected ? "Equip primary melee weapon (1)" : "Melee weapon · 0.2s between swings for full power · hold for double damage (1)";
+        el.primary.setAttribute("aria-label", !selected ? "Equip primary melee weapon" : "Melee weapon · allow 0.2 seconds between swings for full power, then hold for double damage");
       }
       if (held !== primaryHeld) {
         primaryHeld = held;
@@ -1710,6 +1778,7 @@
       window.clearTimeout(hintHideTimer);
       window.clearTimeout(copyTimer);
       for (const off of listeners) off();
+      if (liveRows === rosterRows) liveRows = liveOnline = null;
       el.roster.replaceChildren();
       el.inventory.replaceChildren();
       el.toast.classList.remove("show");
@@ -1756,5 +1825,73 @@
     voiceButton.textContent = voice.joining ? "Joining voice" : voice.error && !voice.enabled ? `Voice: ${voice.error}` : !voice.enabled ? "Join voice" : voice.muted ? "Unmute" : "Mute";
     voiceButton.setAttribute("aria-pressed", String(voice.enabled && !voice.muted));
   };
-  BL.hud = { create, renderIcon, signLettering, showAccount, STATE_LABELS, statusFor };
+  // The roster's marks are page-level too: whichever scene's roster is up, each signed-in player's row
+  // (their own Ooga, else the one they drive) shows the host dot and their voice. The director hands every
+  // room and voice change here; only marks that changed are touched, and rows never move for them.
+  let liveRows = null, liveOnline = null;
+  const VOICE_WORDS = { on: "In voice", speaking: "Speaking", muted: "Muted their microphone" };
+  const voiceRowOf = (login, body) => {
+    const character = BL.net.characterOf(login);
+    return character && liveRows.get(character.handle) || body && liveRows.get(body) || null;
+  };
+  const paintMarks = (row) => {
+    const blocked = !!row.nextLogin && BL.voice.mutedLocally(row.nextLogin);
+    if (row.look !== row.nextLook || row.login !== row.nextLogin || row.blocked !== blocked) {
+      row.look = row.nextLook;
+      row.login = row.nextLogin;
+      row.blocked = blocked;
+      const button = row.voice;
+      button.hidden = !row.look;
+      button.dataset.voice = row.look;
+      button.dataset.login = row.login;
+      button.disabled = !row.login;
+      button.setAttribute("aria-pressed", String(blocked));
+      const words = !row.look ? "" : `${VOICE_WORDS[row.look]}${blocked ? ". Muted for you: click to unmute" : row.login ? ". Click to mute for you" : ""}`;
+      button.title = words;
+      button.setAttribute("aria-label", words);
+    }
+    if (row.hostOn !== row.nextHost) {
+      row.hostOn = row.nextHost;
+      row.host.hidden = !row.hostOn;
+    }
+  };
+  // A signed-in player is online on their own Ooga's row and on the row of the Ooga they drive.
+  const markOnline = (login, body) => {
+    const character = BL.net.characterOf(login), own = character && liveRows.get(character.handle), driven = body && liveRows.get(body);
+    if (own) own.nextOnline = true;
+    if (driven) driven.nextOnline = true;
+  };
+  const showVoices = () => {
+    if (!liveRows) return;
+    for (const row of liveRows.values()) {
+      row.nextLook = row.nextLogin = "";
+      row.nextHost = row.nextOnline = false;
+    }
+    const net = BL.net.state, voice = BL.voice.stats;
+    if (net.room === "live" && net.me) {
+      markOnline(net.me.login, net.body);
+      for (const rec of BL.net.remotes.values()) markOnline(rec.login, rec.body);
+      const self = voiceRowOf(net.me.login, net.body);
+      if (self) {
+        if (voice.enabled) self.nextLook = voice.muted ? "muted" : voice.speaking ? "speaking" : "on";
+        if (net.hostId === net.selfId) self.nextHost = true;
+      }
+      for (const rec of BL.net.remotes.values()) {
+        const row = voiceRowOf(rec.login, rec.body);
+        if (!row) continue;
+        if (rec.voice) {
+          row.nextLook = rec.muted ? "muted" : BL.voice.speaking(rec.id) ? "speaking" : "on";
+          row.nextLogin = rec.login;
+        }
+        if (rec.id === net.hostId) row.nextHost = true;
+      }
+    }
+    for (const row of liveRows.values()) {
+      paintMarks(row);
+      if (row.netOnline === row.nextOnline) continue;
+      row.netOnline = row.nextOnline;
+      liveOnline(row);
+    }
+  };
+  BL.hud = { create, renderIcon, signLettering, showAccount, showVoices, STATE_LABELS, statusFor };
 })();

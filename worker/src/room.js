@@ -11,12 +11,14 @@
 // page showing the island, and keeps the latest frame for pages that arrive or come back.
 // Cost: the room hibernates whenever nothing is happening, so no timer runs while idle: a snapshot is a
 // one-shot flush scheduled by a pose, voice lists are sent when who hears whom can change, and the host
-// is told how many pages follow it (`host { id, followers }`) so a lone host sends no frames.
+// is told how many pages follow it (`host { id, followers }`) so a lone host sends no frames, and who is
+// in voice or muted goes out (`vstate`) only when it changes, as health does (`hp`). The last voice list
+// each player was sent lives in its attachment (`sent`), so a woken room still knows what every page holds.
 
 import { DurableObject } from "cloudflare:workers";
 import {
   CLOSE_KICK, CLOSE_PROTOCOL, MAX_PLAYERS, MOVE_HZ, STALE_MS, SWEEP_MS, TICK_HZ,
-  NPC_FRAME_MAX, NPC_HZ, OUTSIDE, VOICE_TRACK, castIndex, electHost, npcFollowers, claimRefusal, parseClientMessage, playerFromHeaders, spawnPoint, takeToken, voicePeers,
+  NPC_FRAME_MAX, NPC_HZ, OUTSIDE, HP_HZ, VOICE_TRACK, castIndex, electHost, npcFollowers, claimRefusal, parseClientMessage, playerFromHeaders, spawnPoint, takeToken, voicePeers,
 } from "./protocol.js";
 import { sfuClient } from "./sfu.js";
 import CAST_ROWS from "./characters.gen.json";
@@ -31,7 +33,6 @@ export class Room extends DurableObject {
     this.dirty = false;
     this.flushTimer = 0;
     this.sfu = sfuClient(env);
-    this.voiceSig = new Map();
     this.hostId = 0;
     this.followers = 0;
     this.lastNpc = null;
@@ -53,15 +54,15 @@ export class Room extends DurableObject {
   }
 
   record(ws, a) {
-    return { ws, voice: { pub: null, sub: null, track: null }, zone: OUTSIDE, inHub: false, joinedAt: Date.now(), ...a, bucket: { tokens: MOVE_HZ, at: Date.now() }, npcBucket: { tokens: NPC_HZ, at: Date.now() }, seenAt: Date.now() };
+    return { ws, voice: { pub: null, sub: null, track: null, gen: 0 }, muted: false, hp: 100, ko: false, sent: null, zone: OUTSIDE, inHub: false, joinedAt: Date.now(), ...a, bucket: { tokens: MOVE_HZ, at: Date.now() }, npcBucket: { tokens: NPC_HZ, at: Date.now() }, hpBucket: { tokens: HP_HZ, at: Date.now() }, seenAt: Date.now() };
   }
 
   attachment(p) {
-    return { id: p.id, login: p.login, display: p.display, contributor: p.contributor, body: p.body, x: p.x, y: p.y, z: p.z, yaw: p.yaw, voice: p.voice, zone: p.zone, inHub: p.inHub, joinedAt: p.joinedAt };
+    return { id: p.id, login: p.login, display: p.display, contributor: p.contributor, body: p.body, x: p.x, y: p.y, z: p.z, yaw: p.yaw, voice: p.voice, muted: p.muted, hp: p.hp, ko: p.ko, sent: p.sent, zone: p.zone, inHub: p.inHub, joinedAt: p.joinedAt };
   }
 
   view(p) {
-    return { id: p.id, login: p.login, display: p.display, body: p.body, x: p.x, y: p.y, z: p.z, yaw: p.yaw };
+    return { id: p.id, login: p.login, display: p.display, body: p.body, zone: p.zone, x: p.x, y: p.y, z: p.z, yaw: p.yaw, voice: !!p.voice.track, muted: p.muted, hp: p.hp, ko: p.ko };
   }
 
   send(ws, msg) {
@@ -148,7 +149,20 @@ export class Room extends DurableObject {
     } else if (msg.t === "zone") {
       if (msg.name === p.zone) return;
       p.zone = msg.name;
+      this.broadcast({ t: "zone", id: p.id, name: p.zone });
+      // The page let go of every voice when it moved, so it always hears where it is now, changed list or not.
+      p.sent = null;
       this.updateVoice();
+    } else if (msg.t === "hp") {
+      if (msg.v === p.hp && msg.ko === p.ko) return;
+      if (!takeToken(p.hpBucket, HP_HZ, p.seenAt)) return;
+      p.hp = msg.v;
+      p.ko = msg.ko;
+      this.broadcast({ t: "hp", id: p.id, v: p.hp, ko: p.ko }, p.ws);
+    } else if (msg.t === "mute") {
+      if (msg.on === p.muted) return;
+      p.muted = msg.on;
+      this.voiceState(p);
     } else if (msg.t === "body") {
       if (msg.name === p.body) return;
       const refusal = claimRefusal(CAST, p.login, msg.name, this.players.values(), p.contributor);
@@ -159,6 +173,9 @@ export class Room extends DurableObject {
       } else {
         p.body = msg.name;
       }
+      // Another Ooga, or none: its health is reported afresh.
+      p.hp = 100;
+      p.ko = false;
       this.broadcast({ t: "body", id: p.id, name: p.body });
       this.updateVoice();
     }
@@ -179,7 +196,6 @@ export class Room extends DurableObject {
   drop(p, reason) {
     if (this.players.get(p.id) !== p) return;
     this.players.delete(p.id);
-    this.voiceSig.delete(p.id);
     this.broadcast({ t: "leave", id: p.id, reason });
     this.electHost();
     this.updateVoice();
@@ -248,18 +264,27 @@ export class Room extends DurableObject {
     for (const q of this.players.values()) if (q !== p && q.inHub) this.send(q.ws, data);
   }
 
-  // Tells each player whom to hear, only when that list changed. Called wherever it can change: a join or
-  // leave, a body or zone, a voice session opened, announced or left.
+  // Tells each player whom to hear, with each one's publication (`gens`: a microphone published again is
+  // pulled again), only when that changed since the list the player last got (`sent`, kept through a
+  // hibernation; null sends regardless). Called wherever it can change: a join or leave, a body or zone, a
+  // voice session opened, announced or left.
   updateVoice() {
     if (!this.sfu) return;
     const desired = voicePeers([...this.players.values()]);
     for (const p of this.players.values()) {
       const peers = desired.get(p.id) || [];
-      const sig = peers.join(",");
-      if ((this.voiceSig.get(p.id) ?? "") === sig) continue;
-      this.voiceSig.set(p.id, sig);
-      this.send(p.ws, { t: "voice", peers });
+      const gens = peers.map((id) => this.players.get(id).voice.gen || 0);
+      const sig = peers.map((id, i) => `${id}:${gens[i]}`).join(",");
+      if (p.sent === sig) continue;
+      p.sent = sig;
+      p.ws.serializeAttachment(this.attachment(p));
+      this.send(p.ws, { t: "voice", peers, gens });
     }
+  }
+
+  // Every other page's roster shows who is in voice (a live microphone) and who muted it: sent on a change only.
+  voiceState(p) {
+    this.broadcast({ t: "vstate", id: p.id, voice: !!p.voice.track, muted: p.muted }, p.ws);
   }
 
   // /voice/<op> from the Worker, which checked the session and set x-player-id. Ops: session (a publish
@@ -277,6 +302,7 @@ export class Room extends DurableObject {
     } catch {
       // No body.
     }
+    const was = !!p.voice.track;
     try {
       if (op === "session") {
         const kind = body.kind === "pub" ? "pub" : "sub";
@@ -285,6 +311,7 @@ export class Room extends DurableObject {
         if (kind === "pub") p.voice.track = p.voice.pending = null;
         p.ws.serializeAttachment(this.attachment(p));
         this.updateVoice();
+        if (was && !p.voice.track) this.voiceState(p);
         return json({ ok: true });
       }
       if (op === "publish") {
@@ -302,8 +329,11 @@ export class Room extends DurableObject {
       if (op === "live") {
         if (!p.voice.pub || !p.voice.pending) return json({ error: "nothing published" }, 400);
         p.voice.track = p.voice.pending;
+        // A new count for every microphone that goes live, never reused: whoever heard an older one pulls this one.
+        p.voice.gen = Math.max(Date.now(), (p.voice.gen || 0) + 1);
         p.ws.serializeAttachment(this.attachment(p));
         this.updateVoice();
+        if (!was) this.voiceState(p);
         return json({ ok: true });
       }
       if (op === "pull") {
@@ -336,9 +366,10 @@ export class Room extends DurableObject {
         return json({ ok: true });
       }
       if (op === "leave") {
-        p.voice = { pub: null, sub: null, track: null, pending: null };
+        p.voice = { pub: null, sub: null, track: null, pending: null, gen: p.voice.gen || 0 };
         p.ws.serializeAttachment(this.attachment(p));
         this.updateVoice();
+        if (was) this.voiceState(p);
         return json({ ok: true });
       }
       return json({ error: "unknown voice op" }, 404);

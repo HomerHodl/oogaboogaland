@@ -1457,15 +1457,15 @@
         l.debug.approximated = false;
       }
     }
-    // Fill each tier with the lamps nearest the view, so a lantern beside the player
-    // is never dropped just because distant cave lights were registered first.
+    // Keep the three central pile posts in every tier; fill the remaining slots
+    // with the lamps nearest the view.
     for (; count < limit; count++) {
       let nearest = null, distance = Infinity;
       for (let i = 0; i < lamps.length; i++) {
         const l = lamps[i];
         if (!l.lit || !l.light || l.selected || l.far) continue;
         const dx = l.x - camera.target.x, dy = l.y - camera.target.y, dz = l.z - camera.target.z;
-        const score = dx * dx + dy * dy + dz * dz - (l.centerLight ? 16 : 0);
+        const score = l.pileProfile ? -32 : dx * dx + dy * dy + dz * dz - (l.centerLight ? 16 : 0);
         if (score < distance) { nearest = l; distance = score; }
       }
       if (!nearest) break;
@@ -1778,7 +1778,7 @@
       }
       const light = postDressing.lights, pick = postDressing.picks;
       const lamp = addLamp(glow, DRESSING_LAMPS[light[3]], 0, 0, 0, true, 0, `pile-post:${i}`);
-      lamp.nightOnly = true;
+      lamp.always = true;
       lamp.centerLight = true;
       lamp.pileProfile = true;
       const pickNode = createNode({ geometry: PICK_GEOMETRY });
@@ -2377,6 +2377,9 @@
     addProp("poolbridge", site.bridge, worldX(0, place.bridgeLocalZ + S.span / 2), worldZ(0, place.bridgeLocalZ + S.span / 2), S.width);
     addLamp(site.bridge, LAMP.lantern, worldX(0, place.bridgeLocalZ), place.y + 3.4, worldZ(0, place.bridgeLocalZ), false, 0, "poolbridge:lanterns").nightOnly = true;
     atNode("poolsign", site.sign, site.sign.geometry.signWidth * 0.55);
+    signDetails.push({ node: site.sign, solid: site.sign.geometry, pixels: hubModels.caveSign("Mempool Rainforest", null, true),
+      x: worldX(site.sign.position.x, site.sign.position.z), y: place.y + site.sign.position.y,
+      z: worldZ(site.sign.position.x, site.sign.position.z) });
     // Centre the board across the pool on the bridge's axis, facing the crossing with trees behind it.
     // Its face and lettering stay curved around the pool's centre at this same radius.
     const B = P.CHAIN_BOARD, boardBearing = Math.PI;
@@ -2427,7 +2430,7 @@
       canvas.width = CHAIN_PANEL_W;
       canvas.height = CHAIN_PANEL_H;
       // willReadFrequently: every refresh reads the panel back, and without it Chrome warns.
-      chainSign = { node: panelNode, ctx2d: canvas.getContext("2d", { alpha: false, willReadFrequently: true }), printed: "" };
+      chainSign = { node: panelNode, ctx2d: canvas.getContext("2d", { alpha: false, willReadFrequently: true }), printed: "", index: 0, switchAt: NaN, nextRefresh: 0 };
     }
     // Fire: the two torches of the court either side of the mouth, then one down each stretch of the descent on the
     // wall clear of its waterfalls, and four round the chamber between the paintings. The ones under the ground burn
@@ -2701,6 +2704,20 @@
     for (const stop of paintings.stops) {
       stop.owner = addProp("poolpainting", stop.node, worldX(stop.x, stop.z), worldZ(stop.x, stop.z), 2.6);
       stop.owner.stop = stop;
+      stop.owner.pickRay = ray => {
+        const m = stop.node.world;
+        const facing = ray.dx * m[8] + ray.dy * m[9] + ray.dz * m[10];
+        if (facing >= -1e-6) return -1;
+        const t = ((m[12] - ray.ox) * m[8] + (m[13] - ray.oy) * m[9] + (m[14] - ray.oz) * m[10]) / facing;
+        if (t <= 0) return -1;
+        const x = ray.ox + ray.dx * t, y = ray.oy + ray.dy * t, z = ray.oz + ray.dz * t;
+        const dx = x - m[12], dy = y - m[13], dz = z - m[14];
+        const across = dx * m[0] + dy * m[1] + dz * m[2];
+        const up = dx * m[4] + dy * m[5] + dz * m[6];
+        if (across < 0 || across > stop.width || up < 0 || up > stop.height) return -1;
+        return guideSegmentClear(ray.ox, ray.oy, ray.oz, x, y, z)
+          && mempoolIsland.sightClear(ray.ox, ray.oy, ray.oz, x, y, z) ? t : -1;
+      };
     }
     // The islet and the rim-to-bridge-head walk are claimed after the home scatter, not before it.
     // Claiming first made the scatter's seeded retries draw different numbers, reshuffling trees all
@@ -3508,7 +3525,15 @@
   // for the visitor's Ooga, the crew's and another player's, from where each already stands.
   const floatPose = (cave, feet, height, phase, time) => {
     const p = cave.root.position;
-    if (!mempoolIsland || !mempoolIsland.afloat(p.x, p.z, feet, height * OOGA_DRAUGHT)) return;
+    if (!mempoolIsland || !mempoolIsland.afloat(p.x, p.z, feet, height * OOGA_DRAUGHT)) {
+      if (cave.poolSwimming) {
+        cave.poolSwimming = false;
+        cave.parts.armL.rotation.z = 0.12;
+        cave.parts.armR.rotation.z = -0.12;
+      }
+      return;
+    }
+    cave.poolSwimming = true;
     const parts = cave.parts, s = Math.sin(time * 2.4 + phase), c = Math.cos(time * 2.4 + phase);
     parts.armL.rotation.z = 1.15 + s * 0.16; parts.armR.rotation.z = -1.15 - s * 0.16;
     parts.armL.rotation.x = parts.armR.rotation.x = -0.25 + c * 0.22;
@@ -4888,9 +4913,9 @@
     }
   };
   // The chain board's four readings, set in the jumbotron's 5x7 font and run-length merged into quads,
-  // exactly as the cave sets its wall panels. The rows are rebuilt only when one of them changed, so a
-  // board left standing all day replaces no geometry and holds its size.
-  const CHAIN_PANEL_W = 208, CHAIN_PANEL_H = 72, CHAIN_PANEL_BG = [42, 39, 36];
+  // exactly as the cave sets its wall panels. Its overview and four detail panes rebuild only when their
+  // visible readings change, so a board left standing all day holds its size.
+  const CHAIN_PANEL_W = 230, CHAIN_PANEL_H = 72, CHAIN_PANEL_BG = [42, 39, 36];
   // A board that has stopped being fed says so by going grey. Holding the last reading out in its
   // usual colours would be the one genuinely misleading thing this island could do.
   const STALE_INK = "#7d766a";
@@ -4951,24 +4976,55 @@
       ["FAST FEE", s.fastestFee ? `${gameMod.formatFeeRate(s.fastestFee)} SAT/VB` : "-", ink("#ff9a2a")]
     ];
   };
+  const chainDetail = [
+    [(s) => s.lastTxCount && s.lastWeight ? `${gameMod.formatThree(s.lastTxCount, true)} TX · ${gameMod.formatThree(s.lastWeight / 4e6)} MVB` : "", "BLOCK HEIGHT"],
+    [(s) => arrivalsLive(s) ? `WEATHER ${weatherMod.STEPS[weather.state.step].name.toUpperCase()}` : "WEATHER UNAVAILABLE", "INCOMING DATA"],
+    [(s) => backlogDetails(s.count, !!s.backlogAt), "MEMPOOL"],
+    [(s) => s.hourFee ? `HOUR ${gameMod.formatFeeRate(s.hourFee)} SAT/VB` : "", "FAST FEE RATE"]
+  ];
   const refreshChainSign = () => {
     if (!chainSign) return;
-    const rows = chainRows(chain.snapshot);
-    const printed = rows.map((r) => r[0] + r[1]).join("|");
+    const snapshot = chain.snapshot, rows = chainRows(snapshot), index = chainSign.index;
+    const under = index ? chainDetail[index - 1][0](snapshot) : "";
+    const printed = index ? `${index}|${rows[index - 1].join("|")}|${under}`
+      : `0|${rows.map((r) => r.join("|")).join("|")}`;
     if (printed === chainSign.printed) return;
     chainSign.printed = printed;
     const c2 = chainSign.ctx2d, text = BL.jumbotron.text;
     c2.fillStyle = `rgb(${CHAIN_PANEL_BG[0]},${CHAIN_PANEL_BG[1]},${CHAIN_PANEL_BG[2]})`;
     c2.fillRect(0, 0, CHAIN_PANEL_W, CHAIN_PANEL_H);
-    let y = 4;
-    for (const [label, value, color] of rows) {
-      text.drawText(c2, label, 2, y, "#9b8f7a", 2);
-      drawMetric(c2, value, CHAIN_PANEL_W - 2, y, color, 2, true);
-      y += 16;
+    if (!index) {
+      let y = 4;
+      for (const [label, value, color] of rows) {
+        text.drawText(c2, label, 2, y, "#9b8f7a", 2);
+        drawMetric(c2, value, CHAIN_PANEL_W - 2, y, color, 2, true);
+        y += 16;
+      }
+    } else {
+      const [label, value, color] = rows[index - 1];
+      const title = chainDetail[index - 1][1] || label;
+      text.drawText(c2, title, Math.round((CHAIN_PANEL_W - text.measureText(title, 2)) / 2), 4, "#9b8f7a", 2);
+      const scale = metricWidth(value, 4) <= CHAIN_PANEL_W - 8 ? 4 : 3;
+      drawMetric(c2, value, CHAIN_PANEL_W / 2, 23, color, scale);
+      if (under) drawMetric(c2, under, CHAIN_PANEL_W / 2, 54, "#9b8f7a", 2);
     }
     const node = chainSign.node;
     if (node.geometry) renderer.releaseGeometry(node.geometry);
     node.geometry = poolModels.chainPanel(c2, CHAIN_PANEL_W, CHAIN_PANEL_H, CHAIN_PANEL_BG);
+  };
+  const updateChainSign = (elapsed) => {
+    if (!chainSign) return;
+    if (!Number.isFinite(chainSign.switchAt)) chainSign.switchAt = elapsed;
+    const cycle = jumbotron?.cycleSeconds ?? 8;
+    if (cycle > 0 && elapsed - chainSign.switchAt >= cycle) {
+      chainSign.index = (chainSign.index + 1) % (chainDetail.length + 1);
+      chainSign.switchAt = elapsed;
+      chainSign.nextRefresh = elapsed + 1;
+      refreshChainSign();
+    } else if (elapsed >= chainSign.nextRefresh) {
+      chainSign.nextRefresh = elapsed + 1;
+      refreshChainSign();
+    }
   };
   // The Mempool island's two boards in the shared board dialog. Each is a list of pages, every page a caption, a
   // note and a drawing in the jumbotron's 5x7 font on the board's own small canvas; `refresh` redraws the shown
@@ -5060,10 +5116,10 @@
       },
       note: chainStatus
     },
-    rowPage(0, "Block height", (s) => s.lastTxCount && s.lastWeight ? `${gameMod.formatThree(s.lastTxCount, true)} TX · ${gameMod.formatThree(s.lastWeight / 4e6)} MVB` : "", "A block's height is its number in the Bitcoin chain. The third line shows that block's transaction count and virtual size. When a new block arrives, lightning strikes and a water cube drops through the chamber; the next mempool reading determines how much waiting data remains in the lake.", "BLOCK HEIGHT"),
-    rowPage(1, "Incoming data", (s) => arrivalsLive(s) ? `WEATHER ${weatherMod.STEPS[weather.state.step].name.toUpperCase()}` : "WEATHER UNAVAILABLE", "The large number is new transaction data arriving each second, in virtual bytes (vB/s). Rain strength follows a roughly 30-second average of this rate. Arrivals add to the mempool; blocks confirm transactions and can reduce it.", "INCOMING DATA"),
-    rowPage(2, "Mempool", (s) => backlogDetails(s.count, !!s.backlogAt), "The mempool is the data still waiting for a block, measured in millions of virtual bytes (MvB). The smaller figure counts waiting transactions. Rain shows new arrivals; a mined block can clear some of this queue."),
-    rowPage(3, "Next-block fee", (s) => s.hourFee ? `HOUR ${gameMod.formatFeeRate(s.hourFee)} SAT/VB` : "", "This fee estimate helps a transaction compete for space in the next block, in satoshis per virtual byte (sat/vB). The smaller figure estimates a fee for confirmation within an hour; neither time is guaranteed. Fees affect queue order, while arrivals set the rain and total waiting data fills the lake.", "FAST FEE RATE")
+    rowPage(0, "Block height", chainDetail[0][0], "A block's height is its number in the Bitcoin chain. The third line shows that block's transaction count and virtual size. When a new block arrives, lightning strikes and a water cube drops through the chamber; the next mempool reading determines how much waiting data remains in the lake.", chainDetail[0][1]),
+    rowPage(1, "Incoming data", chainDetail[1][0], "The large number is new transaction data arriving each second, in virtual bytes (vB/s). Rain strength follows a roughly 30-second average of this rate. Arrivals add to the mempool; blocks confirm transactions and can reduce it.", chainDetail[1][1]),
+    rowPage(2, "Mempool", chainDetail[2][0], "The mempool is the data still waiting for a block, measured in millions of virtual bytes (MvB). The smaller figure counts waiting transactions. Rain shows new arrivals; a mined block can clear some of this queue."),
+    rowPage(3, "Next-block fee", chainDetail[3][0], "This fee estimate helps a transaction compete for space in the next block, in satoshis per virtual byte (sat/vB). The smaller figure estimates a fee for confirmation within an hour; neither time is guaranteed. Fees affect queue order, while arrivals set the rain and total waiting data fills the lake.", chainDetail[3][1])
   ], true);
   // The key to the island: what arrives makes the weather, what waits fills the lake, and a block is a bolt and a
   // cube. A reading that has stopped being fed goes grey and says so; it is never drawn as a calm zero.
@@ -6158,6 +6214,16 @@
         break;
       }
     }
+    // An Ooga taken over where it already stands in a cave never crossed the mouth: bind it by the carved column
+    // under its feet, once it is behind that cave's doorway plane (the mouth's columns reach out onto the apron).
+    if (!playerCaveIndex && island.cavityAt(p.x, p.z, CAMERA_COLUMN, 0, PLAYER_POSITION.y) && CAMERA_COLUMN.caveIndex !== island.headquarters.caveIndex && PLAYER_POSITION.y >= CAMERA_COLUMN.floor - 1e-6 && PLAYER_POSITION.y + player.bodyHeight <= CAMERA_COLUMN.ceiling) {
+      for (let i = 0; i < CAMERA_OPENINGS.length; i++) {
+        const opening = CAMERA_OPENINGS[i];
+        if (opening.caveIndex !== CAMERA_COLUMN.caveIndex) continue;
+        if (!opening.blocked && !opening.headquarters && (p.x - opening.mouth.x) * opening.sr + (p.z - opening.mouth.z) * opening.cr - opening.planeZ < -PLAYER_RADIUS) playerCaveIndex = opening.caveIndex;
+        break;
+      }
+    }
     setVec(PLAYER_PREVIOUS, PLAYER_POSITION.x, PLAYER_POSITION.y, PLAYER_POSITION.z);
   };
   // Destination placement is explicit travel, not a sweep across the island in between.
@@ -6946,6 +7012,7 @@
     if (jumbotron) {
       jumbotron.update(elapsed, renderer);
     }
+    updateChainSign(elapsed);
     hud.updateBoard(elapsed);
     if (fireworksShells.length) updateFireworks();
     const next = daylight.phaseAt(hour);
@@ -7038,7 +7105,7 @@
       if (cave.root.visible) floatPose(cave, cave.root.position.y - cave.baseY, cave.bodyHeight, cave.phase, elapsed);
     }
     npcSync.update(dt);
-    shareDrivenOoga();
+    shareDrivenOoga(dt);
     remotes.update(dt);
     mempoolIsland.wildlife.update(dt, elapsed);
     for (const cave of crew.list) if (cave.root.visible) {
@@ -7168,24 +7235,71 @@
     pilot.possess(cave);
     if (crew.player === cave) hud.toast(`Welcome back, ${BL.characters.displayOf(character.handle)}: this Ooga is yours`);
   };
-  // The place the driven Ooga is in, as the room names it for voice: out on the island, HQ (every HQ
-  // entrance leads to the one HQ), or one cave by its mouth. Named once per opening, never per frame.
+  // Where the driven Ooga is, as the room names it for voice and for who is shown (docs/auth-and-presence.md):
+  // a cave by its mouth (EntropyLab, the Factory's tunnel and the Arcade's mouth share their halls' groups, HQ
+  // is one place whichever entrance), a bridged land from the foot of its bridge (the Timechain Sphere, the
+  // Mempool rainforest with its chamber and tunnels, the Bifrost isle), the island itself (`outside`), or
+  // nowhere past its edge: on a cloud, flying or falling off it. Allocation-free; a cave is named once.
+  const CAVE_ZONES = { c11: "lab", c2: "factory", c3: "arcade", c1: "mirror" };
+  const ZONE_HOLD = 0.25;
   const zoneNames = [];
   const zoneName = (index) => {
-    if (!index) return "outside";
     if (!zoneNames[index]) {
       const opening = CAMERA_OPENINGS[index - 1];
-      zoneNames[index] = opening.headquarters ? "hq" : `cave-${String(opening.id).toLowerCase().replace(/[^a-z0-9-]/g, "-").slice(0, 27)}`;
+      zoneNames[index] = opening.headquarters ? "hq" : CAVE_ZONES[opening.id] || `cave-${String(opening.id).toLowerCase().replace(/[^a-z0-9-]/g, "-").slice(0, 27)}`;
     }
     return zoneNames[index];
   };
-  // The room sees the Ooga this visitor drives, by name, and where its feet are; none when free roaming.
-  const shareDrivenOoga = () => {
+  const onSphere = (x, z) => {
+    if (!timechainIsland) return false;
+    const p = timechainIsland.place, s = BL.timechainModels.SITE, dx = x - p.x, dz = z - p.z;
+    const across = dx * timechainIsland.cos - dz * timechainIsland.sin, along = dx * timechainIsland.sin + dz * timechainIsland.cos;
+    return Math.abs(across) <= s.width / 2 && along >= p.bridgeZ && along <= p.bridgeZ + s.span + 0.5 || dx * dx + dz * dz < s.radius * s.radius;
+  };
+  const inRainforest = (x, feet, z) => {
+    if (!mempoolIsland) return false;
+    if (mempoolIsland.overAt(x, z) || mempoolIsland.coveredAt(x, feet + 0.5, z)) return true;
+    const p = mempoolIsland.place, s = poolModels.SITE, dx = x - p.x, dz = z - p.z;
+    const across = dx * mempoolIsland.cos - dz * mempoolIsland.sin, along = dx * mempoolIsland.sin + dz * mempoolIsland.cos;
+    return Math.abs(across) < s.width / 2 && along >= p.bridgeLocalZ + s.deckStart && along <= p.bridgeLocalZ + s.span;
+  };
+  // The isle's ground is -Infinity off it; on it, a body up to 3 m under the top (on the bridge's head) counts.
+  const onBifrostIsle = (x, feet, z) => {
+    if (!bifrostIsle) return false;
+    const ground = bifrostIsle.site.groundAt(x, z);
+    return ground > -Infinity && feet > ground - 3;
+  };
+  const zoneOf = (cave) => {
+    const p = cave.root.position, feet = p.y - cave.baseY;
+    if (playerCaveIndex) return zoneName(playerCaveIndex);
+    if (onSphere(p.x, p.z)) return "sphere";
+    if (inRainforest(p.x, feet, p.z)) return "rainforest";
+    if (onBifrostIsle(p.x, feet, p.z)) return "bifrost";
+    return island.onLand(p.x, p.z) ? "outside" : "none";
+  };
+  // A new zone holds ZONE_HOLD seconds before it is reported, so a bridge's foot does not flicker voice.
+  let zoneHeld = null, zoneHeldFor = 0;
+  // The room sees the Ooga this visitor drives, by name, where it is, its feet and its health; none when free
+  // roaming.
+  const shareDrivenOoga = (dt) => {
     const driven = crew.player;
     BL.net.setBody(driven ? driven.traits.name : null);
-    // The chamber and tunnels under the Mempool island are one room of their own, as a cave is.
-    if (driven) BL.net.setZone(!playerCaveIndex && mempoolIsland.coveredAt(driven.root.position.x, driven.root.position.y - driven.baseY + 0.5, driven.root.position.z) ? "cave-mempool" : zoneName(playerCaveIndex));
-    if (driven) BL.net.sendPose(driven.root.position.x, driven.root.position.y - driven.baseY, driven.root.position.z, driven.root.rotation.y);
+    if (!driven) return;
+    const zone = zoneOf(driven);
+    if (zone === BL.net.state.zone) zoneHeld = null;
+    else if (zone !== zoneHeld) {
+      zoneHeld = zone;
+      zoneHeldFor = 0;
+    } else if ((zoneHeldFor += dt) >= ZONE_HOLD) BL.net.setZone(zone);
+    BL.net.sendPose(driven.root.position.x, driven.root.position.y - driven.baseY, driven.root.position.z, driven.root.rotation.y);
+    BL.net.setHealth(driven.health.value, driven.health.stunned);
+  };
+  // Signed-in players are shown where this one is: the same zone while driving, every place on the island
+  // while looking round free (no zone, no voice).
+  const remoteShown = (rec) => {
+    const net = BL.net.state;
+    if (net.body) return rec.zone === net.zone;
+    return BL.remotePlayers.onIsland(rec.zone);
   };
   const drawExtra = (ctx2d, project, drawBubble) => {
     crew.drawQuotes(ctx2d, project, drawBubble);
@@ -9116,7 +9230,7 @@
     shared.npcPaths = headquarters.npcPaths = BL.npcPaths.create({ island, walkable: npcWalkable, pointAllowed: (x, z) => !npcClosedCaveAt(x, z) && !npcRampRoofAt(x, island.surfaceAt(x, z), z),
       surfaceAt: (x, z, y) => island.supportAt(x, z, y, 1e-6, null, PLAYER_RADIUS) });
     const sleepNavigation = headquarters.sleepNavigation = BL.headquartersSleep.create({ island, beds: bedrolls, walkable: sleepRouteClear, surfaceRoute: shared.npcPaths.route });
-    shared.outdoorBedrolls = headquarters.outdoorBeds = BL.headquartersSleep.outdoorBeds(island, caves.slots,
+    shared.outdoorBedrolls = headquarters.outdoorBeds = BL.headquartersSleep.outdoorBeds(mempoolIsland,
       (x, y, z) => physicalClearAt(x, y, z, 0.15, 1.5, null) && propSegmentClear(x, y, z, x, y, z, 0.15, 1.5, null));
     const sleepRouteFrom = { x: 0, y: 0, z: 0 };
     // An Ooga stood up on its mattress plans from the floor under it: the planner joins a start to its graph along the
@@ -9223,7 +9337,7 @@
     shared.outsideActorHeight = REMOTE_BODY_HEIGHT;
     shared.localOnline = localOnline;
     crew = shared.crew = crewMod.create(shared);
-    remotes = BL.remotePlayers.create({ root, crew, posed: (cave, feet) => {
+    remotes = BL.remotePlayers.create({ root, crew, visible: remoteShown, posed: (cave, feet) => {
       const p = cave.root.position, height = cave.bodyHeight || 1.4;
       floatPose(cave, feet, height, 0, now);
       mempoolIsland.wake(cave.root, p.x, feet, p.z, height, 0.35);
@@ -9253,9 +9367,9 @@
     shared.onShot = (cave, from, to) => npcSync.recordShot(cave, from, to);
     BL.net.setHub(true);
     for (const cave of crew.list) crew.setJetpackOwnership(cave, true, hubModels.jetpack(), hubModels.jetFlame());
-    // Sani hosts the island on ordinary visits; explicit activity fixtures still exercise every state.
+    // Sani hosts the island on ordinary visits; debug visits keep activity-derived states.
     const sani = crew.cavemen.get("SaniExp");
-    if (sani && !contributors.debugState && !contributors.debugRoster && preloadedCharacter !== "saniexp") sani.override = "chilling";
+    if (sani && !DEBUG && preloadedCharacter !== "saniexp") sani.override = "chilling";
     mirrorCave.body = BL.mirrorBody.create(mirrorCave.node, crew.cavemen);
     for (const cave of crew.list) entropyLab.phase.body.track(cave.root, cave.traits.height * 2,
       Math.max(cave.headOpen.verts.length, cave.headClosed.verts.length));
@@ -9504,7 +9618,6 @@
     headquarters.bananaGuides = bananaGuides.state;
     mark("guides");
     updateMeter();
-    if (window.matchMedia("(max-width: 720px), (max-height: 500px)").matches) hud.el.sheet.dataset.open = "false";
     hintTimer = window.setTimeout(() => {
       if (!pilot.player && !clankerPlay.active && !matrixControl.promptAction) hud.hint(COARSE ? "Drag to look · pinch to eye level · sticks to fly · tap a cave" : "Drag to look · scroll to eye level · WASD to fly · tap a cave to enter");
     }, 1200);
@@ -9830,6 +9943,7 @@
     }
     clankerEquipment.length = 0;
     BL.net.setBody(null);
+    zoneHeld = null;
     BL.net.setHub(false);
     npcSync.dispose();
     remotes.dispose();
@@ -9935,6 +10049,8 @@
     return { visibleNodes: nodes, allNodes: all(root), tweens: tweenCount(), targets: input.targetCount, ...fx.stats(), ...crates.stats(), ...crew.stats(), ...pile.stats(), ...critters.stats(), ...mempoolIsland.water.stats(), ...breakables.stats(), ...weather.stats(), ...remotes.stats() };
   };
   const hubScene = {
+    // The island reports its own zone as soon as an Ooga is driven (see `zoneOf`); until then it is nowhere.
+    voiceZone: "none",
     id: "hub", enter, update, overlay, onDonation, onKey, onLootCleared, renderOpts: RENDER_OPTS, leave, stats, liveGeometry,
     root: null, camera: null, input: null, debug: null,
     get inMotion() {
