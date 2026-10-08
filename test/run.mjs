@@ -8196,6 +8196,20 @@ scene("hub", { label: "mirror clanker", query: "solo=1&character=portlandhodl&st
 } }] });
 scene("hub", { perf: true, query: "bananas=1000", opts: { w: 1920, h: 1080, perf: true, motion: true }, steps: [{ name: "wall movement performance", why: "regression: frame rate fell moving behind cave walls during a donation", run: wallPerformance }] });
 scene("lab", { steps: [donation("lab"), labWalking, labKeys, trip("lab")] });
+scene("race", { label:"optional rig link fallback",url:hubPage(src),steps:[{name:"race optional rig link fallback",why:"regression: an optional uniform-limited rig must preserve WebGL and every original CPU driver",run:async b=>{
+  await b.evaluate(`(()=>{
+    const gl=document.getElementById("scene").getContext("webgl2"),create=gl.createProgram,parameter=gl.getProgramParameter,pending=new Set();
+    window.__rigFault={gl,create,parameter,pending};
+    gl.createProgram=function(){const p=create.call(this);pending.add(p);return p;};
+    gl.getProgramParameter=function(p,key){if(key===this.LINK_STATUS&&pending.has(p))return false;return parameter.call(this,p,key);};
+    __ooga.go("race");
+  })()`);
+  try {
+    const ready=await untilPage(b,'B.scene==="race"&&!B.transitioning&&B.renderer.rigFailed&&B.renderedFrames>2',15000);
+    const r=await b.evaluate(`(()=>{const B=__ooga;return {kind:B.renderer.kind,failure:B.renderer.failure,rigFailed:B.renderer.rigFailed,ready:B.renderer.ready,drawn:B.renderer.stats.drawn,racers:B.racers.racers.length,original:B.racers.racers.every(r=>r.node.geometry.meshRig.nodes.every(n=>n.geometry.faces.length>0&&n.meshRigSource===r.node.geometry.meshRig)),faults:__rigFault.pending.size};})()`);
+    record("race optional rig: forced link failure keeps WebGL rendering the full original cast",ready&&r.kind==="webgl2"&&!r.failure&&r.rigFailed&&r.ready&&r.drawn>0&&r.racers===CAST&&r.original&&r.faults>0,JSON.stringify(r));
+  } finally {await b.evaluate('(()=>{const f=__rigFault;f.gl.createProgram=f.create;f.gl.getProgramParameter=f.parameter;delete window.__rigFault;})()');}
+}}]});
 scene("race", { query: "rain=0", steps: [raceStart, { name: "race tracks", why: "regression: the 12-slot grid spawned a free banana on Banana Bay", run: async (b) => { await b.evaluate(`window.__ooga.race.toGarage()`); await raceTracks[1](b); } }, raceRigs, raceRigContext, racePause, play("race", "a whole cup under the autopilot: every racer finishes in order, the cup medal and every track's best are saved", cupRun), raceMirror, raceAgain, trip("race")] });
 scene("drop", { steps: [dropStart, dropSteering, play("drop", "a jump lands on the target, scores its own medal and is saved as the best", dropRun), dropCrash, trip("drop")] });
 scene("orbit", { steps: [{ name: "orbit flow", why: "regression: the spacewalk air bonus was missing from the flight log", run: orbitFlow }, orbitSteering, orbitMissed, orbitEscape, trip("orbit")] });
@@ -10908,7 +10922,71 @@ const shaderDerivationProof = async () => {
     && helperOut.missedRe === "Shader derivation never matched /nope/g" && helperOut.identity && helperOut.applied, cases: 3 };
 };
 
+// Exercise the production recovery and DSB support gates with a corner whose
+// final destination is across a wall, and with a level platform over deep water.
+const reviewMovementProof = async () => {
+  const crewSource = await readFile(join(root, "src/js/crew.js"), "utf8");
+  const recovery = crewSource.slice(crewSource.indexOf("    const recoverWalker ="), crewSource.indexOf("    const recoveryBodies ="));
+  const nav = { mode: 0, costs: new Float32Array(441), parents: new Int16Array(441), closed: new Uint8Array(441), heights: new Float32Array(441), searches: 0 };
+  const a = { tx: NaN, tz: NaN, goalX: NaN, goalZ: NaN, pathIndex: -1, pathVersion: -1, best: Infinity, stalled: 0, navigation: nav };
+  const cave = { root: { position: { x: 0, y: 0, z: 0 } }, baseY: 0, avoidance: a, traffic: { waiting: false },
+    pathing: { tx: 5, tz: 10, count: 4, index: 0, version: 1, laneX: [0, 0, 5, 5], laneZ: [0, 5, 5, 10] } };
+  const context = { NAV_CENTER: 220, cave };
+  runInNewContext(`${recovery} this.tick = () => recoverWalker(cave, 0, 1, 0.1, true);`, context);
+  context.tick();
+  const corner = a.tx === 0 && a.tz === 5;
+  cave.pathing.index = 1; context.tick();
+  for (let i = 0; i < 12; i++) { cave.pathing.index = i & 1; context.tick(); }
+  const jitter = nav.mode === 1 && nav.searches === 1 && a.stalled > 0.75 && a.pathIndex === 1;
+  cave.pathing.version++; context.tick();
+  const replan = nav.mode === 0 && a.stalled === 0 && a.pathVersion === 2;
+  const dsbSource = await readFile(join(root, "src/js/scene-dsb.js"), "utf8");
+  const walking = dsbSource.slice(dsbSource.indexOf("    const walkable="), dsbSource.indexOf("    const flyable="));
+  let support = 3, terrainAllowed = false, clear = true;
+  const actor = { bodyRadius: 0.7 };
+  const floorContext = { interiors: null, STEP: 0.6, Math,
+    land: { groundAt: () => -5, walkable: () => terrainAllowed },
+    collision: { solids: { supportAt: () => support, segmentClear: () => clear, escapeSegmentClear: () => false } },
+    groundAt: () => Math.max(-5, support) };
+  runInNewContext(`${walking} this.walk = walkable;`, floorContext);
+  const platform = floorContext.walk(0, 0, 0, 0.1, 3, 1.5, actor);
+  clear = false; const wall = !floorContext.walk(0, 0, 0, 0.1, 3, 1.5, actor);
+  clear = true; support = -Infinity; const water = !floorContext.walk(0, 0, 0, 0.1, -5, 1.5, actor);
+  terrainAllowed = true; const terrain = floorContext.walk(0, 0, 0, 0.1, -5, 1.5, actor);
+  return { corner, jitter, replan, platform, wall, water, terrain };
+};
+
+const reviewCrowdAndFallbackProof = async () => {
+  const source = await readFile(join(root,"src/js/crew.js"),"utf8");
+  const body = { root:{visible:true,position:{x:0,y:0,z:0}},baseY:0,bodyHeight:1.5,bodyRadius:.4,state:"chilling",camp:{seat:null} };
+  const far = Array.from({length:1000},(_,i)=>({...body,root:{visible:true,position:{x:20+i,y:0,z:20}}}));
+  const near = {...body,root:{visible:true,position:{x:.1,y:0,z:.1}}};
+  let fetches=0,gaps=0;
+  const c={crewList:[body,...far,near],ctx:{outsideActorHeight:1.5,outsideActors:()=>{fetches++;return [{x:20,y:0,z:20}];}},SHOULDER_GAP:.68,OUTSIDE_GAP:1,NAV_STEP:.025,STEP:.6,
+    gapClear:()=>{gaps++;return true;},npcWalkable:()=>true,groundAt:()=>0};
+  const edge=source.slice(source.indexOf("    const recoveryBodies ="),source.indexOf("    const searchWalker ="));
+  runInNewContext(edge+"this.edge=recoveryHeight;",c);
+  const clear=c.edge(body,0,0,0,.5,0,.025)===0;
+  const filtered=fetches===1&&gaps===20;
+  const occupied=source.slice(source.indexOf("    const spotOccupied ="),source.indexOf("    const outsideClear ="));
+  runInNewContext(occupied+"this.occupied=spotOccupied;",c);
+  const blocked=c.occupied(body,0,0,0);near.root.visible=false;const hidden=!c.occupied(body,0,0,0);near.root.visible=true;near.root.position.y=3;const above=!c.occupied(body,0,0,0);
+  const renderer=await readFile(join(root,"src/js/gl-renderer.js"),"utf8");
+  const collect=renderer.slice(renderer.indexOf("    const collect ="),renderer.indexOf("    const updateRig ="));
+  const seen=[],r={rigMode:false,hiddenFromCutaway:()=>false,cutawayFade:0,recordFor:g=>{seen.push(g);return {active:true};},suppressed:0,CULL_MARGIN:0,sphereInFrustum:()=>true};
+  runInNewContext(collect+"this.collect=collect;this.collectRig=collectRig;",r);
+  const geo={meshRig:{}},original={faces:[{}]},aggregate={geometry:geo,instanceData:[],instanceCount:1},part={geometry:original,meshRigSource:geo.meshRig,instanceData:[],instanceCount:1};
+  r.collect(aggregate);r.collect(part);const cpu=seen.length===1&&seen[0]===original;
+  seen.length=0;r.rigMode=true;r.collectRig(aggregate);r.collectRig(part);const gpu=seen.length===1&&seen[0]===geo;
+  return {clear,filtered,blocked,hidden,above,cpu,gpu,fetches,gaps};
+};
+
 const unitChecks = async () => {
+  const reviewCrowd=await reviewCrowdAndFallbackProof();
+  record("review crowd: recovery fetches outside actors once per edge and tests only nearby bodies; one station helper handles height and visibility; CPU fallback draws original joints only",["clear","filtered","blocked","hidden","above","cpu","gpu"].every(k=>reviewCrowd[k]),JSON.stringify(reviewCrowd));
+  const movementReview = await reviewMovementProof();
+  record("review movement: recovery follows the next lane bend despite backward-index jitter; solid platforms bypass terrain gates while walls and water remain blocked", Object.values(movementReview).every(Boolean), JSON.stringify(movementReview));
+
   const waterProgram = selectedWaterProgramProof();
   record("DSB water: environment and sampler bindings follow the selected ordinary or rig shader while state replacement releases owned textures", waterProgram.cases === 2 && waterProgram.failures === 0, JSON.stringify(waterProgram));
 
