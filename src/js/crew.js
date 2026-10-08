@@ -582,7 +582,7 @@
         roofEscape: { active: false, jumping: false, blocked: 0 },
         ladder: ctx.ladders ? { plane: null, cooldown: 0, across: 0, along: 0, descentHeld: false, mix: 0,
           flat: { width: 0, depth: 0, overlap: 0 }, vertical: { width: 0, height: 0, overlap: 0 } } : null,
-        avoidance: { active: false, side: i & 1 ? 1 : -1, stalled: 0, best: Infinity, tx: NaN, tz: NaN, pathIndex: -1, pathVersion: -1,
+        avoidance: { active: false, side: i & 1 ? 1 : -1, stalled: 0, best: Infinity, tx: NaN, tz: NaN, goalX: NaN, goalZ: NaN, pathIndex: -1, pathVersion: -1,
           detour: { site: -1, phase: 0, side: 1, entryX: 0, goalX: NaN, goalZ: NaN, x: 0, z: 0 },
           navigation: { mode: 0, x: 0, z: 0, count: 0, index: 0, searches: 0, expansions: 0,
             jumpCandidate: 0, jumps: 0, jumpX: 0, jumpZ: 0, clearance: 0, double: false, boosted: false, moving: false,
@@ -3686,16 +3686,32 @@
     };
     const recoverWalker = (cave, tx, tz, dt, usePath = false) => {
       const a = cave.avoidance, nav = a.navigation, p = cave.root.position, path = cave.pathing;
-      // Look-ahead hints move with the walker. Measure progress toward the
-      // current authored segment end, keeping the route's destination stable.
-      const stable = usePath && path && Number.isFinite(path.tx) && Number.isFinite(path.tz) && path.count > 1;
+      // Keep the route identity stable, but recover toward its current segment,
+      // not through the wall toward the final destination. Nearest-leg jitter
+      // may move backward; only a new route or forward progress resets a stall.
+      const stable = usePath && path && Number.isFinite(path.tx) && Number.isFinite(path.tz) && path.count > 1 && path.index < path.count - 1;
       const gx = stable ? path.tx : tx, gz = stable ? path.tz : tz;
-      const leg = stable && path.index < path.count - 1 ? path.index : -1, version = stable ? path.version : -1;
-      const distance = Math.hypot((leg >= 0 ? path.laneX[leg + 1] : gx) - p.x, (leg >= 0 ? path.laneZ[leg + 1] : gz) - p.z);
-      if (cave.traffic.waiting) { a.stalled = 0; a.best = Infinity; nav.mode = 0; return; }
-      if (gx !== a.tx || gz !== a.tz || leg !== a.pathIndex || version !== a.pathVersion) {
-        a.tx = gx; a.tz = gz; a.pathIndex = leg; a.pathVersion = version; a.best = distance; a.stalled = 0; nav.mode = 0;
+      const leg = stable ? Math.min(path.index, path.count - 2) : -1, version = stable ? path.version : -1;
+      const changed = gx !== a.goalX || gz !== a.goalZ || version !== a.pathVersion || !Number.isFinite(a.tx);
+      if (changed || leg > a.pathIndex) {
+        a.goalX = gx; a.goalZ = gz; a.pathIndex = leg; a.pathVersion = version;
+        let end = leg + 1;
+        if (stable) {
+          // Graph samples along one straight lane are not recovery goals:
+          // a sub-metre sample can finish the search before the obstruction.
+          // Stop at the next bend, keeping recovery on this side of its wall.
+          const dx = path.laneX[end] - path.laneX[leg], dz = path.laneZ[end] - path.laneZ[leg];
+          while (end + 1 < path.count) {
+            const nx = path.laneX[end + 1] - path.laneX[end], nz = path.laneZ[end + 1] - path.laneZ[end];
+            if (dx * nx + dz * nz <= 0 || Math.abs(dx * nz - dz * nx) > 1e-7) break;
+            end++;
+          }
+        }
+        a.tx = stable ? path.laneX[end] : tx; a.tz = stable ? path.laneZ[end] : tz;
+        a.best = Infinity; a.stalled = 0; nav.mode = 0;
       }
+      const distance = Math.hypot(a.tx - p.x, a.tz - p.z);
+      if (cave.traffic.waiting) { a.stalled = 0; a.best = Infinity; nav.mode = 0; return; }
       if (distance < a.best - 0.1) { a.best = distance; a.stalled = 0; }
       else a.stalled += dt;
       if (!nav.mode && a.stalled > 0.75 && distance > 0.15) {
