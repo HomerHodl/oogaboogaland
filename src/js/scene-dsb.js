@@ -205,10 +205,13 @@
     const walkable=(ax,az,bx,bz,y,h=1.5,a)=>{
       if(interiors?.active)return interiors.walkable(ax,az,bx,bz,y,h,a);
       // The approved geography keeps its depth, deck-edge and slope gates; the collision set adds solid props on top.
-      if(Math.hypot(bx,bz)>125||!land.walkable(ax,az,bx,bz,y,h,a))return false;
-      const floor=groundAt(bx,bz,y),feet=Math.max(y,floor),r=a?.bodyRadius||.4;
+      if(Math.hypot(bx,bz)>125)return false;
+      const solids=collision?.solids,r=a?.bodyRadius||.4;
+      const terrain=land.groundAt(bx,bz),support=solids?solids.supportAt(bx,bz,y,STEP,r):-Infinity;
+      const raised=support>terrain+1e-7&&Math.abs(support-y)<=STEP+1e-7;
+      if(!raised&&!land.walkable(ax,az,bx,bz,y,h,a))return false;
+      const floor=groundAt(bx,bz,y,undefined,a),feet=Math.max(y,floor);
       if(floor-y>STEP+1e-7)return false;
-      const solids=collision?.solids;
       return !solids||solids.segmentClear(ax,feet+STEP,az,bx,feet+STEP,bz,r,Math.max(0,h-STEP))
         || solids.escapeSegmentClear(ax,feet+STEP,az,bx,feet+STEP,bz,r,Math.max(0,h-STEP));
     };
