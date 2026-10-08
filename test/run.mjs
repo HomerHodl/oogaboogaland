@@ -2458,6 +2458,17 @@ const session = (url, steps, opts, final) => output.run({ lines: [], results: []
     }
 
     if(steps.some(([name])=>name.startsWith("dsb shoreline")||name.includes("Portara aperture")))await b.send("Page.addScriptToEvaluateOnNewDocument",{source:`(${shorelineHarness.toString()})()`});
+    // Record the actual guide-entry policy inputs before boot; current quality may downgrade later.
+    if (steps.some(([name]) => name === "factory greeter")) await b.send("Page.addScriptToEvaluateOnNewDocument", { source: `(() => {
+      window.BL = {}; let module;
+      Object.defineProperty(BL, "factoryGreeter", { configurable: true, get: () => module, set: next => {
+        module = next; const create = next.create;
+        next.create = options => {
+          window.__factoryGreeterEntry = { coarse: !!options.coarse, quality: options.quality ? options.quality() : "high" };
+          return create(options);
+        };
+      } });
+    })()` });
     // Install before scripts/boot: observe every DSB runtime factory and prohibit live requests.
     if (steps.some(([name]) => name.startsWith("Ooga Portal")||name.includes("Portara aperture"))) await b.send("Page.addScriptToEvaluateOnNewDocument", { source: `(() => {
       const counts = window.__gateDormancy = { enter: 0, land: 0, zuzu: 0, data: 0, tv: 0, audio: 0, chat: 0, fetch: 0, socket: 0, radio: 0 };
@@ -5854,7 +5865,7 @@ const factoryWalking = { name: "factory walking", why: "regression: Factory move
   })()`);
   record("factory rebalancer: walk onto and off the low drum; a shallow console overlap allows walking out while deeper movement stays blocked", rebalancer.onto > 0.5 && Math.abs(rebalancer.peak - (rebalancer.height + 0.56)) < 1e-5 && Math.abs(rebalancer.off - rebalancer.height) < 1e-5 && rebalancer.overlapped && rebalancer.inwardBlocked && rebalancer.escaped > 0.5 && rebalancer.clear && rebalancer.grounded, JSON.stringify(rebalancer));
 } };
-const factoryGreeter = { name: "factory greeter", why: "rule: Talk opens the foreman's tour menu, keyboard choices work, Escape dismisses it, and a tour can be ended without leaving the cave", run: async (b) => {
+const factoryGreeter = { name: "factory greeter", why: "rule: the guide's four tours complete and return, menu controls and cancellation work, and device detail respects quality and visit ownership", run: async (b) => {
   const near = await b.evaluate(`(() => {
     const B = __ooga, a = B.cavemen.get("portlandhodl");
     if (B.crew.player !== a) B.pilot.possess(a);
@@ -5864,7 +5875,10 @@ const factoryGreeter = { name: "factory greeter", why: "rule: Talk opens the for
   })()`);
   await b.key(" ");
   const menu = await b.evaluate(`(() => ({ open: !document.querySelector(".greeter-menu").hidden,
-    choices: document.querySelectorAll(".greeter-choice").length, phase: __ooga.factory.greeter.state.phase }))()`);
+    choices: document.querySelectorAll(".greeter-choice").length, phase: __ooga.factory.greeter.state.phase,
+    fits: [...document.querySelectorAll(".greeter-choice")].every(button => {
+      const r = button.getBoundingClientRect(); return r.left >= 0 && r.top >= 0 && r.right <= innerWidth && r.bottom <= innerHeight;
+    }) }))()`);
   await b.key("ArrowDown");
   const selected = await b.evaluate(`__ooga.factory.greeter.state.selection`);
   await b.key("Escape");
@@ -5877,11 +5891,63 @@ const factoryGreeter = { name: "factory greeter", why: "rule: Talk opens the for
     document.querySelector(".greeter-stop").click(); __ooga.advance(0.5, 1 / 60);
     return { phase: __ooga.factory.greeter.state.phase, scene: __ooga.scene };
   })()`);
-  record("factory greeter: the act button opens four tours, arrows select, Escape closes the menu, and End tour returns Flink without leaving the cave",
-    near.scene === "factory" && near.label === "TALK TO FLINK" && menu.open && menu.choices === 4 && menu.phase === "menu"
+  record("factory greeter: the act button opens four tours, arrows select, Escape closes the menu, and End tour returns Tess without leaving the cave",
+    near.scene === "factory" && near.label === "TALK TO TESS" && menu.open && menu.choices === 4 && menu.fits && menu.phase === "menu"
       && selected === 1 && dismissed.scene === "factory" && dismissed.hidden && started.phase === "walk"
       && started.tour === "payments" && started.stop && ended.phase === "idle" && ended.scene === "factory",
     JSON.stringify({ near, menu, selected, dismissed, started, ended }));
+  const tours = await b.evaluate(`(() => {
+    const B = __ooga, g = B.factory.greeter, a = B.crew.player, rows = [];
+    const follow = () => {
+      // Keep the visitor beside the guide without occupying her next step. Existing floor checks
+      // independently prove the widest visitor can reach these stairs, bridges and landings.
+      a.root.position.x = g.root.position.x + 2;
+      a.root.position.z = g.root.position.z;
+      a.root.position.y = g.root.position.y - 1.05 + a.baseY;
+    };
+    let elapsed = 0;
+    for (const id of Object.keys(BL.factoryGreeter.TOURS)) {
+      follow(); g.greet();
+      const choices = [...document.querySelectorAll(".greeter-choice")];
+      choices.find(button => button.textContent === BL.factoryGreeter.TOURS[id].title).click();
+      const stops = new Set(), lines = new Set(); let returned = false;
+      for (let i = 0; i < 18000; i++) {
+        follow(); g.update(0.04, elapsed += 0.04);
+        if (g.state.phase === "talk") stops.add(g.state.waypoint);
+        lines.add(g.state.spoken);
+        if (g.state.phase === "idle") { returned = true; break; }
+      }
+      rows.push({ id, returned, stops: [...stops], expected: Object.keys(BL.factoryGreeter.TOURS[id].stops).map(Number),
+        blocked: lines.has("blocked"), position: { x: g.root.position.x, z: g.root.position.z } });
+    }
+    return rows;
+  })()`);
+  record("factory greeter: all four tours advance hands-free through every stop and return along stairs and bridges to the entrance post",
+    tours.length === 4 && tours.every(row => row.returned && !row.blocked && row.expected.every(stop => row.stops.includes(stop))
+      && Math.hypot(row.position.x + 2, row.position.z - 23.6) < 0.025), JSON.stringify(tours));
+  const detail = await b.evaluate(`(() => {
+    const B = __ooga, g = B.factory.greeter, camera = B.camera, head = g.root.children[0].children[0];
+    const original = { ...camera.position }, quality = B.renderer.quality, set = new Set(); g.liveGeometry(set);
+    const entry = window.__factoryGreeterEntry, expectedDetail = !entry.coarse && entry.quality !== "low";
+    // Explicit Medium exercises an eligible visit even if the automatic tier fell while other checks ran.
+    if (expectedDetail) B.renderer.setQuality("medium");
+    const at = distance => { camera.position.x = g.root.position.x; camera.position.y = g.root.position.y;
+      camera.position.z = g.root.position.z + distance; g.update(0, 0); return head.geometry; };
+    const far = at(8), near = at(5), heldNear = at(6.5), farAgain = at(8), heldFar = at(6.5);
+    B.renderer.setQuality("low"); const lowNear = at(5), lowFar = at(8);
+    B.renderer.setQuality(quality); at(8); g.liveGeometry(set);
+    const geometry = []; const collect = node => { if (node.geometry) geometry.push(node.geometry); for (const child of node.children) collect(child); }; collect(g.root);
+    Object.assign(camera.position, original);
+    return { nearFaces: near.faces.length, farFaces: far.faces.length, switched: near !== far, expectedDetail,
+      lowCoarse: lowNear === lowFar && (expectedDetail ? lowNear.faces.length < far.faces.length : lowNear === far),
+      lightFaces: lowNear.faces.length, retainedFaces: [...set].reduce((sum, mesh) => sum + mesh.faces.length, 0),
+      entry, prepared: set.size === (expectedDetail ? 36 : 12),
+      stable: heldNear === near && farAgain === far && heldFar === far, retained: geometry.every(mesh => set.has(mesh) || mesh === BL.factoryModels.forgeWave().gold), count: set.size };
+  })()`);
+  record("factory greeter: close-up detail switches with hysteresis and every animated tier remains in the visit's live geometry set",
+    detail.switched === detail.expectedDetail && detail.stable && detail.retained && detail.lowCoarse && detail.prepared
+      && detail.lightFaces === 696 && detail.retainedFaces <= (detail.expectedDetail ? 225000 : 7000)
+      && (detail.expectedDetail ? detail.nearFaces === 55040 && detail.farFaces === 10752 : detail.nearFaces === detail.farFaces), JSON.stringify(detail));
 } };
 const factoryLadders = { name: "factory ladders", why: "rule: Oogas must climb the rebalancer and lighthouse ladders through real controls, hold their height at rest, walk off both landings and jump away without snapping back", run: async (b) => {
   const r = await b.evaluate(`(() => {
@@ -7836,7 +7902,7 @@ scene("orbit", { steps: [{ name: "orbit flow", why: "regression: the spacewalk a
 scene("mine", { steps: [mineResume, trip("mine"), mineControls] });
 scene("factory", { query: "character=portlandhodl", steps: [factoryWalking, factoryGreeter, factoryLadders, factoryRailingJump, factoryWeapons, factoryForward, factoryForge, factoryShields, trip("factory")] });
 scene("factory", { label: "entrance", url: hubPage(src, "character=portlandhodl"), steps: [factoryFloor, factoryEntrance] });
-scene("factory", { label: "canvas2d", query: "canvas2d=1", steps: [factoryCanvas] });
+scene("factory", { label: "canvas2d", query: "canvas2d=1&character=portlandhodl", steps: [factoryCanvas, factoryGreeter] });
 scene("bifrost", { url: hubPage(src, "solo=1&character=portlandhodl"), steps: [bifrostEntrance, bifrostWalking, bifrostExit, trip("bifrost")] });
 scene("bifrost", { label: "dsb round trip", query: "character=portlandhodl", steps: [bifrostDsb] });
 scene("bifrost", { label: "poker round trip", query: "character=portlandhodl", steps: [bifrostPoker] });
@@ -7934,7 +8000,7 @@ scene("race", { query: "pos=0&rain=0", opts: PHONE_SIZE, steps: [phone("race", {
 scene("drop", { query: "pos=0", opts: PHONE_SIZE, steps: [phone("drop", { card: '[data-intro="drop"]', play: "window.__ooga.drop.start()", required: ["#joy-move", "#joy-look", "#act", ".leave"] })] });
 scene("orbit", { query: "pos=0", opts: PHONE_SIZE, steps: [phone("orbit", { card: '[data-intro="orbit"]', play: "window.__ooga.orbit.launch()", required: ["#joy-move", "#act", ".leave"] })] });
 scene("mine", { query: "pos=0", opts: PHONE_SIZE, steps: [phone("mine", { card: "#mine-intro", required: ["#joy-move", "#joy-look", "#act", "#mine-view-btn", "#mine-pause-btn", "#mine-mute", ".leave"] })] });
-scene("factory", { query: "pos=0", opts: PHONE_SIZE, steps: [phone("factory", { required: ["#joy-move", "#joy-look", ".leave"] })] });
+scene("factory", { query: "pos=0&character=portlandhodl", opts: PHONE_SIZE, steps: [phone("factory", { required: ["#joy-move", "#joy-look", ".leave"] }), factoryGreeter] });
 scene("bifrost", { query: "pos=0", opts: PHONE_SIZE, steps: [phone("bifrost", { required: ["#joy-move", "#joy-look", ".leave"] })] });
 scene("arcade", { query: "pos=0", opts: PHONE_SIZE, steps: [phone("arcade", { required: ["#joy-move", "#joy-look", ".leave"] })] });
 
@@ -8816,8 +8882,9 @@ scene("factory", { label: "lifecycle", url: hubPage(src), steps: [{ name: "facto
   const before = await snapshot(), visits = [];
   for (let i = 0; i < 6; i++) {
     await travel("factory");
-    // One listener belongs to the hall and one to Flink; both leave with the scene.
+    // One listener belongs to the hall and one to Tess; both leave with the scene.
     const hall = await b.evaluate('__factoryLife.subscriptions');
+    const lighter = await b.evaluate(`(() => { const set = new Set(); __ooga.factory.greeter.liveGeometry(set); return __ooga.renderer.quality === "low" && set.size === 12; })()`);
     await travel("lab");
     const away = await b.evaluate('__factoryLife.subscriptions');
     await travel("hub"); await settled(); await rendered(2);
@@ -8825,10 +8892,10 @@ scene("factory", { label: "lifecycle", url: hubPage(src), steps: [{ name: "facto
       const n = __ooga.factory.node;
       return { same: n === __factoryLife.node, subscriptions: __factoryLife.subscriptions, lines: n.placeOf.size, places: n.bays.length + n.stands.length };
     })()`);
-    visits.push({ ...visit, hall, away });
+    visits.push({ ...visit, hall, away, lighter });
   }
   const after = await snapshot(), same = (key) => before.stats[key] === after.stats[key];
-  record("soak: factory cycles: one bounded node survives six round trips, the hall's subscription released, without retaining scene nodes, targets or DOM", visits.every((v) => v.same && v.hall === 2 && v.away === 0 && v.subscriptions === 1 && v.lines <= v.places)
+  record("soak: factory cycles: one bounded node survives six round trips, the hall's subscription released, without retaining scene nodes, targets or DOM", visits.every((v) => v.same && v.hall === 2 && v.away === 0 && v.lighter && v.subscriptions === 1 && v.lines <= v.places)
     && same("allNodes") && same("targets") && same("dom") && after.stats.tweens === 0, JSON.stringify({ visits, before: before.stats, after: after.stats }));
   record("soak: factory cycles: GPU records, listeners and retained heap remain bounded", Math.abs(after.stats.gl.records - before.stats.gl.records) <= 3 && before.nodes === after.nodes && before.listeners === after.listeners && within(before, after, 0.1), heapDetail(before, after));
 } }] });
