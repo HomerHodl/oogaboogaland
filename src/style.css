@@ -1412,6 +1412,14 @@ body[data-active-scene="arcade"] .magazine-hud {
   overflow-x: auto;
 }
 
+/* On touch screens the thumb sticks own the bottom edge: dock the debug panel at the top instead. */
+@media (pointer: coarse) {
+  .position-debug {
+    top: calc(16px + var(--safe-top));
+    bottom: auto;
+  }
+}
+
 /* The feed panel: the Konami code toggles it, page-wide, over any scene. */
 .feed-debug {
   position: fixed;
@@ -4651,7 +4659,7 @@ body.orbit-dragging #tooltip {
   }
 
   .sheet[data-open="false"] .sheet-toggle {
-    top: calc(-39px - var(--safe-bottom));
+    top: calc(-45px - var(--safe-bottom));
   }
 
   .sheet[data-open="true"]~.joysticks,
@@ -5047,7 +5055,7 @@ body.orbit-dragging #tooltip {
   }
 
   .sheet[data-open="false"] .sheet-toggle {
-    top: calc(-39px - var(--safe-bottom));
+    top: calc(-45px - var(--safe-bottom));
   }
 
   .equipment-hud {

@@ -1,0 +1,84 @@
+{
+  "purpose": "Measured Canvas Timechain repair and unchanged-deadline lifecycle acceptance validation.",
+  "base": "c14e9649ff28298d65a5a84907c6d94f00502a99",
+  "sources": {
+    "src/js/canvas-renderer.js": "97e80862b89d11f8bf8ad99f77fd4f28167c5df2f65e4d358929c597e796637d",
+    "test/run.mjs": "d528b5178df80ccabbad6514cfd058ad2c2df89727d0042af683e6175d4dd1fb"
+  },
+  "cause": {
+    "canvasProfile": "The expensive Timechain orientation spent about92% of sampled CPU time in Canvas rendering. Sixteen observed renders had median895.35ms; hub update median1.0ms and overlay5.8ms. Full original Canvas crossing exceeded its120-second watchdog on the baseline diagnostic.",
+    "lifecycle": "Four-lane full suites exceeded original8-second return deadlines. Exact quiet DSB return settled in1575.3ms, Hub.enter629.7ms. Complete isolated DSB and Factory workloads both passed all original travel/resource assertions."
+  },
+  "repair": {
+    "canvas": "Conservative per-geometry static bounding boxes reject wholly offscreen nodes without skipping children, changing face order, dropping detail or omitting frames. Immutable receiver metadata uses a WeakMap. Matrix receiver/glyph, negative-alpha, inherited mode, deformation, clipping, reflection and non-affine/projective paths bypass culling.",
+    "runner": "Explicit exclusive scene flag runs only Canvas Timechain, DSB lifecycle and Factory lifecycle after the ordinary parallel queue. Perf tasks remain first and alone. All original assertions, frames, quality policy,8-second deadlines and120-second watchdog remain."
+  },
+  "checks": [
+    {
+      "command": "ONLY=\"canvas bounds\" LANES=1 VERBOSE=1 node test/run.mjs lab",
+      "result": "135/135; exit0",
+      "detail": "Exact pixel parity at perspective/orthographic mixes0,.25,.5,.75,1; near/viewport crossings and visible child under offscreen parent. Ordinary face reads9 vs reference15; five independent special-path counters each1."
+    },
+    {
+      "command": "ONLY=\"timechain canvas2d\" LANES=1 VERBOSE=1 node test/run.mjs hub",
+      "result": "140/140; exit0",
+      "detail": "All original shore/path/movement, six complete board sections/details and two Hub round trips. Boot5.2s; crossing clean console80.6s; body90.5s. Other worker CPU activity overlapped26s, so this functional pass is not isolated speed evidence."
+    },
+    {
+      "command": "ONLY=\"lifecycle\" LANES=1 VERBOSE=1 node test/run.mjs factory dsb",
+      "result": "139/139; exit0;2.8min",
+      "detail": "Quiet complete original six-visit soaks. All original8-second travel deadlines and four resource assertions passed. No Watchtower fixture added to this branch."
+    },
+    {
+      "command": "npm run test:unit",
+      "result": "133/133; exit0; final source"
+    },
+    {
+      "command": "node scripts/build.mjs",
+      "result": "exit0; final source; generated tracked HTML restored"
+    },
+    {
+      "command": "node --check src/js/canvas-renderer.js; node --check test/run.mjs; git diff --check",
+      "result": "all exit0; final source"
+    },
+    {
+      "diagnostic": "Conservative bounds VM property test",
+      "result": "20,000 affine/sheared boxes,160,000 interior samples:7,313 visible samples never rejected;18,388 boxes rejected; four non-affine last-row bypass cases passed."
+    },
+    {
+      "diagnostic": "Extracted actual runner scheduling contract",
+      "result": "Perf first and alone; ordinary maximum concurrency4; both exclusive mock tasks after ordinary queue and mutually isolated; dispose last."
+    }
+  ],
+  "resources": {
+    "dsb": {
+      "gpuRecords": [
+        941,
+        941
+      ],
+      "objectHeapMB": [
+        376.29,
+        376.48
+      ],
+      "nodeTargetTweenAttachedDom": "identical"
+    },
+    "factory": {
+      "gpuRecords": [
+        978,
+        979
+      ],
+      "objectHeapMB": [
+        415.94,
+        413.99
+      ],
+      "attachedDom": [
+        3111,
+        3111
+      ],
+      "nodeTargetTween": "identical",
+      "allSixVisitSubscriptions": "released"
+    }
+  },
+  "limits": "Browser workloads passed before the final exclusive-runner and non-affine safety guard were added. Final source build/unit/syntax and VM guard/scheduler checks passed afterward. The central owner must run the complete integrated final browser suite. No claim of physical low-end device performance, broad engine slowdown repair, merge or deployment.",
+  "recordStatus": "Historical diagnostic, not current follow-up acceptance; see acceptance-followup-evidence.json"
+}

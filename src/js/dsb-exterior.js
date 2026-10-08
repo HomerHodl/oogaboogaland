@@ -94,9 +94,10 @@
     for(const [kind,cx,cz,region] of [["bench",26,28,"chora"],["bench",58,18,"chora"],["pot",35,38,"chora"],["crate",-46,21,"harbor"],["barrel",-36,20,"harbor"],["bench",-50,25,"harbor"]]){
       let placed=false;for(let ring=0;ring<4&&!placed;ring++)for(let j=0;j<12&&!placed;j++){const a=j*Math.PI/6;placed=ground(kind,cx+Math.cos(a)*ring,cz+Math.sin(a)*ring,kind==="bench"?1.1:.75,0,1,region);}
     }
-    // Harbor equipment stays at the outer edge of the existing marine structures.
+    // Keep the bollards flush with the 1.2 m deck edge: their 0.24 m
+    // half-width must leave the centre lane clear for the canonical body.
     for(const x of [-43,-34])for(const z of [45,51,57]){
-      node(group,BL.dressing.chora("bollard"),x+.92,1.35,z);placements.push({kind:"bollard",x:x+.92,y:1.35,z,r:.25,low:1.35,high:1.35,region:"pier"});
+      node(group,BL.dressing.chora("bollard"),x+.96,1.35,z);placements.push({kind:"bollard",x:x+.96,y:1.35,z,r:.25,low:1.35,high:1.35,region:"pier"});
     }
     for(const b of land.buildings.filter(b=>b.name.startsWith("Harbor"))){
       const c=Math.cos(b.yaw),s=Math.sin(b.yaw),x=b.x+s*(b.d/2+.06),z=b.z+c*(b.d/2+.06);
@@ -104,7 +105,9 @@
     }
     // Deterministic small shoreline accents; no new strip behind Olympus.
     const rand=BL.math.mulberry32(81037),coast=[...land.coast,land.coast[0]];
-    for(let i=0;i<2400;i++){
+    // The protected routes and existing planting leave few eligible shore
+    // pockets. Continue the same bounded sequence to fill those pockets.
+    for(let i=0;i<6000;i++){
       const x=-83+rand()*165,z=-26+rand()*97,edge=distance(coast,x,z);
       if(edge<3||edge>9||land.heightAt(x,z)>4)continue;
       ground(i%4===0?"driftwood":i%3===0?"grass":"rock",x,z,.75,rand()*Math.PI*2,i%4===0?.8:.45,"coast");

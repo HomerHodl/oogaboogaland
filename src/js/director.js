@@ -72,7 +72,7 @@
   const debugMagazines = DEBUG ? (params.get("mag") === "2" ? 2 : params.get("mag") === "1" ? 1 : 0) : 0;
   world.magazine = { owned: debugMagazines > 0, count: debugMagazines, ammo: debugMagazines ? 30 : 0, carrier: null };
 
-  let active = null;
+  let active = null, activeMeshRigs = false;
   let sceneTime = 0;
   let transition = null;
   let fade = 0;
@@ -206,6 +206,7 @@
     // The scene's own zone (`voiceZone`), else one of its own; the island and DSB Land report theirs as they go.
     window.BL.net.setZone(next.voiceZone || (next.id === "dsb" ? "dsb-outside" : `scene-${next.id}`));
     next.enter(ctx);
+    activeMeshRigs = next.renderOpts?.meshRigs === true;
     active = next;
     sceneTime = 0;
     router.arrive(next.id, place, ctx.from === null);
@@ -352,7 +353,7 @@
     }
     agentPlay.update(dt);
     updateWorldClock(now);
-    const drawn = renderer.render(active.root, active.camera, active.renderOpts);
+    const drawn = renderer.render(active.root, active.camera, active.renderOpts, activeMeshRigs);
     if (drawn && !firstDraw) {
       firstDraw = true;
       mark("drawn");

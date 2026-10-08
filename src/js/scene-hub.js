@@ -164,6 +164,7 @@
   const BUILD_RADIUS = 13;
   const NUDGES = [0, -2, 2, -4, 4, -6, 6, -8, 8];
   const PATH_GEOMETRY = new WeakMap();
+  const CAVE_TERRAIN_LAYOUTS = new WeakMap();
   const TIMECHAIN_NEAR = 25, TIMECHAIN_OUTER_PERIOD = 180;
   const DRESSED = new WeakMap();
   const DRESSING_LAMPS = BL.dressing.LIGHT_RGB.map(([r, g, b]) => ({ r, g, b, radius: 5.5, glow: 0.9, hide: false }));
@@ -251,6 +252,7 @@
   let cutawayTravelRamp = null, cutawayTravelChannel = -1, cutawayTravelStation = 0;
   const CUTAWAY_PATH_STATE = { lo: new Uint16Array(4), hi: new Uint16Array(4), mix: new Float32Array(4), windowMix: new Float32Array(2), active: 0, version: 1 };
   const cutawayHiddenNodes = [];
+  let cutawayPathBounds = null;
   const addTerrainSection = (source, parent, worldY = 0, region = null, sections = region ? caveSections : terrainSections) => {
     const cap = BL.terrainCutaway.create(source, renderer.releaseGeometry);
     addChild(parent, cap.node);
@@ -281,6 +283,41 @@
   };
   const cutawayPathsActive = () => CUTAWAY_PATH_STATE.mix[0] > 0 || CUTAWAY_PATH_STATE.mix[1] > 0
     || CUTAWAY_PATH_STATE.mix[2] > 0 || CUTAWAY_PATH_STATE.mix[3] > 0;
+  const buildCutawayPathBounds = (paths) => {
+    if (!paths) return null;
+    const bounds = new Float64Array(4 * 5);
+    for (let channel = 0; channel < 4; channel++) {
+      const at = channel * 5;
+      bounds[at] = bounds[at + 1] = bounds[at + 4] = Infinity;
+      bounds[at + 2] = bounds[at + 3] = -Infinity;
+    }
+    for (let cell = 0; cell < paths.keys.length; cell++) {
+      const key = paths.keys[cell]; if (!key) continue;
+      const x = paths.origin.x + Math.floor(cell / paths.height) * paths.unit;
+      const z = paths.origin.z + (cell % paths.height) * paths.unit;
+      for (let channel = 0; channel < 4; channel++) {
+        if (!(key >>> (channel * 8) & 255)) continue;
+        const at = channel * 5;
+        bounds[at] = Math.min(bounds[at], x); bounds[at + 1] = Math.min(bounds[at + 1], z);
+        bounds[at + 2] = Math.max(bounds[at + 2], x + paths.unit); bounds[at + 3] = Math.max(bounds[at + 3], z + paths.unit);
+        bounds[at + 4] = Math.min(bounds[at + 4], paths.bottoms[cell]);
+      }
+    }
+    return bounds;
+  };
+  const cutawayPathMayCross = (cx, cy, cz, rx, ry, rz) => {
+    if (!cutawayPathBounds) return false;
+    for (let channel = 0; channel < 4; channel++) {
+      const mix = CUTAWAY_PATH_STATE.mix[channel], at = channel * 5;
+      if (mix <= 0 || CUTAWAY_PATH_STATE.lo[channel] > CUTAWAY_PATH_STATE.hi[channel]) continue;
+      // Whole-channel cell bounds deliberately overestimate the live station
+      // window. The exact vertex pass still decides every possible crossing.
+      if (cy + ry + 1e-6 <= lerp(CUTAWAY_TOP, cutawayPathBounds[at + 4], mix)) continue;
+      if (cx + rx >= cutawayPathBounds[at] - 1e-6 && cx - rx <= cutawayPathBounds[at + 2] + 1e-6
+        && cz + rz >= cutawayPathBounds[at + 1] - 1e-6 && cz - rz <= cutawayPathBounds[at + 3] + 1e-6) return true;
+    }
+    return false;
+  };
   const cutawayActorY = (region, y) => {
     const dx = cutawayX - region.x, dz = cutawayZ - region.z;
     return Math.abs(dx * region.cos - dz * region.sin) < region.halfWidth + PLAYER_RADIUS && Math.abs(dx * region.sin + dz * region.cos) < region.halfDepth + PLAYER_RADIUS
@@ -313,7 +350,7 @@
       const rz = Math.abs(w[2]) * hx + Math.abs(w[6]) * hy + Math.abs(w[10]) * hz;
       const cy = w[1] * lx + w[5] * ly + w[9] * lz + w[13];
       const ry = Math.abs(w[1]) * hx + Math.abs(w[5]) * hy + Math.abs(w[9]) * hz;
-      let mayCross = cutawayPathsActive() || cy + ry > RENDER_OPTS.cutawayMaxY + 1e-6;
+      let mayCross = cy + ry > RENDER_OPTS.cutawayMaxY + 1e-6 || cutawayPathMayCross(cx, cy, cz, rx, ry, rz);
       for (let i = 0; !mayCross && i < Math.min(CUTAWAY_REGION_CAP, RENDER_OPTS.cutawayRegionCount); i++) {
         const r = RENDER_OPTS.cutawayRegions[i], dx = cx - r.x, dz = cz - r.z;
         const across = dx * r.cos - dz * r.sin, along = dx * r.sin + dz * r.cos;
@@ -872,6 +909,36 @@
     }
     return island.faceIndex = { byCave, ramps };
   };
+  const terrainGlyphLayoutMatches = (layout, geometry, faces, signature) => {
+    if (!layout || layout.verts !== geometry.verts || layout.faces.length !== faces.length) return false;
+    for (let i = 0; i < signature.length; i++) if (layout.signature[i] !== signature[i]) return false;
+    let at = 0;
+    for (let f = 0; f < faces.length; f++) {
+      const face = faces[f];
+      if (layout.faces[f] !== face || layout.lengths[f] !== face.i.length) return false;
+      for (let i = 0; i < face.i.length; i++) {
+        const index = face.i[i], vertex = index * 3;
+        if (layout.coordinates[at++] !== index || layout.coordinates[at++] !== geometry.verts[vertex]
+          || layout.coordinates[at++] !== geometry.verts[vertex + 1] || layout.coordinates[at++] !== geometry.verts[vertex + 2]) return false;
+      }
+    }
+    return at === layout.coordinates.length;
+  };
+  const captureTerrainGlyphSource = (geometry, faces, signature) => {
+    let count = 0;
+    for (const face of faces) count += face.i.length;
+    const coordinates = new Float64Array(count * 4), lengths = new Uint32Array(faces.length);
+    let at = 0;
+    for (let f = 0; f < faces.length; f++) {
+      const indices = faces[f].i; lengths[f] = indices.length;
+      for (let i = 0; i < indices.length; i++) {
+        const index = indices[i], vertex = index * 3;
+        coordinates[at++] = index; coordinates[at++] = geometry.verts[vertex];
+        coordinates[at++] = geometry.verts[vertex + 1]; coordinates[at++] = geometry.verts[vertex + 2];
+      }
+    }
+    return { verts: geometry.verts, faces: faces.slice(), lengths, coordinates, signature };
+  };
   const buildCaveGlyphs = (slot, m, group) => {
     const caveIndex = island.mouths.indexOf(m) + 1, cr = Math.cos(m.ry), sr = Math.sin(m.ry);
     const portalInset = slot.status === "mirror" ? 0 : 0.02;
@@ -892,7 +959,31 @@
         if (minX <= 2.5 && maxX >= -2.5 && minY >= -1e-6 && maxY <= 1e-6 && minZ <= PORTAL_Z && maxZ >= 0) face.matrixPermanentFallback = true;
       }
     }
-    const sections = [], streams = [], entries = [], nodes = [], horizontalDomains = [];
+    const sections = [], streams = [], nodes = [], horizontalDomains = [];
+    // Registry identities are immutable integer triples, not live glyph state.
+    // Fixed chunks avoid one short-lived object allocation per character.
+    const entryChunks = [];
+    let entryLength = 0, entryChunk = null, entryChunkUsed = 0;
+    const addEntry = (stream, character, rank) => {
+      if (!entryChunk || entryChunkUsed === entryChunk.length) {
+        entryChunk = new Uint32Array(4096 * 3);
+        entryChunks.push(entryChunk); entryChunkUsed = 0;
+      }
+      entryChunk[entryChunkUsed++] = stream;
+      entryChunk[entryChunkUsed++] = character;
+      entryChunk[entryChunkUsed++] = rank;
+      entryLength += 3;
+    };
+    const compactEntries = () => {
+      const result = new Uint32Array(entryLength);
+      let offset = 0;
+      for (const chunk of entryChunks) {
+        const length = chunk === entryChunk ? entryChunkUsed : chunk.length;
+        result.set(length === chunk.length ? chunk : chunk.subarray(0, length), offset);
+        offset += length;
+      }
+      return result;
+    };
     const surfaceCounts = { floor: 0, ceiling: 0, wall: 0, prop: 0 };
     const halfX = 0.0395, halfY = 0.0605, halfZ = 0.005, clearance = 0.01;
     let maximumLocalZ = -Infinity, minEntranceX = Infinity, maxEntranceX = -Infinity, propFaces = 0, terrainFaces = 0, perGlyphCapacity = 0;
@@ -905,11 +996,11 @@
       const speed = MATRIX_STREAM_SPEED_MIN + rand() * MATRIX_STREAM_SPEED_RANGE, phase = rand() * span, brightness = 0.58 + rand() * 0.36;
       const direction = horizontal && ny > 0 ? 1 : -1;
       const characters = Math.ceil((flowMax - flowMin) / MATRIX_SURFACE_GAP) + 1, rank = matrixModulo(column, 8);
-      const stream = { section: sections.length, cross, speed, phase, brightness, trainLength, gapLength, direction, flowMin, flowMax, flowRange: span, seed, head: 0, gap: 0, rank, entryStart: entries.length, entryCount: 0 };
+      const stream = { section: sections.length, cross, speed, phase, brightness, trainLength, gapLength, direction, flowMin, flowMax, flowRange: span, seed, head: 0, gap: 0, rank, entryStart: entryLength / 3, entryCount: 0 };
       const streamIndex = streams.length;
       streams.push(stream);
       if (renderer.kind !== "canvas2d" || rank < MATRIX_DENSITY.canvas2d) {
-        for (let character = 0; character < characters; character++) entries.push({ stream: streamIndex, character, rank });
+        for (let character = 0; character < characters; character++) addEntry(streamIndex, character, rank);
         stream.entryCount = characters;
         // Advected cell identities cover every glyph once per eight consecutive slots (MATRIX_TYPES).
         perGlyphCapacity += Math.ceil(characters / MATRIX_TYPES);
@@ -1007,29 +1098,53 @@
       if (source === "terrain") terrainFaces++; else propFaces++;
     };
     const caveFaces = islandFaceIndex().byCave.get(caveIndex) || EMPTY_FACES;
-    for (let i = 0; i < caveFaces.length; i++) addFace(island.geometry, caveFaces[i], null, "terrain");
-    for (const section of horizontalDomains) {
-      section.streamStart = streams.length;
-      const portalU = sr * section.ux + cr * section.uz, portalV = sr * section.vx + cr * section.vz;
-      const portalN = sr * section.nx + cr * section.nz;
-      const portalLimit = PORTAL_Z - portalInset + sr * m.x + cr * m.z - portalN * (section.plane + halfZ + clearance) - Math.abs(portalU) * halfX - Math.abs(portalV) * halfY - Math.abs(portalN) * halfZ;
-      section.constraints.push([portalU, portalV, portalLimit]);
-      for (let column = Math.ceil((section.minU + halfX) / MATRIX_SURFACE_PITCH); column * MATRIX_SURFACE_PITCH <= section.maxU - halfX + 1e-8; column++) {
-        const cross = column * MATRIX_SURFACE_PITCH;
-        const intervals = matrixSupportIntervals(section.supports, cross - halfX, cross + halfX);
-        for (let i = 0; i < intervals.length; i++) {
-          let flowMin = intervals[i][0] + halfY, flowMax = intervals[i][1] - halfY;
-          const remain = portalLimit - portalU * cross;
-          if (portalV > 1e-8) flowMax = Math.min(flowMax, remain / portalV);
-          else if (portalV < -1e-8) flowMin = Math.max(flowMin, remain / portalV);
-          else if (remain < -1e-8) continue;
-          if (flowMax - flowMin >= 1e-6) addStream(section, column, flowMin, flowMax);
+    let layouts = CAVE_TERRAIN_LAYOUTS.get(island.geometry);
+    if (!layouts) { layouts = new Map(); CAVE_TERRAIN_LAYOUTS.set(island.geometry, layouts); }
+    // At most one layout per cave/backend. Status, portal pose, topology and
+    // source coordinates invalidate that slot instead of accumulating keys.
+    const layoutKey = caveIndex * 2 + (renderer.kind === "canvas2d" ? 1 : 0);
+    const signature = [slot.id, slot.status, m.x, m.z, m.floorY, m.ry, renderer.kind];
+    const cachedLayout = layouts.get(layoutKey);
+    if (terrainGlyphLayoutMatches(cachedLayout, island.geometry, caveFaces, signature)) {
+      for (const section of cachedLayout.sections) sections.push({ ...section });
+      for (const stream of cachedLayout.streams) streams.push({ ...stream, head: 0, gap: 0 });
+      entryChunks.push(cachedLayout.entryData);
+      entryLength = cachedLayout.entryData.length;
+      Object.assign(surfaceCounts, cachedLayout.surfaceCounts);
+      ({ maximumLocalZ, minEntranceX, maxEntranceX, terrainFaces, perGlyphCapacity } = cachedLayout);
+    } else {
+      for (let i = 0; i < caveFaces.length; i++) addFace(island.geometry, caveFaces[i], null, "terrain");
+      for (const section of horizontalDomains) {
+        section.streamStart = streams.length;
+        const portalU = sr * section.ux + cr * section.uz, portalV = sr * section.vx + cr * section.vz;
+        const portalN = sr * section.nx + cr * section.nz;
+        const portalLimit = PORTAL_Z - portalInset + sr * m.x + cr * m.z - portalN * (section.plane + halfZ + clearance) - Math.abs(portalU) * halfX - Math.abs(portalV) * halfY - Math.abs(portalN) * halfZ;
+        section.constraints.push([portalU, portalV, portalLimit]);
+        for (let column = Math.ceil((section.minU + halfX) / MATRIX_SURFACE_PITCH); column * MATRIX_SURFACE_PITCH <= section.maxU - halfX + 1e-8; column++) {
+          const cross = column * MATRIX_SURFACE_PITCH;
+          const intervals = matrixSupportIntervals(section.supports, cross - halfX, cross + halfX);
+          for (let i = 0; i < intervals.length; i++) {
+            let flowMin = intervals[i][0] + halfY, flowMax = intervals[i][1] - halfY;
+            const remain = portalLimit - portalU * cross;
+            if (portalV > 1e-8) flowMax = Math.min(flowMax, remain / portalV);
+            else if (portalV < -1e-8) flowMin = Math.max(flowMin, remain / portalV);
+            else if (remain < -1e-8) continue;
+            if (flowMax - flowMin >= 1e-6) addStream(section, column, flowMin, flowMax);
+          }
+        }
+        if (section.streamCount) {
+          sections.push(section);
+          surfaceCounts[section.category] += section.glyphCount;
         }
       }
-      if (section.streamCount) {
-        sections.push(section);
-        surfaceCounts[section.category] += section.glyphCount;
-      }
+      const layout = captureTerrainGlyphSource(island.geometry, caveFaces, signature);
+      const entryData = compactEntries();
+      Object.assign(layout, {
+        sections: sections.map(section => ({ ...section })), streams: streams.map(stream => ({ ...stream, head: 0, gap: 0 })),
+        entryData, surfaceCounts: { ...surfaceCounts },
+        maximumLocalZ, minEntranceX, maxEntranceX, terrainFaces, perGlyphCapacity
+      });
+      layouts.set(layoutKey, layout);
     }
     BL.scene.updateWorld(group);
     const visit = (node, inheritedLiving = false, inheritedEmissive = false, inheritedExterior = false) => {
@@ -1068,6 +1183,7 @@
       const node = createNode({ geometry: { ...hubModels.matrixGlyph(glyph), matrixCave: caveIndex }, instanceData: new Float32Array(perGlyphCapacity * 20), instanceCount: 0, drawInstanceCount: 0, instanceVersion: 0, fixedInstanceCapacity: true });
       addChild(root, node); placed.push(node); nodes.push(node);
     }
+    const entries = compactEntries();
     let registryHash = 2166136261, minBrightness = Infinity, maxBrightness = 0, minTrainLength = Infinity, maxTrainLength = 0, minGapLength = Infinity, maxGapLength = 0;
     let surfaceMetadataBytes = 0;
     for (let i = 0; i < sections.length; i++) {
@@ -1090,7 +1206,7 @@
       rain: buildCaveRain(slot, m, group, caveIndex),
       glyphCount: surfaceCounts.floor + surfaceCounts.ceiling + surfaceCounts.wall + surfaceCounts.prop,
       perGlyphCapacity, capacity: perGlyphCapacity * MATRIX_TYPES, bufferBytes: perGlyphCapacity * MATRIX_TYPES * 80,
-      registryBytes: entries.length * 24 + streams.length * 112 + surfaceMetadataBytes, surfaceMetadataBytes, registryHash: registryHash.toString(16).padStart(8, "0"),
+      registryBytes: entries.byteLength + streams.length * 112 + surfaceMetadataBytes, surfaceMetadataBytes, registryHash: registryHash.toString(16).padStart(8, "0"),
       activeGlyphCount: 0, revealedGlyphCount: 0, drawnGlyphCount: 0, brightTipCount: 0, movingGapCount: 0, maximumLocalZ,
       minimumTravelDistance: matrixEntranceMinimum(m, minEntranceX, maxEntranceX), terrainFaces, propFaces, updates: 0, allocationCount: MATRIX_TYPES, rebuildCount: 1,
       quality: renderer.kind === "canvas2d" ? "canvas2d" : renderer.quality, densityRankLimit: MATRIX_DENSITY[renderer.kind === "canvas2d" ? "canvas2d" : renderer.quality], glyphVersion: -1, previousGlyphVersion: -1, mutationHash: 0, firstGlyphY: 0,
@@ -1363,7 +1479,14 @@
     return value;
   };
   const free = (x, z, r) => {
-    for (const c of claimed) if (Math.hypot(c.x - x, c.z - z) < c.r + r) return false;
+    for (const c of claimed) {
+      const dx = c.x - x, dz = c.z - z, reach = c.r + r;
+      // Rejection sampling checks thousands of distant footprints. Keep the
+      // original circular predicate for nearby and boundary candidates.
+      if (Number.isFinite(reach) && reach >= 0
+        && (Math.abs(dx) > reach + 1e-12 || Math.abs(dz) > reach + 1e-12)) continue;
+      if (Math.hypot(dx, dz) < reach) return false;
+    }
     return true;
   };
   const nearPath = (x, z, d) => {
@@ -7587,6 +7710,8 @@
   const CLANKER_PEER_FROM = { root: { scale: { x: 1 } }, gorilla: { torsoSitCompact: false, torsoLabCompact: false, torsoStandCompact: false, torsoQuadCompact: false, torsoRadius: 0 }, height: 0, x: 0, y: 0, z: 0, heading: 0 };
   let clankerPeerPoseChecked = false, clankerPeerPoseClear = true;
   const clankerPeerEmptyStone = () => false;
+  // This preview checks peers only; no terrain sample can reject it.
+  clankerPeerEmptyStone.emptySolid = true;
   const clankerPeerPoseTransition = entry => {
     if (clankerPeerPoseChecked) return clankerPeerPoseClear;
     clankerPeerPoseChecked = true;
@@ -8908,6 +9033,7 @@
     clock = daylight.createClock({ hour: hourParam, daylen: daylenParam, day: dayParam, time: timeParam, now: new Date() });
     phase = null;
     island = terrain.island({ seed: SEED });
+    cutawayPathBounds = buildCutawayPathBounds(island.cutawayPaths);
     guideSegmentClear.boxGrid = POOL_SEAMS[0].boxGrid = POOL_SEAMS[1].boxGrid = island.sightGrid;
     buildCameraRamps();
     cameraCaveIndex = 0;
@@ -9288,10 +9414,11 @@
             // jambs. Back each row away enough to see across the opening.
             const z = 4.8 + row * 1.35 + Math.abs(x) * 0.32;
             const px = mouth.x + cr * x + sr * z, pz = mouth.z - sr * x + cr * z;
-            let occupied = false;
-            for (let i = 0; i < crew.list.length; i++) {
+            let occupied = crew.spotOccupied(cave, px, mouth.floorY, pz);
+            for (let i = 0; !occupied && i < crew.list.length; i++) {
               const other = crew.list[i];
-              if (other === cave || other === crew.player || other.state !== "working"
+              if (other === cave) continue;
+              if (other === crew.player || other.state !== "working"
                 || other.work.phase !== "outbound" && other.work.phase !== "station" && other.work.phase !== "shoot"
                 || shared.workSites[other.work.site]?.repo !== slot.repo) continue;
               if (Math.hypot(other.work.position.x - px, other.work.position.z - pz) < 0.9) { occupied = true; break; }
@@ -9919,6 +10046,7 @@
     cutawayHill = false;
     cutawayPool = 0; poolShade = poolUnder = 0;
     cutawayPlayer = null;
+    cutawayPathBounds = null;
     cutawayTravelRamp = null; cutawayTravelChannel = -1; cutawayTravelStation = 0;
     CUTAWAY_PATH_STATE.lo.fill(0); CUTAWAY_PATH_STATE.hi.fill(0); CUTAWAY_PATH_STATE.mix.fill(0); CUTAWAY_PATH_STATE.windowMix.fill(0); CUTAWAY_PATH_STATE.active = 0; CUTAWAY_PATH_STATE.version++;
     window.clearTimeout(hintTimer);

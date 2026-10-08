@@ -1,0 +1,74 @@
+{
+  "method": "Original DSB six-visit lifecycle body, forced heap snapshots, all 8-second travel deadlines, node/target/tween/DOM and GPU/listener/heap assertions preserved. Normal candidate uses no CPU sampler or scene wrappers. Matched captures both use the same bounded phase wrappers and 1ms CPU sampler; timings are diagnostic, not physical-device guarantees.",
+  "baselineHead": "e355c86ce4d516acea10f6e4b302d03d4c1ec713",
+  "candidateHead": "0b9016bdb46791e6314476b8c0502d24dcaafb2e",
+  "normalCandidate": {
+    "started": "2026-10-06T21:19:41.137Z",
+    "ended": "2026-10-06T21:20:46.254Z",
+    "bodyMs": 57948,
+    "device": {
+      "kind": "webgl2",
+      "quality": "medium",
+      "vendor": "Google Inc. (Apple)",
+      "renderer": "ANGLE (Apple, ANGLE Metal Renderer: Apple M1 Pro, Unspecified Version)"
+    },
+    "error": null,
+    "assertions": [
+      {
+        "name": "soak: dsb cycles: six round trips retain node, target, tween and DOM counts",
+        "ok": true,
+        "detail": "{\"before\":{\"visibleNodes\":2314,\"allNodes\":4375,\"tweens\":0,\"targets\":1209,\"particles\":0,\"pool\":0,\"bubbles\":1,\"zzz\":27,\"damageNumbers\":0,\"crates\":0,\"built\":0,\"slots\":302,\"shown\":1000,\"rendered\":194,\"deliveries\":0,\"pendingDrops\":0,\"dropsStarted\":0,\"dropsLanded\":0,\"landedBananaValue\":0,\"dropPool\":96,\"dropRate\":72,\"spillPool\":32,\"spilling\":0,\"butterflies\":8,\"fireflies\":0,\"embers\":4,\"surfaceEmbers\":0,\"headquartersEmbers\":4,\"waterCubes\":0,\"waterQueued\":0,\"waterRipples\":0,\"breakablesProps\":26,\"breakablesBroken\":0,\"breakablesRewards\":0,\"breakablesRevealing\":0,\"rainDrops\":0,\"strikes\":0,\"remotePlayers\":0,\"gl\":{\"records\":941,\"active\":938,\"mirrorResources\":4,\"imageTextures\":1,\"rippleBodyTextures\":0,\"shadowResources\":4,\"shadowSize\":512,\"shadowPassCount\":97,\"shadowFinite\":true,\"shadowDraws\":566,\"shadowStatic\":0,\"shadowStaticRebuilds\":9,\"culled\":1025,\"drawn\":37812,\"suppressed\":0,\"rippleSurfaces\":1,\"rippleWaves\":3},\"dom\":3111},\"after\":{\"visibleNodes\":2315,\"allNodes\":4375,\"tweens\":0,\"targets\":1209,\"particles\":0,\"pool\":0,\"bubbles\":1,\"zzz\":27,\"damageNumbers\":0,\"crates\":0,\"built\":0,\"slots\":302,\"shown\":1000,\"rendered\":194,\"deliveries\":0,\"pendingDrops\":0,\"dropsStarted\":0,\"dropsLanded\":0,\"landedBananaValue\":0,\"dropPool\":96,\"dropRate\":72,\"spillPool\":32,\"spilling\":0,\"butterflies\":8,\"fireflies\":0,\"embers\":4,\"surfaceEmbers\":0,\"headquartersEmbers\":4,\"waterCubes\":0,\"waterQueued\":0,\"waterRipples\":0,\"breakablesProps\":26,\"breakablesBroken\":0,\"breakablesRewards\":0,\"breakablesRevealing\":0,\"rainDrops\":0,\"strikes\":0,\"remotePlayers\":0,\"gl\":{\"records\":943,\"active\":939,\"mirrorResources\":4,\"imageTextures\":1,\"rippleBodyTextures\":0,\"shadowResources\":4,\"shadowSize\":512,\"shadowPassCount\":357,\"shadowFinite\":true,\"shadowDraws\":566,\"shadowStatic\":0,\"shadowStaticRebuilds\":25,\"culled\":1026,\"drawn\":37841,\"suppressed\":0,\"rippleSurfaces\":1,\"rippleWaves\":3},\"dom\":3111}}"
+      },
+      {
+        "name": "soak: dsb cycles: GPU records, listeners and heap remain bounded",
+        "ok": true,
+        "detail": "objects 365.49 -> 367.53 MB (used 222.22 -> 226.15 MB, code 15.87 -> 18.51 MB)"
+      }
+    ]
+  },
+  "checks": {
+    "unit": "139/139 PASS",
+    "syntax": "PASS",
+    "build": "PASS",
+    "diffCheck": "PASS",
+    "independentOracleCases": 40380,
+    "oracleMismatches": 0
+  },
+  "matchedSampledCostMs": {
+    "freeSelf": {
+      "baseline": 1193.389,
+      "candidate": 220.955
+    },
+    "cliffInclusive": {
+      "baseline": 1790.845,
+      "candidate": 721.216
+    },
+    "scatterInclusive": {
+      "baseline": 1922.445,
+      "candidate": 732.539
+    },
+    "postHeapMedianPropsMarker": {
+      "baseline": 1768.25,
+      "candidate": 1088.5
+    },
+    "postHeapMedianHubEnter": {
+      "baseline": 2871.1,
+      "candidate": 2778.3
+    }
+  },
+  "limitations": [
+    "The integrated e355 full-suite 8-second return failure is retained as unresolved pending a complete integrated rerun. Both baseline sampled and candidate sampled runs passed, so timing improvement alone is not proof that every prior deadline failure is eliminated.",
+    "Forced heap capture precedes a pronounced Hub build slowdown. No claim is made about V8 deoptimization without direct evidence.",
+    "No clock, travel deadline, watchdog, seeded candidate order, scene frames, resource threshold or geometry/detail target was changed.",
+    "Actual sampling varies with GC and remaining scene construction; total enter cost improved less than scatter cost."
+  ],
+  "rawEvidence": [
+    "verification/dsb-integrated-e355-phase.json",
+    "verification/dsb-clearance-normal.json",
+    "verification/dsb-clearance-candidate-phase.json",
+    "verification/claim-clearance-oracle.log",
+    "verification/dsb-aabb-unit.log",
+    "verification/dsb-aabb-build.log"
+  ],
+  "recordStatus": "Historical diagnostic, not current follow-up acceptance; see acceptance-followup-evidence.json"
+}

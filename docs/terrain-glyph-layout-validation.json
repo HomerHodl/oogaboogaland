@@ -1,0 +1,43 @@
+{
+  "sourceHead": "ad29ac7c6a099dfd0df1f5d31a4f85b0d3921658",
+  "method": "Source-extracted buildCaveGlyphs/updateCaveGlyphs against actual seed-1 island, all eight mouths, WebGL and Canvas. Representative real caveShelves prop fixture. Original uncached builder registry hashes pinned; cold/warm exact instance buffers checked at 0,0.33,1.9 seconds. Node timing is not native browser or travel acceptance proof.",
+  "checks": {
+    "existingUnit": "141/141 PASS",
+    "permanentSnippet": {
+      "cases": 132,
+      "failures": 0,
+      "timings": [
+        {
+          "kind": "webgl2",
+          "coldMs": 825,
+          "warmMs": 534
+        },
+        {
+          "kind": "canvas2d",
+          "coldMs": 739,
+          "warmMs": 522
+        }
+      ],
+      "cacheSlots": 16,
+      "snapshotBytes": 1137312,
+      "entryBytes": 1199316,
+      "entryCount": 99943,
+      "streamObjects": 13280,
+      "surfaceMetadataEstimate": 1768032
+    },
+    "build": "PASS",
+    "syntax": "PASS",
+    "diffCheck": "PASS",
+    "browser": "Not run; parent owns integrated browser validation"
+  },
+  "cachePolicy": "One slot per cave/backend within a WeakMap keyed by canonical terrain geometry; current island has eight mouths and at most sixteen slots. Signature changes replace slots. Exact face/index identity and coordinate snapshots invalidate changed sources. Sections and source topology are immutable cache metadata; streams, entries, scene nodes and instance buffers remain fresh per visit. Cached entry identities use Uint32Array triples.",
+  "costCaveat": "At the maximally populated two-backend invalidation oracle, exact typed source/entry storage is 2336628 bytes. Stream and surface metadata estimates add about 3255392 bytes, excluding engine-dependent object overhead. This bounded CPU cache trades retained memory for repeated construction cost. PR163 and PR164 memory savings are separate observations and cannot be added to each other or these timings.",
+  "acceptanceCaveat": "Prior DSB 8-second return failures remain recorded. Native integrated six-visit travel deadlines, resource checks and full acceptance must pass before claiming the slowdown or deadline failure fixed. No travel clock, timeout, frame count, route, material ownership, storage or render quality target was changed.",
+  "evidence": [
+    "verification/terrain-glyph-layout-proof.json",
+    "verification/terrain-glyph-layout-snippet-final.log",
+    "verification/terrain-glyph-layout-test-snippet.txt",
+    "verification/terrain-glyph-layout-build.log",
+    "verification/terrain-glyph-layout-unit.log"
+  ]
+}

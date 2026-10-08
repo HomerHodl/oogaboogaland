@@ -582,7 +582,7 @@
         roofEscape: { active: false, jumping: false, blocked: 0 },
         ladder: ctx.ladders ? { plane: null, cooldown: 0, across: 0, along: 0, descentHeld: false, mix: 0,
           flat: { width: 0, depth: 0, overlap: 0 }, vertical: { width: 0, height: 0, overlap: 0 } } : null,
-        avoidance: { active: false, side: i & 1 ? 1 : -1, stalled: 0, best: Infinity, tx: NaN, tz: NaN,
+        avoidance: { active: false, side: i & 1 ? 1 : -1, stalled: 0, best: Infinity, tx: NaN, tz: NaN, goalX: NaN, goalZ: NaN, pathIndex: -1, pathVersion: -1,
           detour: { site: -1, phase: 0, side: 1, entryX: 0, goalX: NaN, goalZ: NaN, x: 0, z: 0 },
           navigation: { mode: 0, x: 0, z: 0, count: 0, index: 0, searches: 0, expansions: 0,
             jumpCandidate: 0, jumps: 0, jumpX: 0, jumpZ: 0, clearance: 0, double: false, boosted: false, moving: false,
@@ -3421,6 +3421,14 @@
     // moving apart is allowed, so a crowd unpicks itself instead of locking.
     // Every body the scene walks that is not on the roster: the Agent and any it
     // has called in. One array, rebuilt only when that crowd changes.
+    const spotOccupied = (cave, x, y, z) => {
+      for (let i = 0; i < crewList.length; i++) {
+        const other = crewList[i], p = other.root.position, floor = p.y - other.baseY;
+        if (other !== cave && other.root.visible && y < floor + other.bodyHeight && y + cave.bodyHeight > floor
+          && Math.hypot(x - p.x, z - p.z) < Math.max(SHOULDER_GAP, cave.bodyRadius + other.bodyRadius)) return true;
+      }
+      return false;
+    };
     const outsideClear = (fromX, fromZ, x, z, y, height) => {
       const bodies = ctx.outsideActors && ctx.outsideActors();
       if (!bodies) return true;
@@ -3576,7 +3584,8 @@
       return shoulderClear(cave, x, z) && npcWalkable(p.x, p.z, x, z, feet, cave.bodyHeight, cave)
         && groundAt(x, z, feet, feet, cave) >= feet - STEP - 1e-7;
     };
-    const resetWalkerRoute = (cave) => {
+    const resetWalkerRoute = (cave, retainPath = false) => {
+      const tx = retainPath && cave.pathing ? cave.pathing.tx : NaN, tz = retainPath && cave.pathing ? cave.pathing.tz : NaN;
       const a = cave.avoidance;
       a.active = false; a.tx = NaN; a.stalled = 0; a.best = Infinity;
       a.navigation.mode = 0; a.detour.site = -1;
@@ -3584,6 +3593,9 @@
       cave.pileApproach = false;
       if (cave.pathing) { cave.pathing.tx = NaN; cave.pathing.index = cave.pathing.count = 0; }
       clearShoulder(cave);
+      // Recovery changes steering, not the destination. Publish its rebuilt
+      // surface route in this frame, including while the short backoff runs.
+      if (ctx.npcPaths && Number.isFinite(tx) && Number.isFinite(tz)) ctx.npcPaths.target(cave, tx, tz);
     };
     // Independent of changing path hints and traffic waits: a failed route may
     // otherwise restart its local recovery forever without moving the Ooga.
@@ -3639,13 +3651,13 @@
           const angle = heading + (side === 4 ? Math.PI : (side & 1 ? -1 : 1) * (Math.PI / 2 + (side >> 1) * Math.PI / 4));
           const dx = Math.sin(angle), dz = Math.cos(angle), x = p.x + dx * 0.4, z = p.z + dz * 0.4;
           if (!walkerClear(cave, x, z) || !shoulderClear(cave, x, z)) continue;
-          resetWalkerRoute(cave);
+          resetWalkerRoute(cave, true);
           progress.backX = dx; progress.backZ = dz; progress.backoff = 0.4; progress.detours++;
           break;
         }
       }
       if (!progress.replanned && progress.stalled >= 1 && progress.motionless >= 0.8 && !progress.backoff) {
-        resetWalkerRoute(cave); progress.replanned = true; progress.replans++;
+        resetWalkerRoute(cave, true); progress.replanned = true; progress.replans++;
         ctx.fx.say(cave, "COMING THROUGH!", 1.8);
         if (travel.mode === "walk" && ctx.bedRoute) startBedRoute(cave, travel.toBed ? cave.bedroll : travel.bed, travel.toBed);
       }
@@ -3680,10 +3692,39 @@
         return;
       }
     };
-    const recoverWalker = (cave, tx, tz, dt) => {
-      const a = cave.avoidance, nav = a.navigation, p = cave.root.position, distance = Math.hypot(tx - p.x, tz - p.z);
+    const recoverWalker = (cave, tx, tz, dt, usePath = false) => {
+      const a = cave.avoidance, nav = a.navigation, p = cave.root.position, path = cave.pathing;
+      // Keep the route identity stable and recover toward its current segment.
+      // The path index advances within a route; replans and explicit route
+      // resets invalidate the cached target before restarting stall tracking.
+      const stable = usePath && path && Number.isFinite(path.tx) && Number.isFinite(path.tz) && path.count > 1 && path.index < path.count - 1;
+      const gx = stable ? path.tx : tx, gz = stable ? path.tz : tz;
+      const leg = stable ? Math.min(path.index, path.count - 2) : -1, version = stable ? path.version : -1;
+      const changed = gx !== a.goalX || gz !== a.goalZ || version !== a.pathVersion || !Number.isFinite(a.tx);
+      if (changed || leg > a.pathIndex) {
+        a.goalX = gx; a.goalZ = gz; a.pathIndex = leg; a.pathVersion = version;
+        let end = leg + 1;
+        if (stable) {
+          // Graph samples along one straight lane are not recovery goals:
+          // a sub-metre sample can finish the search before the obstruction.
+          // Stop at the next bend, keeping recovery on this side of its wall.
+          const dx = path.laneX[end] - path.laneX[leg], dz = path.laneZ[end] - path.laneZ[leg];
+          while (end + 1 < path.count) {
+            const nx = path.laneX[end + 1] - path.laneX[end], nz = path.laneZ[end + 1] - path.laneZ[end];
+            if (dx * nx + dz * nz <= 0 || Math.abs(dx * nz - dz * nx) > 1e-7) break;
+            end++;
+          }
+        }
+        a.tx = stable ? path.laneX[end] : tx; a.tz = stable ? path.laneZ[end] : tz;
+        // Rounded bends have short, non-collinear samples. A nearby clear
+        // sample can end recovery before the blocked lookahead, so retain
+        // the route's lookahead there, rather than its final destination.
+        const nearby = Math.hypot(a.tx - p.x, a.tz - p.z);
+        if (stable && nearby < 0.75 && Math.hypot(tx - p.x, tz - p.z) > nearby) { a.tx = tx; a.tz = tz; }
+        a.best = Infinity; a.stalled = 0; nav.mode = 0;
+      }
+      const distance = Math.hypot(a.tx - p.x, a.tz - p.z);
       if (cave.traffic.waiting) { a.stalled = 0; a.best = Infinity; nav.mode = 0; return; }
-      if (tx !== a.tx || tz !== a.tz) { a.tx = tx; a.tz = tz; a.best = distance; a.stalled = 0; nav.mode = 0; }
       if (distance < a.best - 0.1) { a.best = distance; a.stalled = 0; }
       else a.stalled += dt;
       if (!nav.mode && a.stalled > 0.75 && distance > 0.15) {
@@ -3693,18 +3734,43 @@
         nav.costs[NAV_CENTER] = 0; nav.heights[NAV_CENTER] = p.y - cave.baseY;
       }
     };
+    const recoveryBodies = new Array(crewList.length), recoveryOutside = [];
+    let recoveryBodyCount = 0, recoveryOutsideCount = 0;
     const recoveryHeight = (cave, x, z, y, tx, tz, step) => {
       const dx = tx - x, dz = tz - z, distance = Math.hypot(dx, dz);
       if (distance < 1e-7) return y;
       step = Math.min(step, NAV_STEP);
       const steps = Math.max(1, Math.ceil(distance / step));
       const fromX = x, fromZ = z;
+      // Fetch and filter the crowd once per edge. Keep short swept checks
+      // only for nearby bodies: escape and height rules depend on each step.
+      recoveryBodyCount = recoveryOutsideCount = 0;
+      for (let n = 0; n < crewList.length; n++) {
+        const other = crewList[n];
+        if (other !== cave && other.root.visible && other.state !== "away" && !other.root.quaternion && !other.camp.seat
+          && Math.hypot(other.root.position.x - x, other.root.position.z - z) <= distance + SHOULDER_GAP) recoveryBodies[recoveryBodyCount++] = other;
+      }
+      const outside = ctx.outsideActors && ctx.outsideActors();
+      if (outside) for (let n = 0; n < outside.length; n++) {
+        const body = outside[n];
+        if (Math.hypot(body.x - x, body.z - z) <= distance + OUTSIDE_GAP) recoveryOutside[recoveryOutsideCount++] = body;
+      }
       // A coarse edge can cross a deep corner before reaching a higher tread.
       // Follow the same short, supported steps as the walker, not the line
       // between endpoint heights, or recovery will select that edge forever.
       for (let i = 1; i <= steps; i++) {
         const along = Math.min(distance, i * step) / distance;
         const nx = fromX + dx * along, nz = fromZ + dz * along;
+        for (let n = 0; n < recoveryOutsideCount; n++) {
+          const body = recoveryOutside[n];
+          if (y < body.y + ctx.outsideActorHeight && y + cave.bodyHeight > body.y
+            && !gapClear(x, z, nx, nz, body, OUTSIDE_GAP)) return NaN;
+        }
+        for (let n = 0; n < recoveryBodyCount; n++) {
+          const other = recoveryBodies[n], floor = other.root.position.y - other.baseY;
+          if (y < floor + other.bodyHeight - 0.05 && y + cave.bodyHeight > floor + 0.05 && Math.abs(y - floor) < STEP
+            && !gapClear(x, z, nx, nz, other.root.position)) return NaN;
+        }
         if (!npcWalkable(x, z, nx, nz, y, cave.bodyHeight, cave)) return NaN;
         const height = groundAt(nx, nz, y, y, cave);
         if (height < y - STEP - 1e-7 || height > y + STEP + 1e-7) return NaN;
@@ -3726,7 +3792,9 @@
         const col = current % NAV_WIDTH, row = Math.floor(current / NAV_WIDTH);
         const x = nav.x + (col - NAV_HALF) * NAV_CELL, z = nav.z + (row - NAV_HALF) * NAV_CELL, y = nav.heights[current];
         const remaining = Math.hypot(tx - x, tz - z);
-        const destination = remaining < 0.75 && Number.isFinite(recoveryHeight(cave, x, z, y, tx, tz, step));
+        // A stalled walker needs a step out of its current cell. Accepting
+        // the center produces an empty route and clears the stall unchanged.
+        const destination = current !== NAV_CENTER && remaining < 0.75 && Number.isFinite(recoveryHeight(cave, x, z, y, tx, tz, step));
         const exit = (col === 0 || row === 0 || col === NAV_WIDTH - 1 || row === NAV_WIDTH - 1)
           && remaining < Math.hypot(tx - nav.x, tz - nav.z) - 0.5;
         if (destination || exit) {
@@ -3810,8 +3878,8 @@
       }
       if (cave.traffic.waiting) return 0;
       const nav = cave.avoidance.navigation;
-      if (nav.mode === 1) { searchWalker(cave, tx, tz, Math.min(distance, PLAYER_STEP)); return 0; }
-      if (nav.mode === 3) { jumpWalker(cave, tx, tz); return 0; }
+      if (nav.mode === 1) { searchWalker(cave, cave.avoidance.tx, cave.avoidance.tz, NAV_STEP); return 0; }
+      if (nav.mode === 3) { jumpWalker(cave, cave.avoidance.tx, cave.avoidance.tz); return 0; }
       if (nav.mode === 4) return 0;
       if (nav.mode === 2) {
         while (nav.index >= 0) {
@@ -4066,7 +4134,7 @@
         if (cave.pathing) { cave.pathing.tx = NaN; cave.pathing.index = cave.pathing.count; cave.pathing.targetX = w.tx; cave.pathing.targetZ = w.tz; }
       }
       if (paths && (!cave.avoidance.navigation.mode || cave.pathing.tx !== w.tx || cave.pathing.tz !== w.tz)) paths.target(cave, w.tx, w.tz);
-      recoverWalker(cave, detour ? diversion.x : paths ? cave.pathing.targetX : w.tx, detour ? diversion.z : paths ? cave.pathing.targetZ : w.tz, dt);
+      recoverWalker(cave, detour ? diversion.x : paths ? cave.pathing.targetX : w.tx, detour ? diversion.z : paths ? cave.pathing.targetZ : w.tz, dt, !!paths);
       let remaining = w.speed * dt * (inBananas(cave) ? 0.5 : 1), moved = 0;
       while (remaining > 1e-8 && Math.hypot(w.tx - p.x, w.tz - p.z) > 1e-6) {
         if (paths && (!cave.avoidance.navigation.mode || cave.pathing.tx !== w.tx || cave.pathing.tz !== w.tz)) paths.target(cave, w.tx, w.tz);
@@ -4139,7 +4207,7 @@
       }
       if (Math.hypot(target.x - p.x, target.z - p.z) < 0.12) { standPose(cave); return true; }
       if (paths && (!cave.avoidance.navigation.mode || cave.pathing.tx !== target.x || cave.pathing.tz !== target.z)) paths.target(cave, target.x, target.z);
-      recoverWalker(cave, paths ? cave.pathing.targetX : target.x, paths ? cave.pathing.targetZ : target.z, dt);
+      recoverWalker(cave, paths ? cave.pathing.targetX : target.x, paths ? cave.pathing.targetZ : target.z, dt, !!paths);
       let remaining = RUSH_SPEED * dt * (inBananas(cave) ? 0.5 : 1), moved = 0;
       while (remaining > 1e-8 && Math.hypot(target.x - p.x, target.z - p.z) >= 0.12) {
         if (paths && (!cave.avoidance.navigation.mode || cave.pathing.tx !== target.x || cave.pathing.tz !== target.z)) paths.target(cave, target.x, target.z);
@@ -4208,8 +4276,27 @@
         }
       }
       if (work.phase === "station") {
+        // A nonworker can occupy a reserved shooting place after it was
+        // selected. Walking around that body cannot reach its exact center.
+        const occupied = spotOccupied(cave, work.position.x, work.position.y, work.position.z);
+        const near = Math.hypot(cave.root.position.x - work.position.x, cave.root.position.z - work.position.z) < 1.5;
+        work.blockedTime = occupied && near ? work.blockedTime + dt : 0;
+        // An occupied place re-invokes the site's position hook every 0.8 s by
+        // design. It is also the place-cycling hook, so it must be total and bounded.
+        if (work.blockedTime >= 0.8 && site.position) {
+          work.blockedTime = 0;
+          const x = work.position.x, y = work.position.y, z = work.position.z, place = work.place;
+          if (site.position(cave, work.position, true) !== false && Number.isFinite(work.position.x)
+            && Number.isFinite(work.position.y) && Number.isFinite(work.position.z)) {
+            if (work.position.x !== x || work.position.y !== y || work.position.z !== z) {
+              resetWalkerRoute(cave); cave.progress.backoff = 0;
+            }
+          } else {
+            setVec(work.position, x, y, z); work.place = place;
+          }
+        }
         if (walkWorkTo(cave, work.position, dt, !site.approachDistance)) {
-          work.phase = "shoot"; work.direct = false; work.timer = 0.2 + cave.index * 0.07; work.emptyTime = 0;
+          work.phase = "shoot"; work.direct = false; work.timer = 0.2 + cave.index * 0.07; work.emptyTime = work.blockedTime = 0;
           aimWork(cave, site);
         }
       } else if (work.phase === "shoot") {
@@ -6049,7 +6136,7 @@
     }
     const stats = () => ({ built: builtEquipment.length, tomatoesThrown, projectiles: bulletPool.reduce((n,b)=>n+(b.life>0?1:0),0) });
     return {
-      showShot, setTint,
+      showShot, setTint, spotOccupied,
       cavemen, list: crewList, fanSlots, stateOf, stateCounts, workingCavemen, eatingCavemen, workingCount, eatingCount, feedableCavemen, refreshStates, refreshRosterRow, updateFan, rush, headWorldOf, applyAllSwag, wornBy, renderLocker, pokeCave, idleSay, drawQuotes,
       throwTomato, clearProjectiles, control, release, relocatePlayer, sleepPlayer, wakePlayer, sitPlayer, standPlayer, clearHeadLook, recoverDragged, ignite, dropRoll, damage, fireView, steer: steerPlayer, look: lookPlayer, elevate: elevatePlayer, playerAction, jumpPlayer, poseWeapon, wearJetpack, removeJetpack, setJetpackOwnership, thrust, holdRocketJump, update, dispose, stats,
       actorClear, builtInJetpack, toggleTint, twirl, toggleWeapon, selectWeapon, configureWeapon, swingWeapon, bashWeapon, releaseSwing, fireWeapon, setWeaponTrigger, canFire, weaponOrigin, meleeReach, meleePower, nearReload, canReload, startReload, stopReload, stopBurst, canSwapMagazine, swapMagazine, collectMagazine, collectGroundMagazine, collectAmmo, removeMagazines, hasMagazine, magazineCount, magazineAmmo, totalAmmo, workSites,

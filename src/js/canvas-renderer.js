@@ -341,6 +341,44 @@
       const h = m[3] * x + m[7] * y + m[11] * z + m[15];
       out[0] /= h; out[1] /= h; out[2] /= h;
     };
+    // Reject a complete static bounding box before walking its faces. The
+    // mixed perspective/orthographic side planes are linear in view space.
+    // Dynamic surfaces and Matrix receiver planes keep their existing path.
+    const matrixReceiverCache = new WeakMap();
+    const hasMatrixReceiver = (node) => {
+      const g = node.geometry;
+      if (matrixModeOf(node) || node.tip || g.matrixCave || g.matrixRevealBacking || g.matrixWorldGlyphSurface) return true;
+      // Face flags are mutable until first render, so a cached verdict holds
+      // only while the face array is the same object.
+      let entry = matrixReceiverCache.get(g);
+      if (entry && entry.faces === g.faces) return entry.receiver;
+      let receiver = false;
+      if (g.faces) for (const face of g.faces) {
+        if (face.matrixCave || face.matrixPermanentFallback || face.matrixLocalGlyphSurface || face.matrixWorldGlyphSurface || face.color?.[3] < 0) { receiver = true; break; }
+      }
+      matrixReceiverCache.set(g, { faces: g.faces, receiver });
+      return receiver;
+    };
+    const outsideView = (node) => {
+      const g = node.geometry, w = node.world;
+      if (w[3] || w[7] || w[11] || w[15] !== 1) return false;
+      if (matrixActive || matrixPermanentCave && hasMatrixReceiver(node) || g.matrixGlyph || g.matrixLocalGlyphSurface || g.clipPlane || g.clipSlab || g.clipMinY !== undefined || g.clipMaxY !== undefined || cutawayRegionCount || cutawayMaxY < Infinity || g.projective || g.portalSurface || g.lakeBody || g.lakeWaves || g.lakeChargeRise || node.matrixCloud || node.mirror || node.mirrorPortal || node.mirrorShard || node.mirrorRippleOnly || g.reflector) return false;
+      const b = BL.scene.boundsOf(g);
+      const margin = g.lines?.length ? 8 : 3;
+      let outside = 31;
+      for (let corner = 0; corner < 8 && outside; corner++) {
+        const x = b[corner & 1 ? "max" : "min"][0], y = b[corner & 2 ? "max" : "min"][1], z = b[corner & 4 ? "max" : "min"][2];
+        const wx = w[0] * x + w[4] * y + w[8] * z + w[12], wy = w[1] * x + w[5] * y + w[9] * z + w[13], wz = w[2] * x + w[6] * y + w[10] * z + w[14];
+        const vx = view[0] * wx + view[4] * wy + view[8] * wz + view[12], vy = view[1] * wx + view[5] * wy + view[9] * wz + view[13], depth = -(view[2] * wx + view[6] * wy + view[10] * wz + view[14]);
+        const span = projectedDepth(depth), hx = span * (width / 2 + margin) / lastF, hy = span * (height / 2 + margin) / lastF;
+        // Match the seven-pixel line rejection (including its glow) or the
+        // two-pixel face rejection, plus one for Float32 world/view rounding.
+        // Crossing boxes are always retained.
+        const epsilon = 1e-4 * (1 + Math.abs(wx) + Math.abs(wy) + Math.abs(wz));
+        outside &= (depth < near - epsilon ? 1 : 0) | (vx < -hx - epsilon ? 2 : 0) | (vx > hx + epsilon ? 4 : 0) | (vy < -hy - epsilon ? 8 : 0) | (vy > hy + epsilon ? 16 : 0);
+      }
+      return outside !== 0;
+    };
     const shadeNode = (node) => {
       const opacity = (node.smokeOpacity === undefined ? 1 : node.smokeOpacity) * (node.geometry.glassOpacity || node.geometry.glass || 1) * (node.geometry.cutawayHide ? 1 - cutawayFade : 1);
       if (opacity === 0) return;
@@ -1607,7 +1645,7 @@
         }
         if (!hiddenFromCutaway(node) && (environmentCapture || !hiddenFromCamera(node))) {
           if (node.instanceData) shadeBatch(node);
-          else if (node.geometry) shadeNode(node);
+          else if (node.geometry && !outsideView(node)) shadeNode(node);
         }
       });
       if (viewActor) { opts.afterView?.(); updateWorld(viewActor.root, viewActor.root.parent?.world || null); }
@@ -1788,6 +1826,7 @@
       ray,
       setQuality: () => { },
       releaseGeometry: () => { },
+      createRig: () => null,
       releaseUnused: (live) => { if (environment.source && !live.has(environment.source.geometry)) destroyEnvironment(); return 0; },
       dispose: () => {
         destroyEnvironment();
