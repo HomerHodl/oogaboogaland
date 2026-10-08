@@ -10993,20 +10993,27 @@ const shaderDerivationProof = async () => {
 // final destination is across a wall, and with a level platform over deep water.
 const reviewMovementProof = async () => {
   const crewSource = await readFile(join(root, "src/js/crew.js"), "utf8");
-  const recovery = crewSource.slice(crewSource.indexOf("    const recoverWalker ="), crewSource.indexOf("    const recoveryBodies ="));
-  const nav = { mode: 0, costs: new Float32Array(441), parents: new Int16Array(441), closed: new Uint8Array(441), heights: new Float32Array(441), searches: 0 };
+  const recovery = crewSource.slice(crewSource.indexOf("    const recoverWalker ="), crewSource.indexOf("    const jumpWalker ="));
+  const nav = { mode: 0, costs: new Float32Array(441), parents: new Int16Array(441), closed: new Uint8Array(441), heights: new Float32Array(441), path: new Int16Array(441), searches: 0, expansions: 0 };
   const a = { tx: NaN, tz: NaN, goalX: NaN, goalZ: NaN, pathIndex: -1, pathVersion: -1, best: Infinity, stalled: 0, navigation: nav };
   const cave = { root: { position: { x: 0, y: 0, z: 0 } }, baseY: 0, avoidance: a, traffic: { waiting: false },
     pathing: { tx: 5, tz: 10, count: 4, index: 0, version: 1, laneX: [0, 0, 5, 5], laneZ: [0, 5, 5, 10] } };
-  const context = { NAV_CENTER: 220, cave };
-  runInNewContext(`${recovery} this.tick = () => recoverWalker(cave, 0, 1, 0.1, true);`, context);
+  const context = { NAV_CENTER: 220, NAV_WIDTH: 21, NAV_SIZE: 441, NAV_HALF: 10, NAV_CELL: 0.5, NAV_STEP: 0.025,
+    STEP: 0.6, ctx: {}, crewList: [], npcWalkable: () => true, groundAt: () => 0, cave };
+  runInNewContext(`${recovery} this.tick = () => recoverWalker(cave, 0, 1, 0.1, true);
+this.near = () => recoverWalker(cave, 0, 0.25, 0.1); this.search = () => searchWalker(cave, 0, 0.25, 0.025);`, context);
   context.tick();
   const corner = a.tx === 0 && a.tz === 5;
   cave.pathing.index = 1; context.tick();
-  for (let i = 0; i < 12; i++) { cave.pathing.index = i & 1; context.tick(); }
-  const jitter = nav.mode === 1 && nav.searches === 1 && a.stalled > 0.75 && a.pathIndex === 1;
+  for (let i = 0; i < 12; i++) context.tick();
+  const retained = nav.mode === 1 && nav.searches === 1 && a.stalled > 0.75 && a.pathIndex === 1;
   cave.pathing.version++; context.tick();
   const replan = nav.mode === 0 && a.stalled === 0 && a.pathVersion === 2;
+  a.tx = NaN; cave.pathing.index = 0; context.tick();
+  const reset = nav.mode === 0 && a.stalled === 0 && a.pathIndex === 0;
+  for (let i = 0; i < 10; i++) context.near();
+  context.search();
+  const nonempty = nav.mode === 2 && nav.count > 0 && nav.index >= 0;
   const dsbSource = await readFile(join(root, "src/js/scene-dsb.js"), "utf8");
   const walking = dsbSource.slice(dsbSource.indexOf("    const walkable="), dsbSource.indexOf("    const flyable="));
   let support = 3, terrainAllowed = false, clear = true;
@@ -11020,7 +11027,7 @@ const reviewMovementProof = async () => {
   clear = false; const wall = !floorContext.walk(0, 0, 0, 0.1, 3, 1.5, actor);
   clear = true; support = -Infinity; const water = !floorContext.walk(0, 0, 0, 0.1, -5, 1.5, actor);
   terrainAllowed = true; const terrain = floorContext.walk(0, 0, 0, 0.1, -5, 1.5, actor);
-  return { corner, jitter, replan, platform, wall, water, terrain };
+  return { corner, retained, replan, reset, nonempty, platform, wall, water, terrain };
 };
 
 const reviewCrowdAndFallbackProof = async () => {
@@ -11052,7 +11059,7 @@ const unitChecks = async () => {
   const reviewCrowd=await reviewCrowdAndFallbackProof();
   record("review crowd: recovery fetches outside actors once per edge and tests only nearby bodies; one station helper handles height and visibility; CPU fallback draws original joints only",["clear","filtered","blocked","hidden","above","cpu","gpu"].every(k=>reviewCrowd[k]),JSON.stringify(reviewCrowd));
   const movementReview = await reviewMovementProof();
-  record("review movement: recovery follows the next lane bend despite backward-index jitter; solid platforms bypass terrain gates while walls and water remain blocked", Object.values(movementReview).every(Boolean), JSON.stringify(movementReview));
+  record("review movement: recovery follows the next lane bend, retains stalls on the same leg and resets on replans; solid platforms bypass terrain gates while walls and water remain blocked", Object.values(movementReview).every(Boolean), JSON.stringify(movementReview));
 
   const waterProgram = selectedWaterProgramProof();
   record("DSB water: environment and sampler bindings follow the selected ordinary or rig shader while state replacement releases owned textures", waterProgram.cases === 2 && waterProgram.failures === 0, JSON.stringify(waterProgram));
@@ -11573,7 +11580,7 @@ record("character visibility source bakes: ownership wrappers share exact immuta
     const S = BL.scene, root = S.createNode(), noop = () => {}, roster = BL.contributors.activeRoster, savedRoster = [...roster], rows = [];
     roster.splice(2);
     try {
-      for (const scenario of ["persistent", "transient", "absent", "curved", "detour", "tiny"]) {
+      for (const scenario of ["persistent", "transient", "absent", "curved", "detour", "tiny", "blocked curve"]) {
         const rectangle = (x, z, tx, tz, x0, x1, z0, z1) => {
           let lo = 0, hi = 1;
           for (const [p, d, a, b] of [[x, tx - x, x0, x1], [z, tz - z, z0, z1]]) {
@@ -11583,9 +11590,17 @@ record("character visibility source bakes: ownership wrappers share exact immuta
           }
           return true;
         };
-        let queries = 0;
-        const clear = (x, z, tx, tz) => { queries++; return !rectangle(x, z, tx, tz, -1, -0.2, -6.2, -5.4) && !rectangle(x, z, tx, tz, 0.2, 1, -6.2, -5.4); };
-        const centerlines = scenario === "curved" ? [[{ x: 0, z: -6 }, { x: 0, z: -8 }, { x: 2, z: -8 }, { x: 2, z: 0 }, { x: 0, z: 0 }]] : [[{ x: 0, z: -10 }, { x: 0, z: 10 }]];
+        const blockedCurve = scenario === "blocked curve";
+        let queries = 0, obstacleActive = !blockedCurve;
+        const clear = (x, z, tx, tz) => {
+          queries++;
+          if (!obstacleActive) return true;
+          if (blockedCurve) return !rectangle(x, z, tx, tz, -0.95, -0.43, 1.3, 1.9)
+            && !rectangle(x, z, tx, tz, -0.27, 0.25, 1.3, 1.9) && !rectangle(x, z, tx, tz, -0.95, 0.25, 1.8, 1.9);
+          return !rectangle(x, z, tx, tz, -1, -0.2, -6.2, -5.4) && !rectangle(x, z, tx, tz, 0.2, 1, -6.2, -5.4);
+        };
+        const centerlines = blockedCurve ? [[{ x: 0, z: 0 }, { x: 0, z: 2 }, { x: 2, z: 2 }, { x: 2, z: 0 }]]
+          : scenario === "curved" ? [[{ x: 0, z: -6 }, { x: 0, z: -8 }, { x: 2, z: -8 }, { x: 2, z: 0 }, { x: 0, z: 0 }]] : [[{ x: 0, z: -10 }, { x: 0, z: 10 }]];
         const island = { path: { version: 0, debug: { active: false, ringCenterRadius: 0 }, centerlines }, surfaceAt: () => 0, isPath: () => true };
         const npcPaths = BL.npcPaths.create({ island, walkable: clear });
         const detour = [{ x: 0, z: -6.5 }, { x: 1.5, z: -6.5 }, { x: 1.5, z: 0 }, { x: 0, z: 0 }]; let detourIndex = 0;
@@ -11605,26 +11620,41 @@ record("character visibility source bakes: ownership wrappers share exact immuta
           }
           c.override = c.state = "working"; blocker.override = blocker.state = "chilling";
           blocker.root.visible = scenario === "persistent" || scenario === "transient" || scenario === "tiny";
-          Object.assign(c.root.position, { x: 0, y: c.baseY, z: -6 }); Object.assign(blocker.root.position, { x: 0, y: blocker.baseY, z: -5.25 });
-          c.act.kind = "wander"; Object.assign(c.act.spot, { x: 0, z: 0, ry: 0 });
-          c.walk = { tx: 0, tz: 0, speed: 1.7, phase: 0, heading: 0, to: "spot" }; npcPaths.target(c, 0, scenario === "detour" ? 8 : 0);
+          Object.assign(c.root.position, { x: 0, y: c.baseY, z: blockedCurve ? 0 : -6 }); Object.assign(blocker.root.position, { x: 0, y: blocker.baseY, z: -5.25 });
+          const goalX = blockedCurve ? 2 : 0;
+          c.act.kind = "wander"; Object.assign(c.act.spot, { x: goalX, z: 0, ry: 0 });
+          c.walk = { tx: goalX, tz: 0, speed: 1.7, phase: 0, heading: 0, to: "spot" }; npcPaths.target(c, goalX, scenario === "detour" ? 8 : 0);
+          if (blockedCurve) {
+            // The real lane's sixth sample approaches a rounded bend. Its next
+            // bend sample is clear and close, but a late obstacle blocks the
+            // lookahead. Continue an avoidance attempt already in progress.
+            c.root.position.x = c.pathing.laneX[6]; c.root.position.z = c.pathing.laneZ[6];
+            npcPaths.target(c, goalX, 0); obstacleActive = c.avoidance.active = true;
+          }
           let frames = 0, maximumStep = 0, separation = Infinity, collisions = 0, tinyQueries = null;
+          let previousMode = 0, emptySearches = 0, productiveSearches = 0, recoveryAimBlocked = false;
           for (; frames < 160 && c.walk; frames++) {
             if (scenario === "transient" && frames === 20) blocker.root.visible = false;
             const p = c.root.position, x = p.x, z = p.z; crew.update(1 / 20, frames / 20); S.updateWorld(root);
+            const nav = c.avoidance.navigation;
+            if (frames === 0 && blockedCurve) recoveryAimBlocked = !clear(p.x, p.z, c.avoidance.tx, c.avoidance.tz);
+            if (nav.mode === 2 && previousMode !== 2) { if (nav.count) productiveSearches++; else emptySearches++; }
+            previousMode = nav.mode;
             maximumStep = Math.max(maximumStep, Math.hypot(p.x - x, p.z - z)); if (!clear(x, z, p.x, p.z)) collisions++;
             if (blocker.root.visible) separation = Math.min(separation, Math.hypot(p.x - blocker.root.position.x, p.z - blocker.root.position.z));
             if (scenario === "tiny" && tinyQueries === null && c.avoidance.navigation.mode === 1) {
               queries = 0; crew.update(0.0001, frames / 20 + 0.0001); tinyQueries = queries;
             }
           }
-          rows.push({ scenario, frames, maximumStep, separation, collisions, tinyQueries, arrived: !c.walk, resets: c.progress.resets, jumps: c.avoidance.navigation.jumps, searches: c.avoidance.navigation.searches });
+          rows.push({ scenario, frames, maximumStep, separation, collisions, tinyQueries, emptySearches, productiveSearches, recoveryAimBlocked,
+            arrived: !c.walk, resets: c.progress.resets, jumps: c.avoidance.navigation.jumps, searches: c.avoidance.navigation.searches });
         } finally { crew.dispose(); }
       }
-      record("NPC recovery: changing look-ahead hints retain progress and search around real bodies without relocation; clear straight and curved routes need no search",
+      record("NPC recovery: changing look-ahead hints retain progress and search around real bodies without relocation; clear routes need no search and blocked curves produce a nonempty detour",
         rows.every(r => r.arrived && r.frames < 160 && r.maximumStep <= 1.7 / 20 + 1e-6 && r.separation >= 0.68 - 1e-6 && !r.collisions && !r.resets && !r.jumps)
           && rows[0].searches === 1 && !rows[2].searches && rows[2].frames === 72 && !rows[3].searches && rows[3].frames === 143
-          && !rows[4].searches && rows[5].tinyQueries > 0 && rows[5].tinyQueries <= 2000, JSON.stringify(rows));
+          && !rows[4].searches && rows[5].tinyQueries > 0 && rows[5].tinyQueries <= 2000
+          && rows[6].searches === 1 && rows[6].productiveSearches === 1 && !rows[6].emptySearches && rows[6].recoveryAimBlocked, JSON.stringify(rows));
     } finally { roster.splice(0, roster.length, ...savedRoster); }
   }
   {

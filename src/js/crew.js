@@ -3694,9 +3694,9 @@
     };
     const recoverWalker = (cave, tx, tz, dt, usePath = false) => {
       const a = cave.avoidance, nav = a.navigation, p = cave.root.position, path = cave.pathing;
-      // Keep the route identity stable, but recover toward its current segment,
-      // not through the wall toward the final destination. Nearest-leg jitter
-      // may move backward; only a new route or forward progress resets a stall.
+      // Keep the route identity stable and recover toward its current segment.
+      // The path index advances within a route; replans and explicit route
+      // resets invalidate the cached target before restarting stall tracking.
       const stable = usePath && path && Number.isFinite(path.tx) && Number.isFinite(path.tz) && path.count > 1 && path.index < path.count - 1;
       const gx = stable ? path.tx : tx, gz = stable ? path.tz : tz;
       const leg = stable ? Math.min(path.index, path.count - 2) : -1, version = stable ? path.version : -1;
@@ -3716,6 +3716,11 @@
           }
         }
         a.tx = stable ? path.laneX[end] : tx; a.tz = stable ? path.laneZ[end] : tz;
+        // Rounded bends have short, non-collinear samples. A nearby clear
+        // sample can end recovery before the blocked lookahead, so retain
+        // the route's lookahead there, rather than its final destination.
+        const nearby = Math.hypot(a.tx - p.x, a.tz - p.z);
+        if (stable && nearby < 0.75 && Math.hypot(tx - p.x, tz - p.z) > nearby) { a.tx = tx; a.tz = tz; }
         a.best = Infinity; a.stalled = 0; nav.mode = 0;
       }
       const distance = Math.hypot(a.tx - p.x, a.tz - p.z);
@@ -3787,7 +3792,9 @@
         const col = current % NAV_WIDTH, row = Math.floor(current / NAV_WIDTH);
         const x = nav.x + (col - NAV_HALF) * NAV_CELL, z = nav.z + (row - NAV_HALF) * NAV_CELL, y = nav.heights[current];
         const remaining = Math.hypot(tx - x, tz - z);
-        const destination = remaining < 0.75 && Number.isFinite(recoveryHeight(cave, x, z, y, tx, tz, step));
+        // A stalled walker needs a step out of its current cell. Accepting
+        // the center produces an empty route and clears the stall unchanged.
+        const destination = current !== NAV_CENTER && remaining < 0.75 && Number.isFinite(recoveryHeight(cave, x, z, y, tx, tz, step));
         const exit = (col === 0 || row === 0 || col === NAV_WIDTH - 1 || row === NAV_WIDTH - 1)
           && remaining < Math.hypot(tx - nav.x, tz - nav.z) - 0.5;
         if (destination || exit) {
