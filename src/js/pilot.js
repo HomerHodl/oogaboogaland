@@ -2726,7 +2726,7 @@
       groundX = m[0] * gx + m[8] * gz + m[12]; groundZ = m[2] * gx + m[10] * gz + m[14];
       groundView += m[13]; groundTarget += m[13]; groundValid = false;
       orbit.yaw += yaw; orbit.tYaw += yaw; freeMoveYaw += yaw; lyingYaw += yaw;
-      overheadYaw += yaw; overheadTargetYaw += yaw; overheadEntryYaw += yaw; aimEntryYaw += yaw; aimBodyYaw += yaw;
+      overheadYaw += yaw; overheadTargetYaw += yaw; overheadEntryYaw += yaw; overheadNorthStartYaw += yaw; aimEntryYaw += yaw; aimBodyYaw += yaw;
       aimWeaponYaw += yaw; overheadWeaponYaw += yaw;
       quat.fromEuler(portalRotation, 0, yaw, 0);
       for (const q of portalRotations) quat.multiply(q, portalRotation, q);

@@ -34,6 +34,40 @@ const emptyPeerPreviewProof = async () => {
   }
   return {cases,samples,callbacks,failures};
 };
+// A portal rebase mid north-up ease must not jump the camera: the shift line must carry the
+// ease's start yaw too, so the trajectory after the rebase equals the one before, plus the rebase.
+const northRebaseProof = async () => {
+  const source = await readFile(join(root, "src/js/pilot.js"), "utf8");
+  const easeFn = source.slice(source.indexOf("  const overheadNorthEase"), source.indexOf(";", source.indexOf("  const overheadNorthEase")) + 1);
+  const shiftAt = source.indexOf("      overheadYaw += yaw;");
+  const shift = source.slice(shiftAt, source.indexOf("      quat.fromEuler(portalRotation", shiftAt));
+  const easeAt = source.indexOf("        overheadNorthTime = Math.min(OVERHEAD_NORTH_TIME");
+  const ease = source.slice(easeAt, source.indexOf("      } else {", easeAt));
+  const context = {};
+  runInNewContext(`
+    const OVERHEAD_NORTH_TIME = 0.6;
+    ${easeFn}
+    let overheadYaw = 0, overheadTargetYaw = 0, overheadEntryYaw = 0, overheadNorthStartYaw = 0, aimEntryYaw = 0, aimBodyYaw = 0, aimWeaponYaw = 0, overheadWeaponYaw = 0, overheadNorthTime = 0;
+    this.rebase = (yaw) => { ${shift} };
+    this.evaluate = (dt) => { ${ease} return overheadYaw; };
+    this.setState = (s, t, time, y) => { overheadNorthStartYaw = s; overheadTargetYaw = t; overheadNorthTime = time; overheadYaw = y; };
+    this.getState = () => ({ start: overheadNorthStartYaw, target: overheadTargetYaw, time: overheadNorthTime, yaw: overheadYaw });
+  `, context);
+  let cases = 0, failures = 0;
+  for (const e of [0.05, 0.3, 0.55, 0.8, 0.98]) for (const [start, target] of [[-2.4, 0], [3.1, -0.2], [0.7, 2.8]]) {
+    const time = e * 0.6, yaw = 1.34;
+    context.setState(start, target, time, 0);
+    const before = context.evaluate(0);
+    context.rebase(yaw);
+    const after = context.evaluate(0);
+    const state = context.getState();
+    cases++;
+    if (!(Math.abs(after - (before + yaw)) < 1e-12 && Math.abs(state.yaw - (before + yaw)) < 1e-12
+      && state.start === start + yaw && state.target === target + yaw && state.time === time)) failures++;
+  }
+  return { cases, failures };
+};
+
 // Execute the actual north update branch at the replay deadline and worst arc.
 const northTrajectoryProof = async () => {
   const source = await readFile(join(root, "src/js/pilot.js"), "utf8");
@@ -10876,6 +10910,8 @@ record("character visibility source bakes: ownership wrappers share exact immuta
   await qualityFramebufferChecks();
   const north = await northTrajectoryProof();
   record("birds-eye north: worst shortest arcs stay monotonic below the frame step limit and settle before the replay deadline", north.finite && north.monotonic && north.resets && north.variableSteps && north.maxStep < 0.25 && north.residual < 0.001, JSON.stringify(north));
+  const northRebase = await northRebaseProof();
+  record("birds-eye north: a portal rebase mid north-up ease continues the exact trajectory without a camera jump", northRebase.cases === 15 && northRebase.failures === 0, JSON.stringify(northRebase));
   const cutaway = await cutawayBoundsProof();
   record("cutaway visibility: active apertures reject remote meshes without vertex scans and retain cells, blends, children, global and rotated local cuts", Object.entries(cutaway).every(([key, value]) => key === "bytes" ? value === 160 : value), JSON.stringify(cutaway));
   const storage = await visibilityStorageProof({ compact: true, deferred: true });
