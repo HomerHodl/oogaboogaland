@@ -1,18 +1,17 @@
 {
   "version": 1,
   "lane": "manual",
-  "openedOn": "2026-10-05",
-  "round": "8e82f7d44a8e241eda50ae9694cd169ee8340629",
+  "openedOn": "2026-10-08",
+  "round": "4ee83493b849a22069ae4ffa2536689acdb2548c",
   "entries": [
     {
-      "pr": 155,
-      "head": "6e9ccbfbe7e174ff08e26487a38e8961763cc078",
-      "author": "BTCMcBoatface",
-      "path": "src/characters/btcmcboatface.js",
-      "base": "27ab95b1888d99b5d4f98a5db6a6a2637795e75d",
-      "hash": "feaeeff6c1c0ec1c301f89f681e71741aef325eea46e3294efc82bc9a05c76ee",
+      "pr": 183,
+      "head": "89a3e58ab5e4c73509ece12252ad0891e4d81aec",
+      "author": "nickdagreek1",
+      "path": "src/characters/NickDaGreek.js",
+      "base": null,
+      "hash": "2b1c88db419612fcf909a2215097acdf36e880291fa953f2d6ed8a0cb928344a",
       "lane": "manual"
     }
-  ],
-  "automation": "obl-character-bundles[bot]"
+  ]
 }
