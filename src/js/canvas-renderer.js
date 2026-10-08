@@ -364,14 +364,16 @@
       if (w[3] || w[7] || w[11] || w[15] !== 1) return false;
       if (matrixActive || matrixPermanentCave && hasMatrixReceiver(node) || g.matrixGlyph || g.matrixLocalGlyphSurface || g.clipPlane || g.clipSlab || g.clipMinY !== undefined || g.clipMaxY !== undefined || cutawayRegionCount || cutawayMaxY < Infinity || g.projective || g.portalSurface || g.lakeBody || g.lakeWaves || g.lakeChargeRise || node.matrixCloud || node.mirror || node.mirrorPortal || node.mirrorShard || node.mirrorRippleOnly || g.reflector) return false;
       const b = BL.scene.boundsOf(g);
+      const margin = g.lines?.length ? 8 : 3;
       let outside = 31;
       for (let corner = 0; corner < 8 && outside; corner++) {
         const x = b[corner & 1 ? "max" : "min"][0], y = b[corner & 2 ? "max" : "min"][1], z = b[corner & 4 ? "max" : "min"][2];
         const wx = w[0] * x + w[4] * y + w[8] * z + w[12], wy = w[1] * x + w[5] * y + w[9] * z + w[13], wz = w[2] * x + w[6] * y + w[10] * z + w[14];
         const vx = view[0] * wx + view[4] * wy + view[8] * wz + view[12], vy = view[1] * wx + view[5] * wy + view[9] * wz + view[13], depth = -(view[2] * wx + view[6] * wy + view[10] * wz + view[14]);
-        const span = projectedDepth(depth), hx = span * (width / 2 + 3) / lastF, hy = span * (height / 2 + 3) / lastF;
-        // The extra pixel covers the existing two-pixel face rejection plus
-        // Float32 world/view rounding. Crossing boxes are always retained.
+        const span = projectedDepth(depth), hx = span * (width / 2 + margin) / lastF, hy = span * (height / 2 + margin) / lastF;
+        // Match the seven-pixel line rejection (including its glow) or the
+        // two-pixel face rejection, plus one for Float32 world/view rounding.
+        // Crossing boxes are always retained.
         const epsilon = 1e-4 * (1 + Math.abs(wx) + Math.abs(wy) + Math.abs(wz));
         outside &= (depth < near - epsilon ? 1 : 0) | (vx < -hx - epsilon ? 2 : 0) | (vx > hx + epsilon ? 4 : 0) | (vy < -hy - epsilon ? 8 : 0) | (vy > hy + epsilon ? 16 : 0);
       }

@@ -3,7 +3,7 @@ import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSyn
 import { readFile, writeFile } from "node:fs/promises";
 import { runInNewContext } from "node:vm";
 import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { tmpdir } from "node:os";
 import { createHash, webcrypto } from "node:crypto";
 import { externalizeAudio } from "../scripts/distribution-audio.mjs";
@@ -6629,23 +6629,40 @@ scene("lab", { label: "canvas bounds", steps: [{ name: "canvas bounds", why: "re
     const water = box({ x: 0, y: 80, z: -4 }); water.geometry.lakeBody = [0, 0, 0]; S.addChild(root, water);
     const encoded = box({ x: 0, y: -80, z: -4 }), encodedFace = encoded.geometry.faces[0]; encodedFace.color = [encodedFace.color[0], encodedFace.color[1], encodedFace.color[2], -2]; S.addChild(root, encoded);
     const living = box({ x: 90, y: 90, z: -4 }), livingParent = S.createNode({ matrixLiving: true }); S.addChild(livingParent, living); S.addChild(root, livingParent);
+    const halos = Array.from({ length: 4 }, (_, edge) => {
+      const geometry = { verts: edge < 2 ? [0, -.5, 0, 0, .5, 0] : [-.5, 0, 0, .5, 0, 0], faces: [], lines: [{ i: [0, 1], color: [1, .2, .8], emissive: 1 }] };
+      geometries.push(geometry); const node = S.createNode({ geometry, position: { x: 0, y: edge === 1 ? 1.2 : 0, z: -4 } }); S.addChild(root, node); return node;
+    });
     const camera = S.createCamera({ fov: 60, near: .1, far: 1000 }); camera.position = { x: 0, y: 0, z: 0 }; camera.target = { x: 0, y: 0, z: -1 }; camera.orthoHeight = 6;
     const options = { matrix: { active: 0, permanentCave: 1, origin: [0, 0, 0], caves: [1, 0, 0, 0], caveBounds: [0, 0, 0, 0] } };
     // Mirror cave presence must not disable all ordinary-node culling. Warm
     // immutable bounds/receiver metadata before measuring face traversal.
     renderer.render(root, camera, options);
     for (const mix of [0, .25, .5, .75, 1]) {
-      camera.orthoMix = mix; faceReads = 0; reads.clear(); renderer.render(root, camera, options); const optimized = canvas.getContext('2d').getImageData(0, 0, 128, 96).data.slice(), optimizedReads = faceReads, specialReads = [receiver, clipped, water, encoded, living].map(n => reads.get(n.geometry) || 0);
+      camera.orthoMix = mix; renderer.render(root, camera, options);
+      // Use the renderer's projection to place line centers four pixels
+      // outside each edge; their eleven-pixel glow still reaches the canvas.
+      const projected = renderer.project(1, 1, -4), sx = projected.x - 64, sy = 48 - projected.y;
+      halos[0].position.x = -68 / sx; halos[1].position.x = 68 / sx;
+      halos[2].position.y = 52 / sy; halos[3].position.y = -52 / sy;
+      faceReads = 0; reads.clear(); renderer.render(root, camera, options); const optimized = canvas.getContext('2d').getImageData(0, 0, 128, 96).data.slice(), optimizedReads = faceReads, specialReads = [receiver, clipped, water, encoded, living].map(n => reads.get(n.geometry) || 0);
       // Affine projective matrices have homogeneous w=1, yielding the same
       // pixels while deliberately taking the uncullable reference path.
       for (const g of geometries) g.projective = true;
       faceReads = 0; renderer.render(root, camera, options); const reference = canvas.getContext('2d').getImageData(0, 0, 128, 96).data, referenceReads = faceReads;
+      for (const node of halos) node.visible = false;
+      renderer.render(root, camera, options); const withoutHalos = canvas.getContext('2d').getImageData(0, 0, 128, 96).data, haloPixels = [0, 0, 0, 0];
+      for (let i = 0; i < reference.length; i += 4) if (reference[i] !== withoutHalos[i] || reference[i + 1] !== withoutHalos[i + 1] || reference[i + 2] !== withoutHalos[i + 2]) {
+        const x = i / 4 % 128, y = Math.floor(i / 4 / 128);
+        if (x < 2) haloPixels[0]++; if (x >= 126) haloPixels[1]++; if (y < 2) haloPixels[2]++; if (y >= 94) haloPixels[3]++;
+      }
+      for (const node of halos) node.visible = true;
       for (const g of geometries) delete g.projective;
-      results.push({ mix, same: optimized.every((v, i) => v === reference[i]), optimizedReads, referenceReads, specialReads });
+      results.push({ mix, same: optimized.every((v, i) => v === reference[i]), optimizedReads, referenceReads, specialReads, haloPixels });
     }
     return results;
   })()`);
-  record("canvas bounds: near and viewport crossings, visible children and every orthographic morph preserve exact pixels while skipping offscreen face reads", rows.every(r => r.same && r.optimizedReads < r.referenceReads && r.specialReads.every(n => n > 0)), JSON.stringify(rows));
+  record("canvas bounds: near and viewport crossings, visible children and glowing edge lines preserve exact pixels through every orthographic morph while skipping offscreen face reads", rows.every(r => r.same && r.optimizedReads < r.referenceReads && r.specialReads.every(n => n > 0) && r.haloPixels.every(n => n > 0)), JSON.stringify(rows));
 } }] });
 const bifrostCanvas = { name: "bifrost canvas2d", why: "contract: the Canvas 2D fallback builds ₿IFRÖST's islet without the WebGL window into the chamber, and boots and draws the chamber", run: async (b) => {
   const hub = await b.evaluate(`(() => { const B = window.__ooga; B.pilot.goPreset("bifrost"); B.advance(1, 1 / 60); return { kind: B.renderer.kind, scene: B.scene, islet: !!B.bifrost, window: !!(B.bifrost && B.bifrost.window) }; })()`);
@@ -8371,16 +8388,27 @@ scene("hub", { label: "birds-eye combat", query: "solo=1&character=portlandhodl&
 scene("hub", { label: "birds-eye combat projection and targets", query: "solo=1&character=portlandhodl&weapon=1&mode=shoulder&combat=1", steps: [hubBirdsEyeProjection, hubBirdsEyeTargets, hubCombatReplay] });
 scene("hub", { label: "birds-eye lower floors", query: "solo=1&character=portlandhodl&weapon=1&mode=shoulder&combat=1", steps: [hubBirdsEyeFloors] });
 scene("hub", { label: "mirror", steps: [hubJumbotron, hubMatrix, hubMirror] });
-scene("hub", { label: "reset storage race", steps: [{ name: "reset storage race", why: "regression: a page timer or pagehide storage write once survived the pooled browser reset and leaked state into the next task", run: async (b) => {
-  await b.evaluate('localStorage.setItem("race-marker", "first"); addEventListener("pagehide", () => localStorage.setItem("race-pagehide", "retained")); setTimeout(() => localStorage.setItem("race-timer", "retained"), 40)');
-  await b.sleep(0);
-  await b.close();
-  const b2 = await acquire({});
+scene("hub", { label: "reset storage race", steps: [{ name: "reset storage race", why: "regression: a page timer or pagehide storage write once survived the pooled browser reset and leaked state into the next task", run: async () => {
+  const dir = mkdtempSync(join(tmpdir(), "ooga-reset-")), fixture = join(dir, "index.html");
+  writeFileSync(fixture, "<!doctype html><title>Reset storage fixture</title>");
+  const url = pathToFileURL(fixture).href, shape = { w: 320, h: 240, perf: true };
+  let first = null, next = null;
+  const open = async browser => {
+    await browser.open(url);
+    for (let i = 0; i < 80; i++) {
+      if (await browser.evaluate('location.href === ' + JSON.stringify(url) + ' && document.readyState === "complete"')) return;
+      await browser.sleep(25);
+    }
+    throw driverError("Reset fixture did not finish loading");
+  };
   try {
-    await b2.open(sceneUrl("hub"));
-    const kept = await b2.evaluate('({ marker: localStorage.getItem("race-marker"), timer: localStorage.getItem("race-timer"), pagehide: localStorage.getItem("race-pagehide") })');
-    record("browser reset: a final timer or pagehide storage write cannot survive into the next pooled task", kept.marker === null && kept.timer === null && kept.pagehide === null, JSON.stringify(kept));
-  } finally { await b2.close(); }
+    first = await acquire(shape); await open(first);
+    await first.evaluate('localStorage.setItem("race-marker", "first"); addEventListener("pagehide", () => localStorage.setItem("race-pagehide", "retained")); setTimeout(() => localStorage.setItem("race-timer", "retained"), 40)');
+    await first.sleep(0); await first.close();
+    next = await acquire(shape); const reused = next === first; await open(next);
+    const kept = await next.evaluate('({ marker: localStorage.getItem("race-marker"), timer: localStorage.getItem("race-timer"), pagehide: localStorage.getItem("race-pagehide") })');
+    record("browser reset: the same pooled browser clears final timer and pagehide writes before the next task", reused && kept.marker === null && kept.timer === null && kept.pagehide === null, JSON.stringify({ reused, ...kept }));
+  } finally { next?.close(true); first?.close(true); rmSync(dir, { recursive: true, force: true }); }
 } }] });
 scene("hub", { label: "side panel", query: "pos=0", steps: [hubSheetPersistence] });
 scene("hub", { label: "clock and block height", query: "pos=0&time=0900", steps: [hubBlockHeight, hubDestinationNames] });
