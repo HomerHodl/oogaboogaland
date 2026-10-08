@@ -978,17 +978,27 @@ void main() {
   // scanned or faded away.
   if (vWorld.y < uClipMinY || dot(uObjectClip, vec4(vWorld, 1.0)) > 0.0) discard;
 }`;
-  const ORDINARY_MESH_VS = MESH_VS.replace(RIG_GLSL, "")
-    .replace("uniform vec4 uVoxel;\nflat out vec4 vVoxel;\n", "")
-    .replace("rigMatrix(mat4(aM0, aM1, aM2, aM3))", "mat4(aM0, aM1, aM2, aM3)")
-    .replace("  vec4 params = uRigCount > 0 ? uRigParams[int(aJoint)] : aParams;\n", "")
-    .replace("  vVoxel = uRigCount > 0 ? uRigVoxels[int(aJoint)] : uVoxel;\n", "")
-    .replace("uRigCount > 0 ? normalize(uRigMatrices[int(aJoint)][2].xyz) : normalize(aM2.xyz)", "normalize(aM2.xyz)")
-    .replace(/\bparams\b/g, "aParams")
-    .replace("layout(location=7) in vec4 aParams;\n\n", "layout(location=7) in vec4 aParams;\n");
-  const ORDINARY_MESH_FS = MESH_FS.replace("flat in vec4 vVoxel;", "uniform vec4 uVoxel;").replace(/\bvVoxel\b/g, "uVoxel");
-  const ORDINARY_SHADOW_VS = SHADOW_VS.replace(RIG_GLSL, "").replace("rigMatrix(mat4(aM0, aM1, aM2, aM3))", "mat4(aM0, aM1, aM2, aM3)")
-    .replace("layout(location=6) in vec4 aM3;\n\n", "layout(location=6) in vec4 aM3;\n");
+  // Derived shaders assert every rewrite matched: a source drift must fail at init with the
+  // failed pattern named, never render a silently under-derived shader.
+  const derive = (source, ...rewrites) => {
+    for (const [pattern, replacement] of rewrites) {
+      const matched = pattern instanceof RegExp ? new RegExp(pattern.source, pattern.flags.includes("g") ? pattern.flags : pattern.flags + "g").test(source) : source.includes(pattern);
+      if (!matched) throw new Error(`Shader derivation never matched ${pattern}`);
+      source = source.replace(pattern, replacement);
+    }
+    return source;
+  };
+  const ORDINARY_MESH_VS = derive(MESH_VS, [RIG_GLSL, ""],
+    ["uniform vec4 uVoxel;\nflat out vec4 vVoxel;\n", ""],
+    ["rigMatrix(mat4(aM0, aM1, aM2, aM3))", "mat4(aM0, aM1, aM2, aM3)"],
+    ["  vec4 params = uRigCount > 0 ? uRigParams[int(aJoint)] : aParams;\n", ""],
+    ["  vVoxel = uRigCount > 0 ? uRigVoxels[int(aJoint)] : uVoxel;\n", ""],
+    ["uRigCount > 0 ? normalize(uRigMatrices[int(aJoint)][2].xyz) : normalize(aM2.xyz)", "normalize(aM2.xyz)"],
+    [/\bparams\b/g, "aParams"],
+    ["layout(location=7) in vec4 aParams;\n\n", "layout(location=7) in vec4 aParams;\n"]);
+  const ORDINARY_MESH_FS = derive(MESH_FS, ["flat in vec4 vVoxel;", "uniform vec4 uVoxel;"], [/\bvVoxel\b/g, "uVoxel"]);
+  const ORDINARY_SHADOW_VS = derive(SHADOW_VS, [RIG_GLSL, ""], ["rigMatrix(mat4(aM0, aM1, aM2, aM3))", "mat4(aM0, aM1, aM2, aM3)"],
+    ["layout(location=6) in vec4 aM3;\n\n", "layout(location=6) in vec4 aM3;\n"]);
   const LINE_VS = `#version 300 es
 precision highp float;
 layout(location=0) in vec3 aA;
@@ -2311,7 +2321,7 @@ void main() {
       }
     };
     const collect = (node) => {
-      if (!node.geometry || hiddenFromCutaway(node) || cutawayFade === 1 && node.geometry.cutawayHide) return;
+      if (!node.geometry || !rigMode && node.geometry.meshRig || hiddenFromCutaway(node) || cutawayFade === 1 && node.geometry.cutawayHide) return;
       if (node.mirror || node.mirrorPortal) {
         if (mirror.node) throw new Error("A scene may contain at most one mirror node");
         mirror.node = node;

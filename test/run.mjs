@@ -10883,6 +10883,31 @@ this.rigProgramsReady = rigProgramsReady; this.collectForRender = collectForRend
   };
 };
 
+// Derived ordinary shaders assert every rewrite matched: the proof replays the real source block,
+// pins markers on the derived bytes, and demands init-time throws naming the pattern on drift.
+const shaderDerivationProof = async () => {
+  const source = await readFile(join(root, "src/js/gl-renderer.js"), "utf8");
+  const block = source.slice(source.indexOf("  const VIEW_DIRECTION_GLSL"), source.indexOf("  const LINE_VS"));
+  const context = { window: {}, BL: { dsbWater: { shader: "<<STUB>>" } } };
+  runInNewContext(`window.OUT = (() => { ${block} return { v: ORDINARY_MESH_VS, f: ORDINARY_MESH_FS, sh: ORDINARY_SHADOW_VS }; })();`, context);
+  const out = context.window.OUT;
+  const markers = !out.v.includes("rigMatrix(") && !out.v.includes("vVoxel") && !out.v.includes("uRigParams") && out.f.includes("uniform vec4 uVoxel;") && !out.f.includes("flat in vec4 vVoxel;") && !out.sh.includes("rigMatrix(");
+  // A source drift that drops a rewritten pattern must throw at init, naming the failed pattern.
+  const driftedInput = block.replace("MESH_FS, [", "MESH_FS.replace(\"flat in vec4 vVoxel;\", \"\"), [");
+  let threw = null;
+  try {
+    runInNewContext(`window.OUT2 = (() => { ${driftedInput} return 1; })();`, { window: {}, BL: { dsbWater: { shader: "<<STUB>>" } } });
+  } catch (e) { threw = e.message; }
+  const helper = source.slice(source.indexOf("  const derive ="), source.indexOf("  const ORDINARY_MESH_VS"));
+  const helperOut = new Function(`${helper}
+    let missed = null, missedRe = null;
+    try { derive("abc", ["missing-pattern", "x"]); } catch (e) { missed = e.message; }
+    try { derive("abc", [/nope/g, "x"]); } catch (e) { missedRe = e.message; }
+    return { missed, missedRe, identity: derive("abc") === "abc", applied: derive("a-b", ["-", "+"]) === "a+b" };`)();
+  return { markers, threw: threw && threw.includes("flat in vec4 vVoxel;"), helper: helperOut.missed === "Shader derivation never matched missing-pattern"
+    && helperOut.missedRe === "Shader derivation never matched /nope/g" && helperOut.identity && helperOut.applied, cases: 3 };
+};
+
 const unitChecks = async () => {
   const waterProgram = selectedWaterProgramProof();
   record("DSB water: environment and sampler bindings follow the selected ordinary or rig shader while state replacement releases owned textures", waterProgram.cases === 2 && waterProgram.failures === 0, JSON.stringify(waterProgram));
@@ -10892,6 +10917,8 @@ const unitChecks = async () => {
 
   const rigIsolation = await rigFailureIsolationProof();
   record("rig program link failure: an optional rig failure disables only rig mode, leaves the renderer-wide failure state clean and draws the frame through the ordinary path", rigIsolation.cases === 12 && rigIsolation.failures === 0, JSON.stringify(rigIsolation));
+  const shaderDerivation = await shaderDerivationProof();
+  record("shader derivation: ordinary shader rewrites assert every pattern matched, throw naming the failed pattern on drift, and keep the derived markers exact", shaderDerivation.cases === 3 && !!(shaderDerivation.markers && shaderDerivation.threw && shaderDerivation.helper), JSON.stringify(shaderDerivation));
 
 const glyphLayout = terrainGlyphLayoutProof();
 record("terrain glyph layouts: warm visits preserve exact registries and rendered instances with fresh mutable buffers and bounded invalidation", glyphLayout.failures === 0 && glyphLayout.cases >= 100, JSON.stringify(glyphLayout));
@@ -12168,7 +12195,7 @@ scene("dsb",{label:"shoreline checkpoint piers",query:"&view=water-pier-west&wea
     await b.evaluate('__shoreline.until(()=>__ooga.dsb.avatar.root.position.z>=57.6,20)');
     await b.send("Input.dispatchKeyEvent",{type:"keyUp",key:"w",code:"KeyW"});
     const end=await b.evaluate(`(()=>{const B=__ooga,D=B.dsb,A=D.avatar,p=A.root.position;return {x:p.x,z:p.z,feet:p.y-A.baseY,support:D.interiors.groundAt(p.x,p.z),depth:D.waterInteraction.stats.depth,speed:D.waterInteraction.speedAt(A),camera:B.camera.position.y,bed:D.land.heightAt(p.x,p.z),optics:D.water.depthAt(p.x,p.z),offEdge:D.land.walkable(p.x,p.z,p.x+2,p.z,1.35,A.bodyHeight,A)};})()`);
-    record("DSB pier browser "+x+": shore input reaches the deck end with dry footing above deep harbor water",Math.abs(end.x-x)<.05&&end.z>=57.6&&Math.abs(end.feet-1.35)<1e-6&&end.support===1.35&&end.depth===0&&end.speed===1&&end.camera>1.35&&end.bed===-5&&end.optics>=4.7&&!end.offEdge,JSON.stringify(end));
+    record("DSB pier browser "+x+": shore input reaches the deck end with dry footing above deep harbor water",Math.abs(end.x-x)<.01&&end.z>=57.6&&Math.abs(end.feet-1.35)<1e-6&&end.support===1.35&&end.depth===0&&end.speed===1&&end.camera>1.35&&end.bed===-5&&end.optics>=4.7&&!end.offEdge,JSON.stringify(end));
     await b.send("Input.dispatchKeyEvent",{type:"keyDown",key:"s",code:"KeyS"});
     await b.evaluate('__shoreline.until(()=>__ooga.dsb.avatar.root.position.z<38.2,20)');
     await b.send("Input.dispatchKeyEvent",{type:"keyUp",key:"s",code:"KeyS"});
