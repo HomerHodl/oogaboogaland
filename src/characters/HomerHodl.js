@@ -1,7 +1,7 @@
 (() => {
   "use strict";
   const BL = window.BL;
-  const { geometry, pushVert, face, box, lathe, tube, merge, forward, moved, turnedX, turnedY, cached } = BL.models;
+  const { geometry, pushVert, face, box, lathe, tube, merge, forward, moved, turnedX, turnedY, cached, makeVox } = BL.models;
   const { createNode, addChild } = BL.scene;
   const { hexToRgb } = BL.math;
   const stickCache = new Map();
@@ -209,30 +209,58 @@
     }
     return jewels;
   };
+  // Homer's blue trousers, burst Hulk-style.
+  const PANTS = { blue: "#3f78d1", dark: "#2b5aa6", fray: "#9cbcf0", band: "#24467f" };
+  // Hashed from the cell, never drawn from k.rand, so the rest of his build draws as it did.
+  const tear = (x, y, z) => ((Math.imul(x + 11, 73856093) ^ Math.imul(y + 7, 19349663) ^ Math.imul(z + 5, 83492791)) >>> 0) % 7;
+  // A trouser leg over a leg's own voxels (x 0 to 3, z 0 to 3, the hip at y 4), torn off between thigh and shin
+  // at uneven heights with a frayed edge, a few tatters hanging to the ankle behind and at the sides, and
+  // ripped through on the front and down the outside so the gold shows. `side` is the leg's x sign; the rips mirror.
+  const pantsLeg = (k, side) => {
+    const v = makeVox(), blue = k.color(PANTS.blue), dark = k.color(PANTS.dark), fray = k.color(PANTS.fray);
+    for (let x = 0; x <= 3; x++) for (let z = 0; z <= 3; z++) {
+      const cut = tear(x, side, z), hem = cut < 2 && z < 3 ? 1 : cut < 4 ? 2 : 3;
+      for (let y = hem; y <= 4; y++) v.set(x, y, z, y === hem && tear(x, y, z + side) < 4 ? fray : tear(x, y, z) === 0 ? dark : blue);
+    }
+    v.del(side > 0 ? 1 : 2, 4, 3);
+    v.del(side > 0 ? 3 : 0, 3, 1);
+    return v;
+  };
   BL.characters.add({
     handle: "HomerHodl",
     joined: 1791072000,
     lastCommit: 1791072000,
     // A golden king: his own glowing eyes without pupils, no brow, and his own nose and mouth from mark.
-    look: { portrait: { min: [-1, -3, 0], max: [7, 7, 8] }, bald: true, noBrow: true, noPupils: true, face: "none", hatY: 10, skin: "#f2b630", hair: "#3a2614", fur: "#f4efe2" },
+    look: { portrait: { min: [-1, -3, 0], max: [7, 7, 8] }, bald: true, noBrow: true, noPupils: true, face: "none", hatY: 10, skin: "#f2b630", hair: "#3a2614", fur: "#3f78d1" },
     voice: {
       poke: "D'oh!",
       idle: ["Mmm... bananas.", "Woohoo! Number go up!", "Mmm... sats.", "Why you little... fee spike!", "D'oh! Sold the bottom.", "Duff and HODL, the Ooga way."]
     },
     dress: {
-      // A bare gold chest with the shoulder strap painted over; his jewels are gear
+      // A bare gold chest with the shoulder strap painted over, over his blue trousers: a dark waistband in
+      // place of the hide belt, the seat and hips torn through to the gold, the loincloth's flaps torn blue
+      // cloth; his jewels and trouser legs are gear
       torso(k, v) {
+        const blue = k.color(PANTS.blue), dark = k.color(PANTS.dark), fray = k.color(PANTS.fray);
         v.fill(1, 7, 4, 7, 1, 1, k.skinJ);
         v.fill(1, 7, 4, 7, 4, 4, k.skinJ);
+        v.fill(0, 8, 0, 2, 0, 5, (x, y, z) => tear(x, y, z) === 0 ? dark : blue);
+        v.fill(1, 7, 3, 3, 1, 4, k.color(PANTS.band));
+        for (const [x, y, z] of [[2, 1, 5], [3, 1, 5], [6, 0, 5], [5, 1, 0], [0, 1, 2], [8, 2, 3]]) v.set(x, y, z, k.P.skin);
+        k.loin = [blue, fray];
       },
       // The necklaces ride the torso, under a node undoing its belly scale so the beads stay round; the
-      // shoulder pieces sit on top of each arm
+      // shoulder pieces sit on top of each arm; each trouser leg is a shell a little wider than the leg it
+      // covers, so the rips show the leg's own gold
       gear(k) {
-        const b = k.traits.belly, jewels = jewelsGeometry(k.h, b);
+        const b = k.traits.belly, jewels = jewelsGeometry(k.h, b), u = k.u;
         const body = createNode({ scale: { x: 1 / b, y: 1, z: 1 / b } });
         addChild(body, createNode({ geometry: jewels.beads }), createNode({ geometry: jewels.stones }));
         addChild(k.parts.torso, body);
         for (const arm of [k.parts.armL, k.parts.armR]) addChild(arm, createNode({ geometry: jewels.shoulderBeads }), createNode({ geometry: jewels.shoulderStone }));
+        for (const [leg, side] of [[k.parts.legL, 1], [k.parts.legR, -1]]) {
+          addChild(leg, createNode({ scale: { x: 1.12, y: 1, z: 1.12 }, geometry: k.vg(pantsLeg(k, side), { x: -2 * u, y: -5 * u, z: -2.5 * u }) }));
+        }
       },
       club: (k) => ({ default: stickGeometry(k.h, "#232327"), gold: stickGeometry(k.h, "#e0b53a"), rest: { x: 0, z: 0 } }),
       gun: (k) => ({ default: makeupGunGeometry(k.h, MAKEUP), gold: makeupGunGeometry(k.h, GOLD_MAKEUP), magazine: false }),
