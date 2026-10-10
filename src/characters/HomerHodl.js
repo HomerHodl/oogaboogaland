@@ -301,7 +301,7 @@
         v.set(1, -1, 6, dark);
         v.set(5, -1, 6, dark);
         v.fill(2, 4, -2, -2, 6, 6, tongue);
-        v.fill(3, 3, 2, 2, 6, 8, P.nose);
+        v.fill(3, 3, 2, 2, 6, 7, P.nose);
       }
     }
   });
