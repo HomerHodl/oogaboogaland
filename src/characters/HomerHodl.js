@@ -91,11 +91,11 @@
   };
   const pointAngle = (i) => i / CROWN.points * 2 * Math.PI;
   // A round bead of radius r about the origin, and a hexagonal stone with a bevelled table facing +z from z lift.
-  const bead = (r, color, segments = 8) => lathe({ profile: [[0, -r], [0.71 * r, -0.71 * r], [r, 0], [0.71 * r, 0.71 * r], [0, r]], segments, color });
+  const bead = (r, color, segments = 6) => lathe({ profile: [[0, -r], [0.92 * r, -0.45 * r], [0.92 * r, 0.45 * r], [0, r]], segments, color });
   const hexStone = (r, color, lift = 0) => forward(lathe({ profile: [[0, lift], [r, lift], [r, lift + 0.27 * r], [0.55 * r, lift + 0.53 * r], [0, lift + 0.53 * r]], segments: 6, color, emissive: 0.15 }));
-  // The gold: an outer and an inner wall on shared vertices so each shades smooth, their top edge and foot
-  // on vertices of their own so those edges stay crisp, a raised lip round the foot and a ridge where the
-  // points begin, and a ball on every tip.
+  // The gold: an outer and an inner wall on shared vertices so each shades smooth, their top edge on vertices
+  // of its own so it stays crisp, a raised lip round the foot that also closes the foot under the walls, a
+  // ridge where the points begin, and a ball on every tip.
   const crownGeometry = cached(() => {
     const geo = geometry(), N = CROWN.around, M = CROWN.rows, angle = (i) => i / N * 2 * Math.PI;
     const gold = hexToRgb("#ffcf3a"), inside = hexToRgb("#c98f17"), rim = hexToRgb("#ffe27a");
@@ -118,25 +118,25 @@
       }
       const t0 = angle(i), t1 = angle(n), top0 = edge(t0), top1 = edge(t1);
       face(geo, [at(t0, top0, 1), at(t1, top1, 1), at(t1, top1, CROWN.wall), at(t0, top0, CROWN.wall)], gold);
-      face(geo, [at(t0, CROWN.foot, 1), at(t0, CROWN.foot, CROWN.wall), at(t1, CROWN.foot, CROWN.wall), at(t1, CROWN.foot, 1)], gold);
     }
-    // A band standing `out` proud of the wall from y0 to y1, its face, top and underside on shared vertices.
-    const band = (y0, y1, out, color) => {
+    // A band standing `out` proud of the wall from y0 to y1 at every other column, its face and top on shared
+    // vertices; its underside runs in to `under` times the outline, the inner wall for the lip, closing the foot.
+    const band = (y0, y1, out, under, color) => {
       const ring = [];
-      for (let i = 0; i < N; i++) ring.push([at(angle(i), y0, 1), at(angle(i), y0, out), at(angle(i), y1, out), at(angle(i), y1, 1)]);
-      for (let i = 0; i < N; i++) {
-        const [a0, b0, c0, d0] = ring[i], [a1, b1, c1, d1] = ring[(i + 1) % N];
+      for (let i = 0; i < N; i += 2) ring.push([at(angle(i), y0, under), at(angle(i), y0, out), at(angle(i), y1, out), at(angle(i), y1, 1)]);
+      for (let i = 0; i < ring.length; i++) {
+        const [a0, b0, c0, d0] = ring[i], [a1, b1, c1, d1] = ring[(i + 1) % ring.length];
         face(geo, [b0, b1, c1, c0], color);
         face(geo, [c0, c1, d1, d0], color);
-        face(geo, [b0, a0, a1, b1], color);
+        if (under < 1) face(geo, [b0, a0, a1, b1], color);
       }
     };
-    band(CROWN.foot - 0.004, CROWN.foot + 0.022, 1.04, rim);
-    band(CROWN.band - 0.01, CROWN.band + 0.01, 1.035, rim);
+    band(CROWN.foot - 0.004, CROWN.foot + 0.022, 1.04, CROWN.wall, rim);
+    band(CROWN.band - 0.01, CROWN.band + 0.01, 1.035, 1, rim);
     const r = 0.029, balls = [];
     for (let i = 0; i < CROWN.points; i++) {
       const [x, y, z] = onCrown(pointAngle(i), CROWN.tip, (1 + CROWN.wall) / 2);
-      balls.push(moved(bead(r, "#e8b830", 10), x, y + 0.7 * r, z));
+      balls.push(moved(bead(r, "#e8b830", 8), x, y + 0.7 * r, z));
     }
     const crown = merge(geo, ...balls);
     crown.smooth = true;
@@ -171,7 +171,7 @@
     const key = `${h}/${belly}`;
     let jewels = jewelsCache.get(key);
     if (!jewels) {
-      const beads = [], stones = [], r = 0.024 * h, step = 2.1 * r, W = 0.21 * h * belly, gold = "#ffe066";
+      const beads = [], stones = [], r = 0.027 * h, step = 2.1 * r, W = 0.21 * h * belly, gold = "#ffe066";
       // The body front a bead rests on: the chest, or the loincloth standing a voxel prouder below its top.
       const front = (y) => (y - r < 0.1875 * h ? 0.1875 : 0.125) * h * belly + 0.8 * r;
       // A strand hanging from `high` at the chest's edges to `low` at its middle, beads every step along it from
@@ -197,9 +197,9 @@
       stones.push(moved(hexStone(0.05 * h, "#6a3fc0"), 0, 0.146 * h, front(0.096 * h) - 0.4 * r));
       for (let x = -0.14 * h * belly; x <= 0.14 * h * belly + 1e-6; x += step) beads.push(moved(bead(r, gold), x, 0.475 * h, -front(0.475 * h)));
       const shoulderBeads = [];
-      for (let i = 0; i < 6; i++) {
-        const a = i / 6 * 2 * Math.PI;
-        shoulderBeads.push(moved(bead(0.022 * h, gold), Math.cos(a) * 0.085 * h, 0.014 * h, Math.sin(a) * 0.085 * h));
+      for (let i = 0; i < 5; i++) {
+        const a = i / 5 * 2 * Math.PI;
+        shoulderBeads.push(moved(bead(0.025 * h, gold), Math.cos(a) * 0.085 * h, 0.014 * h, Math.sin(a) * 0.085 * h));
       }
       const smooth = (pieces) => {
         const geo = merge(...pieces);
