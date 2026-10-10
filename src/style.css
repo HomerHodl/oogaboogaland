@@ -7938,3 +7938,15 @@ body.dsb-menu-open :is(.bottom-hud,.top-hud,#joy-move,#joy-look,#act,.weapon-hud
   .svrn-grid { grid-template-columns: 1fr; }
   .svrn-content { padding: 14px; }
 }
+/* The Money Line's purse: each era's money the visitor carries, and what became of it. */
+.ml-purse { position: absolute; z-index: 6; left: 12px; top: calc(var(--safe-top) + 150px); width: 200px; padding: 8px 10px 9px; border-radius: var(--radius); background: var(--tablet); box-shadow: var(--tablet-shadow); color: var(--fg); pointer-events: none; }
+.ml-purse h3 { margin: 0 0 4px; font: 700 9px/1.2 var(--mono); letter-spacing: 0.12em; text-transform: uppercase; color: var(--accent-text); }
+.ml-purse ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 5px; }
+.ml-purse li { display: grid; grid-template-columns: 1fr auto; column-gap: 8px; font: 9px/1.25 var(--mono); color: var(--muted); }
+.ml-purse li b { grid-column: 2; grid-row: 1; font-size: 14px; line-height: 1; color: var(--fg); }
+.ml-purse li span { overflow-wrap: anywhere; }
+.ml-purse li small { grid-column: 1 / -1; font-size: 9.5px; color: var(--faint); overflow-wrap: anywhere; }
+.ml-purse li[data-state="dead"] span, .ml-purse li[data-state="dead"] b { color: var(--faint); text-decoration: line-through; }
+.ml-purse li[data-state="dead"] small { color: var(--danger); }
+.ml-purse li[data-empty] { color: var(--faint); font-size: 9.5px; }
+@media (max-width: 720px) { .ml-purse { top: calc(var(--safe-top) + 112px); width: 168px; padding: 6px 8px; } }

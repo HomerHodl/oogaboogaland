@@ -187,7 +187,9 @@
   const ALTAR_HEIGHT = 0.34, ALTAR_BLOCK_WIDTH = 0.2, ALTAR_BLOCK_ARC = 0.3, ALTAR_RING_GAP = 0.02, ALTAR_MAX_BLOCKS = 512;
   const RIPEN = 25, TREE_CHANCE = 0.5, BUSH_CHANCE = 0.25;
   const PROP_TIPS = { tree: "Tree · shake it", bush: "Bush · rustle it", rock: "Rock · hit to break", crate: "Box · hit to break", barrel: "Barrel · hit to break", flower: "Flowers", torch: "Torch · warm", firepit: "Fire pit", bedroll: "Somebody's bed", ladder: "Ladder · wobbly", dock: "Dock · creaky", magazine: "Spare magazine · walk into it to collect", poolbridge: "Vine bridge · to the Mempool island", poolsign: "Mempool Rainforest · the way down is through the hill", poolpainting: "Wall painting · tap to read it closely", chainsign: "The chain, at a glance · tap to read it", weathersign: "Reading the weather · tap for the key", poolrock: "Mossy rock", poolfern: "Fern · rustle it", poollog: "Fallen log · something lives in it", jaguar: "Jaguar · do not poke", monkey: "Monkey · it watches you", toucan: "Toucan · big beak", canopy: "Rainforest tree · shake it", jumbotron: "Oogatron · OogaBoogaX on the big screen · tap the screen for a close-up", palm: "Palm · shake it", bifrostbridge: "Bifröst · the bridge to ₿IFRÖST", bifrostgate: "₿IFRÖST · walk an Ooga through the field", heimdall: "Heimdall · keeper of the bridge", gate: null };
-  const RETICLE_PROPS = new Set(["tree", "bush", "rock", "crate", "barrel", "flower", "torch", "firepit", "ladder", "poolsign", "poolpainting", "chainsign", "weathersign", "poolfern", "poollog", "jaguar", "monkey", "toucan", "canopy", "jumbotron", "palm", "timechainentrance", "timechainboard", "timechainchair", "timechainbeer", "bifrostgate", "heimdall"]);
+  // The ruins of Jekyll Island speak for themselves: each relic's tooltip and pokes live with its geometry.
+  const JEKYLL_LORE = BL.jekyllIsle.LORE;
+  const RETICLE_PROPS = new Set(["tree", "bush", "rock", "crate", "barrel", "flower", "torch", "firepit", "ladder", "poolsign", "poolpainting", "chainsign", "weathersign", "poolfern", "poollog", "jaguar", "monkey", "toucan", "canopy", "jumbotron", "palm", "timechainentrance", "timechainboard", "timechainchair", "timechainbeer", "bifrostgate", "heimdall", ...Object.keys(JEKYLL_LORE).filter((kind) => kind !== "jekyllbridge")]);
   const workCave = (slot) => slot.repo && (slot.status === "open" || slot.status === "mirror");
   const MATRIX_LIVING_PROPS = new Set(["tree"]);
   const SOLID_PROPS = new Set(["tree", "rock", "crate", "barrel", "firepit", "dock", "jumbotron", "poolbridge", "poolrock", "canopy"]);
@@ -199,6 +201,7 @@
   const CHIP = models.particleGeometry("#6b625a", 0.1, 0);
   const SPARK = models.particleGeometry("#ffb13b", 0.08, 1);
   const DUST = models.particleGeometry("#a3874f", 0.1, 0);
+  const BANKNOTE = models.particleGeometry("#86a872", 0.13, 0);
   // Fireworks reuse the board's own stat colors, fully emissive so they read at night.
   const FIREWORK = ["#46ff70", "#3fd1c5", "#6f9fca", "#f5c542", "#e04a3a"].map((c) => models.particleGeometry(c, 0.11, 1));
   const FIRE_VIEW = { coverage: 0, ember: 0, soot: 0 };
@@ -406,7 +409,7 @@
   let stateTimer = 0, hintTimer = 0, meterTimer = 0, now = 0, hour = 12, unsubscribeActivity = null, unsubscribeAccount = null, ownOogaClaimed = false;
   // How far under the Mempool island's ground the view is, 0 to 1: its sun and its storm stay outside.
   let poolShade = 0, poolUnder = 0;
-  let weather = null, unsubscribeMempool = null, unsubscribeChain = null, mempoolIsland = null, timechainIsland = null, bifrostIsle = null;
+  let weather = null, unsubscribeMempool = null, unsubscribeChain = null, mempoolIsland = null, timechainIsland = null, bifrostIsle = null, jekyllIsle = null;
   // The two boards across the hole from the vine bridge, one reading the chain and one reading the
   // weather. Each holds its canvas, its panel node and the reading it last drew, so a snapshot saying
   // nothing new replaces no geometry.
@@ -2990,6 +2993,65 @@
     addProp("timechainbeer", beer.mug, site.chair.position.x - 0.95, site.chair.position.z, 0.3);
     return { site, place: p, cos, sin, boards: null, seat, beer, claimGround, hangout, residentPlaced: false, show: T.show(site) };
   };
+  // The ruins of Jekyll Island off the south rim, over the rail trestle from the top of the south stairs. The rock, the
+  // trestle and its head are architecture a walker climbs; the relics are solid props it walks round; every relic answers
+  // a tap from `JEKYLL_LORE`. The burn barrel's fire is a lamp, lit all day.
+  const buildJekyllIsle = () => {
+    // The Money Line's station stands by the track's end while its scene is open (a `wip` scene is unregistered
+    // unless the page opts in).
+    const J = BL.jekyllIsle, site = J.site(J.spot(island), { moneyline: !!BL.scenes.moneyline });
+    if (site.station) presets.moneyline = site.station.view;
+    addChild(root, site.node);
+    placed.push(site.node);
+    addTerrainSection(site.islet.geometry.cutawaySource, site.node, site.node.position.y);
+    for (const node of site.floors) {
+      node.sightSolid = true;
+      solids.add(node);
+    }
+    for (const node of site.ruins) solids.add(node);
+    for (const p of site.picks) addProp(p.kind, p.node, p.x, p.z, p.r);
+    addLamp(site.flame, LAMP.fire, site.fire.x, site.fire.y, site.fire.z, true, lamps.length, "jekyll:barrel").always = true;
+    const claimGround = () => {
+      for (const [x, z, r] of site.claims) claim(x, z, r);
+    };
+    return { site, claimGround };
+  };
+  // A poke at a relic on Jekyll Island: its wobble and particles, then the next thing it has to say, and its date for the
+  // puzzle, whose last step blazes the genesis stone and, once a visit, rolls 21 bananas to the pile. The Fiat Clock
+  // opens its board; the handcar, with nobody driven, sets off across on its own.
+  const pokeJekyll = (o, lore, x, y, z) => {
+    if (lore.board) {
+      openPoolBoard(fiatBoard);
+      return;
+    }
+    if (lore.ride) {
+      if (pilot.player) hud.toast("Walk your Ooga up to the handcar and press Space to ride.");
+      else hud.toast(lore.say[BL.jekyllIsle.depart(jekyllIsle.site) ? 1 : 0]);
+      return;
+    }
+    if (lore.go) {
+      if (pilot.player) enterMoneyLine();
+      else hud.toast(lore.say[0]);
+      return;
+    }
+    if (lore.shake && !wobble(o.node, lore.shake)) return;
+    if (lore.fx === "notes") {
+      BL.jekyllIsle.print(jekyllIsle.site);
+      fx.burst(x, y + 2.2, z, 14, [BANKNOTE], 2.2);
+    } else if (lore.fx === "sparks") fx.burst(x, y + 1.2, z, 10, [SPARK], 1.4);
+    else if (lore.fx === "dust") fx.burst(x, y + 0.4, z, 6, [DUST], 1.1);
+    o.said = o.said === undefined ? 0 : (o.said + 1) % lore.say.length;
+    hud.toast(lore.say[o.said]);
+    if (BL.jekyllIsle.chrono(jekyllIsle.site, o.prop) !== 2) return;
+    const chrono = jekyllIsle.site.chrono;
+    fx.burst(x, y + 1.6, z, 24, [SPARK], 2.4);
+    if (chrono.paid) hud.toast("The genesis stone blazes again. It has already paid out this visit.");
+    else {
+      chrono.paid = true;
+      pile.deliverBananas(21);
+      hud.toast("Seven dates, in order. The genesis stone answers: 21 bananas roll to the pile.");
+    }
+  };
   // ₿IFRÖST's arch dressed where its stone stands as the gate, off the outlines: its gold, vines and banners' rods and
   // marks, the banners' cloth, its lit name, runes and crystals, and its lanterns' glass, which comes back with the
   // world's points its dusk sparks fly from and its warm light pools from, for the lamps. The name, the gold and the
@@ -4794,6 +4856,13 @@
       cloudBox(c.x - c.r - 3, c.y - 18, c.z - c.r - 3, c.x + c.r + 3, c.y + 17, c.z + c.r + 3);
       cloudBridgeBox(c.head.x, c.head.z, c.end.x, c.end.z, c.y, c.width);
     }
+    if (jekyllIsle) {
+      const c = jekyllIsle.site.cloud, reach = c.width / 2 + 0.7;
+      cloudBox(c.x - c.r - 3, c.y - c.depth - 1, c.z - c.r - 3, c.x + c.r + 3, c.y + 12, c.z + c.r + 3);
+      // The trestle and the legs hanging under it.
+      cloudBox(Math.min(c.head.x, c.end.x) - reach, c.y - c.drop - 1, Math.min(c.head.z, c.end.z) - reach,
+        Math.max(c.head.x, c.end.x) + reach, c.y + 3.5, Math.max(c.head.z, c.end.z) + reach);
+    }
   };
   const cloudToward = (value, target, distance) => value + clamp(target - value, -distance, distance);
   const cloudClearAt = (cloud, x, y, z, ahead = 0) => {
@@ -5278,6 +5347,48 @@
       note: () => `A newly mined block strikes the lake. Light runs down the ramp and splits around the chamber trench; when the two fronts meet, the formed water cube falls. Confirmed transactions leave the mempool, so its next reading may be smaller, though new arrivals can keep it growing. The cube marks the block and does not directly drain the lake.${DEBUG_POOL_BLOCK ? " With poolblock enabled, press P to trigger a test block." : ""}`
     }
   ]);
+  // Jekyll Island's Fiat Clock in the same dialog: a dollar in sats now (Moscow time, which the stone's hands tell
+  // too), what is left of 1913's dollar, the dates the ruins keep, and the one supply that does not grow on demand.
+  // Everything live comes from the page's own price feed and chain snapshot.
+  const satsPerDollar = (s) => s.priceUsd > 0 ? Math.round(1e8 / s.priceUsd) : 0;
+  const FIAT_DATES = [["1910 1913 1923", POOL_DIM], ["1933 1944 1971", POOL_DIM], ["2009", "#f7931a"]];
+  const fiatBoard = poolBoard("The Fiat Clock", [
+    {
+      caption: "Moscow time",
+      draw: (c2, s) => {
+        const sats = satsPerDollar(s);
+        reading(c2, "ONE DOLLAR", sats ? `${sats} SATS` : "-", s.live ? "#f7931a" : STALE_INK, sats ? `MOSCOW TIME ${Math.floor(sats / 100)}:${String(sats % 100).padStart(2, "0")}` : "WAITING ON THE PRICE");
+      },
+      note: (s) => s.priceUsd > 0
+        ? `What one US dollar buys in bitcoin, at ${Math.round(s.priceUsd).toLocaleString("en-US")} dollars a coin. Bitcoiners read sats per dollar as a clock and call it Moscow time; the hands on the stone tell it too.`
+        : "Waiting on the price feed."
+    },
+    {
+      caption: "The 1913 dollar",
+      draw: (c2, s) => {
+        const sats = satsPerDollar(s);
+        reading(c2, "A 1913 DOLLAR", "3 CENTS", "#e8c14a", sats ? `${Math.round(sats * 0.03)} SATS TODAY` : "");
+      },
+      note: () => "Measured by consumer prices, a dollar from 1913, the year the Federal Reserve Act was signed, buys about three cents of what it bought then. Under it, those three cents in sats at today's price."
+    },
+    {
+      caption: "The dates",
+      draw: (c2) => {
+        const text = BL.jumbotron.text;
+        text.drawText(c2, "THE RUINS KEEP", Math.round((POOL_BOARD_W - text.measureText("THE RUINS KEEP", 1)) / 2), 4, POOL_DIM, 1);
+        FIAT_DATES.forEach(([line, ink], i) => text.drawText(c2, line, Math.round((POOL_BOARD_W - text.measureText(line, 1)) / 2), 17 + i * 10, ink, 1));
+      },
+      note: () => "Every one of these dates is kept somewhere on the island, carved, told or remembered. The ruins keep them in order."
+    },
+    {
+      caption: "21 million",
+      draw: (c2, s) => {
+        const subsidy = s.height ? 50 / 2 ** Math.floor(s.height / 210000) : 0;
+        reading(c2, "BITCOIN SUPPLY", "21 MILLION", "#f7931a", subsidy ? `${subsidy} BTC A BLOCK` : "AND NOT ONE MORE");
+      },
+      note: () => "Bitcoin's issuance is written into its code: a block subsidy that halves every 210,000 blocks, toward 21 million coins in all. The printer across the plaza has no such line."
+    }
+  ]);
   const openPoolBoard = (board) => {
     board.begin();
     board.refresh();
@@ -5293,6 +5404,7 @@
     if (hud.el.board.open) {
       chainBoard.refresh();
       weatherBoard.refresh();
+      fiatBoard.refresh();
     }
   };
   const onDonation = (donation) => {
@@ -5334,6 +5446,7 @@
         if (o.prop === "timechainboard") return "Timechain display · tap to expand";
         if (o.prop === "timechainchair") return "Sani's recliner · tap to spin and spill the glass";
         if (o.prop === "timechainbeer") return "500 ml beer · tap to chug";
+        if (JEKYLL_LORE[o.prop]) return JEKYLL_LORE[o.prop].tip;
         return PROP_TIPS[o.prop] || "";
       case "piece":
         return PIECES[o.piece] ? PIECES[o.piece][0] : "";
@@ -5435,6 +5548,10 @@
     }
     const w = o.node.world;
     const x = w[12], z = w[14];
+    if (JEKYLL_LORE[o.prop]) {
+      pokeJekyll(o, JEKYLL_LORE[o.prop], x, w[13], z);
+      return;
+    }
     const foundMagazine = (o.prop === "tree" || o.prop === "bush") && revealMagazine(o);
     switch (o.prop) {
       case "tree":
@@ -5581,7 +5698,7 @@
     if (!o.active) return;
     reactProp(o, p);
   };
-  const WAKE_ACTION = { kind: "wake" }, ROLL_ACTION = { kind: "roll" }, STAND_ACTION = { kind: "stand" };
+  const WAKE_ACTION = { kind: "wake" }, ROLL_ACTION = { kind: "roll" }, STAND_ACTION = { kind: "stand" }, MONEYLINE_ACTION = { kind: "moneyline" };
   const TAP_RAY = { ox: 0, oy: 0, oz: 0, dx: 0, dy: 0, dz: 0 };
   const nearbyAction = (x, y, z, reach) => {
     const player = pilot.player;
@@ -5611,6 +5728,12 @@
       }
       if (nearest) return nearest;
     }
+    if (player && jekyllIsle && player.hop < 0.03 && player.hopV <= 0) {
+      const seat = BL.jekyllIsle.handcarNear(jekyllIsle.site, x, y - 1.1, z, Math.min(reach, 1.5));
+      if (seat) return seat;
+      const station = jekyllIsle.site.station;
+      if (station && Math.hypot(x - station.x, z - station.z) < 1.8 && Math.abs(y - 1.1 - station.y) < 0.6) return MONEYLINE_ACTION;
+    }
     if (arcadeMouth && actionWithinReach(x, y, z, arcadeMouth.x, arcadeMouth.y, arcadeMouth.z, MOUTH_REACH)) return arcadeMouth;
     return null;
   };
@@ -5624,6 +5747,7 @@
       action.localOpen = action.open = action.raising = true;
       hud.toast("The glyph gate rises.");
     } else if (action === matrixControl) toggleMatrixControl();
+    else if (action === MONEYLINE_ACTION) enterMoneyLine();
     else enterCave(action.slot);
   };
   const freeAction = () => {
@@ -5801,6 +5925,12 @@
     if (entering) return;
     world.pilot = pilot.player ? pilot.player.traits.name : null;
     enterScene(presets[slot.scene], slot.scene);
+  };
+  // The Money Line's station on Jekyll Island: the played Ooga rides it into the past.
+  const enterMoneyLine = () => {
+    if (entering) return;
+    world.pilot = pilot.player ? pilot.player.traits.name : null;
+    enterScene(presets.moneyline, "moneyline");
   };
   const selectDebugGorilla = (entry) => {
     if (debugSelectedGorilla) for (let i = 0; i < debugGorillaHighlights.length; i++) {
@@ -6175,6 +6305,12 @@
       } else if (action === STAND_ACTION) {
         hud.hint(COARSE ? "Move or tap STAND UP! to get up" : "Move or press Space to stand up");
         hud.setAct("STAND UP!");
+      } else if (action === MONEYLINE_ACTION) {
+        hud.hint(COARSE ? "Tap ALL ABOARD to ride back to the beginning of money" : "Press Space to ride the Money Line back to the beginning of money");
+        hud.setAct("ALL ABOARD");
+      } else if (action.handcar) {
+        hud.hint(COARSE ? "Tap RIDE to pump across the trestle" : "Press Space to ride the handcar across");
+        hud.setAct("RIDE");
       } else if (action.kind === "bench") {
         hud.hint(COARSE ? "Tap SIT to sit facing the fire" : "Press Space to sit facing the fire");
         hud.setAct("SIT");
@@ -6417,6 +6553,13 @@
       setVec(target, M.worldX(0, M.layout.CHAMBER_R - 0.1), floor + 2.3, M.worldZ(0, M.layout.CHAMBER_R - 0.1));
       pitch = player ? 0.1 : 0.06;
       dist = player ? 5 : 7.5;
+    } else if (name === "jekyll" && jekyllIsle && jekyllIsle.site.station) {
+      // Back from the Money Line: beside its station on Jekyll Island, facing the plaza.
+      const a = jekyllIsle.site.station.arrive;
+      x = a.x; z = a.z; yaw = Math.atan2(a.x - a.target.x, a.z - a.target.z);
+      setVec(target, a.target.x, a.target.y, a.target.z);
+      pitch = player ? 0.22 : 0.18;
+      dist = player ? 6 : 9;
     } else if (underground) {
       z = 6;
       setVec(target, 0, (basement ? island.headquarters.basement.floor : island.headquarters.floor) + 0.8, 0);
@@ -6431,8 +6574,8 @@
     arrivals: for (const depth of depths) for (const offset of NAVIGATION_SIDES) {
       p.x = x + Math.cos(yaw) * offset + Math.sin(yaw) * depth;
       p.z = z - Math.sin(yaw) * offset + Math.cos(yaw) * depth;
-      p.y = name === "timechain" ? timechainIsland.place.y : name === "mempool" ? mempoolIsland.place.y + mempoolIsland.layout.FLOOR : name === "bifrost" ? bifrostIsle.site.arrival.y : underground ? (basement ? island.headquarters.basement.floor : island.headquarters.floor) : island.surfaceAt(p.x, p.z);
-      if (name !== "timechain" && name !== "bifrost" && name !== "mempool" && !island.onLand(p.x, p.z) || !navigationClearAt(p.x, p.y + 1e-5, p.z, PLAYER_RADIUS, player ? player.bodyHeight : 1.6)) continue;
+      p.y = name === "timechain" ? timechainIsland.place.y : name === "mempool" ? mempoolIsland.place.y + mempoolIsland.layout.FLOOR : name === "bifrost" ? bifrostIsle.site.arrival.y : name === "jekyll" ? jekyllIsle.site.y : underground ? (basement ? island.headquarters.basement.floor : island.headquarters.floor) : island.surfaceAt(p.x, p.z);
+      if (name !== "timechain" && name !== "bifrost" && name !== "mempool" && name !== "jekyll" && !island.onLand(p.x, p.z) || !navigationClearAt(p.x, p.y + 1e-5, p.z, PLAYER_RADIUS, player ? player.bodyHeight : 1.6)) continue;
       destination.yaw = Math.atan2(p.x - target.x, p.z - target.z);
       destination.pitch = close ? Math.atan2(p.y + (player ? player.headOffset * CLOSE_VIEW.eyeRatio : CLOSE_VIEW.eyeHeight) - target.y, Math.hypot(p.x - target.x, p.z - target.z)) : pitch;
       const arrivalDist = dist + depth;
@@ -6489,6 +6632,7 @@
     let area = "HUB";
     if (timechainIsland && Math.hypot(p.x - timechainIsland.place.x, p.z - timechainIsland.place.z) < BL.timechainModels.SITE.radius) area = "SPHERE";
     else if (mempoolIsland && mempoolIsland.overAt(p.x, p.z)) area = mempoolIsland.coveredAt(p.x, feet + 0.5, p.z) ? "MEMPOOL" : "RAINFOREST";
+    else if (jekyllIsle && Math.hypot(p.x - jekyllIsle.site.node.position.x, p.z - jekyllIsle.site.node.position.z) < jekyllIsle.site.radius) area = "JEKYLL";
     else {
       const hq = island.headquarters, y = feet + 0.08;
       if (island.cavityAt(p.x, p.z, AREA_COLUMN, hq.caveIndex, y) && AREA_COLUMN.caveIndex === hq.caveIndex
@@ -7222,6 +7366,17 @@
       timechainIsland.site.swivel.rotation.y = s.angle;
       timechainIsland.show(dt);
     }
+    // Jekyll Island before the crew moves, so a handcar rider sits where the car now is: carried with its seat, and
+    // stood up beside it at the end of the line.
+    BL.jekyllIsle.update(jekyllIsle.site, dt, elapsed, chain.snapshot.priceUsd);
+    {
+      const car = jekyllIsle.site.car, seat = car.seat, rider = seat.sitter;
+      if (rider) {
+        setVec(rider.root.position, seat.x, seat.y + rider.traits.height * 0.08, seat.z);
+        rider.root.rotation.y = seat.ry;
+        if (car.arrived) crew.standPlayer(rider);
+      }
+    }
     crew.update(dt, elapsed);
     for (let i = 0; i < crew.list.length; i++) {
       const cave = crew.list[i];
@@ -7598,6 +7753,7 @@
       admitted = bridge || Math.hypot(dx, dz) + radius < s.radius;
     }
     if (!admitted && bifrostIsle) admitted = bifrostIsle.site.groundAt(x, z) > -Infinity;
+    if (!admitted && jekyllIsle) admitted = jekyllIsle.site.groundAt(x, z) > -Infinity;
     if (!admitted) return false;
     const support = solids.supportAt(x, z, y, STEP_MAX, radius);
     return support > -Infinity && support <= y + STEP_MAX && support >= y - 3.5;
@@ -9156,6 +9312,7 @@
     mempoolIsland = buildMempoolIsland();
     timechainIsland = buildTimechainIsland();
     bifrostIsle = BL.scenes.bifrost ? buildBifrostIsle(archLamp) : null;
+    jekyllIsle = buildJekyllIsle();
     const firePos = buildFire();
     fire = lamps[lamps.length - 1];
     fire.centerLight = true;
@@ -9202,6 +9359,7 @@
     mempoolIsland.claimGround();
     timechainIsland.claimGround();
     if (bifrostIsle) bifrostIsle.claimGround();
+    jekyllIsle.claimGround();
     buildLawn();
     reflowScenery();
     buildSpots();
@@ -9681,8 +9839,8 @@
     let initialCharacter = ctx.from === null && preloadedCharacter ? contributors.activeRoster.find((entry) => entry.name.toLowerCase() === preloadedCharacter) : null;
     if (ctx.from === null && (preloadedJetpackWear || preloadedEquipment) && !params.has("character") && !initialCharacter) initialCharacter = contributors.activeRoster.find((entry) => crew.stateOf(crew.cavemen.get(entry.name)) === "working") || contributors.activeRoster[0];
     const initialGorilla = initialCharacter && preloadedGorilla ? crew.cavemen.get(initialCharacter.name) : null;
-    // The Ooga that went into DSB, the Lightning Factory, ₿IFRÖST or Ooga Arcade comes back out as the one played.
-    const handsBack = ctx.from === "dsb" || ctx.from === "factory" || ctx.from === "bifrost" || ctx.from === "arcade";
+    // The Ooga that went into DSB, the Lightning Factory, ₿IFRÖST, Ooga Arcade or the Money Line comes back out as the one played.
+    const handsBack = ctx.from === "dsb" || ctx.from === "factory" || ctx.from === "bifrost" || ctx.from === "arcade" || ctx.from === "moneyline";
     const returningCharacter = handsBack ? world.pilot : null;
     if (handsBack) world.pilot = null;
     if (initialGorilla) {
@@ -9707,7 +9865,7 @@
     unsubscribeAccount = BL.net.subscribe(onAccountChange);
     const initialFirstPerson = ctx.from === null && preloadedFirstPerson && !initialGorilla;
     if (initialFirstPerson) pilot.enterClose(true);
-    if (returningCharacter) navigate(ctx.from === "factory" || ctx.from === "bifrost" || ctx.from === "arcade" ? ctx.from : "pile");
+    if (returningCharacter) navigate(ctx.from === "factory" || ctx.from === "bifrost" || ctx.from === "arcade" ? ctx.from : ctx.from === "moneyline" ? "jekyll" : "pile");
     else if (ctx.from === "bifrost" && !ctx.place) navigate("bifrost");
     else if (!crew.sleeping && !initialGorilla && (ctx.place || preloadedView || initialCharacter || initialFirstPerson)) navigate(ctx.place || preloadedView || "pile");
     if (initialCharacter && !initialGorilla && preloadedJetpack) {
@@ -10153,7 +10311,7 @@
     // Drop every per-visit ref but the cached island.
     terrainRampRoof = pathNode = altar = lawn = life = hud = hooks = input = pilot = fx = cameraCover = bananaCover = solids = rockGuides = objectGuides = sightGuides = bananaGuides = pileGuides = platformGuides = mirrorGuides = pile = crew = crates = critters = clock = presets = mirrorCave = matrixCave = matrixControl = gateRain = fire = headquarters = positionDebug = dockStairs = overlayCanvas = null;
     beasts.clear();
-    magazine = magazineState = breakables = weather = mempoolIsland = timechainIsland = clankers = clankerPlay = null;
+    magazine = magazineState = breakables = weather = mempoolIsland = timechainIsland = jekyllIsle = clankers = clankerPlay = null;
     hubScene.input = hubScene.debug = null;
     return { targets: count };
   };

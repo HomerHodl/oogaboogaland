@@ -155,6 +155,7 @@
         <h1><a class="home-link" href="./" title="Back to the island"><span data-sign>Ooga Booga Land</span></a></h1>
         <p data-scene="hub" id="subtitle">an island of caves</p>
         <p data-scene="lab" hidden>EntropyLab cave</p>
+        <p data-scene="moneyline" hidden>The Money Line</p>
         <p data-scene="factory" hidden>Lightning Factory</p>
         <p data-scene="bifrost" hidden>₿IFRÖST</p>
         <p data-scene="arcade" hidden>Ooga Arcade</p>
@@ -193,6 +194,13 @@
         <button type="button" data-preset="bunks">Bunks</button>
         <button type="button" data-preset="bench">Bench</button>
         <button type="button" class="leave" data-action="leave" data-scene="lab" hidden>Leave<span> cave</span></button>
+      </nav>
+      <nav class="presets" aria-label="The Money Line" data-scene="moneyline" hidden>
+        <button type="button" data-preset="start">Platform</button>
+        <button type="button" data-preset="shells">Shells</button>
+        <button type="button" data-preset="yap">Yap</button>
+        <button type="button" data-preset="coins">Coins</button>
+        <button type="button" class="leave" data-action="leave">To<span> Jekyll</span></button>
       </nav>
       <nav class="presets" aria-label="Lightning Factory" data-scene="factory" hidden>
         <button type="button" data-preset="core">Core</button>
@@ -1278,6 +1286,10 @@
         </div>
       </section>
     </div>
+    <aside id="ml-purse" class="ml-purse" data-scene="moneyline" aria-label="Your purse" aria-live="polite" hidden>
+      <h3>Purse</h3>
+      <ul id="ml-purse-list"></ul>
+    </aside>
     <button id="dsb-context" class="dsb-context" data-action="dsb-context" type="button" hidden>Use</button>
     <section id="dsb-panel" class="dsb-panel" data-scene="dsb" data-phase="entrance" aria-label="DSB Land" hidden>
       <div class="dsb-intro"><p>DSB LAND</p><h2>Follow the light.</h2><button type="button" id="dsb-start-audio" data-action="dsb-start-audio">Enter with sound</button><p>Hold W or ↑ · on touch, push the left stick forward</p><p>The music gets closer with every step.</p><button type="button" data-action="dsb-skip-entry">Skip</button><button type="button" data-action="dsb-mute">Mute sound</button><button type="button" data-action="leave">Back to ₿IFRÖST</button></div>
@@ -1640,6 +1652,7 @@ Then run npm run build and ONLY=characters node test/run.mjs.</pre>
   <script src="js/timechain-beer.js"></script>
   <script src="js/timechain-data.js"></script>
   <script src="js/timechain-boards.js"></script>
+  <script src="js/jekyll-isle.js"></script>
   <script src="js/solid-props.js"></script>
   <script src="js/breakables.js"></script>
   <script src="js/agent.js"></script>
@@ -1653,6 +1666,8 @@ Then run npm run build and ONLY=characters node test/run.mjs.</pre>
   <script src="js/clanker-play.js"></script>
   <script src="js/scene-hub.js"></script>
   <script src="js/scene-lab.js"></script>
+  <script src="js/moneyline-models.js"></script>
+  <script src="js/scene-moneyline.js"></script>
   <script src="js/factory-feed.js"></script>
   <script src="js/factory-mock.js"></script>
   <script src="js/factory-models.js"></script>
