@@ -57,8 +57,8 @@
       const R = 0.025, BORE = 0.018, L = 0.6, Y = -0.005;
       // Each barrel's back end sits inside the receiver, so it is left open.
       const barrel = (x) => [
-        forward(spin({ profile: [[R * h, 0], [R * h, L * h], [BORE * h, L * h]], segments: 8, color: pal.steel }), { x: x * h, y: Y * h, z: 0.06 * h }),
-        forward(spin({ profile: [[BORE * h, L * h], [BORE * h, (L - 0.04) * h], [0, (L - 0.04) * h]], segments: 8, color: pal.bore }), { x: x * h, y: Y * h, z: 0.06 * h })
+        forward(spin({ profile: [[R * h, 0], [R * h, L * h], [BORE * h, L * h]], segments: 6, color: pal.steel }), { x: x * h, y: Y * h, z: 0.06 * h }),
+        forward(spin({ profile: [[BORE * h, L * h], [BORE * h, (L - 0.04) * h], [0, (L - 0.04) * h]], segments: 6, color: pal.bore }), { x: x * h, y: Y * h, z: 0.06 * h })
       ];
       // A squat flask: the colour fills its lower body, clear glass rises to the neck, and a red nozzle ties it up
       // to the barrels; each piece leaves open the top the next one covers.
@@ -76,10 +76,8 @@
         part(0.09, 0.1, 0.3, pal.steel, 0, -0.005, -0.07, pal.emissive),
         part(0.1, 0.065, 0.2, pal.wood, 0, -0.045, 0.22),
         part(0.065, 0.18, 0.066, pal.wood, 0, -0.14, -0.184),
-        // The trigger guard, as the rifle's.
+        // The trigger guard's bar and the trigger, under the hand.
         part(0.045, 0.012, 0.106, pal.steel, 0, -0.13, -0.098),
-        part(0.045, 0.077, 0.012, pal.steel, 0, -0.0975, -0.045),
-        part(0.045, 0.077, 0.012, pal.steel, 0, -0.0975, -0.151),
         part(0.014, 0.045, 0.012, pal.steel, 0, -0.083, -0.112),
         ...barrel(-R), ...barrel(R),
         // A rib between the barrels carries the front post; its bead and the rear notch keep the rifle's sight line.
@@ -98,9 +96,9 @@
   // The crown, in head space at unit height (the head's top is at y 0.375, its eyes' at 0.3125): a gold band
   // round the head just above the eyes, a rounded square (a superellipse, a by b) hugging the head's square
   // corners, flaring out as it rises into ten points with curved-in sides, five of them facing front. The flare
-  // is linear in height, so each wall column is straight and one row draws it exactly; `around` keeps five
-  // samples a point, so every tip lands on one.
-  const CROWN = { a: 0.262, b: 0.232, foot: 0.315, band: 0.4, valley: 0.418, tip: 0.58, flare: 0.22, points: 10, around: 50, rows: 1, wall: 0.94 };
+  // is linear in height, so each wall column is straight and one row draws it exactly; `around` keeps four
+  // samples a point, so every tip and valley lands on one.
+  const CROWN = { a: 0.262, b: 0.232, foot: 0.315, band: 0.4, valley: 0.418, tip: 0.58, flare: 0.22, points: 10, around: 40, rows: 1, wall: 0.94 };
   const spread = (y) => 1 + CROWN.flare * (y - CROWN.foot) / (CROWN.tip - CROWN.foot);
   // The crown's outline at angle t (0 at the front, turning towards +x) and height y, `out` times its size there.
   const onCrown = (t, y, out = 1) => {
@@ -115,7 +113,7 @@
   const pointAngle = (i) => i / CROWN.points * 2 * Math.PI;
   // A round bead of radius r about the origin, and a hexagonal stone facing +z from z lift: six facets rising to a
   // point, with no side, since it sits flush on what it is set into.
-  const bead = (r, color, segments = 6) => spin({ profile: [[0, -r], [0.92 * r, -0.45 * r], [0.92 * r, 0.45 * r], [0, r]], segments, color });
+  const bead = (r, color, segments = 5) => spin({ profile: [[0, -r], [0.92 * r, -0.45 * r], [0.92 * r, 0.45 * r], [0, r]], segments, color });
   const hexStone = (r, color, lift = 0) => forward(spin({ profile: [[r, lift], [0, lift + 0.45 * r]], segments: 6, color, emissive: 0.15 }));
   // The gold: an outer and an inner wall on shared vertices so each shades smooth, their top edge on vertices
   // of its own so it stays crisp, a raised lip round the foot that also closes the foot under the walls, a
@@ -244,10 +242,10 @@
   // at uneven heights with a frayed edge, a few tatters hanging to the ankle behind and at the sides, and
   // ripped through on the front and down the outside so the gold shows. `side` is the leg's x sign; the rips mirror.
   const pantsLeg = (k, side) => {
-    const v = makeVox(), blue = k.color(PANTS.blue), dark = k.color(PANTS.dark), fray = k.color(PANTS.fray);
+    const v = makeVox(), blue = k.color(PANTS.blue), fray = k.color(PANTS.fray);
     for (let x = 0; x <= 3; x++) for (let z = 0; z <= 3; z++) {
       const cut = tear(x, side, z), hem = cut < 2 && z < 3 ? 1 : cut < 4 ? 2 : 3;
-      for (let y = hem; y <= 4; y++) v.set(x, y, z, y === hem && tear(x, y, z + side) < 4 ? fray : tear(x, y, z) === 0 ? dark : blue);
+      for (let y = hem; y <= 4; y++) v.set(x, y, z, y === hem && tear(x, y, z + side) < 4 ? fray : blue);
     }
     v.del(side > 0 ? 1 : 2, 4, 3);
     v.del(side > 0 ? 3 : 0, 3, 1);
