@@ -65,9 +65,9 @@
       const jar = (z, fill) => {
         const top = -0.075, bottom = -0.225, r = 0.054, level = bottom + 0.09;
         return [
-          moved(spin({ profile: [[0, 0], [(r - 0.006) * h, 0], [r * h, 0.012 * h], [r * h, (level - bottom) * h]], segments: 8, color: fill }), 0, bottom * h, z * h),
-          moved(spin({ profile: [[r * h, 0], [r * h, 0.018 * h], [0.6 * r * h, 0.038 * h], [0.016 * h, (top - level) * h]], segments: 8, color: pal.glass }), 0, level * h, z * h),
-          moved(spin({ profile: [[0.017 * h, 0], [0.017 * h, 0.012 * h], [0.011 * h, 0.018 * h], [0.011 * h, (Y - top) * h]], segments: 6, color: pal.cap }), 0, top * h, z * h)
+          moved(spin({ profile: [[0, 0], [(r - 0.006) * h, 0], [r * h, 0.012 * h], [r * h, (level - bottom) * h]], segments: 6, color: fill }), 0, bottom * h, z * h),
+          moved(spin({ profile: [[r * h, 0], [r * h, 0.018 * h], [0.6 * r * h, 0.038 * h], [0.016 * h, (top - level) * h]], segments: 6, color: pal.glass }), 0, level * h, z * h),
+          moved(spin({ profile: [[0.017 * h, 0], [0.017 * h, 0.012 * h], [0.011 * h, 0.018 * h], [0.011 * h, (Y - top) * h]], segments: 4, color: pal.cap }), 0, top * h, z * h)
         ];
       };
       const pieces = [
@@ -113,10 +113,10 @@
     return CROWN.valley + (CROWN.tip - CROWN.valley) * (1 - d) ** 2;
   };
   const pointAngle = (i) => i / CROWN.points * 2 * Math.PI;
-  // A round bead of radius r about the origin, and a hexagonal stone facing +z from z lift: a bevel rising to its
-  // table, with no side, since it sits flush on what it is set into.
+  // A round bead of radius r about the origin, and a hexagonal stone facing +z from z lift: six facets rising to a
+  // point, with no side, since it sits flush on what it is set into.
   const bead = (r, color, segments = 6) => spin({ profile: [[0, -r], [0.92 * r, -0.45 * r], [0.92 * r, 0.45 * r], [0, r]], segments, color });
-  const hexStone = (r, color, lift = 0) => forward(spin({ profile: [[r, lift], [0.55 * r, lift + 0.4 * r], [0, lift + 0.45 * r]], segments: 6, color, emissive: 0.15 }));
+  const hexStone = (r, color, lift = 0) => forward(spin({ profile: [[r, lift], [0, lift + 0.45 * r]], segments: 6, color, emissive: 0.15 }));
   // The gold: an outer and an inner wall on shared vertices so each shades smooth, their top edge on vertices
   // of its own so it stays crisp, a raised lip round the foot that also closes the foot under the walls, a
   // ridge where the points begin, and a ball on every tip.
@@ -161,7 +161,7 @@
     const r = 0.029, balls = [];
     for (let i = 0; i < CROWN.points; i++) {
       const [x, y, z] = onCrown(pointAngle(i), CROWN.tip, (1 + CROWN.wall) / 2);
-      balls.push(moved(bead(r, "#e8b830"), x, y + 0.7 * r, z));
+      balls.push(moved(bead(r, "#e8b830", 5), x, y + 0.7 * r, z));
     }
     const crown = merge(geo, ...balls);
     crown.smooth = true;
