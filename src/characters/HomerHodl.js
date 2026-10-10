@@ -275,13 +275,13 @@
         v.fill(0, 6, 6, 6, 0, 5, k.skinJ);
         v.fill(1, 5, 7, 7, 1, 4, k.skinJ);
       },
-      // Big glowing eyes, three wide and four tall, their corners a softer glow so they read round.
-      // Every cell is an eye cell, so the whole eye closes while he sleeps.
+      // Big square glowing eyes, three by three, the widest the face holds either side of the nose, set high
+      // under the crown's band. Every cell is an eye cell, so the whole eye closes while he sleeps.
       eyes(k, v) {
-        const eye = k.color("#fff6c8"), rim = k.color("#f4d27a");
-        k.headEmissive = { [eye]: 1, [rim]: 0.4 };
-        for (const x0 of [0, 4]) for (let dx = 0; dx <= 2; dx++) for (let y = 1; y <= 4; y++) {
-          v.set(x0 + dx, y, 5, dx !== 1 && (y === 1 || y === 4) ? rim : eye);
+        const eye = k.color("#fff6c8");
+        k.headEmissive = { [eye]: 1 };
+        for (const x0 of [0, 4]) for (let dx = 0; dx <= 2; dx++) for (let y = 2; y <= 4; y++) {
+          v.set(x0 + dx, y, 5, eye);
           k.eyeCells.push([x0 + dx, y]);
         }
         return true;
