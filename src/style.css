@@ -3100,6 +3100,52 @@ body[data-active-scene="arcade"] .magazine-hud {
   overscroll-behavior: contain;
 }
 
+/* A board's own controls under its note, shown only while the page that owns them is up. */
+.board-panel[hidden] {
+  display: none;
+}
+
+/* The Leak Check's autofill demo: the name box shows, the boxes the browser may fill with it sit off screen. */
+.leak-actions {
+  grid-template-columns: 1fr;
+  margin-top: 8px;
+}
+
+.leak-pad {
+  display: grid;
+  place-items: center;
+  height: 110px;
+  margin-top: 10px;
+  border: 2px dashed var(--stone-dk);
+  border-radius: 9px 7px 10px 8px;
+  background: var(--tablet);
+  box-shadow: var(--tablet-shadow);
+  color: rgba(243, 239, 228, 0.75);
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  touch-action: none;
+  user-select: none;
+}
+
+/* The Leak Check's pretend ad, off screen for the moment it takes to see whether an ad blocker hides it. */
+.leak-bait {
+  position: absolute;
+  top: 0;
+  left: -10000px;
+  width: 10px;
+  height: 10px;
+}
+
+.leak-hidden {
+  position: absolute;
+  top: 0;
+  left: -10000px;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+}
+
 /* A wide board (the Timechain Sphere, a tall page of rows) gets a wide dialog on desktop: the page on the left,
    fitted to the window's height, and the caption, pages, note and help in a column beside it. Phones keep the
    default. */

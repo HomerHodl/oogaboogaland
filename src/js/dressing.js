@@ -2,7 +2,8 @@
 // writing through `box` and `put` into separate solid, hanging, decorative glow and lantern glow layers: general (`lanternPost`, `crate`, `coalCrate`,
 // `barrel`, `cart`, `banner`, `gauge`, `rubble`, `bracket`, `hanging`, `bulb`), lab (`die`,
 // `flaskBench`, `terminal`, `chalkboard`), the mirror (`monolith`, `runeStone`), lightning (`coil`,
-// `boards`), plus `bench`, `vine` and `banner(v)` carrying each cave's emblem from `hubModels.SIGN_ICONS`.
+// `boards`), the hub's Leak Check `kiosk`, plus `bench`, `vine` and `banner(v)` carrying each cave's emblem from
+// `hubModels.SIGN_ICONS`.
 //
 // `set()` places pieces by quarter turns (`put`), strings sagging cables with lamps (`cable`) and `build`s
 // everything placed into one `solid`, one `hang`, decorative `glow` and lantern `lampGlow` mesh plus the `lights` its lanterns
@@ -260,6 +261,17 @@
       }
       box(HANG, -38, 37, 30, 33, 2, 2, 1);
       for (const x of [-36, 35]) for (const y of [31, 32]) put(HANG, x, y, 3, 6);
+    }),
+    // The Leak Check kiosk: a stone foot, a timber console and posts, a dark screen with a glowing eye, a plank roof.
+    kiosk: () => author((put, box) => {
+      box(SOLID, -8, 7, 0, 1, -5, 4, (x, y) => y === 1 ? 21 : 20);
+      box(SOLID, -6, 5, 2, 12, -4, 2, (x, y, z) => y === 12 ? 1 : plank(x, y, z, 2, 12, 1));
+      for (const x of [-8, 6]) box(SOLID, x, x + 1, 2, 30, -1, 0, 2);
+      box(SOLID, -6, 5, 13, 28, -1, 0, (x, y) => x === -6 || x === 5 || y === 13 || y === 28 ? 0 : 36);
+      icon(put, GLOW, ["..#####..", ".#.....#.", "#.......#", ".#.....#.", "..#####.."], -5, 19, 1, 1, 30);
+      icon(put, GLOW, ["###", "###", "###"], -2, 20, 1, 1, 37);
+      for (let x = -4; x <= 3; x += 2) put(GLOW, x, 16, 1, 31);
+      box(HANG, -10, 9, 31, 32, -4, 3, (x, y, z) => plank(x, y, z, -10, 9, 0) === 3 ? 3 : y === 32 ? 1 : 0);
     }),
     // Headquarters: a log bench.
     bench: () => author((put, box) => {
