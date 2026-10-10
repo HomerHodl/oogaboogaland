@@ -35,16 +35,16 @@
       }
       const R = 0.025, BORE = 0.018, L = 0.6, Y = -0.005;
       const barrel = (x) => [
-        forward(lathe({ profile: [[0, 0], [R * h, 0], [R * h, L * h], [BORE * h, L * h]], segments: 14, color: pal.steel }), { x: x * h, y: Y * h, z: 0.06 * h }),
-        forward(lathe({ profile: [[BORE * h, L * h], [BORE * h, (L - 0.04) * h], [0, (L - 0.04) * h]], segments: 14, color: pal.bore }), { x: x * h, y: Y * h, z: 0.06 * h })
+        forward(lathe({ profile: [[0, 0], [R * h, 0], [R * h, L * h], [BORE * h, L * h]], segments: 10, color: pal.steel }), { x: x * h, y: Y * h, z: 0.06 * h }),
+        forward(lathe({ profile: [[BORE * h, L * h], [BORE * h, (L - 0.04) * h], [0, (L - 0.04) * h]], segments: 10, color: pal.bore }), { x: x * h, y: Y * h, z: 0.06 * h })
       ];
       // A squat flask: the colour fills its lower body, clear glass rises to the neck, and a red nozzle ties it up to the barrels.
       const jar = (z, fill) => {
         const top = -0.075, bottom = -0.225, r = 0.054, level = bottom + 0.09;
         return [
-          moved(lathe({ profile: [[0, 0], [(r - 0.006) * h, 0], [r * h, 0.012 * h], [r * h, (level - bottom) * h], [0, (level - bottom) * h]], segments: 14, color: fill }), 0, bottom * h, z * h),
-          moved(lathe({ profile: [[r * h, 0], [r * h, 0.018 * h], [0.6 * r * h, 0.038 * h], [0.016 * h, (top - level) * h], [0, (top - level) * h]], segments: 14, color: pal.glass }), 0, level * h, z * h),
-          moved(lathe({ profile: [[0.017 * h, 0], [0.017 * h, 0.012 * h], [0.011 * h, 0.018 * h], [0.011 * h, (Y - top) * h], [0, (Y - top) * h]], segments: 10, color: pal.cap }), 0, top * h, z * h)
+          moved(lathe({ profile: [[0, 0], [(r - 0.006) * h, 0], [r * h, 0.012 * h], [r * h, (level - bottom) * h], [0, (level - bottom) * h]], segments: 10, color: fill }), 0, bottom * h, z * h),
+          moved(lathe({ profile: [[r * h, 0], [r * h, 0.018 * h], [0.6 * r * h, 0.038 * h], [0.016 * h, (top - level) * h], [0, (top - level) * h]], segments: 10, color: pal.glass }), 0, level * h, z * h),
+          moved(lathe({ profile: [[0.017 * h, 0], [0.017 * h, 0.012 * h], [0.011 * h, 0.018 * h], [0.011 * h, (Y - top) * h], [0, (Y - top) * h]], segments: 8, color: pal.cap }), 0, top * h, z * h)
         ];
       };
       const pieces = [
@@ -74,8 +74,10 @@
   };
   // The crown, in head space at unit height (the head's top is at y 0.375, its eyes' at 0.3125): a gold band
   // round the head just above the eyes, a rounded square (a superellipse, a by b) hugging the head's square
-  // corners, flaring out as it rises into ten points with curved-in sides, five of them facing front.
-  const CROWN = { a: 0.262, b: 0.232, foot: 0.315, band: 0.4, valley: 0.418, tip: 0.58, flare: 0.22, points: 10, around: 160, rows: 10, wall: 0.94 };
+  // corners, flaring out as it rises into ten points with curved-in sides, five of them facing front. The flare
+  // is linear in height, so each wall column is straight and one row draws it exactly; `around` keeps eight
+  // samples a point, so every tip and valley lands on one.
+  const CROWN = { a: 0.262, b: 0.232, foot: 0.315, band: 0.4, valley: 0.418, tip: 0.58, flare: 0.22, points: 10, around: 80, rows: 1, wall: 0.94 };
   const spread = (y) => 1 + CROWN.flare * (y - CROWN.foot) / (CROWN.tip - CROWN.foot);
   // The crown's outline at angle t (0 at the front, turning towards +x) and height y, `out` times its size there.
   const onCrown = (t, y, out = 1) => {
@@ -89,7 +91,7 @@
   };
   const pointAngle = (i) => i / CROWN.points * 2 * Math.PI;
   // A round bead of radius r about the origin, and a hexagonal stone with a bevelled table facing +z from z lift.
-  const bead = (r, color) => lathe({ profile: [[0, -r], [0.5 * r, -0.87 * r], [0.87 * r, -0.5 * r], [r, 0], [0.87 * r, 0.5 * r], [0.5 * r, 0.87 * r], [0, r]], segments: 12, color });
+  const bead = (r, color, segments = 8) => lathe({ profile: [[0, -r], [0.71 * r, -0.71 * r], [r, 0], [0.71 * r, 0.71 * r], [0, r]], segments, color });
   const hexStone = (r, color, lift = 0) => forward(lathe({ profile: [[0, lift], [r, lift], [r, lift + 0.27 * r], [0.55 * r, lift + 0.53 * r], [0, lift + 0.53 * r]], segments: 6, color, emissive: 0.15 }));
   // The gold: an outer and an inner wall on shared vertices so each shades smooth, their top edge and foot
   // on vertices of their own so those edges stay crisp, a raised lip round the foot and a ridge where the
@@ -134,7 +136,7 @@
     const r = 0.029, balls = [];
     for (let i = 0; i < CROWN.points; i++) {
       const [x, y, z] = onCrown(pointAngle(i), CROWN.tip, (1 + CROWN.wall) / 2);
-      balls.push(moved(bead(r, "#e8b830"), x, y + 0.7 * r, z));
+      balls.push(moved(bead(r, "#e8b830", 10), x, y + 0.7 * r, z));
     }
     const crown = merge(geo, ...balls);
     crown.smooth = true;
